@@ -1,0 +1,17 @@
+                                    checked={selectedIds?.length === orders.length && orders.length > 0}
+                                />
+                            </th>
+                        )}
+                        <th className="px-6 py-3">Order ID</th>
+                        <th className="px-6 py-3">ลูกค้า</th>
+                        <th className="px-6 py-3">ผู้ขาย</th>
+                        <th className="px-6 py-3">วันที่จัดส่ง</th>
+                        <th className="px-6 py-3">ยอดรวม</th>
+                        <th className="px-6 py-3">ประเภทการชำระ</th>
+                        <th className="px-6 py-3">สถานะชำระเงิน</th>
+                        <th className="px-6 py-3">ยอดชำระ</th>
+                        <th className="px-6 py-3 min-w-[170px]">ยอดชำระ</th>
+                        <th className="px-6 py-3">Tracking</th>
+                        <th className="px-6 py-3">ดำเนินการ</th>
+                        <th className="px-6 py-3">สถานะออเดอร์</th>
+                    </tr>

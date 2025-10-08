@@ -1,0 +1,5 @@
+{
+  "name": "Mini ERP for Sales Teams",
+  "description": "A comprehensive web application designed to manage sales pipelines from lead generation to back-office operations. It includes role-based access for Admins, Telesales, and Backoffice staff, featuring customer lifecycle management, order processing, and performance dashboards.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,390 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType } from '../types';
+import Modal from './Modal';
+import { User, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle } from 'lucide-react';
+import { getPaymentStatusChip, getStatusChip } from './OrderTable';
+import { apiFetch } from '../services/api';
+
+interface OrderManagementModalProps {
+  order: Order;
+  customers: Customer[];
+  activities: Activity[];
+  onSave: (updatedOrder: Order) => void;
+  onClose: () => void;
+}
+
+const InfoCard: React.FC<{ icon: React.ElementType; title: string; children: React.ReactNode }> = ({ icon: Icon, title, children }) => (
+    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+        <h3 className="text-md font-semibold text-gray-700 mb-3 flex items-center">
+            <Icon className="w-5 h-5 mr-2 text-gray-400" />
+            {title}
+        </h3>
+        {children}
+    </div>
+);
+
+const activityIconMap: Record<ActivityType, React.ElementType> = {
+    [ActivityType.OrderStatusChanged]: Repeat,
+    [ActivityType.OrderCancelled]: XCircle,
+    [ActivityType.TrackingAdded]: Truck,
+    [ActivityType.PaymentVerified]: CheckCircle,
+    [ActivityType.OrderCreated]: Package,
+    [ActivityType.OrderNoteAdded]: Paperclip,
+    // Add other relevant types if needed
+    [ActivityType.Assignment]: User,
+    [ActivityType.GradeChange]: User,
+    [ActivityType.StatusChange]: User,
+    [ActivityType.AppointmentSet]: User,
+    [ActivityType.CallLogged]: Phone,
+};
+
+const ActivityIcon: React.FC<{type: ActivityType}> = ({type}) => {
+    const Icon = activityIconMap[type] || History;
+    return (
+        <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
+            <Icon className="w-4 h-4 text-gray-500" />
+        </div>
+    );
+}
+
+const getRelativeTime = (timestamp: string) => {
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffInSeconds = Math.floor((now.getTime() - past.getTime()) / 1000);
+    if (diffInSeconds < 60) return `${diffInSeconds} วินาทีที่แล้ว`;
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes} นาทีที่แล้ว`;
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours} ชั่วโมงที่แล้ว`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays} วันที่แล้ว`;
+};
+
+const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose }) => {
+  const [currentOrder, setCurrentOrder] = useState<Order>(order);
+  const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || null);
+
+
+  useEffect(() => {
+    setCurrentOrder(order);
+    setSlipPreview(order.slipUrl || null);
+  }, [order]);
+
+  // Fetch full order details if minimal data is passed in
+  useEffect(() => {
+    let cancelled = false;
+    const needsItems = !order.items || order.items.length === 0;
+    const needsBoxes = (order as any).boxes == null;
+    const needsSlip = typeof order.slipUrl === 'undefined';
+    if (!needsItems && !needsBoxes && !needsSlip) return;
+    (async () => {
+      try {
+        const r: any = await apiFetch(`orders/${encodeURIComponent(order.id)}`);
+        if (cancelled) return;
+        setCurrentOrder(prev => ({
+          ...prev,
+          slipUrl: r.slip_url ?? prev.slipUrl,
+          amountPaid: typeof r.amount_paid !== 'undefined' ? Number(r.amount_paid) : prev.amountPaid,
+          codAmount: typeof r.cod_amount !== 'undefined' ? Number(r.cod_amount) : (prev as any).codAmount,
+          shippingAddress: {
+            street: r.street || prev.shippingAddress?.street || '',
+            subdistrict: r.subdistrict || prev.shippingAddress?.subdistrict || '',
+            district: r.district || prev.shippingAddress?.district || '',
+            province: r.province || prev.shippingAddress?.province || '',
+            postalCode: r.postal_code || prev.shippingAddress?.postalCode || '',
+          },
+          items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+            id: Number(it.id ?? i + 1),
+            productName: String(it.product_name ?? ''),
+            quantity: Number(it.quantity ?? 0),
+            pricePerUnit: Number(it.price_per_unit ?? 0),
+            discount: Number(it.discount ?? 0),
+            isFreebie: !!(it.is_freebie ?? 0),
+            boxNumber: Number(it.box_number ?? 0),
+          })) : prev.items,
+          boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({ boxNumber: Number(b.box_number ?? 0), codAmount: Number(b.cod_amount ?? 0) })) : (prev as any).boxes,
+          trackingNumbers: Array.isArray(r.trackingNumbers)
+            ? r.trackingNumbers
+            : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : prev.trackingNumbers),
+        }));
+      } catch (e) {
+        console.error('Failed loading order details', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [order]);
+
+  const customer = useMemo(() => customers.find(c => c.id === order.customerId), [customers, order.customerId]);
+
+  const orderActivities = useMemo(() => {
+    return activities
+        .filter(a => a.description.includes(order.id))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [activities, order.id]);
+
+  const handleFieldChange = (field: keyof Order, value: any) => {
+    setCurrentOrder(prev => ({ ...prev, [field]: value }));
+  };
+  
+  const handleSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setSlipPreview(base64String);
+        handleFieldChange('slipUrl', base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeSlip = () => {
+    setSlipPreview(null);
+    handleFieldChange('slipUrl', undefined);
+  };
+
+
+  const handleAmountPaidChange = (amount: number) => {
+    const newAmount = Math.max(0, amount);
+    let newPaymentStatus = currentOrder.paymentStatus;
+    if (newAmount === 0) {
+      newPaymentStatus = PaymentStatus.Unpaid;
+    } else if (newAmount < currentOrder.totalAmount) {
+      newPaymentStatus = PaymentStatus.PendingVerification; // partial
+    } else {
+      newPaymentStatus = PaymentStatus.Paid; // paid or overpaid
+    }
+    setCurrentOrder(prev => ({
+      ...prev,
+      amountPaid: newAmount,
+      paymentStatus: newPaymentStatus,
+      codAmount: prev.paymentMethod === PaymentMethod.COD ? newAmount : prev.codAmount,
+    }));
+  };
+  
+  // Removed manual confirm button: payment status derives from amountPaid
+
+  const handleSave = () => {
+    onSave(currentOrder);
+  };
+  
+  const formatAddress = (address: Address) => {
+      return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
+  }
+  
+  const remainingBalance = useMemo(() => {
+    const paid = currentOrder.amountPaid || 0;
+    return currentOrder.totalAmount - paid; // negative means overpaid
+  }, [currentOrder.totalAmount, currentOrder.amountPaid]);
+
+  const derivedAmountStatus = useMemo(() => {
+    const diff = remainingBalance;
+    const paid = currentOrder.amountPaid || 0;
+    if (!paid || paid === 0) return 'Unpaid';
+    if (diff > 0) return 'Partial';
+    if (diff === 0) return 'Paid';
+    return 'Overpaid';
+  }, [remainingBalance, currentOrder.amountPaid]);
+
+  return (
+    <Modal title={`จัดการออเดอร์: ${order.id}`} onClose={onClose}>
+      <div className="space-y-4 text-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <InfoCard icon={User} title="ข้อมูลลูกค้า">
+                <p className="font-semibold text-gray-800">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
+                <p className="text-gray-600 flex items-center mt-1"><Phone size={12} className="mr-2"/>{customer?.phone}</p>
+                <p className="text-gray-600 flex items-start mt-1"><MapPin size={12} className="mr-2 mt-0.5"/>{formatAddress(order.shippingAddress)}</p>
+            </InfoCard>
+
+            <InfoCard icon={Package} title="รายการสินค้า">
+                 <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
+                    {order.items.map(item => (
+                        <div key={item.id} className="flex justify-between items-center text-xs">
+                            <span className="text-gray-700">{item.productName} (x{item.quantity})</span>
+                            <span className="font-medium text-gray-800">฿{(item.pricePerUnit * item.quantity - item.discount).toLocaleString()}</span>
+                        </div>
+                    ))}
+                </div>
+                 <div className="border-t mt-2 pt-2 space-y-1">
+                    <div className="flex justify-between text-xs"><span className="text-gray-500">รวม</span><span className="font-medium text-gray-900">฿{(order.totalAmount - order.shippingCost + order.billDiscount).toLocaleString()}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-gray-500">ค่าส่ง</span><span className="font-medium text-gray-900">฿{order.shippingCost.toLocaleString()}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-red-500">ส่วนลด</span><span className="font-medium text-gray-900">-฿{order.billDiscount.toLocaleString()}</span></div>
+                    <div className="flex justify-between font-bold"><span className="text-gray-800">ยอดสุทธิ</span><span className="text-gray-900">฿{order.totalAmount.toLocaleString()}</span></div>
+                </div>
+            </InfoCard>
+        </div>
+        
+        <InfoCard icon={CreditCard} title="การชำระเงิน">
+            <div className="flex items-center justify-between mb-3">
+                <span className="font-medium text-gray-600">วิธีชำระ: {order.paymentMethod}</span>
+                {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod)}
+            </div>
+            <div className="flex items-center justify-between mb-2 text-xs">
+                <span className="text-gray-500">Amount status</span>
+                <span className={`px-2 py-0.5 rounded-full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'}`}>{derivedAmountStatus}</span>
+            </div>
+            {(order.paymentMethod === PaymentMethod.Transfer || order.paymentMethod === PaymentMethod.COD) && (
+                <div className="space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Amount received</label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={currentOrder.amountPaid ?? ''}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+                          className="w-full p-2 border rounded-md"
+                        />
+                    </div>
+                    <div className="flex justify-between font-semibold text-xs">
+                        <span className="text-gray-600">Difference</span>
+                        <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? `-${remainingBalance.toLocaleString()}` : `+${Math.abs(remainingBalance).toLocaleString()}`)}</span>
+                    </div>
+                </div>
+            )}
+            
+            {order.paymentMethod === PaymentMethod.Transfer && (
+                <div className="space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
+                        {slipPreview ? (
+                            <div className="group relative w-32 h-32 border rounded-md p-1">
+                                <img src={slipPreview} alt="Slip preview" className="w-full h-full object-contain" />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center space-x-2">
+                                    <a href={slipPreview} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/80 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"><Eye size={16}/></a>
+                                    <button onClick={removeSlip} className="p-2 bg-white/80 rounded-full text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                        ) : (
+                             <div className="flex items-center space-x-2">
+                                <label htmlFor="slip-upload" className="cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center">
+                                    <Image size={16} className="mr-2"/>
+                                    เลือกไฟล์รูปภาพ
+                                </label>
+                                <input id="slip-upload" type="file" accept="image/*" onChange={handleSlipUpload} className="hidden" />
+                            </div>
+                        )}
+                    </div>
+                    {currentOrder.paymentStatus !== PaymentStatus.Paid && (
+                         <button 
+                            onClick={handleConfirmPayment}
+                            disabled={!currentOrder.slipUrl}
+                            className="w-full flex items-center justify-center py-2 px-4 bg-green-100 text-green-700 font-semibold rounded-lg hover:bg-green-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
+                         >
+                            <CheckCircle size={16} className="mr-2"/>
+                            ยืนยันการชำระเงิน
+                         </button>
+                    )}
+                </div>
+            )}
+            
+            {order.paymentMethod === PaymentMethod.PayAfter && currentOrder.paymentStatus !== PaymentStatus.Paid && (
+                 <div className="space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={currentOrder.amountPaid ?? ''}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+                          className="w-full p-2 border rounded-md"
+                        />
+                    </div>
+                    <div className="flex justify-between font-semibold">
+                        <span className="text-red-600">ยอดค้างชำระ</span>
+                        <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+                    </div>
+                 </div>
+            )}
+            
+            {order.paymentMethod === PaymentMethod.COD && order.boxes && order.boxes.length > 0 && (
+                <div className="space-y-2 border-t mt-3 pt-3">
+                    <h4 className="text-xs font-medium text-gray-500 mb-1">รายละเอียดการเก็บเงินปลายทาง</h4>
+                    <div className="p-3 bg-gray-50 rounded-md space-y-1">
+                        {order.boxes.map(box => (
+                            <div key={box.boxNumber} className="flex justify-between items-center text-xs">
+                                <span className="text-gray-600">กล่องที่ {box.boxNumber}</span>
+                                <span className="font-semibold text-gray-800">฿{box.codAmount.toLocaleString()}</span>
+                            </div>
+                        ))}
+                        <div className="flex justify-between items-center text-xs font-bold border-t pt-1 mt-1">
+                             <span className="text-gray-800">รวม ({order.boxes.length} กล่อง)</span>
+                             <span className="text-gray-800">฿{order.boxes.reduce((sum, b) => sum + b.codAmount, 0).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </InfoCard>
+
+        <InfoCard icon={Truck} title="การจัดส่ง">
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                     <label className="block text-xs font-medium text-gray-500 mb-1">สถานะออเดอร์</label>
+                     <select
+                        value={currentOrder.orderStatus}
+                        onChange={(e) => handleFieldChange('orderStatus', e.target.value as OrderStatus)}
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                      >
+                        {Object.values(OrderStatus).map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                    </select>
+                </div>
+                 <div>
+                     <label className="block text-xs font-medium text-gray-500 mb-1">เลข Tracking (คั่นด้วย ,)</label>
+                     <input
+                        type="text"
+                        value={currentOrder.trackingNumbers.join(', ')}
+                        onChange={(e) => {
+                          const parts = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
+                          const deduped = Array.from(new Set(parts));
+                          handleFieldChange('trackingNumbers', deduped);
+                        }}
+                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                        placeholder="TH123, TH456"
+                     />
+                </div>
+            </div>
+        </InfoCard>
+        
+        <InfoCard icon={History} title="ประวัติออเดอร์">
+            <div className="space-y-4 max-h-40 overflow-y-auto pr-2">
+                {orderActivities.length > 0 ? orderActivities.map(activity => (
+                    <div key={activity.id} className="flex">
+                        <div className="flex-shrink-0 w-8 text-center pt-0.5">
+                            <ActivityIcon type={activity.type}/>
+                        </div>
+                        <div className="ml-2">
+                            <p className="text-xs text-gray-700">{activity.description}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{activity.actorName} • {getRelativeTime(activity.timestamp)}</p>
+                        </div>
+                    </div>
+                )) : (
+                    <p className="text-xs text-gray-400 text-center py-4">ไม่มีประวัติการเปลี่ยนแปลง</p>
+                )}
+            </div>
+        </InfoCard>
+
+        <div className="flex justify-end space-x-3 pt-4 border-t">
+            <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+            >
+                ยกเลิก
+            </button>
+            <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
+            >
+                บันทึกการเปลี่ยนแปลง
+            </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+export default OrderManagementModal;
