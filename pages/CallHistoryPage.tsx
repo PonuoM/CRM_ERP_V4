@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { CallHistory, Customer, User, UserRole } from '@/types';
 import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon } from 'lucide-react';
 
@@ -9,8 +9,36 @@ interface CallHistoryPageProps {
   users: User[];
 }
 
-const formatDate = (iso: string) => {
-  try { return new Date(iso).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' }); } catch { return iso; }
+const formatDate = (dateString: string) => {
+  try {
+    // Handle the format "2025-10-09 03:23:08" from the API
+    const date = new Date(dateString);
+    // Add 7 hours to convert from UTC to Asia/Bangkok
+    date.setHours(date.getHours() + 7);
+    return date.toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
+  } catch {
+    return dateString;
+  }
+};
+
+// Function to handle recording playback
+const playRecording = (recordingURL: string, id: number) => {
+  console.log(`Playing recording ${id} from URL: ${recordingURL}`);
+  
+  // Create a new audio element to play the recording
+  const audio = new Audio();
+  
+  // We need to use the proxy for the recording URL as well
+  const proxyURL = recordingURL.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
+  
+  // Set the source to the proxy URL
+  audio.src = proxyURL;
+  
+  // Play the audio
+  audio.play().catch(error => {
+    console.error('Error playing recording:', error);
+    alert('ไม่สามารถเล่นเสียงได้: ' + error.message);
+  });
 };
 
 // JavaScript version of authenticateOneCall function
@@ -270,47 +298,57 @@ const getRecordingsData = async () => {
   };
 };
 
-// Test function for authentication
-const test_auth = async () => {
-  console.log('Testing OneCall authentication...');
-  try {
-    const result = await authenticateOneCall();
-    console.log('Authentication result:', result);
-    return result;
-  } catch (error) {
-    console.error('Error in test_auth:', error);
-    return {
-      success: false,
-      error: error.message || 'Unknown error in test_auth',
-      debug_info: {
-        error: error,
-        note: 'This error occurred in the test_auth function itself.'
-      }
-    };
+// Function to export recordings data to CSV
+const exportToCSV = (data: any) => {
+  if (!data || !data.objects || data.objects.length === 0) {
+    alert('ไม่มีข้อมูลสำหรับส่งออก');
+    return;
   }
+
+  // Create CSV content
+  const headers = ['ID', 'Datetime', 'Duration', 'Agent', 'Direction', 'Status', 'Customer', 'Customer Phone'];
+  const rows = data.objects.map((recording: any) => {
+    // Format datetime with timezone adjustment
+    const date = new Date(recording.timestamp);
+    date.setHours(date.getHours() + 7);
+    const formattedDate = date.toLocaleString('th-TH', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    return [
+      recording.id,
+      formattedDate,
+      recording.duration || '',
+      recording.localParty || '',
+      recording.direction === 'IN' ? 'รับสาย' : 'โทรออก',
+      'ได้คุย',
+      'Unknown',
+      recording.remoteParty || ''
+    ];
+  });
+
+  // Create CSV content
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.join(','))
+  ].join('\n');
+
+  // Create a blob and download link
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `recordings_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
-
-// Test function for getRecordingsData
-const test_get_recordings = async () => {
-  console.log('Testing getRecordingsData function...');
-  try {
-    const result = await getRecordingsData();
-    console.log('Get recordings result:', result);
-    return result;
-  } catch (error) {
-    console.error('Error in test_get_recordings:', error);
-    return {
-      success: false,
-      error: error.message || 'Unknown error in test_get_recordings',
-      debug_info: {
-        error: error,
-        note: 'This error occurred in the test_get_recordings function itself.'
-      }
-    };
-  }
-}; 
-
-test_get_recordings()
 
 const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, customers, users }) => {
   const [qCustomer, setQCustomer] = useState('');
@@ -319,8 +357,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [status, setStatus] = useState('all');
   const [direction, setDirection] = useState('all');
   const [range, setRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
-  const [authTest, setAuthTest] = useState<any>(null);
-  const [recordingsTest, setRecordingsTest] = useState<any>(null);
+  const [recordingsData, setRecordingsData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const currentUserFull = `${currentUser.firstName} ${currentUser.lastName}`.trim();
   const isPrivileged = currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl;
@@ -331,46 +369,62 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     return map;
   }, [customers]);
 
-  const filtered = useMemo(() => {
-    return calls.filter(call => {
-      // Role-based: non-privileged see only own calls
-      if (!isPrivileged && call.caller !== currentUserFull) return false;
+  // Load recordings data on component mount
+  useEffect(() => {
+    const loadRecordings = async () => {
+      setIsLoading(true);
+      try {
+        const result = await getRecordingsData();
+        if (result.success && result.data) {
+          setRecordingsData(result.data);
+          console.log('Recordings data loaded:', result.data);
+        } else {
+          console.error('Failed to load recordings:', result.error);
+        }
+      } catch (error) {
+        console.error('Error loading recordings:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      // Date range
+    loadRecordings();
+  }, []);
+
+  // Filter recordings data instead of database calls
+  const filteredRecordings = useMemo(() => {
+    if (!recordingsData || !recordingsData.objects) return [];
+    
+    return recordingsData.objects.filter((recording: any) => {
+      // Apply filters based on the new data structure
+      if (qCustomer && !("Unknown".toLowerCase().includes(qCustomer.toLowerCase()))) return false;
+      if (qCustomerPhone && !recording.remoteParty?.includes(qCustomerPhone)) return false;
+      if (qAgentPhone && !recording.localParty?.includes(qAgentPhone)) return false;
+      
+      // Status filter - all recordings have status "ได้คุย"
+      if (status !== 'all' && status !== 'ได้คุย') return false;
+      
+      // Direction filter
+      if (direction !== 'all' && recording.direction !== direction) return false;
+      
+      // Date range filter
       if (range.start || range.end) {
-        const d = new Date(call.date);
-        if (range.start && d < new Date(range.start)) return false;
+        // Handle the format "2025-10-09 03:23:08" from the API
+        const recordingDate = new Date(recording.timestamp);
+        // Add 7 hours to convert from UTC to Asia/Bangkok
+        recordingDate.setHours(recordingDate.getHours() + 7);
+        
+        if (range.start && recordingDate < new Date(range.start)) return false;
         if (range.end) {
           const e = new Date(range.end);
           e.setHours(23,59,59,999);
-          if (d > e) return false;
+          if (recordingDate > e) return false;
         }
       }
-
-      // Join customer
-      const cust = customersById[call.customerId];
-      const custName = cust ? `${cust.firstName} ${cust.lastName}` : '';
-      const custPhone = cust?.phone || '';
-
-      if (qCustomer && !custName.toLowerCase().includes(qCustomer.toLowerCase())) return false;
-      if (qCustomerPhone && !custPhone.includes(qCustomerPhone)) return false;
-      if (qAgentPhone && !(call.caller?.includes(qAgentPhone))) return false; // we don't have agent phone; keep as contains
-
-      // Status filter (simple contains)
-      if (status !== 'all') {
-        const s = (call.status || '').toLowerCase();
-        if (!s.includes(status.toLowerCase())) return false;
-      }
-
-      // Direction placeholder: if duration>0 -> outgoing assumed; we mark both as outgoing
-      if (direction !== 'all') {
-        // Without explicit field, treat all as outgoing for now
-        if (direction === 'in') return false;
-      }
-
+      
       return true;
-    }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [calls, isPrivileged, currentUserFull, range, qCustomer, qCustomerPhone, qAgentPhone, status, direction, customersById]);
+    }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [recordingsData, qCustomer, qCustomerPhone, qAgentPhone, status, direction, range]);
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -482,27 +536,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             <div className="flex items-end gap-2">
               <button
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                onClick={() => {
-                  test_auth().then(result => {
-                    setAuthTest(result);
-                    console.log('Auth test result stored in state:', result);
-                  });
-                }}
+                disabled
               >
                 <Search className="w-4 h-4" />
                 ค้นหา
               </button>
               <button
                 className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                onClick={() => {
-                  test_get_recordings().then(result => {
-                    setRecordingsTest(result);
-                    console.log('Recordings test result stored in state:', result);
-                  });
-                }}
+                onClick={() => exportToCSV(recordingsData)}
+                disabled={!recordingsData || isLoading}
               >
                 <Phone className="w-4 h-4" />
-                ดึงข้อมูล
+                ส่งออก CSV
               </button>
             </div>
           </div>
@@ -511,57 +556,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         {/* Results Summary */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filtered.length}</span> รายการ
-          </div>
-          <div className="flex gap-4">
-            {authTest && (
-              <div className="text-xs text-gray-500">
-                Auth Test: {authTest.success ? 'Success' : 'Failed'}
-              </div>
-            )}
-            {recordingsTest && (
-              <div className="text-xs text-gray-500">
-                Recordings Test: {recordingsTest.success ? 'Success' : 'Failed'}
-              </div>
+            {isLoading ? (
+              <span>กำลังโหลดข้อมูล...</span>
+            ) : (
+              <span>พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filteredRecordings.length}</span> รายการ</span>
             )}
           </div>
+          {recordingsData && recordingsData.objects && (
+            <div className="text-xs text-gray-500">
+              Recordings: {recordingsData.objects.length} items
+            </div>
+          )}
         </div>
-
-        {/* Auth Test Result */}
-        {authTest && (
-          <div className="mb-4 p-3 bg-gray-100 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">Authentication Test Result</h3>
-              <button
-                onClick={() => setAuthTest(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ×
-              </button>
-            </div>
-            <pre className="text-xs text-gray-600 overflow-auto max-h-40">
-              {JSON.stringify(authTest, null, 2)}
-            </pre>
-          </div>
-        )}
-
-        {/* Recordings Test Result */}
-        {recordingsTest && (
-          <div className="mb-4 p-3 bg-gray-100 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">Recordings Data Test Result</h3>
-              <button
-                onClick={() => setRecordingsTest(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ×
-              </button>
-            </div>
-            <pre className="text-xs text-gray-600 overflow-auto max-h-40">
-              {JSON.stringify(recordingsTest, null, 2)}
-            </pre>
-          </div>
-        )}
 
         {/* Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -581,59 +587,51 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filtered.map(call => {
-                  const cust = customersById[call.customerId];
-                  const st = call.status || '';
-                  const isAnswered = st.includes('รับ');
-                  const isMissed = st.includes('พลาด');
-                  const isRejected = st.includes('ไม่รับ');
+                {filteredRecordings.map((recording: any) => {
+                  // Status is always "ได้คุย" for recordings
+                  const statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">ได้คุย</span>;
                   
-                  let statusBadge = '';
-                  if (isAnswered) {
-                    statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">รับสาย</span>;
-                  } else if (isMissed) {
-                    statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">พลาด</span>;
-                  } else if (isRejected) {
-                    statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">ไม่รับ</span>;
-                  } else {
-                    statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{st}</span>;
-                  }
+                  // Direction icon based on recording.direction
+                  const dirIcon = recording.direction === 'IN' ?
+                    <PhoneIncoming className="w-4 h-4 text-green-500" /> :
+                    <PhoneOutgoing className="w-4 h-4 text-red-500" />;
+                  
+                  const dirText = recording.direction === 'IN' ? 'รับสาย' : 'โทรออก';
                   
                   return (
-                    <tr key={call.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-gray-600 font-medium">{call.id}</td>
-                      <td className="py-3 px-4 text-sm text-gray-800">{formatDate(call.date)}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{call.duration ?? '-'}</td>
+                    <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4 text-sm text-gray-600 font-medium">{recording.id}</td>
+                      <td className="py-3 px-4 text-sm text-gray-800">{formatDate(recording.timestamp)}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{recording.duration || '-'}</td>
                       <td className="py-3 px-4 text-sm text-gray-800">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
                             <UserIcon className="w-3 h-3 text-blue-600" />
                           </div>
-                          {call.caller}
+                          {recording.localParty || '-'}
                         </div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <PhoneOutgoing className="w-4 h-4 text-red-500" />
-                          <span className="text-sm text-gray-600">โทรออก</span>
+                          {dirIcon}
+                          <span className="text-sm text-gray-600">{dirText}</span>
                         </div>
                       </td>
                       <td className="py-3 px-4">{statusBadge}</td>
                       <td className="py-3 px-4 text-sm text-gray-800">
-                        {cust ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
-                              <UserIcon className="w-3 h-3 text-gray-600" />
-                            </div>
-                            {`${cust.firstName} ${cust.lastName}`}
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
+                            <UserIcon className="w-3 h-3 text-gray-600" />
                           </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                          Unknown
+                        </div>
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{cust?.phone || '-'}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
                       <td className="py-3 px-4 text-right">
-                        <button className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors">
+                        <button
+                          className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors"
+                          onClick={() => playRecording(recording.recordingURL, recording.id)}
+                        >
                           <Phone className="w-3 h-3 mr-1" />
                           เล่นเสียง
                         </button>
@@ -641,7 +639,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                     </tr>
                   );
                 })}
-                {filtered.length === 0 && (
+                {filteredRecordings.length === 0 && (
                   <tr>
                     <td colSpan={9} className="py-12 text-center">
                       <div className="flex flex-col items-center">
@@ -649,7 +647,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                           <Search className="w-6 h-6 text-gray-400" />
                         </div>
                         <p className="text-gray-500 text-sm font-medium">ไม่พบข้อมูล</p>
-                        <p className="text-gray-400 text-xs mt-1">ลองปรับเปลี่ยนเงื่อนไขการค้นหา</p>
+                        <p className="text-gray-400 text-xs mt-1">ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร</p>
                       </div>
                     </td>
                   </tr>
