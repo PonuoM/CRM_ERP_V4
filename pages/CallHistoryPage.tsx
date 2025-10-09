@@ -753,17 +753,12 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ตัวแทนขาย</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Direction</th>
-                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ลูกค้า</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์โทรลูกค้า</th>
                   <th className="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredRecordings.map((recording: any) => {
-                  // Status is always "ได้คุย" for recordings
-                  const statusBadge = <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">ได้คุย</span>;
-                  
                   // Direction icon based on recording.direction
                   const dirIcon = recording.direction === 'IN' ?
                     <PhoneIncoming className="w-4 h-4 text-green-500" /> :
@@ -788,15 +783,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                         <div className="flex items-center gap-2">
                           {dirIcon}
                           <span className="text-sm text-gray-600">{dirText}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">{statusBadge}</td>
-                      <td className="py-3 px-4 text-sm text-gray-800">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
-                            <UserIcon className="w-3 h-3 text-gray-600" />
-                          </div>
-                          Unknown
                         </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
@@ -845,7 +831,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 })}
                 {filteredRecordings.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center">
+                    <td colSpan={7} className="py-12 text-center">
                       <div className="flex flex-col items-center">
                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                           <Search className="w-6 h-6 text-gray-400" />
