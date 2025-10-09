@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { CallHistory, Customer, User, UserRole } from '@/types';
-import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon, Play, Pause } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon, Play, Pause, Download } from 'lucide-react';
 
 interface CallHistoryPageProps {
   currentUser: User;
@@ -521,6 +521,64 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     }
   };
   
+  // Function to download audio file
+  const downloadRecording = async (recordingURL: string, id: number) => {
+    console.log(`Downloading recording ${id} from URL: ${recordingURL}`);
+    
+    if (!accessToken) {
+      // Try to authenticate again if we don't have a token
+      try {
+        const authResult = await authenticateOneCall();
+        if (authResult.success && authResult.token) {
+          setAccessToken(authResult.token);
+        } else {
+          alert('ไม่สามารถยืนยันตัวตนได้: ' + authResult.error);
+          return;
+        }
+      } catch (error) {
+        alert('เกิดข้อผิดพลาดในการยืนยันตัวตน: ' + error.message);
+        return;
+      }
+    }
+    
+    try {
+      // We need to use the proxy for the recording URL as well
+      const proxyURL = recordingURL.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
+      
+      // Fetch the audio file with Authorization header
+      const response = await fetch(proxyURL, {
+        method: 'GET',
+        headers: {
+          'Authorization': accessToken
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Convert the response to a blob
+      const blob = await response.blob();
+      
+      // Create a URL for the blob
+      const audioUrl = URL.createObjectURL(blob);
+      
+      // Create a download link
+      const link = document.createElement('a');
+      link.href = audioUrl;
+      link.setAttribute('download', `recording_${id}.mp3`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the object URL
+      URL.revokeObjectURL(audioUrl);
+    } catch (error) {
+      console.error('Error downloading recording:', error);
+      alert('ไม่สามารถดาวน์โหลดไฟล์เสียงได้: ' + error.message);
+    }
+  };
+  
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -787,43 +845,52 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
                       <td className="py-3 px-4 text-right">
-                        <div className="min-w-[200px]">
-                          {currentPlayingId === recording.id ? (
-                            <div className="w-full">
-                              <div className="flex items-center gap-2 mb-1">
-                                <button
-                                  className="text-blue-700 hover:text-blue-900"
-                                  onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
-                                >
-                                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                </button>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max={duration || 0}
-                                  value={currentTime}
-                                  onChange={handleSliderChange}
-                                  className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
-                                  }}
-                                />
+                        <div className="min-w-[250px] flex items-center gap-2">
+                          <button
+                            className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
+                            onClick={() => downloadRecording(recording.recordingURL, recording.id)}
+                            title="ดาวน์โหลดไฟล์เสียง"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                          <div className="flex-1 min-w-[200px]">
+                            {currentPlayingId === recording.id ? (
+                              <div className="w-full">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <button
+                                    className="text-blue-700 hover:text-blue-900"
+                                    onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
+                                  >
+                                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                  </button>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max={duration || 0}
+                                    value={currentTime}
+                                    onChange={handleSliderChange}
+                                    className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                    style={{
+                                      background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
+                                  <span className="text-xs text-gray-600">{formatTime(duration)}</span>
+                                </div>
                               </div>
-                              <div className="flex justify-between">
-                                <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
-                                <span className="text-xs text-gray-600">{formatTime(duration)}</span>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors"
-                              onClick={() => playRecording(recording.recordingURL, recording.id)}
-                              disabled={currentPlayingId !== null}
-                            >
-                              <Phone className="w-3 h-3 mr-1" />
-                              เล่นเสียง
-                            </button>
-                          )}
+                            ) : (
+                              <button
+                                className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
+                                onClick={() => playRecording(recording.recordingURL, recording.id)}
+                                disabled={currentPlayingId !== null}
+                              >
+                                <Phone className="w-3 h-3 mr-1" />
+                                เล่นเสียง
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
