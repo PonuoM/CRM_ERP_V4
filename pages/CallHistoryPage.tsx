@@ -309,6 +309,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [range, setRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [recordingsData, setRecordingsData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string>('');
   
   // Audio player state
@@ -556,6 +557,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   useEffect(() => {
     const loadRecordings = async () => {
       setIsLoading(true);
+      setIsDataLoading(true);
       try {
         // First, authenticate to get the access token
         const authResult = await authenticateOneCall();
@@ -576,6 +578,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         // Handle error silently
       } finally {
         setIsLoading(false);
+        setIsDataLoading(false);
       }
     };
 
@@ -747,8 +750,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         {/* Results Summary */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            {isLoading ? (
-              <span>กำลังโหลดข้อมูล...</span>
+            {isLoading || isDataLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                <span>กำลังโหลดข้อมูล...</span>
+              </div>
             ) : (
               <span>พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filteredRecordings.length}</span> รายการ</span>
             )}
@@ -776,98 +782,111 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredRecordings.map((recording: any) => {
-                  // Direction icon based on recording.direction
-                  const dirIcon = recording.direction === 'IN' ?
-                    <PhoneIncoming className="w-4 h-4 text-green-500" /> :
-                    <PhoneOutgoing className="w-4 h-4 text-red-500" />;
-                  
-                  const dirText = recording.direction === 'IN' ? 'รับสาย' : 'โทรออก';
-                  
-                  return (
-                    <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-gray-600 font-medium">{recording.id}</td>
-                      <td className="py-3 px-4 text-sm text-gray-800">{formatDate(recording.timestamp)}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{recording.duration || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-gray-800">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                            <UserIcon className="w-3 h-3 text-blue-600" />
-                          </div>
-                          {recording.localParty || '-'}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {dirIcon}
-                          <span className="text-sm text-gray-600">{dirText}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="min-w-[250px] flex items-center gap-2">
-                          <button
-                            className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
-                            onClick={() => downloadRecording(recording.recordingURL, recording.id)}
-                            title="ดาวน์โหลดไฟล์เสียง"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                          <div className="flex-1 min-w-[200px]">
-                            {currentPlayingId === recording.id ? (
-                              <div className="w-full">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <button
-                                    className="text-blue-700 hover:text-blue-900"
-                                    onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
-                                  >
-                                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                  </button>
-                                  <input
-                                    type="range"
-                                    min="0"
-                                    max={duration || 0}
-                                    value={currentTime}
-                                    onChange={handleSliderChange}
-                                    className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
-                                    style={{
-                                      background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
-                                    }}
-                                  />
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
-                                  <span className="text-xs text-gray-600">{formatTime(duration)}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
-                                onClick={() => playRecording(recording.recordingURL, recording.id)}
-                                disabled={currentPlayingId !== null}
-                              >
-                                <Phone className="w-3 h-3 mr-1" />
-                                เล่นเสียง
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filteredRecordings.length === 0 && (
+                {isDataLoading ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center">
                       <div className="flex flex-col items-center">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                          <Search className="w-6 h-6 text-gray-400" />
-                        </div>
-                        <p className="text-gray-500 text-sm font-medium">ไม่พบข้อมูล</p>
-                        <p className="text-gray-400 text-xs mt-1">ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
+                        <p className="text-gray-500 text-sm font-medium">กำลังดึงข้อมูลบันทึกการโทร...</p>
                       </div>
                     </td>
                   </tr>
+                ) : (
+                  <>
+                    {filteredRecordings.map((recording: any) => {
+                      // Direction icon based on recording.direction
+                      const dirIcon = recording.direction === 'IN' ?
+                        <PhoneIncoming className="w-4 h-4 text-green-500" /> :
+                        <PhoneOutgoing className="w-4 h-4 text-red-500" />;
+                      
+                      const dirText = recording.direction === 'IN' ? 'รับสาย' : 'โทรออก';
+                      
+                      return (
+                        <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4 text-sm text-gray-600 font-medium">{recording.id}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800">{formatDate(recording.timestamp)}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{recording.duration || '-'}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                <UserIcon className="w-3 h-3 text-blue-600" />
+                              </div>
+                              {recording.localParty || '-'}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              {dirIcon}
+                              <span className="text-sm text-gray-600">{dirText}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="min-w-[250px] flex items-center gap-2">
+                              <button
+                                className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
+                                onClick={() => downloadRecording(recording.recordingURL, recording.id)}
+                                title="ดาวน์โหลดไฟล์เสียง"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              <div className="flex-1 min-w-[200px]">
+                                {currentPlayingId === recording.id ? (
+                                  <div className="w-full">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <button
+                                        className="text-blue-700 hover:text-blue-900"
+                                        onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
+                                      >
+                                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                      </button>
+                                      <input
+                                        type="range"
+                                        min="0"
+                                        max={duration || 0}
+                                        value={currentTime}
+                                        onChange={handleSliderChange}
+                                        className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                        style={{
+                                          background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
+                                      <span className="text-xs text-gray-600">{formatTime(duration)}</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
+                                    onClick={() => playRecording(recording.recordingURL, recording.id)}
+                                    disabled={currentPlayingId !== null}
+                                  >
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    เล่นเสียง
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filteredRecordings.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center">
+                          <div className="flex flex-col items-center">
+                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                              <Search className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <p className="text-gray-500 text-sm font-medium">ไม่พบข้อมูล</p>
+                            <p className="text-gray-400 text-xs mt-1">ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>
