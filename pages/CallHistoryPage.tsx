@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { CallHistory, Customer, User, UserRole } from '@/types';
-import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon, Play, Pause } from 'lucide-react';
 
 interface CallHistoryPageProps {
   currentUser: User;
@@ -21,25 +21,6 @@ const formatDate = (dateString: string) => {
   }
 };
 
-// Function to handle recording playback
-const playRecording = (recordingURL: string, id: number) => {
-  console.log(`Playing recording ${id} from URL: ${recordingURL}`);
-  
-  // Create a new audio element to play the recording
-  const audio = new Audio();
-  
-  // We need to use the proxy for the recording URL as well
-  const proxyURL = recordingURL.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
-  
-  // Set the source to the proxy URL
-  audio.src = proxyURL;
-  
-  // Play the audio
-  audio.play().catch(error => {
-    console.error('Error playing recording:', error);
-    alert('ไม่สามารถเล่นเสียงได้: ' + error.message);
-  });
-};
 
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
@@ -359,6 +340,15 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [range, setRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [recordingsData, setRecordingsData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string>('');
+  
+  // Audio player state
+  const [currentPlayingId, setCurrentPlayingId] = useState<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentUserFull = `${currentUser.firstName} ${currentUser.lastName}`.trim();
   const isPrivileged = currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl;
@@ -369,17 +359,200 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     return map;
   }, [customers]);
 
+  // Function to handle recording playback with Authorization header
+  const playRecording = async (recordingURL: string, id: number) => {
+    console.log(`Playing recording ${id} from URL: ${recordingURL}`);
+    
+    // If clicking on the currently playing recording, toggle play/pause
+    if (currentPlayingId === id) {
+      if (isPlaying) {
+        pauseAudio();
+      } else {
+        resumeAudio();
+      }
+      return;
+    }
+    
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    if (!accessToken) {
+      // Try to authenticate again if we don't have a token
+      try {
+        const authResult = await authenticateOneCall();
+        if (authResult.success && authResult.token) {
+          setAccessToken(authResult.token);
+        } else {
+          alert('ไม่สามารถยืนยันตัวตนได้: ' + authResult.error);
+          return;
+        }
+      } catch (error) {
+        alert('เกิดข้อผิดพลาดในการยืนยันตัวตน: ' + error.message);
+        return;
+      }
+    }
+    
+    try {
+      // We need to use the proxy for the recording URL as well
+      const proxyURL = recordingURL.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
+      
+      // Fetch the audio file with Authorization header
+      const response = await fetch(proxyURL, {
+        method: 'GET',
+        headers: {
+          'Authorization': accessToken
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Convert the response to a blob
+      const blob = await response.blob();
+      
+      // Create a URL for the blob
+      const audioUrl = URL.createObjectURL(blob);
+      
+      // Create a new audio element to play the recording
+      const audio = new Audio();
+      audio.src = audioUrl;
+      audioRef.current = audio;
+      
+      // Set up event listeners
+      audio.addEventListener('loadedmetadata', () => {
+        setDuration(audio.duration);
+        setCurrentTime(0);
+      });
+      
+      audio.addEventListener('timeupdate', () => {
+        setCurrentTime(audio.currentTime);
+      });
+      
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentPlayingId(null);
+        URL.revokeObjectURL(audioUrl);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      });
+      
+      // Play the audio
+      audio.play().then(() => {
+        setIsPlaying(true);
+        setCurrentPlayingId(id);
+        
+        // Update time every second
+        intervalRef.current = setInterval(() => {
+          if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+          }
+        }, 1000);
+      }).catch(error => {
+        console.error('Error playing recording:', error);
+        alert('ไม่สามารถเล่นเสียงได้: ' + error.message);
+      });
+    } catch (error) {
+      console.error('Error fetching recording:', error);
+      alert('ไม่สามารถดึงข้อมูลเสียงได้: ' + error.message);
+    }
+  };
+  
+  // Function to pause audio
+  const pauseAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+  };
+  
+  // Function to resume audio
+  const resumeAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+        
+        // Update time every second
+        intervalRef.current = setInterval(() => {
+          if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+          }
+        }, 1000);
+      }).catch(error => {
+        console.error('Error resuming recording:', error);
+        alert('ไม่สามารถเล่นเสียงต่อได้: ' + error.message);
+      });
+    }
+  };
+  
+  // Function to format time in MM:SS format
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return '00:00';
+    
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+  
+  // Function to handle slider change
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    }
+  };
+  
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
   // Load recordings data on component mount
   useEffect(() => {
     const loadRecordings = async () => {
       setIsLoading(true);
       try {
-        const result = await getRecordingsData();
-        if (result.success && result.data) {
-          setRecordingsData(result.data);
-          console.log('Recordings data loaded:', result.data);
+        // First, authenticate to get the access token
+        const authResult = await authenticateOneCall();
+        if (authResult.success && authResult.token) {
+          setAccessToken(authResult.token);
+          
+          // Then load recordings data
+          const result = await getRecordingsData();
+          if (result.success && result.data) {
+            setRecordingsData(result.data);
+            console.log('Recordings data loaded:', result.data);
+          } else {
+            console.error('Failed to load recordings:', result.error);
+          }
         } else {
-          console.error('Failed to load recordings:', result.error);
+          console.error('Failed to authenticate:', authResult.error);
         }
       } catch (error) {
         console.error('Error loading recordings:', error);
@@ -628,13 +801,44 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors"
-                          onClick={() => playRecording(recording.recordingURL, recording.id)}
-                        >
-                          <Phone className="w-3 h-3 mr-1" />
-                          เล่นเสียง
-                        </button>
+                        <div className="min-w-[200px]">
+                          {currentPlayingId === recording.id ? (
+                            <div className="w-full">
+                              <div className="flex items-center gap-2 mb-1">
+                                <button
+                                  className="text-blue-700 hover:text-blue-900"
+                                  onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
+                                >
+                                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                </button>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max={duration || 0}
+                                  value={currentTime}
+                                  onChange={handleSliderChange}
+                                  className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                  style={{
+                                    background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
+                                  }}
+                                />
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
+                                <span className="text-xs text-gray-600">{formatTime(duration)}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors"
+                              onClick={() => playRecording(recording.recordingURL, recording.id)}
+                              disabled={currentPlayingId !== null}
+                            >
+                              <Phone className="w-3 h-3 mr-1" />
+                              เล่นเสียง
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
