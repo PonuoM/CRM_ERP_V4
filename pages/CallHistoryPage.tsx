@@ -128,12 +128,35 @@ const authenticateOneCall = async () => {
 };
 
 // JavaScript version of getRecordingsData function
-const getRecordingsData = async () => {
+const getRecordingsData = async (currentUser?: User) => {
   // Try to get recordings data with token refresh logic
   const maxRetries = 2; // Allow one retry after token refresh
   let retryCount = 0;
   let authResult = null;
   let lastError = null;
+  
+  // API Configuration parameters
+  const apiConfig: any = {
+    baseUrl: '/onecall/orktrack/rest/recordings',
+    range: 'custom',
+    sort: '',
+    page: 1,
+    pagesize: 20,
+    maxresults: 0,
+    includetags: true,
+    includemetadata: true,
+    includeprograms: true
+  };
+  
+  // Add party parameter for Telesale users
+  if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+    // Format phone number from 0945547598 to +66945547598
+    const formattedPhone = currentUser.phone.startsWith('0')
+      ? '+66' + currentUser.phone.substring(1)
+      : '+66' + currentUser.phone;
+    
+    apiConfig.party = formattedPhone;
+  }
   
   while (retryCount < maxRetries) {
     // If first attempt or after token refresh, authenticate
@@ -175,8 +198,24 @@ const getRecordingsData = async () => {
     const seconds = String(startDate.getSeconds()).padStart(2, '0');
     const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
     
-    // Use proxy to avoid CORS issues
-    const apiUrl = `/onecall/orktrack/rest/recordings?range=custom&startdate=${startDateFormatted}&sort=&page=1&pagesize=20&maxresults=0&includetags=true&includemetadata=true&includeprograms=true`;
+    // Build URL with parameters
+    const params = new URLSearchParams();
+    params.append('range', apiConfig.range);
+    params.append('startdate', startDateFormatted);
+    params.append('sort', apiConfig.sort);
+    params.append('page', apiConfig.page.toString());
+    params.append('pagesize', apiConfig.pagesize.toString());
+    params.append('maxresults', apiConfig.maxresults.toString());
+    params.append('includetags', apiConfig.includetags.toString());
+    params.append('includemetadata', apiConfig.includemetadata.toString());
+    params.append('includeprograms', apiConfig.includeprograms.toString());
+    
+    // Add party parameter if it exists
+    if (apiConfig.party) {
+      params.append('party', apiConfig.party);
+    }
+    
+    const apiUrl = `${apiConfig.baseUrl}?${params.toString()}`;
     
     const headers = {
       'Authorization': authResult.token,
@@ -564,8 +603,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         if (authResult.success && authResult.token) {
           setAccessToken(authResult.token);
           
-          // Then load recordings data
-          const result = await getRecordingsData();
+          // Then load recordings data with current user info
+          const result = await getRecordingsData(currentUser);
           if (result.success && result.data) {
             setRecordingsData(result.data);
           } else {
@@ -583,7 +622,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     };
 
     loadRecordings();
-  }, []);
+  }, [currentUser]);
 
   // Filter recordings data instead of database calls
   const filteredRecordings = useMemo(() => {
