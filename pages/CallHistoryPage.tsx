@@ -118,6 +118,158 @@ const authenticateOneCall = async () => {
   }
 };
 
+// JavaScript version of getRecordingsData function
+const getRecordingsData = async () => {
+  console.log('Starting getRecordingsData function...');
+  
+  // Try to get recordings data with token refresh logic
+  const maxRetries = 2; // Allow one retry after token refresh
+  let retryCount = 0;
+  let authResult = null;
+  let lastError = null;
+  
+  console.log(`Max retries set to: ${maxRetries}`);
+  
+  while (retryCount < maxRetries) {
+    console.log(`Attempt ${retryCount + 1} of ${maxRetries}`);
+    
+    // If first attempt or after token refresh, authenticate
+    if (retryCount === 0 || authResult === null) {
+      console.log('Authenticating with OneCall API...');
+      authResult = await authenticateOneCall();
+      console.log('Authentication result:', authResult);
+      
+      if (!authResult.success) {
+        console.error('Authentication failed:', authResult.error);
+        return {
+          success: false,
+          error: 'Authentication failed: ' + authResult.error,
+          http_code: authResult.http_code,
+          auth_response: authResult.data,
+          debug_info: authResult.debug_info || null
+        };
+      }
+      
+      if (!authResult.token) {
+        console.error('Authentication token not found in response');
+        return {
+          success: false,
+          error: 'Authentication token not found in response',
+          http_code: authResult.http_code,
+          auth_response: authResult.data,
+          debug_info: authResult.debug_info || null
+        };
+      }
+      
+      console.log('Authentication successful, token obtained');
+    }
+    
+    // Calculate startdate as today's date at midnight (00:00:00) minus 7 hours
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+    startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+    
+    // Format as YYYYMMDD_HHMMSS
+    const year = startDate.getFullYear();
+    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+    const day = String(startDate.getDate()).padStart(2, '0');
+    const hours = String(startDate.getHours()).padStart(2, '0');
+    const minutes = String(startDate.getMinutes()).padStart(2, '0');
+    const seconds = String(startDate.getSeconds()).padStart(2, '0');
+    const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    
+    console.log('Start date calculated:', startDateFormatted);
+    console.log('Original date object:', startDate);
+    
+    // Use proxy to avoid CORS issues
+    const apiUrl = `/onecall/orktrack/rest/recordings?range=custom&startdate=${startDateFormatted}&sort=&page=1&pagesize=20&maxresults=0&includetags=true&includemetadata=true&includeprograms=true`;
+    
+    console.log('API URL:', apiUrl);
+    console.log('Fetching recordings data...');
+    
+    const headers = {
+      'Authorization': authResult.token,
+      'Accept': 'application/json'
+    };
+    
+    console.log('Request headers:', headers);
+    
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      const httpCode = response.status;
+      console.log('Response HTTP status:', httpCode);
+      
+      if (!response.ok) {
+        console.error(`HTTP error! status: ${httpCode}`);
+        throw new Error(`HTTP error! status: ${httpCode}`);
+      }
+      
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
+      
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+        console.log('Parsed JSON response:', responseData);
+      } catch (e) {
+        console.error('Failed to parse JSON:', e);
+        responseData = responseText;
+      }
+      
+      // Check for invalid token error
+      if (responseData && responseData.error &&
+          (responseData.error.toLowerCase().includes('invalid access token') ||
+           responseData.error.toLowerCase().includes('invalid token') ||
+           responseData.error.toLowerCase().includes('unauthorized'))) {
+        
+        console.log('Token invalid or expired, will retry with fresh token');
+        
+        // If this is the first attempt, try to refresh the token
+        if (retryCount === 0) {
+          authResult = null; // Force re-authentication
+          retryCount++;
+          continue;
+        }
+      }
+      
+      // If we got here, either the request was successful or we've already tried to refresh the token
+      console.log('Successfully retrieved recordings data');
+      return {
+        success: true,
+        data: responseData,
+        http_code: httpCode,
+        auth_data: authResult.data,
+        token_refreshed: retryCount > 0,
+        api_url: apiUrl,
+        debug_info: authResult.debug_info || null
+      };
+    } catch (error) {
+      console.error('Error fetching recordings:', error);
+      lastError = {
+        success: false,
+        error: error.message || 'Unknown error',
+        http_code: 0
+      };
+      retryCount++;
+      console.log(`Retrying... (attempt ${retryCount} of ${maxRetries})`);
+      continue;
+    }
+  }
+  
+  // If we've exhausted all retries, return the last error
+  console.error('Max retries exceeded, returning last error');
+  return lastError || {
+    success: false,
+    error: 'Max retries exceeded',
+    http_code: 0,
+    debug_info: authResult ? authResult.debug_info : null
+  };
+};
+
 // Test function for authentication
 const test_auth = async () => {
   console.log('Testing OneCall authentication...');
@@ -138,7 +290,27 @@ const test_auth = async () => {
   }
 };
 
-test_auth()
+// Test function for getRecordingsData
+const test_get_recordings = async () => {
+  console.log('Testing getRecordingsData function...');
+  try {
+    const result = await getRecordingsData();
+    console.log('Get recordings result:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in test_get_recordings:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error in test_get_recordings',
+      debug_info: {
+        error: error,
+        note: 'This error occurred in the test_get_recordings function itself.'
+      }
+    };
+  }
+}; 
+
+test_get_recordings()
 
 const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, customers, users }) => {
   const [qCustomer, setQCustomer] = useState('');
@@ -148,6 +320,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [direction, setDirection] = useState('all');
   const [range, setRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [authTest, setAuthTest] = useState<any>(null);
+  const [recordingsTest, setRecordingsTest] = useState<any>(null);
 
   const currentUserFull = `${currentUser.firstName} ${currentUser.lastName}`.trim();
   const isPrivileged = currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl;
@@ -306,9 +479,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 <option value="พลาด">พลาด</option>
               </select>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <button
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 onClick={() => {
                   test_auth().then(result => {
                     setAuthTest(result);
@@ -319,6 +492,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 <Search className="w-4 h-4" />
                 ค้นหา
               </button>
+              <button
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                onClick={() => {
+                  test_get_recordings().then(result => {
+                    setRecordingsTest(result);
+                    console.log('Recordings test result stored in state:', result);
+                  });
+                }}
+              >
+                <Phone className="w-4 h-4" />
+                ดึงข้อมูล
+              </button>
             </div>
           </div>
         </div>
@@ -328,11 +513,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           <div className="text-sm text-gray-600">
             พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filtered.length}</span> รายการ
           </div>
-          {authTest && (
-            <div className="text-xs text-gray-500">
-              Auth Test: {authTest.success ? 'Success' : 'Failed'}
-            </div>
-          )}
+          <div className="flex gap-4">
+            {authTest && (
+              <div className="text-xs text-gray-500">
+                Auth Test: {authTest.success ? 'Success' : 'Failed'}
+              </div>
+            )}
+            {recordingsTest && (
+              <div className="text-xs text-gray-500">
+                Recordings Test: {recordingsTest.success ? 'Success' : 'Failed'}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Auth Test Result */}
@@ -349,6 +541,24 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             </div>
             <pre className="text-xs text-gray-600 overflow-auto max-h-40">
               {JSON.stringify(authTest, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {/* Recordings Test Result */}
+        {recordingsTest && (
+          <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-700">Recordings Data Test Result</h3>
+              <button
+                onClick={() => setRecordingsTest(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <pre className="text-xs text-gray-600 overflow-auto max-h-40">
+              {JSON.stringify(recordingsTest, null, 2)}
             </pre>
           </div>
         )}
