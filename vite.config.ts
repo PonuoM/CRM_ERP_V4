@@ -33,6 +33,12 @@ export default defineConfig(({ mode }) => {
             changeOrigin: true,
             rewrite: (p) => p.replace(/^\/api/, '/CRM_ERP_V4/api'),
           },
+          '/onecall': {
+            target: 'https://onecallvoicerecord.dtac.co.th',
+            changeOrigin: true,
+            secure: true,
+            rewrite: (p) => p.replace(/^\/onecall/, ''),
+          },
         },
       },
       define: {
