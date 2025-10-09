@@ -129,27 +129,18 @@ const authenticateOneCall = async () => {
 
 // JavaScript version of getRecordingsData function
 const getRecordingsData = async () => {
-  console.log('Starting getRecordingsData function...');
-  
   // Try to get recordings data with token refresh logic
   const maxRetries = 2; // Allow one retry after token refresh
   let retryCount = 0;
   let authResult = null;
   let lastError = null;
   
-  console.log(`Max retries set to: ${maxRetries}`);
-  
   while (retryCount < maxRetries) {
-    console.log(`Attempt ${retryCount + 1} of ${maxRetries}`);
-    
     // If first attempt or after token refresh, authenticate
     if (retryCount === 0 || authResult === null) {
-      console.log('Authenticating with OneCall API...');
       authResult = await authenticateOneCall();
-      console.log('Authentication result:', authResult);
       
       if (!authResult.success) {
-        console.error('Authentication failed:', authResult.error);
         return {
           success: false,
           error: 'Authentication failed: ' + authResult.error,
@@ -160,7 +151,6 @@ const getRecordingsData = async () => {
       }
       
       if (!authResult.token) {
-        console.error('Authentication token not found in response');
         return {
           success: false,
           error: 'Authentication token not found in response',
@@ -169,8 +159,6 @@ const getRecordingsData = async () => {
           debug_info: authResult.debug_info || null
         };
       }
-      
-      console.log('Authentication successful, token obtained');
     }
     
     // Calculate startdate as today's date at midnight (00:00:00) minus 7 hours
@@ -187,21 +175,13 @@ const getRecordingsData = async () => {
     const seconds = String(startDate.getSeconds()).padStart(2, '0');
     const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
     
-    console.log('Start date calculated:', startDateFormatted);
-    console.log('Original date object:', startDate);
-    
     // Use proxy to avoid CORS issues
     const apiUrl = `/onecall/orktrack/rest/recordings?range=custom&startdate=${startDateFormatted}&sort=&page=1&pagesize=20&maxresults=0&includetags=true&includemetadata=true&includeprograms=true`;
-    
-    console.log('API URL:', apiUrl);
-    console.log('Fetching recordings data...');
     
     const headers = {
       'Authorization': authResult.token,
       'Accept': 'application/json'
     };
-    
-    console.log('Request headers:', headers);
     
     try {
       const response = await fetch(apiUrl, {
@@ -210,22 +190,17 @@ const getRecordingsData = async () => {
       });
       
       const httpCode = response.status;
-      console.log('Response HTTP status:', httpCode);
       
       if (!response.ok) {
-        console.error(`HTTP error! status: ${httpCode}`);
         throw new Error(`HTTP error! status: ${httpCode}`);
       }
       
       const responseText = await response.text();
-      console.log('Raw response text:', responseText);
       
       let responseData;
       try {
         responseData = JSON.parse(responseText);
-        console.log('Parsed JSON response:', responseData);
       } catch (e) {
-        console.error('Failed to parse JSON:', e);
         responseData = responseText;
       }
       
@@ -234,8 +209,6 @@ const getRecordingsData = async () => {
           (responseData.error.toLowerCase().includes('invalid access token') ||
            responseData.error.toLowerCase().includes('invalid token') ||
            responseData.error.toLowerCase().includes('unauthorized'))) {
-        
-        console.log('Token invalid or expired, will retry with fresh token');
         
         // If this is the first attempt, try to refresh the token
         if (retryCount === 0) {
@@ -246,7 +219,6 @@ const getRecordingsData = async () => {
       }
       
       // If we got here, either the request was successful or we've already tried to refresh the token
-      console.log('Successfully retrieved recordings data');
       return {
         success: true,
         data: responseData,
@@ -257,20 +229,17 @@ const getRecordingsData = async () => {
         debug_info: authResult.debug_info || null
       };
     } catch (error) {
-      console.error('Error fetching recordings:', error);
       lastError = {
         success: false,
         error: error.message || 'Unknown error',
         http_code: 0
       };
       retryCount++;
-      console.log(`Retrying... (attempt ${retryCount} of ${maxRetries})`);
       continue;
     }
   }
   
   // If we've exhausted all retries, return the last error
-  console.error('Max retries exceeded, returning last error');
   return lastError || {
     success: false,
     error: 'Max retries exceeded',
@@ -361,8 +330,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
 
   // Function to handle recording playback with Authorization header
   const playRecording = async (recordingURL: string, id: number) => {
-    console.log(`Playing recording ${id} from URL: ${recordingURL}`);
-    
     // If clicking on the currently playing recording, toggle play/pause
     if (currentPlayingId === id) {
       if (isPlaying) {
@@ -460,11 +427,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           }
         }, 1000);
       }).catch(error => {
-        console.error('Error playing recording:', error);
         alert('ไม่สามารถเล่นเสียงได้: ' + error.message);
       });
     } catch (error) {
-      console.error('Error fetching recording:', error);
       alert('ไม่สามารถดึงข้อมูลเสียงได้: ' + error.message);
     }
   };
@@ -495,7 +460,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           }
         }, 1000);
       }).catch(error => {
-        console.error('Error resuming recording:', error);
         alert('ไม่สามารถเล่นเสียงต่อได้: ' + error.message);
       });
     }
@@ -523,8 +487,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   
   // Function to download audio file
   const downloadRecording = async (recordingURL: string, id: number) => {
-    console.log(`Downloading recording ${id} from URL: ${recordingURL}`);
-    
     if (!accessToken) {
       // Try to authenticate again if we don't have a token
       try {
@@ -574,7 +536,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       // Clean up the object URL
       URL.revokeObjectURL(audioUrl);
     } catch (error) {
-      console.error('Error downloading recording:', error);
       alert('ไม่สามารถดาวน์โหลดไฟล์เสียงได้: ' + error.message);
     }
   };
@@ -605,15 +566,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           const result = await getRecordingsData();
           if (result.success && result.data) {
             setRecordingsData(result.data);
-            console.log('Recordings data loaded:', result.data);
           } else {
-            console.error('Failed to load recordings:', result.error);
+            // Handle error silently
           }
         } else {
-          console.error('Failed to authenticate:', authResult.error);
+          // Handle error silently
         }
       } catch (error) {
-        console.error('Error loading recordings:', error);
+        // Handle error silently
       } finally {
         setIsLoading(false);
       }
