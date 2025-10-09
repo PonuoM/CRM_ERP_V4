@@ -357,6 +357,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [pausedAudios, setPausedAudios] = useState<Map<number, number>>(new Map());
+  const [activeAudios, setActiveAudios] = useState<Set<number>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -381,24 +383,36 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       return;
     }
     
-    // Stop any currently playing audio
-    if (audioRef.current) {
+    // If there's a currently playing audio, pause it and save its position
+    if (audioRef.current && currentPlayingId !== null) {
+      // Save the current position of the paused audio
+      const pausedPosition = audioRef.current.currentTime;
+      setPausedAudios(prev => new Map(prev).set(currentPlayingId, pausedPosition));
+      
+      // Pause the current audio
       audioRef.current.pause();
       audioRef.current = null;
+      
+      // Clear interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      
+      // Reset playing state
+      setIsPlaying(false);
     }
     
-    // Clear any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    // Check if this audio was previously paused
+    const savedPosition = pausedAudios.get(id) || 0;
     
-    // Reset audio state
-    setIsPlaying(false);
+    // Set loading state
     setIsAudioLoading(true);
     setCurrentPlayingId(id);
-    setCurrentTime(0);
-    setDuration(0);
+    setCurrentTime(savedPosition);
+    
+    // Add this audio to active audios
+    setActiveAudios(prev => new Set(prev).add(id));
     
     if (!accessToken) {
       // Try to authenticate again if we don't have a token
@@ -450,7 +464,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       // Set up event listeners
       audio.addEventListener('loadedmetadata', () => {
         setDuration(audio.duration);
-        setCurrentTime(0);
+        // Use saved position if available, otherwise start from 0
+        const savedPosition = pausedAudios.get(id) || 0;
+        audio.currentTime = savedPosition;
+        setCurrentTime(savedPosition);
       });
       
       audio.addEventListener('canplay', () => {
@@ -466,6 +483,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         setIsPlaying(false);
         setIsAudioLoading(false);
         setCurrentPlayingId(null);
+        // Remove from paused audios when it ends
+        setPausedAudios(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(id);
+          return newMap;
+        });
+        // Remove from active audios when it ends
+        setActiveAudios(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
         URL.revokeObjectURL(audioUrl);
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -503,7 +532,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   
   // Function to pause audio
   const pauseAudio = () => {
-    if (audioRef.current) {
+    if (audioRef.current && currentPlayingId !== null) {
+      // Save the current position
+      const pausedPosition = audioRef.current.currentTime;
+      setPausedAudios(prev => new Map(prev).set(currentPlayingId, pausedPosition));
+      
       audioRef.current.pause();
       setIsPlaying(false);
       
@@ -897,9 +930,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                                 <Download className="w-4 h-4" />
                               </button>
                               <div className="flex-1 min-w-[200px]">
-                                {currentPlayingId === recording.id ? (
+                                {activeAudios.has(recording.id) || currentPlayingId === recording.id ? (
                                   <div className="w-full">
-                                    {isAudioLoading ? (
+                                    {/* Show loading if this specific audio is loading */}
+                                    {currentPlayingId === recording.id && isAudioLoading ? (
                                       <div className="flex items-center justify-center py-2">
                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
                                         <span className="text-xs text-gray-600">กำลังโหลด...</span>
@@ -909,24 +943,29 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                                         <div className="flex items-center gap-2 mb-1">
                                           <button
                                             className="text-blue-700 hover:text-blue-900"
-                                            onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
+                                            onClick={() => currentPlayingId === recording.id && isPlaying ? pauseAudio() : resumeAudio()}
+                                            disabled={currentPlayingId !== recording.id}
                                           >
-                                            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                            {currentPlayingId === recording.id && isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                                           </button>
                                           <input
                                             type="range"
                                             min="0"
                                             max={duration || 0}
-                                            value={currentTime}
-                                            onChange={handleSliderChange}
+                                            value={currentPlayingId === recording.id ? currentTime : (pausedAudios.get(recording.id) || 0)}
+                                            onChange={currentPlayingId === recording.id ? handleSliderChange : (e) => {
+                                              // Update paused position for non-currently playing audios
+                                              const newTime = parseFloat(e.target.value);
+                                              setPausedAudios(prev => new Map(prev).set(recording.id, newTime));
+                                            }}
                                             className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
                                             style={{
-                                              background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
+                                              background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${((currentPlayingId === recording.id ? currentTime : (pausedAudios.get(recording.id) || 0)) / (duration || 1)) * 100}%, #DBEAFE ${((currentPlayingId === recording.id ? currentTime : (pausedAudios.get(recording.id) || 0)) / (duration || 1)) * 100}%, #DBEAFE 100%)`
                                             }}
                                           />
                                         </div>
                                         <div className="flex justify-between">
-                                          <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
+                                          <span className="text-xs text-gray-600">{formatTime(currentPlayingId === recording.id ? currentTime : (pausedAudios.get(recording.id) || 0))}</span>
                                           <span className="text-xs text-gray-600">{formatTime(duration)}</span>
                                         </div>
                                       </>
