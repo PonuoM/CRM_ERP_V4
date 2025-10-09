@@ -1838,7 +1838,7 @@ const App: React.FC = () => {
       return <TeamsManagementPage users={companyUsers} />;
     }
     if (activePage === 'Pages') {
-      return <PagesManagementPage pages={pages} />;
+      return <PagesManagementPage pages={pages} currentUser={currentUser} />;
     }
     if (activePage === 'Tags') {
       return <TagsManagementPage systemTags={systemTags} users={companyUsers} />;

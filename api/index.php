@@ -653,9 +653,9 @@ function handle_pages(PDO $pdo, ?string $id): void {
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 $companyId = $_GET['companyId'] ?? null;
-                $sql = 'SELECT * FROM pages WHERE active=1';
+                $sql = 'SELECT * FROM pages';
                 $params = [];
-                if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
+                if ($companyId) { $sql .= ' WHERE company_id = ?'; $params[] = $companyId; }
                 $sql .= ' ORDER BY id DESC LIMIT 500';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
@@ -1192,3 +1192,5 @@ function handle_permissions(PDO $pdo): void {
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
+
+
