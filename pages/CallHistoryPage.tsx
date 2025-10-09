@@ -354,6 +354,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   // Audio player state
   const [currentPlayingId, setCurrentPlayingId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -392,6 +393,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       intervalRef.current = null;
     }
     
+    // Reset audio state
+    setIsPlaying(false);
+    setIsAudioLoading(true);
+    setCurrentPlayingId(id);
+    setCurrentTime(0);
+    setDuration(0);
+    
     if (!accessToken) {
       // Try to authenticate again if we don't have a token
       try {
@@ -400,10 +408,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           setAccessToken(authResult.token);
         } else {
           alert('ไม่สามารถยืนยันตัวตนได้: ' + authResult.error);
+          setIsAudioLoading(false);
+          setCurrentPlayingId(null);
           return;
         }
       } catch (error) {
         alert('เกิดข้อผิดพลาดในการยืนยันตัวตน: ' + error.message);
+        setIsAudioLoading(false);
+        setCurrentPlayingId(null);
         return;
       }
     }
@@ -441,12 +453,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         setCurrentTime(0);
       });
       
+      audio.addEventListener('canplay', () => {
+        // Audio is ready to play
+        setIsAudioLoading(false);
+      });
+      
       audio.addEventListener('timeupdate', () => {
         setCurrentTime(audio.currentTime);
       });
       
       audio.addEventListener('ended', () => {
         setIsPlaying(false);
+        setIsAudioLoading(false);
         setCurrentPlayingId(null);
         URL.revokeObjectURL(audioUrl);
         if (intervalRef.current) {
@@ -455,10 +473,15 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
       });
       
+      audio.addEventListener('error', () => {
+        alert('ไม่สามารถเล่นไฟล์เสียงได้');
+        setIsAudioLoading(false);
+        setCurrentPlayingId(null);
+      });
+      
       // Play the audio
       audio.play().then(() => {
         setIsPlaying(true);
-        setCurrentPlayingId(id);
         
         // Update time every second
         intervalRef.current = setInterval(() => {
@@ -468,9 +491,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }, 1000);
       }).catch(error => {
         alert('ไม่สามารถเล่นเสียงได้: ' + error.message);
+        setIsAudioLoading(false);
+        setCurrentPlayingId(null);
       });
     } catch (error) {
       alert('ไม่สามารถดึงข้อมูลเสียงได้: ' + error.message);
+      setIsAudioLoading(false);
+      setCurrentPlayingId(null);
     }
   };
   
@@ -872,35 +899,43 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                               <div className="flex-1 min-w-[200px]">
                                 {currentPlayingId === recording.id ? (
                                   <div className="w-full">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <button
-                                        className="text-blue-700 hover:text-blue-900"
-                                        onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
-                                      >
-                                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                      </button>
-                                      <input
-                                        type="range"
-                                        min="0"
-                                        max={duration || 0}
-                                        value={currentTime}
-                                        onChange={handleSliderChange}
-                                        className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
-                                        style={{
-                                          background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
-                                      <span className="text-xs text-gray-600">{formatTime(duration)}</span>
-                                    </div>
+                                    {isAudioLoading ? (
+                                      <div className="flex items-center justify-center py-2">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                                        <span className="text-xs text-gray-600">กำลังโหลด...</span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <button
+                                            className="text-blue-700 hover:text-blue-900"
+                                            onClick={() => isPlaying ? pauseAudio() : resumeAudio()}
+                                          >
+                                            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                          </button>
+                                          <input
+                                            type="range"
+                                            min="0"
+                                            max={duration || 0}
+                                            value={currentTime}
+                                            onChange={handleSliderChange}
+                                            className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                            style={{
+                                              background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / (duration || 1)) * 100}%, #DBEAFE ${(currentTime / (duration || 1)) * 100}%, #DBEAFE 100%)`
+                                            }}
+                                          />
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-xs text-gray-600">{formatTime(currentTime)}</span>
+                                          <span className="text-xs text-gray-600">{formatTime(duration)}</span>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 ) : (
                                   <button
                                     className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
                                     onClick={() => playRecording(recording.recordingURL, recording.id)}
-                                    disabled={currentPlayingId !== null}
                                   >
                                     <Phone className="w-3 h-3 mr-1" />
                                     เล่นเสียง
