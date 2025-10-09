@@ -258,3 +258,74 @@ export async function listOrderSlips(orderId: string) {
 export async function deleteOrderSlip(id: number) {
   return apiFetch(`order_slips/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
 }
+
+// ==================== Companies API ====================
+export async function listCompanies() {
+  return apiFetch('companies');
+}
+
+export async function getCompany(id: number) {
+  return apiFetch(`companies/${encodeURIComponent(String(id))}`);
+}
+
+export async function createCompany(payload: { name: string; address?: string; phone?: string; email?: string; taxId?: string }) {
+  return apiFetch('companies', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateCompany(id: number, payload: Partial<{ name: string; address?: string; phone?: string; email?: string; taxId?: string }>) {
+  return apiFetch(`companies/${encodeURIComponent(String(id))}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteCompany(id: number) {
+  return apiFetch(`companies/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+}
+
+// ==================== Warehouses API ====================
+export async function listWarehouses(companyId?: number) {
+  const qs = companyId ? new URLSearchParams({ companyId: String(companyId) }) : '';
+  return apiFetch(`warehouses${qs ? '?' + qs : ''}`);
+}
+
+export async function getWarehouse(id: number) {
+  return apiFetch(`warehouses/${encodeURIComponent(String(id))}`);
+}
+
+export async function createWarehouse(payload: {
+  name: string;
+  companyId: number;
+  address: string;
+  province: string;
+  district: string;
+  subdistrict: string;
+  postalCode?: string;
+  phone?: string;
+  email?: string;
+  managerName: string;
+  managerPhone?: string;
+  responsibleProvinces: string[];
+  isActive?: boolean;
+}) {
+  return apiFetch('warehouses', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateWarehouse(id: number, payload: Partial<{
+  name: string;
+  companyId: number;
+  address: string;
+  province: string;
+  district: string;
+  subdistrict: string;
+  postalCode?: string;
+  phone?: string;
+  email?: string;
+  managerName: string;
+  managerPhone?: string;
+  responsibleProvinces: string[];
+  isActive: boolean;
+}>) {
+  return apiFetch(`warehouses/${encodeURIComponent(String(id))}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteWarehouse(id: number) {
+  return apiFetch(`warehouses/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+}

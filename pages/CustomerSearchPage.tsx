@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Customer, Order, User, Address, UserRole } from '../types';
-import { Search, Trash2, User as UserIcon, Calendar, Facebook, MessageSquare, UserPlus } from 'lucide-react';
+import { Search, Trash2, User as UserIcon, Calendar, Facebook, MessageSquare, UserPlus, ExternalLink } from 'lucide-react';
 
 interface CustomerSearchPageProps {
   customers: Customer[];
@@ -86,9 +86,31 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({ customers, orde
     });
   };
 
+  const openNewTab = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const openSearchInNewTab = () => {
+    // เปิดหน้าค้นหาในแท็บใหม่โดยใช้ URL parameter และซ่อน sidebar
+    const currentUrl = window.location.origin + window.location.pathname + '?page=search&nosidebar=true';
+    window.open(currentUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="p-6 bg-[#EBF4FA] min-h-full">
       <div className="">
+        {/* Header with New Tab Button */}
+        <div className="mb-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-800">ค้นหาลูกค้า</h1>
+          <button
+            onClick={openSearchInNewTab}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+          >
+            <ExternalLink size={16} />
+            <span>เปิดในแท็บใหม่</span>
+          </button>
+        </div>
+
         {/* Search Box */}
         <div className="bg-white p-6 rounded-2xl shadow-lg">
             <div className="flex items-center space-x-2">

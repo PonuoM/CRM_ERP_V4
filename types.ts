@@ -38,6 +38,64 @@ export interface User {
 export interface Company {
     id: number;
     name: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    taxId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface Warehouse {
+    id: number;
+    name: string;
+    companyId: number;
+    companyName: string;
+    address: string;
+    province: string;
+    district: string;
+    subdistrict: string;
+    postalCode?: string;
+    phone?: string;
+    email?: string;
+    managerName?: string;
+    managerPhone?: string;
+    responsibleProvinces: string[];
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface WarehouseStock {
+    id: number;
+    warehouseId: number;
+    productId: number;
+    lotNumber?: string;
+    quantity: number;
+    reservedQuantity: number;
+    availableQuantity: number;
+    expiryDate?: string;
+    purchasePrice?: number;
+    sellingPrice?: number;
+    locationInWarehouse?: string;
+    notes?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface StockMovement {
+    id: number;
+    warehouseId: number;
+    productId: number;
+    movementType: 'IN' | 'OUT' | 'TRANSFER' | 'ADJUSTMENT';
+    quantity: number;
+    lotNumber?: string;
+    referenceType?: string;
+    referenceId?: string;
+    reason?: string;
+    notes?: string;
+    createdBy: number;
+    createdAt: string;
 }
 
 export enum CustomerLifecycleStatus {
