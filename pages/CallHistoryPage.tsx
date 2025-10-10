@@ -943,8 +943,23 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                                         <div className="flex items-center gap-2 mb-1">
                                           <button
                                             className="text-blue-700 hover:text-blue-900"
-                                            onClick={() => currentPlayingId === recording.id && isPlaying ? pauseAudio() : resumeAudio()}
-                                            disabled={currentPlayingId !== recording.id}
+                                            onClick={() => {
+                                              // If this is the currently playing audio, toggle play/pause
+                                              if (currentPlayingId === recording.id) {
+                                                if (isPlaying) {
+                                                  pauseAudio();
+                                                } else {
+                                                  resumeAudio();
+                                                }
+                                              } else {
+                                                // If another audio is playing, pause it first
+                                                if (currentPlayingId !== null && isPlaying) {
+                                                  pauseAudio();
+                                                }
+                                                // Then play this audio
+                                                playRecording(recording.recordingURL, recording.id);
+                                              }
+                                            }}
                                           >
                                             {currentPlayingId === recording.id && isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                                           </button>
