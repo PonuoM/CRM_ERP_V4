@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserRole, User, Order, ModalState, Customer, Product, Promotion, CallHistory, Appointment, PaymentStatus, OrderStatus, Address, Notification, NotificationType, PaymentMethod, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade, Tag, TagType, Activity, ActivityType, Company } from './types';
+import { UserRole, User, Order, ModalState, Customer, Product, Promotion, CallHistory, Appointment, PaymentStatus, OrderStatus, Address, Notification, NotificationType, PaymentMethod, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade, Tag, TagType, Activity, ActivityType, Company, Warehouse } from './types';
 // Mock data removed - using real database only
 import { listUsers, listCustomers, listOrders, listProducts, listPromotions, listPages, listCallHistory, listAppointments, createCustomer as apiCreateCustomer, createOrder as apiCreateOrder, patchOrder as apiPatchOrder, createCall, createAppointment, updateAppointment, updateCustomer, addCustomerTag, removeCustomerTag, listCustomerTags, createTag, listActivities, createActivity, listTags, apiFetch, createUser as apiCreateUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, getRolePermissions } from './services/api';
 import { recordFollowUp, getCustomerOwnershipStatus, recordSale } from '@/ownershipApi';
@@ -35,6 +35,8 @@ import AddCustomerPage from './pages/AddCustomerPage';
 import TagManagementModal from './components/TagManagementModal';
 import ActivityLogModal from './components/ActivityLogModal';
 import DataManagementPage from './pages/DataManagementPage';
+import CompanyManagementPage from './pages/CompanyManagementPage';
+import WarehouseManagementPage from './pages/WarehouseManagementPage';
 import CreateOrderPage from './pages/CreateOrderPage';
 import MarketingPage from './pages/MarketingPage';
 import SalesDashboard from './pages/SalesDashboard';
@@ -48,7 +50,22 @@ import CallHistoryPage from './pages/CallHistoryPage';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.Telesale);
-  const [activePage, setActivePage] = useState<string>('แดชบอร์ด');
+  
+  // Check URL parameter for initial page and sidebar visibility
+  const getInitialPage = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const page = urlParams.get('page');
+    if (page === 'search') return 'Search';
+    return 'แดชบอร์ด';
+  };
+  
+  const shouldHideSidebar = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('nosidebar') === 'true';
+  };
+  
+  const [activePage, setActivePage] = useState<string>(getInitialPage());
+  const [hideSidebar, setHideSidebar] = useState<boolean>(shouldHideSidebar());
   const [modalState, setModalState] = useState<ModalState>({ type: null, data: null });
   const [createOrderInitialData, setCreateOrderInitialData] = useState<any | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -57,11 +74,51 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [callHistory, setCallHistory] = useState<CallHistory[]>([]);
-  const [pages, setPages] = useState<Page[]>([] as any);
+  const [pages, setPages] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [systemTags, setSystemTags] = useState<Tag[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([
+    {
+      id: 1,
+      name: 'คลังกรุงเทพ',
+      companyId: 1,
+      companyName: 'Alpha Seeds Co.',
+      address: '123 ถนนสุขุมวิท',
+      province: 'กรุงเทพมหานคร',
+      district: 'คลองเตย',
+      subdistrict: 'คลองเตย',
+      postalCode: '10110',
+      phone: '02-123-4567',
+      email: 'bangkok@alphaseeds.com',
+      managerName: 'สมชาย ใจดี',
+      managerPhone: '081-234-5678',
+      responsibleProvinces: ['กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 'สมุทรสาคร'],
+      isActive: true,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z'
+    },
+    {
+      id: 2,
+      name: 'คลังเชียงใหม่',
+      companyId: 1,
+      companyName: 'Alpha Seeds Co.',
+      address: '456 ถนนนิมมานเหมินท์',
+      province: 'เชียงใหม่',
+      district: 'เมืองเชียงใหม่',
+      subdistrict: 'ศรีภูมิ',
+      postalCode: '50200',
+      phone: '053-123-456',
+      email: 'chiangmai@alphaseeds.com',
+      managerName: 'สมหญิง รักดี',
+      managerPhone: '082-345-6789',
+      responsibleProvinces: ['เชียงใหม่', 'เชียงราย', 'ลำปาง', 'ลำพูน', 'แม่ฮ่องสอน'],
+      isActive: true,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z'
+    }
+  ]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -126,7 +183,7 @@ const App: React.FC = () => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [u, c, o, p, promo, pg, ch, ap, ctags, act, tags, comps] = await Promise.all([
+        const [u, c, o, p, promo, pg, ch, ap, ctags, act, tags, comps, perms, whs] = await Promise.all([
           listUsers(),
           listCustomers(),
           listOrders(),
@@ -140,6 +197,7 @@ const App: React.FC = () => {
           listTags(),
           apiFetch('companies'),
           getRolePermissions((sessionUser?.role ?? users[0]?.role) as any),
+          apiFetch('warehouses'),
         ]);
 
         if (cancelled) return;
@@ -392,6 +450,28 @@ const App: React.FC = () => {
         setCompanies(Array.isArray(comps) ? comps.map(c => ({
           id: c.id,
           name: c.name,
+          address: c.address,
+          phone: c.phone,
+          email: c.email,
+          taxId: c.tax_id || c.taxId,
+        })) : []);
+        
+        setWarehouses(Array.isArray(whs) ? whs.map(w => ({
+          id: w.id,
+          name: w.name,
+          companyId: w.company_id,
+          companyName: w.company_name,
+          address: w.address,
+          province: w.province,
+          district: w.district,
+          subdistrict: w.subdistrict,
+          postalCode: w.postal_code,
+          phone: w.phone,
+          email: w.email,
+          managerName: w.manager_name,
+          managerPhone: w.manager_phone,
+          responsibleProvinces: Array.isArray(w.responsible_provinces) ? w.responsible_provinces : [],
+          isActive: w.is_active === 1 || w.is_active === true,
         })) : []);
       } catch (e) {
         // API failed - show error to user
@@ -408,6 +488,7 @@ const App: React.FC = () => {
         setActivities([]);
         setSystemTags([]);
         setCompanies([]);
+        setWarehouses([]);
       }
     };
     load();
@@ -1317,7 +1398,7 @@ const App: React.FC = () => {
             customerId: customerId,
             date: newFollowUpDate,
             title: `โทรติดตามผล (${callLogData.result})`,
-            status: 'รอดำเนินการ',
+            status: 'รอการดำเนินการ',
             notes: callLogData.notes || `สร้างอัตโนมัติจากการบันทึกการโทร`,
         };
         if (true) {
@@ -1460,7 +1541,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
         ...appointmentData,
         id: Math.max(...appointments.map(a => a.id), 0) + 1,
-        status: 'รอดำเนินการ',
+        status: 'รอการดำเนินการ',
     };
     if (true) {
       try {
@@ -1468,7 +1549,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: 'รอดำเนินการ',
+          status: 'รอการดำเนินการ',
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -1730,6 +1811,22 @@ const App: React.FC = () => {
   };
 
   const renderPage = () => {
+    // If activePage is a main menu (group), show the first child's page or a default
+    if (activePage === 'Home') {
+      // Default to first available child in Home group
+      if (currentUser.role === UserRole.Backoffice) {
+        return <BackofficeDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} />;
+      }
+      if (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) {
+        return <TelesaleSummaryDashboard user={currentUser} customers={companyCustomers} orders={companyOrders} activities={activities} openModal={() => openModal('createOrder')} />;
+      }
+      return <AdminDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openCreateOrderModal={() => openModal('createOrder')} />;
+    }
+    if (activePage === 'Data Management') {
+      // Default to first available page in Data Management
+      return <UserManagementPage users={companyUsers} openModal={openModal} currentUser={currentUser} allCompanies={companies} />;
+    }
+    
     if (currentUser.role === UserRole.Backoffice && activePage === 'Export History') {
       return <ExportHistoryPage />;
     }
@@ -1842,6 +1939,12 @@ const App: React.FC = () => {
     }
     if (activePage === 'Tags') {
       return <TagsManagementPage systemTags={systemTags} users={companyUsers} />;
+    }
+    if (activePage === 'Companies') {
+      return <CompanyManagementPage companies={companies} currentUser={currentUser} onCompanyChange={setCompanies} />;
+    }
+    if (activePage === 'Warehouses') {
+      return <WarehouseManagementPage warehouses={warehouses} companies={companies} currentUser={currentUser} onWarehouseChange={setWarehouses} />;
     }
     if (activePage === 'Team') {
       if (currentUser.role === UserRole.Supervisor) {
@@ -2148,7 +2251,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F5F5F5]">
-      {!viewingCustomer && <Sidebar 
+      {!viewingCustomer && !hideSidebar && <Sidebar 
         user={currentUser} 
         activePage={activePage} 
         setActivePage={setActivePage} 
@@ -2157,8 +2260,8 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         permissions={rolePermissions || undefined}
       />}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {!viewingCustomer && <header className="flex justify-between items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
+      <div className={`flex-1 flex flex-col overflow-hidden ${hideSidebar ? 'w-full' : ''}`}>
+        {!viewingCustomer && !hideSidebar && <header className="flex justify-between items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-4">
             <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="text-gray-600 lg:hidden">
                 <Menu size={24}/>
@@ -2223,16 +2326,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-        // Role permissions (menu visibility)
-        try {
-          const permData = (perms && (perms as any).data) || null;
-          if (permData) {
-            setRolePermissions(permData as any);
-          } else {
-            if ((sessionUser?.role ?? users[0]?.role) === UserRole.Backoffice) {
-              setRolePermissions({ 'home.sales_overview': { view: false }, 'home.calls_overview': { view: false } });
-            } else {
-              setRolePermissions({});
-            }
-          }
-        } catch {}

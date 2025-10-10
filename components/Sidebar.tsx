@@ -73,12 +73,14 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       case 'Search': return 'ค้นหา';
       case 'Data': return '??????';
       case 'Call History': return '?????????????';
+      case 'Companies': return 'บริษัท';
+      case 'Warehouses': return 'คลังสินค้า';
       default: return s;
     }
   };
 
   const homeChildren: NavItem[] = [
-    ...(canView('home.dashboard') ? [{ icon: LayoutDashboard, label: 'Dashboard' }] as NavItem[] : []),
+    ...(canView('home.dashboard') ? [{ icon: LayoutDashboard, label: 'แดชบอร์ด' }] as NavItem[] : []),
     ...(canView('home.sales_overview') ? [{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[] : []),
     ...(canView('home.calls_overview') ? [{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[] : []),
   ];
@@ -95,6 +97,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
     ...(canView('data.teams') ? [{ icon: Briefcase, label: 'Teams' }] as NavItem[] : []),
     ...(canView('data.pages') ? [{ icon: Share2, label: 'Pages' }] as NavItem[] : []),
     ...(canView('data.tags') ? [{ icon: FileText, label: 'Tags' }] as NavItem[] : []),
+    ...(canView('data.companies') ? [{ icon: Briefcase, label: 'Companies' }] as NavItem[] : []),
+    ...(canView('data.warehouses') ? [{ icon: Database, label: 'Warehouses' }] as NavItem[] : []),
   ];
   const dataGroup: NavItem = {
     icon: Database,
@@ -169,7 +173,12 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
         <div key={item.label}>
           <button
             onClick={() => {
-              setOpenGroups(prev => ({ ...prev, [item.label]: !prev[item.label] }));
+              // Close all other groups and open only this one
+              const newOpenState: Record<string, boolean> = {};
+              newOpenState[item.label] = !openGroups[item.label];
+              setOpenGroups(newOpenState);
+              
+              // Set active page to this main menu to highlight it
               setActivePage(item.label);
             }}
             className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${
@@ -181,25 +190,31 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
             {!isCollapsed && (
               <>
                 <span className="truncate flex-1">{t(item.label)}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ease-in-out ${isOpen ? 'rotate-180' : ''}`} />
               </>
             )}
           </button>
-          {!isCollapsed && isOpen && (
-            <div className="mt-1 ml-2 space-y-1">
-              {item.children!.map(child => (
-                <button
-                  key={child.label}
-                  onClick={() => setActivePage(child.label)}
-                  className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start ${
-                    activePage === child.label ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  } ${isCollapsed ? 'px-3' : 'pl-10 pr-3'}`}
-                  title={isCollapsed ? t(child.label) : ''}
-                >
-                  <child.icon className={`w-4 h-4 flex-shrink-0 ${!isCollapsed ? 'mr-2' : ''}`} />
-                  {!isCollapsed && <span className="truncate">{t(child.label)}</span>}
-                </button>
-              ))}
+          {!isCollapsed && (
+            <div 
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                isOpen ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="ml-2 space-y-1">
+                {item.children!.map(child => (
+                  <button
+                    key={child.label}
+                    onClick={() => setActivePage(child.label)}
+                    className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start transition-colors ${
+                      activePage === child.label ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    } ${isCollapsed ? 'px-3' : 'pl-10 pr-3'}`}
+                    title={isCollapsed ? t(child.label) : ''}
+                  >
+                    <child.icon className={`w-4 h-4 flex-shrink-0 ${!isCollapsed ? 'mr-2' : ''}`} />
+                    {!isCollapsed && <span className="truncate">{t(child.label)}</span>}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

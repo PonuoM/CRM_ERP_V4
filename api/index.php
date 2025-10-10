@@ -85,6 +85,9 @@ switch ($resource) {
     case 'pages':
         handle_pages($pdo, $id);
         break;
+    case 'warehouses':
+        handle_warehouses($pdo, $id);
+        break;
     case 'ad_spend':
         handle_ad_spend($pdo, $id);
         break;
@@ -140,30 +143,6 @@ function handle_auth(PDO $pdo, ?string $id): void {
         json_response(['ok' => true, 'user' => $u]);
     }
     json_response(['error' => 'NOT_FOUND'], 404);
-}
-
-function handle_companies(PDO $pdo, ?string $id): void {
-    switch (method()) {
-        case 'GET':
-            if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM companies WHERE id = ?');
-                $stmt->execute([$id]);
-                $row = $stmt->fetch();
-                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
-            } else {
-                $stmt = $pdo->query('SELECT * FROM companies ORDER BY id');
-                json_response($stmt->fetchAll());
-            }
-            break;
-        case 'POST':
-            $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO companies(name) VALUES (?)');
-            $stmt->execute([$in['name'] ?? '']);
-            json_response(['id' => $pdo->lastInsertId()]);
-            break;
-        default:
-            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
-    }
 }
 
 function handle_users(PDO $pdo, ?string $id): void {
@@ -1188,6 +1167,158 @@ function handle_permissions(PDO $pdo): void {
             $stmt = $pdo->prepare('INSERT INTO role_permissions(role, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data=VALUES(data)');
             $stmt->execute([$role, $json]);
             json_response(['ok' => true]);
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+// ==================== Companies Handler ====================
+function handle_companies(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT * FROM companies WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } else {
+                $stmt = $pdo->query('SELECT * FROM companies ORDER BY id ASC');
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $name = $in['name'] ?? '';
+            if (!$name) json_response(['error' => 'NAME_REQUIRED'], 400);
+            
+            $address = $in['address'] ?? null;
+            $phone = $in['phone'] ?? null;
+            $email = $in['email'] ?? null;
+            $taxId = $in['taxId'] ?? null;
+            
+            $stmt = $pdo->prepare('INSERT INTO companies (name, address, phone, email, tax_id) VALUES (?, ?, ?, ?, ?)');
+            $stmt->execute([$name, $address, $phone, $email, $taxId]);
+            json_response(['id' => $pdo->lastInsertId()]);
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            
+            $updates = [];
+            $params = [];
+            if (isset($in['name'])) { $updates[] = 'name = ?'; $params[] = $in['name']; }
+            if (isset($in['address'])) { $updates[] = 'address = ?'; $params[] = $in['address']; }
+            if (isset($in['phone'])) { $updates[] = 'phone = ?'; $params[] = $in['phone']; }
+            if (isset($in['email'])) { $updates[] = 'email = ?'; $params[] = $in['email']; }
+            if (isset($in['taxId'])) { $updates[] = 'tax_id = ?'; $params[] = $in['taxId']; }
+            
+            if (empty($updates)) json_response(['ok' => true]);
+            
+            $params[] = $id;
+            $sql = 'UPDATE companies SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
+            break;
+        case 'DELETE':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $stmt = $pdo->prepare('DELETE FROM companies WHERE id = ?');
+            $stmt->execute([$id]);
+            json_response(['ok' => true]);
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+// ==================== Warehouses Handler ====================
+function handle_warehouses(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT w.*, c.name as company_name FROM warehouses w LEFT JOIN companies c ON w.company_id = c.id WHERE w.id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $row['responsible_provinces'] = json_decode($row['responsible_provinces'] ?? '[]', true);
+                    json_response($row);
+                } else {
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                }
+            } else {
+                $companyId = $_GET['companyId'] ?? null;
+                $sql = 'SELECT w.*, c.name as company_name FROM warehouses w LEFT JOIN companies c ON w.company_id = c.id';
+                $params = [];
+                if ($companyId) { $sql .= ' WHERE w.company_id = ?'; $params[] = $companyId; }
+                $sql .= ' ORDER BY w.id ASC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = $stmt->fetchAll();
+                foreach ($rows as &$row) {
+                    $row['responsible_provinces'] = json_decode($row['responsible_provinces'] ?? '[]', true);
+                }
+                json_response($rows);
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $name = $in['name'] ?? '';
+            $companyId = $in['companyId'] ?? null;
+            $address = $in['address'] ?? '';
+            $province = $in['province'] ?? '';
+            $district = $in['district'] ?? '';
+            $subdistrict = $in['subdistrict'] ?? '';
+            $managerName = $in['managerName'] ?? '';
+            
+            if (!$name || !$companyId || !$address || !$province || !$district || !$subdistrict || !$managerName) {
+                json_response(['error' => 'REQUIRED_FIELDS_MISSING'], 400);
+            }
+            
+            $postalCode = $in['postalCode'] ?? null;
+            $phone = $in['phone'] ?? null;
+            $email = $in['email'] ?? null;
+            $managerPhone = $in['managerPhone'] ?? null;
+            $responsibleProvinces = json_encode($in['responsibleProvinces'] ?? []);
+            $isActive = isset($in['isActive']) ? ($in['isActive'] ? 1 : 0) : 1;
+            
+            $stmt = $pdo->prepare('INSERT INTO warehouses (name, company_id, address, province, district, subdistrict, postal_code, phone, email, manager_name, manager_phone, responsible_provinces, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$name, $companyId, $address, $province, $district, $subdistrict, $postalCode, $phone, $email, $managerName, $managerPhone, $responsibleProvinces, $isActive]);
+            json_response(['id' => $pdo->lastInsertId()]);
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            
+            $updates = [];
+            $params = [];
+            if (isset($in['name'])) { $updates[] = 'name = ?'; $params[] = $in['name']; }
+            if (isset($in['companyId'])) { $updates[] = 'company_id = ?'; $params[] = $in['companyId']; }
+            if (isset($in['address'])) { $updates[] = 'address = ?'; $params[] = $in['address']; }
+            if (isset($in['province'])) { $updates[] = 'province = ?'; $params[] = $in['province']; }
+            if (isset($in['district'])) { $updates[] = 'district = ?'; $params[] = $in['district']; }
+            if (isset($in['subdistrict'])) { $updates[] = 'subdistrict = ?'; $params[] = $in['subdistrict']; }
+            if (isset($in['postalCode'])) { $updates[] = 'postal_code = ?'; $params[] = $in['postalCode']; }
+            if (isset($in['phone'])) { $updates[] = 'phone = ?'; $params[] = $in['phone']; }
+            if (isset($in['email'])) { $updates[] = 'email = ?'; $params[] = $in['email']; }
+            if (isset($in['managerName'])) { $updates[] = 'manager_name = ?'; $params[] = $in['managerName']; }
+            if (isset($in['managerPhone'])) { $updates[] = 'manager_phone = ?'; $params[] = $in['managerPhone']; }
+            if (isset($in['responsibleProvinces'])) { $updates[] = 'responsible_provinces = ?'; $params[] = json_encode($in['responsibleProvinces']); }
+            if (isset($in['isActive'])) { $updates[] = 'is_active = ?'; $params[] = $in['isActive'] ? 1 : 0; }
+            
+            if (empty($updates)) json_response(['ok' => true]);
+            
+            $params[] = $id;
+            $sql = 'UPDATE warehouses SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
+            break;
+        case 'DELETE':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $stmt = $pdo->prepare('DELETE FROM warehouses WHERE id = ?');
+            $stmt->execute([$id]);
+            json_response(['ok' => true]);
+            break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
