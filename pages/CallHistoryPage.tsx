@@ -1823,29 +1823,29 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   
                   <div className="flex items-center gap-1">
                     {/* Generate page numbers */}
-                    {Array.from({ length: Math.min(5, Math.ceil(totalResults / pageSize)) }, (_, i) => {
-                      let pageNum;
-                      
-                      // Calculate page numbers to show
+                    {(() => {
                       const totalPages = Math.ceil(totalResults / pageSize);
                       const maxVisiblePages = 5;
                       
-                      if (totalPages <= maxVisiblePages) {
-                        pageNum = i + 1;
-                      } else {
-                        const startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-                        const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-                        
-                        if (startPage > 1 && i === 0) {
-                          pageNum = 1;
-                        } else if (endPage < totalPages && i === maxVisiblePages - 1) {
-                          pageNum = totalPages;
-                        } else {
-                          pageNum = startPage + i;
-                        }
+                      // If there are no pages or only one page, don't show pagination
+                      if (totalPages <= 1) return null;
+                      
+                      // Calculate the range of page numbers to show
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      
+                      // Adjust if we're at the end
+                      if (endPage - startPage < maxVisiblePages - 1) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
                       }
                       
-                      return (
+                      // Create array of page numbers to show
+                      const pageNumbers = [];
+                      for (let i = startPage; i <= endPage; i++) {
+                        pageNumbers.push(i);
+                      }
+                      
+                      return pageNumbers.map(pageNum => (
                         <button
                           key={pageNum}
                           onClick={() => handlePageChange(pageNum)}
@@ -1858,8 +1858,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                         >
                           {pageNum}
                         </button>
-                      );
-                    })}
+                      ));
+                    })()}
                   </div>
                   
                   <button
