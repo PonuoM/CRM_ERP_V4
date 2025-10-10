@@ -346,19 +346,20 @@ interface DateTimeRange {
 }
 
 const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, customers, users }) => {
-  const [qCustomer, setQCustomer] = useState('');
-  const [qCustomerPhone, setQCustomerPhone] = useState('');
-  const [qAgentPhone, setQAgentPhone] = useState('');
-  const [status, setStatus] = useState('all');
-  const [direction, setDirection] = useState('all');
-  const [range, setRange] = useState<DateTimeRange>({ start: '', end: '' });
-  const [datetimeRange, setDatetimeRange] = useState<DateTimeRange>({ start: '', end: '' });
-  const [recordingsData, setRecordingsData] = useState<any>(null);
-  const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDataLoading, setIsDataLoading] = useState(false);
-  const [isSearchLoading, setIsSearchLoading] = useState(false);
-  const [accessToken, setAccessToken] = useState<string>('');
+const [qCustomer, setQCustomer] = useState('');
+const [qCustomerPhone, setQCustomerPhone] = useState('');
+const [qAgentPhone, setQAgentPhone] = useState('');
+const [selectedAgent, setSelectedAgent] = useState('');
+const [status, setStatus] = useState('all');
+const [direction, setDirection] = useState('all');
+const [range, setRange] = useState<DateTimeRange>({ start: '', end: '' });
+const [datetimeRange, setDatetimeRange] = useState<DateTimeRange>({ start: '', end: '' });
+const [recordingsData, setRecordingsData] = useState<any>(null);
+const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
+const [isLoading, setIsLoading] = useState(false);
+const [isDataLoading, setIsDataLoading] = useState(false);
+const [isSearchLoading, setIsSearchLoading] = useState(false);
+const [accessToken, setAccessToken] = useState<string>('');
   
   // Audio player state
   const [currentPlayingId, setCurrentPlayingId] = useState<number | null>(null);
@@ -379,6 +380,16 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     customers.forEach(c => { map[c.id] = c; });
     return map;
   }, [customers]);
+
+  // Filter users for supervisor
+  const supervisedAgents = useMemo(() => {
+    if (currentUser.role === UserRole.Supervisor) {
+      return users.filter(user =>
+        user.role === UserRole.Telesale && user.supervisorId === currentUser.id
+      );
+    }
+    return [];
+  }, [currentUser, users]);
 
   // Function to handle recording playback with Authorization header
   const playRecording = async (recordingURL: string, id: number) => {
@@ -733,6 +744,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     if (qCustomer) params.append('customer', qCustomer);
     if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
     if (qAgentPhone) params.append('agentPhone', qAgentPhone);
+    if (selectedAgent) params.append('selectedAgent', selectedAgent);
     if (status !== 'all') params.append('status', status);
     if (direction !== 'all') params.append('direction', direction);
     
@@ -784,7 +796,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     }
     
     // Add party parameter for Telesale users
-    if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+    if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) && currentUser.phone) {
       const formattedPhone = currentUser.phone.startsWith('0')
         ? '+66' + currentUser.phone.substring(1)
         : '+66' + currentUser.phone;
@@ -802,8 +814,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       if (authResult.success && authResult.token) {
         setAccessToken(authResult.token);
         
-        // Special handling for Telesale users with customer phone
-        if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone && qCustomerPhone) {
+        // Special handling for Telesale and Supervisor Telesale users with customer phone
+        if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) && currentUser.phone && qCustomerPhone) {
           // Format phone numbers to +66 format
           const formatPhoneToPlus66 = (phone: string) => {
             if (phone.startsWith('0')) {
@@ -1079,18 +1091,39 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 placeholder="เช่น 08xxxxxxx"
               />
             </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <UserIcon className="w-4 h-4 text-gray-400" />
-                เบอร์/ชื่อพนักงานขาย
-              </label>
-              <input
-                value={qAgentPhone}
-                onChange={e=>setQAgentPhone(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="ค้นหา"
-              />
-            </div>
+            {(currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) ? (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <UserIcon className="w-4 h-4 text-gray-400" />
+                  พนักงานขาย
+                </label>
+                <select
+                  value={selectedAgent}
+                  onChange={e=>setSelectedAgent(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                >
+                  <option value="">{currentUser.firstName}</option>
+                  {supervisedAgents.map(agent => (
+                    <option key={agent.id} value={agent.phone || ''}>
+                      {agent.firstName} {agent.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <UserIcon className="w-4 h-4 text-gray-400" />
+                  เบอร์/ชื่อพนักงานขาย
+                </label>
+                <input
+                  value={qAgentPhone}
+                  onChange={e=>setQAgentPhone(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="ค้นหา"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">Direction</label>
               <select
