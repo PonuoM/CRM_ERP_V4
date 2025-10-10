@@ -845,9 +845,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       params.append('party', formattedPhone);
     }
     
-    // Log the URL string for debugging
+    // Create the search URL
     const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
-    console.log('Search URL:', searchUrl);
     
     // Always fetch new data from API when search button is clicked
     try {
@@ -882,7 +881,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             params1.append('remoteparty', formattedCustomerPhone);
             
             const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
-            console.log('Search URL 1:', searchUrl1);
             
             // Second request: localparty = customer phone, remoteparty = agent phone
             const params2 = new URLSearchParams(params.toString());
@@ -891,7 +889,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             params2.append('remoteparty', formattedAgentPhone);
             
             const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
-            console.log('Search URL 2:', searchUrl2);
             
             // Execute both requests in parallel
             const [response1, response2] = await Promise.all([
@@ -921,7 +918,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               } catch (e) {
                 responseData1 = responseText1;
               }
-              console.log('Search Result 1:', responseData1);
             }
             
             if (response2.ok) {
@@ -931,7 +927,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               } catch (e) {
                 responseData2 = responseText2;
               }
-              console.log('Search Result 2:', responseData2);
             }
             
             // Merge the results
@@ -954,7 +949,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
             );
             
-            console.log('Merged Search Result:', mergedData);
             
             if (mergedData && mergedData.objects) {
               setRecordingsData(mergedData);
@@ -992,7 +986,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           params1.append('remoteparty', formattedUserPhone);
           
           const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
-          console.log('Search URL 1:', searchUrl1);
           
           // Second request: localparty = user's phone, remoteparty = customer phone
           const params2 = new URLSearchParams(params.toString());
@@ -1001,7 +994,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           params2.append('remoteparty', formattedCustomerPhone);
           
           const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
-          console.log('Search URL 2:', searchUrl2);
           
           // Execute both requests in parallel
           const [response1, response2] = await Promise.all([
@@ -1031,7 +1023,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             } catch (e) {
               responseData1 = responseText1;
             }
-            console.log('Search Result 1:', responseData1);
           }
           
           if (response2.ok) {
@@ -1041,7 +1032,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             } catch (e) {
               responseData2 = responseText2;
             }
-            console.log('Search Result 2:', responseData2);
           }
           
           // Merge the results
@@ -1064,7 +1054,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
           
-          console.log('Merged Search Result:', mergedData);
           
           if (mergedData && mergedData.objects) {
             setRecordingsData(mergedData);
@@ -1102,8 +1091,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               responseData = responseText;
             }
             
-            // Log the result for debugging
-            console.log('Search Result:', responseData);
             
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
@@ -1126,7 +1113,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
       }
     } catch (error) {
-      console.error('Error fetching search results:', error);
       setIsSearchLoading(false);
     }
     
@@ -1159,8 +1145,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       return true;
     }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // Log the filtered result for debugging
-    console.log('Filtered Result:', filtered);
     
     setFilteredRecordings(filtered);
     
@@ -1235,7 +1219,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
         
         const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
-        console.log('Page change URL:', searchUrl);
         
         const response = await fetch(searchUrl, {
           method: 'GET',
@@ -1269,7 +1252,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
       }
     } catch (error) {
-      console.error('Error fetching page data:', error);
       // If there's an error, revert to the previous page
       setCurrentPage(currentPage);
     } finally {
@@ -1338,7 +1320,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
         
         const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
-        console.log('Page size change URL:', searchUrl);
         
         const response = await fetch(searchUrl, {
           method: 'GET',
@@ -1372,7 +1353,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         }
       }
     } catch (error) {
-      console.error('Error fetching page size data:', error);
       // If there's an error, revert to the previous page size
       setPageSize(pageSize);
     } finally {
@@ -1424,7 +1404,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           }
         }
       } catch (error) {
-        console.error('Error fetching next page:', error);
         // If there's an error, revert to the previous page
         setCurrentPage(currentPage);
       } finally {
@@ -1477,7 +1456,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           }
         }
       } catch (error) {
-        console.error('Error fetching previous page:', error);
         // If there's an error, revert to the previous page
         setCurrentPage(currentPage);
       } finally {
