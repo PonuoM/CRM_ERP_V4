@@ -802,32 +802,134 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       if (authResult.success && authResult.token) {
         setAccessToken(authResult.token);
         
-        // Fetch recordings data with the search URL
-        const response = await fetch(searchUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': authResult.token,
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const responseText = await response.text();
-          let responseData;
-          try {
-            responseData = JSON.parse(responseText);
-          } catch (e) {
-            responseData = responseText;
+        // Special handling for Telesale users with customer phone
+        if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone && qCustomerPhone) {
+          // Format phone numbers to +66 format
+          const formatPhoneToPlus66 = (phone: string) => {
+            if (phone.startsWith('0')) {
+              return '+66' + phone.substring(1);
+            }
+            return '+66' + phone;
+          };
+          
+          const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+          const formattedUserPhone = formatPhoneToPlus66(currentUser.phone);
+          
+          // First request: localparty = customer phone, remoteparty = user's phone
+          const params1 = new URLSearchParams(params.toString());
+          params1.delete('party');
+          params1.append('localparty', formattedCustomerPhone);
+          params1.append('remoteparty', formattedUserPhone);
+          
+          const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
+          console.log('Search URL 1:', searchUrl1);
+          
+          // Second request: localparty = user's phone, remoteparty = customer phone
+          const params2 = new URLSearchParams(params.toString());
+          params2.delete('party');
+          params2.append('localparty', formattedUserPhone);
+          params2.append('remoteparty', formattedCustomerPhone);
+          
+          const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
+          console.log('Search URL 2:', searchUrl2);
+          
+          // Execute both requests in parallel
+          const [response1, response2] = await Promise.all([
+            fetch(searchUrl1, {
+              method: 'GET',
+              headers: {
+                'Authorization': authResult.token,
+                'Accept': 'application/json'
+              }
+            }),
+            fetch(searchUrl2, {
+              method: 'GET',
+              headers: {
+                'Authorization': authResult.token,
+                'Accept': 'application/json'
+              }
+            })
+          ]);
+          
+          // Parse both responses
+          let responseData1, responseData2;
+          
+          if (response1.ok) {
+            const responseText1 = await response1.text();
+            try {
+              responseData1 = JSON.parse(responseText1);
+            } catch (e) {
+              responseData1 = responseText1;
+            }
+            console.log('Search Result 1:', responseData1);
           }
           
-          // Log the result for debugging
-          console.log('Search Result:', responseData);
+          if (response2.ok) {
+            const responseText2 = await response2.text();
+            try {
+              responseData2 = JSON.parse(responseText2);
+            } catch (e) {
+              responseData2 = responseText2;
+            }
+            console.log('Search Result 2:', responseData2);
+          }
           
-          if (responseData && responseData.objects) {
-            setRecordingsData(responseData);
-            setFilteredRecordings(responseData.objects);
+          // Merge the results
+          const mergedData = {
+            objects: [
+              ...(responseData1?.objects || []),
+              ...(responseData2?.objects || [])
+            ]
+          };
+          
+          // Remove duplicates based on recording ID
+          const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
+            index === self.findIndex((t: any) => t.id === obj.id)
+          );
+          
+          mergedData.objects = uniqueObjects;
+          
+          // Sort by timestamp (newest first)
+          mergedData.objects.sort((a: any, b: any) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          
+          console.log('Merged Search Result:', mergedData);
+          
+          if (mergedData && mergedData.objects) {
+            setRecordingsData(mergedData);
+            setFilteredRecordings(mergedData.objects);
             setIsSearchLoading(false);
             return;
+          }
+        } else {
+          // Normal request for other users or when customer phone is not provided
+          const response = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
+            }
+            
+            // Log the result for debugging
+            console.log('Search Result:', responseData);
+            
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              setIsSearchLoading(false);
+              return;
+            }
           }
         }
       }
