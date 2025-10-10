@@ -357,6 +357,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string>('');
   
   // Audio player state
@@ -699,6 +700,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       return;
     }
     
+    // Set search loading state
+    setIsSearchLoading(true);
+    
     // API Configuration parameters (default values)
     const apiConfig: any = {
       baseUrl: '/onecall/orktrack/rest/recordings',
@@ -791,46 +795,45 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
     console.log('Search URL:', searchUrl);
     
-    // If no filter is applied, fetch new data from API
-    if (!qCustomer && !qCustomerPhone && !qAgentPhone && status === 'all' &&
-        direction === 'all' && !datetimeRange.start && !datetimeRange.end) {
-      try {
-        // First, authenticate to get the access token
-        const authResult = await authenticateOneCall();
-        if (authResult.success && authResult.token) {
-          setAccessToken(authResult.token);
+    // Always fetch new data from API when search button is clicked
+    try {
+      // First, authenticate to get the access token
+      const authResult = await authenticateOneCall();
+      if (authResult.success && authResult.token) {
+        setAccessToken(authResult.token);
+        
+        // Fetch recordings data with the search URL
+        const response = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': authResult.token,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
           
-          // Fetch recordings data with the search URL
-          const response = await fetch(searchUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': authResult.token,
-              'Accept': 'application/json'
-            }
-          });
+          // Log the result for debugging
+          console.log('Search Result:', responseData);
           
-          if (response.ok) {
-            const responseText = await response.text();
-            let responseData;
-            try {
-              responseData = JSON.parse(responseText);
-            } catch (e) {
-              responseData = responseText;
-            }
-            
-            // Log the result for debugging
-            console.log('Search Result:', responseData);
-            
-            if (responseData && responseData.objects) {
-              setRecordingsData(responseData);
-              setFilteredRecordings(responseData.objects);
-              return;
-            }
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            setIsSearchLoading(false);
+            return;
           }
         }
-      } catch (error) {
-        console.error('Error fetching search results:', error);
       }
+    } catch (error) {
+      console.error('Error fetching search results:', error);
+      setIsSearchLoading(false);
     }
     
     const filtered = recordingsData.objects.filter((recording: any) => {
@@ -866,6 +869,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     console.log('Filtered Result:', filtered);
     
     setFilteredRecordings(filtered);
+    setIsSearchLoading(false);
   };
   
   // Initialize filtered recordings when recordings data is loaded
@@ -1014,9 +1018,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               <button
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 onClick={filterRecordings}
+                disabled={isSearchLoading}
               >
-                <Search className="w-4 h-4" />
-                ค้นหา
+                {isSearchLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                {isSearchLoading ? 'กำลังค้นหา...' : 'ค้นหา'}
               </button>
               <button
                 className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
@@ -1038,6 +1047,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
                 <span>กำลังโหลดข้อมูล...</span>
               </div>
+            ) : isSearchLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                <span>กำลังค้นหาข้อมูล...</span>
+              </div>
             ) : (
               <span>พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filteredRecordings.length}</span> รายการ</span>
             )}
@@ -1056,7 +1070,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Datetime</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Datetime</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ตัวแทนขาย</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Direction</th>
@@ -1065,12 +1079,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {isDataLoading ? (
+                {isDataLoading || isSearchLoading ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center">
                       <div className="flex flex-col items-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
-                        <p className="text-gray-500 text-sm font-medium">กำลังดึงข้อมูลบันทึกการโทร...</p>
+                        <p className="text-gray-500 text-sm font-medium">
+                          {isSearchLoading ? 'กำลังค้นหาข้อมูล...' : 'กำลังดึงข้อมูลบันทึกการโทร...'}
+                        </p>
                       </div>
                     </td>
                   </tr>
@@ -1087,7 +1103,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                       return (
                         <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 px-4 text-sm text-gray-600 font-medium">{recording.id}</td>
-                          <td className="py-3 px-4 text-sm text-gray-800">{formatDate(recording.timestamp)}</td>
+                          <td className="py-3 px-4 text-sm text-gray-800 whitespace-normal">{formatDate(recording.timestamp)}</td>
                           <td className="py-3 px-4 text-sm text-gray-600">{recording.duration || '-'}</td>
                           <td className="py-3 px-4 text-sm text-gray-800">
                             <div className="flex items-center gap-2">
