@@ -734,7 +734,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       baseUrl: '/onecall/orktrack/rest/recordings',
       range: 'custom',
       sort: '',
-      page: currentPage,
+      page: 1,
       pagesize: pageSize,
       maxresults: -1,
       includetags: true,
@@ -1291,11 +1291,136 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   };
   
   // Function to handle page size change
-  const handlePageSizeChange = (newPageSize: number) => {
+  const handlePageSizeChange = async (newPageSize: number) => {
     setPageSize(newPageSize);
     setCurrentPage(1); // Reset to first page
-    // Trigger search with new page size
-    filterRecordings();
+    
+    // Create a new request with the selected page size
+    setIsSearchLoading(true);
+    
+    try {
+      // First, authenticate to get the access token
+      const authResult = await authenticateOneCall();
+      if (authResult.success && authResult.token) {
+        // Build URL parameters with the selected page size
+        const params = new URLSearchParams();
+        
+        // Add default parameters
+        params.append('range', 'custom');
+        params.append('sort', '');
+        params.append('page', '1'); // Reset to first page
+        params.append('pagesize', newPageSize.toString());
+        params.append('maxresults', '-1');
+        params.append('includetags', 'true');
+        params.append('includemetadata', 'true');
+        params.append('includeprograms', 'true');
+        
+        // Handle startdate parameter
+        let startDateFormatted = '';
+        if (datetimeRange.start) {
+          // Format datetime for API
+          const startDate = new Date(datetimeRange.start);
+          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        } else {
+          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
+          const startDate = new Date();
+          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+          
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        }
+        
+        if (datetimeRange.end) {
+          // Format datetime for API
+          const endDate = new Date(datetimeRange.end);
+          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+          const year = endDate.getFullYear();
+          const month = String(endDate.getMonth() + 1).padStart(2, '0');
+          const day = String(endDate.getDate()).padStart(2, '0');
+          const hours = String(endDate.getHours()).padStart(2, '0');
+          const minutes = String(endDate.getMinutes()).padStart(2, '0');
+          const seconds = String(endDate.getSeconds()).padStart(2, '0');
+          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('enddate', endDateFormatted);
+        }
+        
+        // Add party parameter based on user role
+        if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
+          const formattedPhone = selectedAgent.startsWith('0')
+            ? '+66' + selectedAgent.substring(1)
+            : '+66' + selectedAgent;
+          params.append('party', formattedPhone);
+        } else if (currentUser && currentUser.role === UserRole.Supervisor) {
+          const phoneToUse = selectedAgent || currentUser.phone;
+          if (phoneToUse) {
+            const formattedPhone = phoneToUse.startsWith('0')
+              ? '+66' + phoneToUse.substring(1)
+              : '+66' + phoneToUse;
+            params.append('party', formattedPhone);
+          }
+        } else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+          const formattedPhone = currentUser.phone.startsWith('0')
+            ? '+66' + currentUser.phone.substring(1)
+            : '+66' + currentUser.phone;
+          params.append('party', formattedPhone);
+        }
+        
+        const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
+        console.log('Page size change URL:', searchUrl);
+        
+        const response = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': authResult.token,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
+          
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            
+            // Update pagination state
+            setCurrentPage(responseData.page || 1);
+            setPageSize(responseData.pageSize || newPageSize);
+            setTotalResults(responseData.resultCount || 0);
+            setNextPageUri(responseData.nextPageUri || '');
+            setPrevPageUri(responseData.prevPageUri || '');
+            setLimitReached(responseData.limitReached || false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching page size data:', error);
+      // If there's an error, revert to the previous page size
+      setPageSize(pageSize);
+    } finally {
+      setIsSearchLoading(false);
+    }
   };
   
   // Function to fetch next page using nextPageUri
