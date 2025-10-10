@@ -148,8 +148,15 @@ const getRecordingsData = async (currentUser?: User) => {
     includeprograms: true
   };
   
-  // Add party parameter for Telesale users
+  // Add party parameter for Telesale and Supervisor users
   if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+    // Format phone number from 0945547598 to +66945547598
+    const formattedPhone = currentUser.phone.startsWith('0')
+      ? '+66' + currentUser.phone.substring(1)
+      : '+66' + currentUser.phone;
+    
+    apiConfig.party = formattedPhone;
+  } else if (currentUser && currentUser.role === UserRole.Supervisor && currentUser.phone) {
     // Format phone number from 0945547598 to +66945547598
     const formattedPhone = currentUser.phone.startsWith('0')
       ? '+66' + currentUser.phone.substring(1)
@@ -744,7 +751,6 @@ const [accessToken, setAccessToken] = useState<string>('');
     if (qCustomer) params.append('customer', qCustomer);
     if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
     if (qAgentPhone) params.append('agentPhone', qAgentPhone);
-    if (selectedAgent) params.append('selectedAgent', selectedAgent);
     if (status !== 'all') params.append('status', status);
     if (direction !== 'all') params.append('direction', direction);
     
@@ -795,8 +801,25 @@ const [accessToken, setAccessToken] = useState<string>('');
       params.set('maxresults', '-1');
     }
     
+    // Add party parameter for Admin users when selectedAgent is set
+    if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
+      const formattedPhone = selectedAgent.startsWith('0')
+        ? '+66' + selectedAgent.substring(1)
+        : '+66' + selectedAgent;
+      params.append('party', formattedPhone);
+    }
+    // Add party parameter for Supervisor users (use selectedAgent if set, otherwise use current user's phone)
+    else if (currentUser && currentUser.role === UserRole.Supervisor) {
+      const phoneToUse = selectedAgent || currentUser.phone;
+      if (phoneToUse) {
+        const formattedPhone = phoneToUse.startsWith('0')
+          ? '+66' + phoneToUse.substring(1)
+          : '+66' + phoneToUse;
+        params.append('party', formattedPhone);
+      }
+    }
     // Add party parameter for Telesale users
-    if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) && currentUser.phone) {
+    else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
       const formattedPhone = currentUser.phone.startsWith('0')
         ? '+66' + currentUser.phone.substring(1)
         : '+66' + currentUser.phone;
@@ -814,8 +837,113 @@ const [accessToken, setAccessToken] = useState<string>('');
       if (authResult.success && authResult.token) {
         setAccessToken(authResult.token);
         
-        // Special handling for Telesale and Supervisor Telesale users with customer phone
-        if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) && currentUser.phone && qCustomerPhone) {
+        // Special handling for Telesale and Admin users with customer phone and selected agent
+        if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && qCustomerPhone) {
+          // Get the phone number to use (selectedAgent for admins, currentUser.phone for telesale)
+          const agentPhone = (currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent
+            ? selectedAgent
+            : currentUser.phone;
+          
+          if (agentPhone) {
+            // Format phone numbers to +66 format
+            const formatPhoneToPlus66 = (phone: string) => {
+              if (phone.startsWith('0')) {
+                return '+66' + phone.substring(1);
+              }
+              return '+66' + phone;
+            };
+            
+            const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+            const formattedAgentPhone = formatPhoneToPlus66(agentPhone);
+            
+            // First request: localparty = agent phone, remoteparty = customer phone
+            const params1 = new URLSearchParams(params.toString());
+            params1.delete('party');
+            params1.append('localparty', formattedAgentPhone);
+            params1.append('remoteparty', formattedCustomerPhone);
+            
+            const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
+            console.log('Search URL 1:', searchUrl1);
+            
+            // Second request: localparty = customer phone, remoteparty = agent phone
+            const params2 = new URLSearchParams(params.toString());
+            params2.delete('party');
+            params2.append('localparty', formattedCustomerPhone);
+            params2.append('remoteparty', formattedAgentPhone);
+            
+            const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
+            console.log('Search URL 2:', searchUrl2);
+            
+            // Execute both requests in parallel
+            const [response1, response2] = await Promise.all([
+              fetch(searchUrl1, {
+                method: 'GET',
+                headers: {
+                  'Authorization': authResult.token,
+                  'Accept': 'application/json'
+                }
+              }),
+              fetch(searchUrl2, {
+                method: 'GET',
+                headers: {
+                  'Authorization': authResult.token,
+                  'Accept': 'application/json'
+                }
+              })
+            ]);
+            
+            // Parse both responses
+            let responseData1, responseData2;
+            
+            if (response1.ok) {
+              const responseText1 = await response1.text();
+              try {
+                responseData1 = JSON.parse(responseText1);
+              } catch (e) {
+                responseData1 = responseText1;
+              }
+              console.log('Search Result 1:', responseData1);
+            }
+            
+            if (response2.ok) {
+              const responseText2 = await response2.text();
+              try {
+                responseData2 = JSON.parse(responseText2);
+              } catch (e) {
+                responseData2 = responseText2;
+              }
+              console.log('Search Result 2:', responseData2);
+            }
+            
+            // Merge the results
+            const mergedData = {
+              objects: [
+                ...(responseData1?.objects || []),
+                ...(responseData2?.objects || [])
+              ]
+            };
+            
+            // Remove duplicates based on recording ID
+            const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
+              index === self.findIndex((t: any) => t.id === obj.id)
+            );
+            
+            mergedData.objects = uniqueObjects;
+            
+            // Sort by timestamp (newest first)
+            mergedData.objects.sort((a: any, b: any) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+            
+            console.log('Merged Search Result:', mergedData);
+            
+            if (mergedData && mergedData.objects) {
+              setRecordingsData(mergedData);
+              setFilteredRecordings(mergedData.objects);
+              setIsSearchLoading(false);
+              return;
+            }
+          }
           // Format phone numbers to +66 format
           const formatPhoneToPlus66 = (phone: string) => {
             if (phone.startsWith('0')) {
@@ -1102,7 +1230,7 @@ const [accessToken, setAccessToken] = useState<string>('');
                   onChange={e=>setSelectedAgent(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
-                  <option value="">{currentUser.firstName}</option>
+                  <option value={currentUser.phone || ''}>{currentUser.firstName}</option>
                   {supervisedAgents.map(agent => (
                     <option key={agent.id} value={agent.phone || ''}>
                       {agent.firstName} {agent.lastName}
