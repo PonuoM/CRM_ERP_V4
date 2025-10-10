@@ -142,7 +142,7 @@ const getRecordingsData = async (currentUser?: User) => {
     sort: '',
     page: 1,
     pagesize: 20,
-    maxresults: 0,
+    maxresults: -1,
     includetags: true,
     includemetadata: true,
     includeprograms: true
@@ -353,20 +353,28 @@ interface DateTimeRange {
 }
 
 const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, customers, users }) => {
-const [qCustomer, setQCustomer] = useState('');
-const [qCustomerPhone, setQCustomerPhone] = useState('');
-const [qAgentPhone, setQAgentPhone] = useState('');
-const [selectedAgent, setSelectedAgent] = useState('');
-const [status, setStatus] = useState('all');
-const [direction, setDirection] = useState('all');
-const [range, setRange] = useState<DateTimeRange>({ start: '', end: '' });
-const [datetimeRange, setDatetimeRange] = useState<DateTimeRange>({ start: '', end: '' });
-const [recordingsData, setRecordingsData] = useState<any>(null);
-const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
-const [isLoading, setIsLoading] = useState(false);
-const [isDataLoading, setIsDataLoading] = useState(false);
-const [isSearchLoading, setIsSearchLoading] = useState(false);
-const [accessToken, setAccessToken] = useState<string>('');
+  const [qCustomer, setQCustomer] = useState('');
+  const [qCustomerPhone, setQCustomerPhone] = useState('');
+  const [qAgentPhone, setQAgentPhone] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState('');
+  const [status, setStatus] = useState('all');
+  const [direction, setDirection] = useState('all');
+  const [range, setRange] = useState<DateTimeRange>({ start: '', end: '' });
+  const [datetimeRange, setDatetimeRange] = useState<DateTimeRange>({ start: '', end: '' });
+  const [recordingsData, setRecordingsData] = useState<any>(null);
+  const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string>('');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalResults, setTotalResults] = useState(0);
+  const [nextPageUri, setNextPageUri] = useState('');
+  const [prevPageUri, setPrevPageUri] = useState('');
+  const [limitReached, setLimitReached] = useState(false);
   
   // Audio player state
   const [currentPlayingId, setCurrentPlayingId] = useState<number | null>(null);
@@ -726,9 +734,9 @@ const [accessToken, setAccessToken] = useState<string>('');
       baseUrl: '/onecall/orktrack/rest/recordings',
       range: 'custom',
       sort: '',
-      page: 1,
-      pagesize: 20,
-      maxresults: 0,
+      page: currentPage,
+      pagesize: pageSize,
+      maxresults: -1,
       includetags: true,
       includemetadata: true,
       includeprograms: true
@@ -940,6 +948,15 @@ const [accessToken, setAccessToken] = useState<string>('');
             if (mergedData && mergedData.objects) {
               setRecordingsData(mergedData);
               setFilteredRecordings(mergedData.objects);
+              
+              // Update pagination state for merged results
+              setCurrentPage(1);
+              setPageSize(20);
+              setTotalResults(mergedData.objects.length);
+              setNextPageUri('');
+              setPrevPageUri('');
+              setLimitReached(false);
+              
               setIsSearchLoading(false);
               return;
             }
@@ -1039,6 +1056,15 @@ const [accessToken, setAccessToken] = useState<string>('');
           if (mergedData && mergedData.objects) {
             setRecordingsData(mergedData);
             setFilteredRecordings(mergedData.objects);
+            
+            // Update pagination state for merged results
+            setCurrentPage(1);
+            setPageSize(20);
+            setTotalResults(mergedData.objects.length);
+            setNextPageUri('');
+            setPrevPageUri('');
+            setLimitReached(false);
+            
             setIsSearchLoading(false);
             return;
           }
@@ -1067,6 +1093,15 @@ const [accessToken, setAccessToken] = useState<string>('');
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
               setFilteredRecordings(responseData.objects);
+              
+              // Update pagination state
+              setCurrentPage(responseData.page || 1);
+              setPageSize(responseData.pageSize || 20);
+              setTotalResults(responseData.resultCount || 0);
+              setNextPageUri(responseData.nextPageUri || '');
+              setPrevPageUri(responseData.prevPageUri || '');
+              setLimitReached(responseData.limitReached || false);
+              
               setIsSearchLoading(false);
               return;
             }
@@ -1111,13 +1146,276 @@ const [accessToken, setAccessToken] = useState<string>('');
     console.log('Filtered Result:', filtered);
     
     setFilteredRecordings(filtered);
+    
+    // Update pagination state for filtered results
+    setCurrentPage(1);
+    setPageSize(20);
+    setTotalResults(filtered.length);
+    setNextPageUri('');
+    setPrevPageUri('');
+    setLimitReached(false);
+    
     setIsSearchLoading(false);
+  };
+  
+  // Function to handle page change
+  const handlePageChange = async (page: number) => {
+    setCurrentPage(page);
+    
+    // Create a new request with the selected page number
+    setIsSearchLoading(true);
+    
+    try {
+      // First, authenticate to get the access token
+      const authResult = await authenticateOneCall();
+      if (authResult.success && authResult.token) {
+        // Build URL parameters with the selected page
+        const params = new URLSearchParams();
+        
+        // Add default parameters
+        params.append('range', 'custom');
+        params.append('sort', '');
+        params.append('page', page.toString());
+        params.append('pagesize', pageSize.toString());
+        params.append('maxresults', '-1');
+        params.append('includetags', 'true');
+        params.append('includemetadata', 'true');
+        params.append('includeprograms', 'true');
+        
+        // Handle startdate parameter
+        let startDateFormatted = '';
+        if (datetimeRange.start) {
+          // Format datetime for API
+          const startDate = new Date(datetimeRange.start);
+          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        } else {
+          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
+          const startDate = new Date();
+          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+          
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        }
+        
+        if (datetimeRange.end) {
+          // Format datetime for API
+          const endDate = new Date(datetimeRange.end);
+          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+          const year = endDate.getFullYear();
+          const month = String(endDate.getMonth() + 1).padStart(2, '0');
+          const day = String(endDate.getDate()).padStart(2, '0');
+          const hours = String(endDate.getHours()).padStart(2, '0');
+          const minutes = String(endDate.getMinutes()).padStart(2, '0');
+          const seconds = String(endDate.getSeconds()).padStart(2, '0');
+          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('enddate', endDateFormatted);
+        }
+        
+        // Add party parameter based on user role
+        if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
+          const formattedPhone = selectedAgent.startsWith('0')
+            ? '+66' + selectedAgent.substring(1)
+            : '+66' + selectedAgent;
+          params.append('party', formattedPhone);
+        } else if (currentUser && currentUser.role === UserRole.Supervisor) {
+          const phoneToUse = selectedAgent || currentUser.phone;
+          if (phoneToUse) {
+            const formattedPhone = phoneToUse.startsWith('0')
+              ? '+66' + phoneToUse.substring(1)
+              : '+66' + phoneToUse;
+            params.append('party', formattedPhone);
+          }
+        } else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+          const formattedPhone = currentUser.phone.startsWith('0')
+            ? '+66' + currentUser.phone.substring(1)
+            : '+66' + currentUser.phone;
+          params.append('party', formattedPhone);
+        }
+        
+        const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
+        console.log('Page change URL:', searchUrl);
+        
+        const response = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': authResult.token,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
+          
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            
+            // Update pagination state
+            setCurrentPage(responseData.page || page);
+            setPageSize(responseData.pageSize || pageSize);
+            setTotalResults(responseData.resultCount || 0);
+            setNextPageUri(responseData.nextPageUri || '');
+            setPrevPageUri(responseData.prevPageUri || '');
+            setLimitReached(responseData.limitReached || false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching page data:', error);
+      // If there's an error, revert to the previous page
+      setCurrentPage(currentPage);
+    } finally {
+      setIsSearchLoading(false);
+    }
+  };
+  
+  // Function to handle page size change
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize);
+    setCurrentPage(1); // Reset to first page
+    // Trigger search with new page size
+    filterRecordings();
+  };
+  
+  // Function to fetch next page using nextPageUri
+  const fetchNextPage = async () => {
+    if (nextPageUri && !limitReached && !isSearchLoading) {
+      setIsSearchLoading(true);
+      try {
+        // Use proxy URL
+        const proxyUrl = nextPageUri.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
+        
+        // Update page number immediately for better UX
+        const urlParams = new URLSearchParams(nextPageUri.split('?')[1]);
+        const nextPageNum = parseInt(urlParams.get('page') || '1');
+        setCurrentPage(nextPageNum);
+        
+        const response = await fetch(proxyUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': accessToken,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
+          
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            
+            // Update pagination state
+            setCurrentPage(responseData.page || 1);
+            setPageSize(responseData.pageSize || 20);
+            setTotalResults(responseData.resultCount || 0);
+            setNextPageUri(responseData.nextPageUri || '');
+            setPrevPageUri(responseData.prevPageUri || '');
+            setLimitReached(responseData.limitReached || false);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching next page:', error);
+        // If there's an error, revert to the previous page
+        setCurrentPage(currentPage);
+      } finally {
+        setIsSearchLoading(false);
+      }
+    }
+  };
+  
+  // Function to fetch previous page using prevPageUri
+  const fetchPrevPage = async () => {
+    if (prevPageUri && !isSearchLoading) {
+      setIsSearchLoading(true);
+      try {
+        // Use proxy URL
+        const proxyUrl = prevPageUri.replace('https://onecallvoicerecord.dtac.co.th', '/onecall');
+        
+        // Update page number immediately for better UX
+        const urlParams = new URLSearchParams(prevPageUri.split('?')[1]);
+        const prevPageNum = parseInt(urlParams.get('page') || '1');
+        setCurrentPage(prevPageNum);
+        
+        const response = await fetch(proxyUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': accessToken,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
+          
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            
+            // Update pagination state
+            setCurrentPage(responseData.page || 1);
+            setPageSize(responseData.pageSize || 20);
+            setTotalResults(responseData.resultCount || 0);
+            setNextPageUri(responseData.nextPageUri || '');
+            setPrevPageUri(responseData.prevPageUri || '');
+            setLimitReached(responseData.limitReached || false);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching previous page:', error);
+        // If there's an error, revert to the previous page
+        setCurrentPage(currentPage);
+      } finally {
+        setIsSearchLoading(false);
+      }
+    }
   };
   
   // Initialize filtered recordings when recordings data is loaded
   useEffect(() => {
     if (recordingsData && recordingsData.objects) {
       setFilteredRecordings(recordingsData.objects);
+      
+      // Update pagination state
+      setCurrentPage(recordingsData.page || 1);
+      setPageSize(recordingsData.pageSize || 20);
+      setTotalResults(recordingsData.resultCount || 0);
+      setNextPageUri(recordingsData.nextPageUri || '');
+      setPrevPageUri(recordingsData.prevPageUri || '');
+      setLimitReached(recordingsData.limitReached || false);
     }
   }, [recordingsData]);
 
@@ -1316,7 +1614,7 @@ const [accessToken, setAccessToken] = useState<string>('');
                 <span>กำลังค้นหาข้อมูล...</span>
               </div>
             ) : (
-              <span>พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{filteredRecordings.length}</span> รายการ</span>
+              <span>พบข้อมูลทั้งหมด <span className="font-semibold text-gray-800">{totalResults}</span> รายการ</span>
             )}
           </div>
           {recordingsData && recordingsData.objects && (
@@ -1482,6 +1780,101 @@ const [accessToken, setAccessToken] = useState<string>('');
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {totalResults > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mt-6">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span>แสดงหน้า</span>
+                  <span className="font-semibold">{currentPage}</span>
+                  <span>จากทั้งหมด</span>
+                  <span className="font-semibold">{Math.ceil(totalResults / pageSize)}</span>
+                  <span>หน้า</span>
+                  <span className="mx-2">|</span>
+                  <span>แสดง</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                  <span>รายการต่อหน้า</span>
+                  <span className="mx-2">|</span>
+                  <span>ทั้งหมด</span>
+                  <span className="font-semibold">{totalResults}</span>
+                  <span>รายการ</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchPrevPage}
+                    disabled={!prevPageUri || currentPage <= 1 || isSearchLoading}
+                    className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {/* Generate page numbers */}
+                    {Array.from({ length: Math.min(5, Math.ceil(totalResults / pageSize)) }, (_, i) => {
+                      let pageNum;
+                      
+                      // Calculate page numbers to show
+                      const totalPages = Math.ceil(totalResults / pageSize);
+                      const maxVisiblePages = 5;
+                      
+                      if (totalPages <= maxVisiblePages) {
+                        pageNum = i + 1;
+                      } else {
+                        const startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                        const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                        
+                        if (startPage > 1 && i === 0) {
+                          pageNum = 1;
+                        } else if (endPage < totalPages && i === maxVisiblePages - 1) {
+                          pageNum = totalPages;
+                        } else {
+                          pageNum = startPage + i;
+                        }
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          disabled={isSearchLoading}
+                          className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
+                            currentPage === pageNum
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  <button
+                    onClick={fetchNextPage}
+                    disabled={!nextPageUri || limitReached || isSearchLoading}
+                    className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
