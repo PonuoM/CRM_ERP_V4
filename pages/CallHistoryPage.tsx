@@ -367,6 +367,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string>('');
+  const [searchedAgent, setSearchedAgent] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -948,6 +949,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             if (mergedData && mergedData.objects) {
               setRecordingsData(mergedData);
               setFilteredRecordings(mergedData.objects);
+              // Update the searched agent when search is performed
+              setSearchedAgent(selectedAgent);
               
               // Update pagination state for merged results
               setCurrentPage(1);
@@ -1056,6 +1059,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           if (mergedData && mergedData.objects) {
             setRecordingsData(mergedData);
             setFilteredRecordings(mergedData.objects);
+            // Update the searched agent when search is performed
+            setSearchedAgent(selectedAgent);
             
             // Update pagination state for merged results
             setCurrentPage(1);
@@ -1093,6 +1098,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
               setFilteredRecordings(responseData.objects);
+              // Update the searched agent when search is performed
+              setSearchedAgent(selectedAgent);
               
               // Update pagination state
               setCurrentPage(responseData.page || 1);
@@ -1593,7 +1600,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   onChange={e=>setSelectedAgent(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
-                  <option value={currentUser.phone || ''}>{currentUser.firstName}</option>
+                  <option value={currentUser.phone || ''}>{currentUser.firstName} (ตัวคุณ)</option>
                   {supervisedAgents.map(agent => (
                     <option key={agent.id} value={agent.phone || ''}>
                       {agent.firstName} {agent.lastName}
@@ -1698,16 +1705,18 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Datetime</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
-                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ตัวแทนขาย</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">พนักงานขาย</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์ต้นทาง</th>
                   <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Direction</th>
-                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์โทรลูกค้า</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์ปลายทาง</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">สถานะ</th>
                   <th className="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {isDataLoading || isSearchLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center">
+                    <td colSpan={9} className="py-12 text-center">
                       <div className="flex flex-col items-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
                         <p className="text-gray-500 text-sm font-medium">
@@ -1726,6 +1735,38 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                       
                       const dirText = recording.direction === 'IN' ? 'รับสาย' : 'โทรออก';
                       
+                      // Determine status based on duration
+                      const getStatus = (duration: number) => {
+                        if (duration <= 40) {
+                          return {
+                            text: 'ไม่ได้คุย',
+                            className: 'text-red-600 bg-red-100'
+                          };
+                        } else {
+                          return {
+                            text: 'ได้คุย',
+                            className: 'text-green-600 bg-green-100'
+                          };
+                        }
+                      };
+                      
+                      const status = getStatus(recording.duration || 0);
+                      
+                      // Get agent name based on searched agent or current user
+                      const getAgentName = () => {
+                        // If there's a searched agent, use that
+                        if (searchedAgent) {
+                          const agent = supervisedAgents.find(a => a.phone === searchedAgent);
+                          if (agent) return agent.firstName;
+                          // If no agent found in supervised agents, but we have a searched phone, use current user
+                          return currentUser.firstName;
+                        }
+                        // Otherwise, use current user
+                        return currentUser.firstName;
+                      };
+                      
+                      const agentName = getAgentName();
+                      
                       return (
                         <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 px-4 text-sm text-gray-600 font-medium">{recording.id}</td>
@@ -1736,9 +1777,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                               <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
                                 <UserIcon className="w-3 h-3 text-blue-600" />
                               </div>
-                              {recording.localParty || '-'}
+                              {agentName}
                             </div>
                           </td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{recording.localParty || '-'}</td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               {dirIcon}
@@ -1746,6 +1788,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                             </div>
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">{recording.remoteParty || '-'}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${status.className}`}>
+                              {status.text}
+                            </span>
+                          </td>
                           <td className="py-3 px-4 text-right">
                             <div className="min-w-[250px] flex items-center gap-2">
                               <button
@@ -1829,7 +1876,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                     })}
                     {filteredRecordings.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center">
+                        <td colSpan={9} className="py-12 text-center">
                           <div className="flex flex-col items-center">
                             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                               <Search className="w-6 h-6 text-gray-400" />
