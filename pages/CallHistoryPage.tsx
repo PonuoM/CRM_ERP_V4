@@ -406,6 +406,16 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     }
     return [];
   }, [currentUser, users]);
+  
+  // Filter users for admin
+  const adminUsers = useMemo(() => {
+    if (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) {
+      return users.filter(user =>
+        user.role === UserRole.Supervisor || user.role === UserRole.Telesale
+      );
+    }
+    return [];
+  }, [currentUser, users]);
 
   // Function to handle recording playback with Authorization header
   const playRecording = async (recordingURL: string, id: number) => {
@@ -1589,7 +1599,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                 placeholder="เช่น 08xxxxxxx"
               />
             </div>
-            {(currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) ? (
+            {currentUser.role === UserRole.Supervisor ? (
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <UserIcon className="w-4 h-4 text-gray-400" />
@@ -1604,6 +1614,25 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   {supervisedAgents.map(agent => (
                     <option key={agent.id} value={agent.phone || ''}>
                       {agent.firstName} {agent.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) ? (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <UserIcon className="w-4 h-4 text-gray-400" />
+                  พนักงานขาย
+                </label>
+                <select
+                  value={selectedAgent}
+                  onChange={e=>setSelectedAgent(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                >
+                  <option value=''>ทั้งหมด</option>
+                  {adminUsers.map(user => (
+                    <option key={user.id} value={user.phone || ''}>
+                      {user.firstName} {user.lastName} ({user.role})
                     </option>
                   ))}
                 </select>
@@ -1752,17 +1781,43 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                       
                       const status = getStatus(recording.duration || 0);
                       
-                      // Get agent name based on searched agent or current user
+                      // Get agent name based on phone number matching
                       const getAgentName = () => {
-                        // If there's a searched agent, use that
-                        if (searchedAgent) {
-                          const agent = supervisedAgents.find(a => a.phone === searchedAgent);
-                          if (agent) return agent.firstName;
-                          // If no agent found in supervised agents, but we have a searched phone, use current user
-                          return currentUser.firstName;
+                        // Format phone numbers for comparison
+                        const formatPhone = (phone: string) => {
+                          if (!phone) return '';
+                          // Remove any non-digit characters
+                          const digitsOnly = phone.replace(/\D/g, '');
+                          // If it starts with 66, remove it
+                          if (digitsOnly.startsWith('66')) {
+                            return digitsOnly.substring(2);
+                          }
+                          // If it starts with 0, remove it
+                          if (digitsOnly.startsWith('0')) {
+                            return digitsOnly.substring(1);
+                          }
+                          return digitsOnly;
+                        };
+                        
+                        const localParty = formatPhone(recording.localParty || '');
+                        const remoteParty = formatPhone(recording.remoteParty || '');
+                        
+                        // Check if local party matches any supervisor or telesale
+                        let matchedUser = users.find(user =>
+                          (user.role === UserRole.Supervisor || user.role === UserRole.Telesale) &&
+                          formatPhone(user.phone || '') === localParty
+                        );
+                        
+                        // If not found in local party, check remote party
+                        if (!matchedUser) {
+                          matchedUser = users.find(user =>
+                            (user.role === UserRole.Supervisor || user.role === UserRole.Telesale) &&
+                            formatPhone(user.phone || '') === remoteParty
+                          );
                         }
-                        // Otherwise, use current user
-                        return currentUser.firstName;
+                        
+                        // Return the first name if found, otherwise 'Unknown'
+                        return matchedUser ? matchedUser.firstName : 'Unknown';
                       };
                       
                       const agentName = getAgentName();
