@@ -1182,49 +1182,19 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         params.append('includemetadata', 'true');
         params.append('includeprograms', 'true');
         
-        // Handle startdate parameter
-        let startDateFormatted = '';
-        if (datetimeRange.start) {
-          // Format datetime for API
-          const startDate = new Date(datetimeRange.start);
-          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
-          const year = startDate.getFullYear();
-          const month = String(startDate.getMonth() + 1).padStart(2, '0');
-          const day = String(startDate.getDate()).padStart(2, '0');
-          const hours = String(startDate.getHours()).padStart(2, '0');
-          const minutes = String(startDate.getMinutes()).padStart(2, '0');
-          const seconds = String(startDate.getSeconds()).padStart(2, '0');
-          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('startdate', startDateFormatted);
-        } else {
-          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
-          const startDate = new Date();
-          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
-          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
-          
-          const year = startDate.getFullYear();
-          const month = String(startDate.getMonth() + 1).padStart(2, '0');
-          const day = String(startDate.getDate()).padStart(2, '0');
-          const hours = String(startDate.getHours()).padStart(2, '0');
-          const minutes = String(startDate.getMinutes()).padStart(2, '0');
-          const seconds = String(startDate.getSeconds()).padStart(2, '0');
-          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('startdate', startDateFormatted);
-        }
+        // Use default startdate (today's date at midnight) - not from filter
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+        startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
         
-        if (datetimeRange.end) {
-          // Format datetime for API
-          const endDate = new Date(datetimeRange.end);
-          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
-          const year = endDate.getFullYear();
-          const month = String(endDate.getMonth() + 1).padStart(2, '0');
-          const day = String(endDate.getDate()).padStart(2, '0');
-          const hours = String(endDate.getHours()).padStart(2, '0');
-          const minutes = String(endDate.getMinutes()).padStart(2, '0');
-          const seconds = String(endDate.getSeconds()).padStart(2, '0');
-          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('enddate', endDateFormatted);
-        }
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, '0');
+        const day = String(startDate.getDate()).padStart(2, '0');
+        const hours = String(startDate.getHours()).padStart(2, '0');
+        const minutes = String(startDate.getMinutes()).padStart(2, '0');
+        const seconds = String(startDate.getSeconds()).padStart(2, '0');
+        const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+        params.append('startdate', startDateFormatted);
         
         // Add party parameter based on user role
         if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
@@ -1315,49 +1285,19 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
         params.append('includemetadata', 'true');
         params.append('includeprograms', 'true');
         
-        // Handle startdate parameter
-        let startDateFormatted = '';
-        if (datetimeRange.start) {
-          // Format datetime for API
-          const startDate = new Date(datetimeRange.start);
-          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
-          const year = startDate.getFullYear();
-          const month = String(startDate.getMonth() + 1).padStart(2, '0');
-          const day = String(startDate.getDate()).padStart(2, '0');
-          const hours = String(startDate.getHours()).padStart(2, '0');
-          const minutes = String(startDate.getMinutes()).padStart(2, '0');
-          const seconds = String(startDate.getSeconds()).padStart(2, '0');
-          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('startdate', startDateFormatted);
-        } else {
-          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
-          const startDate = new Date();
-          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
-          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
-          
-          const year = startDate.getFullYear();
-          const month = String(startDate.getMonth() + 1).padStart(2, '0');
-          const day = String(startDate.getDate()).padStart(2, '0');
-          const hours = String(startDate.getHours()).padStart(2, '0');
-          const minutes = String(startDate.getMinutes()).padStart(2, '0');
-          const seconds = String(startDate.getSeconds()).padStart(2, '0');
-          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('startdate', startDateFormatted);
-        }
+        // Use default startdate (today's date at midnight) - not from filter
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+        startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
         
-        if (datetimeRange.end) {
-          // Format datetime for API
-          const endDate = new Date(datetimeRange.end);
-          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
-          const year = endDate.getFullYear();
-          const month = String(endDate.getMonth() + 1).padStart(2, '0');
-          const day = String(endDate.getDate()).padStart(2, '0');
-          const hours = String(endDate.getHours()).padStart(2, '0');
-          const minutes = String(endDate.getMinutes()).padStart(2, '0');
-          const seconds = String(endDate.getSeconds()).padStart(2, '0');
-          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-          params.append('enddate', endDateFormatted);
-        }
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, '0');
+        const day = String(startDate.getDate()).padStart(2, '0');
+        const hours = String(startDate.getHours()).padStart(2, '0');
+        const minutes = String(startDate.getMinutes()).padStart(2, '0');
+        const seconds = String(startDate.getSeconds()).padStart(2, '0');
+        const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+        params.append('startdate', startDateFormatted);
         
         // Add party parameter based on user role
         if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
