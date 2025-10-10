@@ -339,14 +339,22 @@ const exportToCSV = (data: any) => {
   document.body.removeChild(link);
 };
 
+// TypeScript types for datetime state management
+interface DateTimeRange {
+  start: string;
+  end: string;
+}
+
 const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, customers, users }) => {
   const [qCustomer, setQCustomer] = useState('');
   const [qCustomerPhone, setQCustomerPhone] = useState('');
   const [qAgentPhone, setQAgentPhone] = useState('');
   const [status, setStatus] = useState('all');
   const [direction, setDirection] = useState('all');
-  const [range, setRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [range, setRange] = useState<DateTimeRange>({ start: '', end: '' });
+  const [datetimeRange, setDatetimeRange] = useState<DateTimeRange>({ start: '', end: '' });
   const [recordingsData, setRecordingsData] = useState<any>(null);
+  const [filteredRecordings, setFilteredRecordings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string>('');
@@ -684,11 +692,148 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     loadRecordings();
   }, [currentUser]);
 
-  // Filter recordings data instead of database calls
-  const filteredRecordings = useMemo(() => {
-    if (!recordingsData || !recordingsData.objects) return [];
+  // Function to filter recordings data based on current filter values
+  const filterRecordings = async () => {
+    if (!recordingsData || !recordingsData.objects) {
+      setFilteredRecordings([]);
+      return;
+    }
     
-    return recordingsData.objects.filter((recording: any) => {
+    // API Configuration parameters (default values)
+    const apiConfig: any = {
+      baseUrl: '/onecall/orktrack/rest/recordings',
+      range: 'custom',
+      sort: '',
+      page: 1,
+      pagesize: 20,
+      maxresults: 0,
+      includetags: true,
+      includemetadata: true,
+      includeprograms: true
+    };
+    
+    // Build URL parameters for debugging with default config
+    const params = new URLSearchParams();
+    
+    // Add default parameters
+    params.append('range', apiConfig.range);
+    params.append('sort', apiConfig.sort);
+    params.append('page', apiConfig.page.toString());
+    params.append('pagesize', apiConfig.pagesize.toString());
+    params.append('maxresults', apiConfig.maxresults.toString());
+    params.append('includetags', apiConfig.includetags.toString());
+    params.append('includemetadata', apiConfig.includemetadata.toString());
+    params.append('includeprograms', apiConfig.includeprograms.toString());
+    
+    // Add filter parameters
+    if (qCustomer) params.append('customer', qCustomer);
+    if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
+    if (qAgentPhone) params.append('agentPhone', qAgentPhone);
+    if (status !== 'all') params.append('status', status);
+    if (direction !== 'all') params.append('direction', direction);
+    
+    // Handle startdate parameter
+    let startDateFormatted = '';
+    if (datetimeRange.start) {
+      // Format datetime for API
+      const startDate = new Date(datetimeRange.start);
+      startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+      const year = startDate.getFullYear();
+      const month = String(startDate.getMonth() + 1).padStart(2, '0');
+      const day = String(startDate.getDate()).padStart(2, '0');
+      const hours = String(startDate.getHours()).padStart(2, '0');
+      const minutes = String(startDate.getMinutes()).padStart(2, '0');
+      const seconds = String(startDate.getSeconds()).padStart(2, '0');
+      startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      params.append('startdate', startDateFormatted);
+    } else {
+      // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
+      const startDate = new Date();
+      startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+      startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+      
+      const year = startDate.getFullYear();
+      const month = String(startDate.getMonth() + 1).padStart(2, '0');
+      const day = String(startDate.getDate()).padStart(2, '0');
+      const hours = String(startDate.getHours()).padStart(2, '0');
+      const minutes = String(startDate.getMinutes()).padStart(2, '0');
+      const seconds = String(startDate.getSeconds()).padStart(2, '0');
+      startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      params.append('startdate', startDateFormatted);
+    }
+    
+    if (datetimeRange.end) {
+      // Format datetime for API
+      const endDate = new Date(datetimeRange.end);
+      endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+      const year = endDate.getFullYear();
+      const month = String(endDate.getMonth() + 1).padStart(2, '0');
+      const day = String(endDate.getDate()).padStart(2, '0');
+      const hours = String(endDate.getHours()).padStart(2, '0');
+      const minutes = String(endDate.getMinutes()).padStart(2, '0');
+      const seconds = String(endDate.getSeconds()).padStart(2, '0');
+      const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      params.append('enddate', endDateFormatted);
+      
+      // Set maxresults to -1 when enddate is set
+      params.set('maxresults', '-1');
+    }
+    
+    // Add party parameter for Telesale users
+    if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+      const formattedPhone = currentUser.phone.startsWith('0')
+        ? '+66' + currentUser.phone.substring(1)
+        : '+66' + currentUser.phone;
+      params.append('party', formattedPhone);
+    }
+    
+    // Log the URL string for debugging
+    const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
+    console.log('Search URL:', searchUrl);
+    
+    // If no filter is applied, fetch new data from API
+    if (!qCustomer && !qCustomerPhone && !qAgentPhone && status === 'all' &&
+        direction === 'all' && !datetimeRange.start && !datetimeRange.end) {
+      try {
+        // First, authenticate to get the access token
+        const authResult = await authenticateOneCall();
+        if (authResult.success && authResult.token) {
+          setAccessToken(authResult.token);
+          
+          // Fetch recordings data with the search URL
+          const response = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
+            }
+            
+            // Log the result for debugging
+            console.log('Search Result:', responseData);
+            
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching search results:', error);
+      }
+    }
+    
+    const filtered = recordingsData.objects.filter((recording: any) => {
       // Apply filters based on the new data structure
       if (qCustomer && !("Unknown".toLowerCase().includes(qCustomer.toLowerCase()))) return false;
       if (qCustomerPhone && !recording.remoteParty?.includes(qCustomerPhone)) return false;
@@ -701,23 +846,34 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       if (direction !== 'all' && recording.direction !== direction) return false;
       
       // Date range filter
-      if (range.start || range.end) {
+      if (datetimeRange.start || datetimeRange.end) {
         // Handle the format "2025-10-09 03:23:08" from the API
         const recordingDate = new Date(recording.timestamp);
         // Add 7 hours to convert from UTC to Asia/Bangkok
         recordingDate.setHours(recordingDate.getHours() + 7);
         
-        if (range.start && recordingDate < new Date(range.start)) return false;
-        if (range.end) {
-          const e = new Date(range.end);
-          e.setHours(23,59,59,999);
+        if (datetimeRange.start && recordingDate < new Date(datetimeRange.start)) return false;
+        if (datetimeRange.end) {
+          const e = new Date(datetimeRange.end);
           if (recordingDate > e) return false;
         }
       }
       
       return true;
     }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [recordingsData, qCustomer, qCustomerPhone, qAgentPhone, status, direction, range]);
+    
+    // Log the filtered result for debugging
+    console.log('Filtered Result:', filtered);
+    
+    setFilteredRecordings(filtered);
+  };
+  
+  // Initialize filtered recordings when recordings data is loaded
+  useEffect(() => {
+    if (recordingsData && recordingsData.objects) {
+      setFilteredRecordings(recordingsData.objects);
+    }
+  }, [recordingsData]);
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -744,25 +900,53 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                วันที่โทร (เริ่ม)
+                วันที่และเวลาโทร (เริ่ม)
               </label>
               <input
-                type="date"
-                value={range.start}
-                onChange={e=>setRange(r=>({ ...r, start: e.target.value }))}
+                type="datetime-local"
+                value={datetimeRange.start}
+                onChange={e=>{
+                  const newStart = e.target.value;
+                  setDatetimeRange(prev => ({ ...prev, start: newStart, end: '' }));
+                  
+                  // Convert to UTC timestamp by subtracting 7 hours
+                  if (newStart) {
+                    const startDate = new Date(newStart);
+                    startDate.setHours(startDate.getHours() - 7);
+                    setRange(prev => ({ ...prev, start: startDate.toISOString().split('T')[0] }));
+                  } else {
+                    setRange(prev => ({ ...prev, start: '' }));
+                  }
+                }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               />
             </div>
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                วันที่โทร (สิ้นสุด)
+                วันที่และเวลาโทร (สิ้นสุด)
               </label>
               <input
-                type="date"
-                value={range.end}
-                onChange={e=>setRange(r=>({ ...r, end: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                type="datetime-local"
+                value={datetimeRange.end}
+                min={datetimeRange.start}
+                disabled={!datetimeRange.start}
+                onChange={e=>{
+                  const newEnd = e.target.value;
+                  setDatetimeRange(prev => ({ ...prev, end: newEnd }));
+                  
+                  // Convert to UTC timestamp by subtracting 7 hours
+                  if (newEnd) {
+                    const endDate = new Date(newEnd);
+                    endDate.setHours(endDate.getHours() - 7);
+                    setRange(prev => ({ ...prev, end: endDate.toISOString().split('T')[0] }));
+                  } else {
+                    setRange(prev => ({ ...prev, end: '' }));
+                  }
+                }}
+                className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
+                  !datetimeRange.start ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
               />
             </div>
             <div className="space-y-2">
@@ -829,7 +1013,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             <div className="flex items-end gap-2">
               <button
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                disabled
+                onClick={filterRecordings}
               >
                 <Search className="w-4 h-4" />
                 ค้นหา
