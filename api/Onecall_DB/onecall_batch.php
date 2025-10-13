@@ -9,7 +9,7 @@ header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Allow-Headers: Content-Type");
 
 // Load environment variables
-$envFile = __DIR__ . '/../.env';
+$envFile = __DIR__ . '/../../.env';
 if (file_exists($envFile)) {
     $envContent = file_get_contents($envFile);
     $envLines = explode("\n", $envContent);
@@ -81,6 +81,18 @@ if (!isset($data->startdate) || !isset($data->enddate) || !isset($data->amount_r
 }
 
 try {
+    // Check for exact matching batches and don't create duplicates
+    error_log("Checking for exact matching batches with startdate: {$data->startdate}, enddate: {$data->enddate}");
+    $stmt = $pdo->prepare("SELECT id FROM Onecall_batch WHERE startdate = ? AND enddate = ?");
+    $stmt->execute([$data->startdate, $data->enddate]);
+    $existingBatch = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($existingBatch) {
+        error_log("Batch with the same date range already exists with ID: {$existingBatch['id']}");
+        echo json_encode(['success' => true, 'id' => $existingBatch['id'], 'existing' => true]);
+        exit;
+    }
+    
     // Insert batch record
     $stmt = $pdo->prepare("INSERT INTO Onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)");
     $stmt->execute([$data->startdate, $data->enddate, $data->amount_record]);
@@ -93,7 +105,7 @@ try {
     
     // Return success response with the batch ID
     http_response_code(201);
-    echo json_encode(['success' => true, 'id' => $batchId]);
+    echo json_encode(['success' => true, 'id' => $batchId, 'existing' => false]);
 } catch (PDOException $e) {
     error_log("Failed to save batch: " . $e->getMessage());
     http_response_code(500);

@@ -9,7 +9,7 @@ header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Allow-Headers: Content-Type");
 
 // Load environment variables
-$envFile = __DIR__ . '/../.env';
+$envFile = __DIR__ . '/../../.env';
 if (file_exists($envFile)) {
     $envContent = file_get_contents($envFile);
     $envLines = explode("\n", $envContent);
@@ -84,11 +84,17 @@ try {
     // Begin transaction
     $pdo->beginTransaction();
     
-    // Prepare statement for inserting logs
-    $stmt = $pdo->prepare("INSERT INTO Onecall_Log (id, timestamp, duration, localParty, remoteParty, direction, phone_telesale, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    // Prepare statement for inserting logs with IGNORE to skip duplicates
+    $stmt = $pdo->prepare("INSERT IGNORE INTO Onecall_Log (id, timestamp, duration, localParty, remoteParty, direction, phone_telesale, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     
-    // Insert each log
+    // Prepare statement to check for existing logs
+    $checkStmt = $pdo->prepare("SELECT id, timestamp, duration, localParty, remoteParty, direction, phone_telesale FROM Onecall_Log WHERE id = ?");
+    
+    // Insert each log and track duplicates
     $insertedCount = 0;
+    $duplicateIds = [];
+    $duplicateDetails = [];
+    
     foreach ($data->logs as $log) {
         // Validate required fields for each log
         if (!isset($log->id) || !isset($log->timestamp) || !isset($log->duration) ||
@@ -96,18 +102,36 @@ try {
             throw new Exception('Missing required fields in log data');
         }
         
-        $stmt->execute([
-            $log->id,
-            $log->timestamp,
-            $log->duration,
-            $log->localParty,
-            $log->remoteParty,
-            $log->direction,
-            isset($log->phone_telesale) ? $log->phone_telesale : '',
-            $data->batch_id
-        ]);
+        // Check if log already exists
+        $checkStmt->execute([$log->id]);
+        $existingLog = $checkStmt->fetch(PDO::FETCH_ASSOC);
         
-        $insertedCount++;
+        if ($existingLog) {
+            // Log duplicate details
+            $duplicateIds[] = $log->id;
+            $duplicateDetails[] = [
+                'id' => $log->id,
+                'request_data' => $log,
+                'database_data' => $existingLog
+            ];
+            
+            // Log to console (via error_log for now)
+            error_log("Duplicate log found - ID: {$log->id}, Request: " . json_encode($log) . ", Database: " . json_encode($existingLog));
+        } else {
+            // Insert new log
+            $stmt->execute([
+                $log->id,
+                $log->timestamp,
+                $log->duration,
+                $log->localParty,
+                $log->remoteParty,
+                $log->direction,
+                isset($log->phone_telesale) ? $log->phone_telesale : '',
+                $data->batch_id
+            ]);
+            
+            $insertedCount++;
+        }
     }
     
     // Commit transaction
@@ -116,9 +140,22 @@ try {
     // Log successful logs insertion
     error_log("Successfully inserted $insertedCount logs for batch ID: " . $data->batch_id);
     
-    // Return success response
+    if (!empty($duplicateIds)) {
+        error_log("Skipped " . count($duplicateIds) . " duplicate logs. IDs: " . implode(', ', $duplicateIds));
+    }
+    
+    // Return success response with duplicate information
     http_response_code(201);
-    echo json_encode(['success' => true, 'message' => 'Logs saved successfully', 'count' => $insertedCount]);
+    echo json_encode([
+        'success' => true,
+        'message' => 'Logs saved successfully',
+        'count' => $insertedCount,
+        'duplicates' => [
+            'count' => count($duplicateIds),
+            'ids' => $duplicateIds,
+            'details' => $duplicateDetails
+        ]
+    ]);
 } catch (Exception $e) {
     // Rollback transaction on error
     if (isset($pdo) && $pdo->inTransaction()) {
