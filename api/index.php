@@ -46,6 +46,7 @@ try {
 $parts = route_path();
 $resource = $parts[0] ?? '';
 $id = $parts[1] ?? null;
+$action = $parts[2] ?? null;
 
 if ($resource === '' || $resource === 'health') {
     json_response(['ok' => true, 'status' => 'healthy']);
@@ -87,6 +88,21 @@ switch ($resource) {
         break;
     case 'warehouses':
         handle_warehouses($pdo, $id);
+        break;
+    case 'suppliers':
+        handle_suppliers($pdo, $id);
+        break;
+    case 'purchases':
+        handle_purchases($pdo, $id, $action);
+        break;
+    case 'warehouse_stocks':
+        handle_warehouse_stocks($pdo, $id);
+        break;
+    case 'product_lots':
+        handle_product_lots($pdo, $id);
+        break;
+    case 'stock_movements':
+        handle_stock_movements($pdo, $id);
         break;
     case 'ad_spend':
         handle_ad_spend($pdo, $id);
@@ -388,6 +404,19 @@ function handle_products(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
             if ($id) {
+                // Check if requesting total stock
+                if (strpos($_SERVER['REQUEST_URI'], '/total_stock') !== false) {
+                    $stmt = $pdo->prepare('
+                        SELECT COALESCE(SUM(quantity), 0) as total_stock 
+                        FROM warehouse_stocks 
+                        WHERE product_id = ?
+                    ');
+                    $stmt->execute([$id]);
+                    $result = $stmt->fetch();
+                    json_response(['total_stock' => $result['total_stock']]);
+                    return;
+                }
+                
                 $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
@@ -399,12 +428,51 @@ function handle_products(PDO $pdo, ?string $id): void {
             break;
         case 'POST':
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id) VALUES (?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
                 $in['sku'] ?? '', $in['name'] ?? '', $in['description'] ?? null, $in['category'] ?? '', $in['unit'] ?? '',
-                $in['cost'] ?? 0, $in['price'] ?? 0, $in['stock'] ?? 0, $in['companyId'] ?? null
+                $in['cost'] ?? 0, $in['price'] ?? 0, $in['stock'] ?? 0, $in['companyId'] ?? null, $in['status'] ?? 'Active'
             ]);
             json_response(['id' => $pdo->lastInsertId()]);
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            $fields = [];
+            $params = [];
+            $map = [
+                'sku' => 'sku',
+                'name' => 'name',
+                'description' => 'description',
+                'category' => 'category',
+                'unit' => 'unit',
+                'cost' => 'cost',
+                'price' => 'price',
+                'stock' => 'stock',
+                'status' => 'status',
+                'companyId' => 'company_id'
+            ];
+            foreach ($map as $inKey => $col) {
+                if (array_key_exists($inKey, $in)) {
+                    $fields[] = "$col = ?";
+                    $params[] = $in[$inKey];
+                }
+            }
+            if (empty($fields)) {
+                json_response(['ok' => true]);
+            }
+            $params[] = $id;
+            try {
+                $sql = 'UPDATE products SET ' . implode(', ', $fields) . ' WHERE id = ?';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $get = $pdo->prepare('SELECT * FROM products WHERE id = ?');
+                $get->execute([$id]);
+                $row = $get->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } catch (Throwable $e) {
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -1321,6 +1389,549 @@ function handle_warehouses(PDO $pdo, ?string $id): void {
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+
+function handle_suppliers(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT * FROM suppliers WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } else {
+                $companyId = $_GET['companyId'] ?? null;
+                $sql = 'SELECT * FROM suppliers';
+                $params = [];
+                if ($companyId) { $sql .= ' WHERE company_id = ?'; $params[] = $companyId; }
+                $sql .= ' ORDER BY id DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $code = trim((string)($in['code'] ?? ''));
+            $name = trim((string)($in['name'] ?? ''));
+            $companyId = $in['companyId'] ?? null;
+            if ($code === '' || $name === '' || !$companyId) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'code, name, companyId are required'], 400);
+            }
+            $contactPerson = $in['contactPerson'] ?? null;
+            $phone = $in['phone'] ?? null;
+            $email = $in['email'] ?? null;
+            $address = $in['address'] ?? null;
+            $province = $in['province'] ?? null;
+            $taxId = $in['taxId'] ?? null;
+            $paymentTerms = $in['paymentTerms'] ?? null;
+            $creditLimit = $in['creditLimit'] ?? null;
+            $isActive = isset($in['isActive']) ? ($in['isActive'] ? 1 : 0) : 1;
+            $notes = $in['notes'] ?? null;
+            $stmt = $pdo->prepare('INSERT INTO suppliers (code, name, contact_person, phone, email, address, province, tax_id, payment_terms, credit_limit, company_id, is_active, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([$code, $name, $contactPerson, $phone, $email, $address, $province, $taxId, $paymentTerms, $creditLimit, $companyId, $isActive, $notes]);
+            json_response(['id' => $pdo->lastInsertId()], 201);
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            $updates = [];
+            $params = [];
+            $map = [
+                'code' => 'code',
+                'name' => 'name',
+                'contactPerson' => 'contact_person',
+                'phone' => 'phone',
+                'email' => 'email',
+                'address' => 'address',
+                'province' => 'province',
+                'taxId' => 'tax_id',
+                'paymentTerms' => 'payment_terms',
+                'creditLimit' => 'credit_limit',
+                'companyId' => 'company_id',
+                'notes' => 'notes',
+            ];
+            foreach ($map as $inKey => $col) {
+                if (array_key_exists($inKey, $in)) {
+                    $updates[] = "$col = ?";
+                    $params[] = $in[$inKey];
+                }
+            }
+            if (isset($in['isActive'])) { $updates[] = 'is_active = ?'; $params[] = $in['isActive'] ? 1 : 0; }
+            if (empty($updates)) json_response(['ok' => true]);
+            $params[] = $id;
+            $sql = 'UPDATE suppliers SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
+            break;
+        case 'DELETE':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $stmt = $pdo->prepare('DELETE FROM suppliers WHERE id = ?');
+            $stmt->execute([$id]);
+            json_response(['ok' => true]);
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_purchases(PDO $pdo, ?string $id, ?string $action = null): void {
+    if ($action === 'receive' && method() === 'POST') {
+        if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+        $in = json_input();
+        $receivedDate = $in['receivedDate'] ?? date('Y-m-d');
+        $items = is_array($in['items'] ?? null) ? $in['items'] : [];
+        if (empty($items)) json_response(['error' => 'NO_ITEMS'], 400);
+        // Load purchase
+        $pstmt = $pdo->prepare('SELECT * FROM purchases WHERE id = ?');
+        $pstmt->execute([$id]);
+        $purchase = $pstmt->fetch();
+        if (!$purchase) json_response(['error' => 'NOT_FOUND'], 404);
+        $warehouseId = (int)$purchase['warehouse_id'];
+        $supplierId = (int)$purchase['supplier_id'];
+        $purchaseDate = $purchase['purchase_date'];
+
+        try {
+            $pdo->beginTransaction();
+            foreach ($items as $it) {
+                $productId = (int)($it['productId'] ?? 0);
+                $qty = (float)($it['quantity'] ?? 0);
+                $lotNumber = trim((string)($it['lotNumber'] ?? ''));
+                $expiryDate = $it['expiryDate'] ?? null;
+                $unitCostOverride = isset($it['unitCost']) ? (float)$it['unitCost'] : null;
+                if ($productId <= 0 || $qty <= 0 || $lotNumber === '') {
+                    throw new RuntimeException('INVALID_ITEM');
+                }
+                // Fetch unit cost from purchase_items if not provided
+                $uc = $unitCostOverride;
+                if ($uc === null) {
+                    $ucstmt = $pdo->prepare('SELECT unit_cost FROM purchase_items WHERE purchase_id = ? AND product_id = ? LIMIT 1');
+                    $ucstmt->execute([$id, $productId]);
+                    $row = $ucstmt->fetch();
+                    $uc = $row ? (float)$row['unit_cost'] : 0.0;
+                }
+
+                // Upsert product_lots
+                $lotIns = $pdo->prepare('INSERT INTO product_lots (lot_number, product_id, warehouse_id, purchase_date, expiry_date, quantity_received, quantity_remaining, unit_cost, supplier_id, status, notes) VALUES (?,?,?,?,?,?,?,?,?,"Active", NULL) ON DUPLICATE KEY UPDATE quantity_received = quantity_received + VALUES(quantity_received), quantity_remaining = quantity_remaining + VALUES(quantity_remaining), unit_cost = VALUES(unit_cost), expiry_date = COALESCE(VALUES(expiry_date), expiry_date)');
+                $lotIns->execute([$lotNumber, $productId, $warehouseId, $purchaseDate ?: date('Y-m-d'), $expiryDate, $qty, $qty, $uc, $supplierId]);
+
+                // Upsert warehouse_stocks by warehouse/product/lot
+                $sel = $pdo->prepare('SELECT id, quantity FROM warehouse_stocks WHERE warehouse_id = ? AND product_id = ? AND lot_number = ? LIMIT 1');
+                $sel->execute([$warehouseId, $productId, $lotNumber]);
+                $ws = $sel->fetch();
+                if ($ws) {
+                    $upd = $pdo->prepare('UPDATE warehouse_stocks SET quantity = quantity + ?, expiry_date = COALESCE(?, expiry_date), purchase_price = COALESCE(?, purchase_price) WHERE id = ?');
+                    $upd->execute([(int)$qty, $expiryDate, $uc, $ws['id']]);
+                } else {
+                    $ins = $pdo->prepare('INSERT INTO warehouse_stocks (warehouse_id, product_id, lot_number, quantity, reserved_quantity, expiry_date, purchase_price, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, NOW())');
+                    $ins->execute([$warehouseId, $productId, $lotNumber, (int)$qty, $expiryDate, $uc]);
+                }
+
+                // Stock movement (IN)
+                $mv = $pdo->prepare('INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, lot_number, reference_type, reference_id, reason, created_by, created_at) VALUES (?, ?, "IN", ?, ?, "PURCHASE", ?, "Receive", ?, NOW())');
+                $mv->execute([$warehouseId, $productId, (int)$qty, $lotNumber, $id, 1]);
+
+                // Update purchase_items received
+                if (isset($it['purchaseItemId'])) {
+                    $piId = (int)$it['purchaseItemId'];
+                    if ($piId > 0) {
+                        $pu = $pdo->prepare('UPDATE purchase_items SET received_quantity = received_quantity + ? WHERE id = ?');
+                        $pu->execute([$qty, $piId]);
+                    }
+                } else {
+                    $pu = $pdo->prepare('UPDATE purchase_items SET received_quantity = received_quantity + ?, lot_number = COALESCE(?, lot_number) WHERE purchase_id = ? AND product_id = ?');
+                    $pu->execute([$qty, $lotNumber, $id, $productId]);
+                }
+            }
+
+            // Update purchase header
+            $pdo->prepare('UPDATE purchases SET received_date = ?, status = (SELECT CASE WHEN SUM(quantity) > SUM(received_quantity) THEN "Partial" ELSE "Received" END FROM purchase_items WHERE purchase_id = ?) WHERE id = ?')
+                ->execute([$receivedDate, $id, $id]);
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            json_response(['error' => 'RECEIVE_FAILED', 'message' => $e->getMessage()], 400);
+        }
+
+        // Return updated purchase with items
+        $get = $pdo->prepare('SELECT * FROM purchases WHERE id = ?');
+        $get->execute([$id]);
+        $p = $get->fetch();
+        $itemsStmt = $pdo->prepare('SELECT * FROM purchase_items WHERE purchase_id = ?');
+        $itemsStmt->execute([$id]);
+        $p['items'] = $itemsStmt->fetchAll();
+        json_response($p);
+        return;
+    }
+
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT * FROM purchases WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                if (!$row) json_response(['error' => 'NOT_FOUND'], 404);
+                $items = $pdo->prepare('SELECT * FROM purchase_items WHERE purchase_id = ?');
+                $items->execute([$id]);
+                $row['items'] = $items->fetchAll();
+                json_response($row);
+            } else {
+                $params = [];
+                $sql = 'SELECT p.* FROM purchases p';
+                $w = [];
+                if (isset($_GET['companyId'])) { $w[] = 'p.company_id = ?'; $params[] = $_GET['companyId']; }
+                if (isset($_GET['supplierId'])) { $w[] = 'p.supplier_id = ?'; $params[] = $_GET['supplierId']; }
+                if (isset($_GET['warehouseId'])) { $w[] = 'p.warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+                if (isset($_GET['status'])) { $w[] = 'p.status = ?'; $params[] = $_GET['status']; }
+                if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
+                $sql .= ' ORDER BY p.id DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = $stmt->fetchAll();
+                json_response($rows);
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $purchaseNumber = $in['purchaseNumber'] ?? '';
+            $supplierId = $in['supplierId'] ?? null;
+            $warehouseId = $in['warehouseId'] ?? null;
+            $companyId = $in['companyId'] ?? null;
+            $purchaseDate = $in['purchaseDate'] ?? date('Y-m-d');
+            $expectedDate = $in['expectedDeliveryDate'] ?? null;
+            $notes = $in['notes'] ?? null;
+            $items = is_array($in['items'] ?? null) ? $in['items'] : [];
+            if (!$purchaseNumber || !$supplierId || !$warehouseId || !$companyId || empty($items)) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'purchaseNumber, supplierId, warehouseId, companyId, items required'], 400);
+            }
+            try {
+                $pdo->beginTransaction();
+                $ins = $pdo->prepare('INSERT INTO purchases (purchase_number, supplier_id, warehouse_id, company_id, purchase_date, expected_delivery_date, status, payment_status, payment_method, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+                $ins->execute([$purchaseNumber, $supplierId, $warehouseId, $companyId, $purchaseDate, $expectedDate, 'Ordered', 'Unpaid', null, $notes, null]);
+                $pid = (int)$pdo->lastInsertId();
+                $total = 0.0;
+                $pi = $pdo->prepare('INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, notes) VALUES (?,?,?,?,?)');
+                foreach ($items as $it) {
+                    $prod = (int)($it['productId'] ?? 0);
+                    $qty = (float)($it['quantity'] ?? 0);
+                    $uc = (float)($it['unitCost'] ?? 0);
+                    $note = $it['notes'] ?? null;
+                    if ($prod <= 0 || $qty <= 0) throw new RuntimeException('INVALID_ITEM');
+                    $pi->execute([$pid, $prod, $qty, $uc, $note]);
+                    $total += ($qty * $uc);
+                }
+                $upd = $pdo->prepare('UPDATE purchases SET total_amount = ? WHERE id = ?');
+                $upd->execute([$total, $pid]);
+                $pdo->commit();
+                json_response(['id' => $pid], 201);
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                json_response(['error' => 'CREATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            $updates = [];
+            $params = [];
+            $map = [
+                'purchaseNumber' => 'purchase_number',
+                'supplierId' => 'supplier_id',
+                'warehouseId' => 'warehouse_id',
+                'companyId' => 'company_id',
+                'purchaseDate' => 'purchase_date',
+                'expectedDeliveryDate' => 'expected_delivery_date',
+                'receivedDate' => 'received_date',
+                'totalAmount' => 'total_amount',
+                'status' => 'status',
+                'paymentStatus' => 'payment_status',
+                'paymentMethod' => 'payment_method',
+                'notes' => 'notes',
+            ];
+            foreach ($map as $inKey => $col) {
+                if (array_key_exists($inKey, $in)) { $updates[] = "$col = ?"; $params[] = $in[$inKey]; }
+            }
+            if (empty($updates)) json_response(['ok' => true]);
+            $params[] = $id;
+            $sql = 'UPDATE purchases SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
+            break;
+        case 'DELETE':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $stmt = $pdo->prepare('DELETE FROM purchases WHERE id = ?');
+            $stmt->execute([$id]);
+            json_response(['ok' => true]);
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_warehouse_stocks(PDO $pdo, ?string $id): void {
+    if (method() === 'GET') {
+        if ($id) {
+            $stmt = $pdo->prepare('SELECT * FROM warehouse_stocks WHERE id = ?');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch();
+            $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            return;
+        }
+        $params = [];
+        $w = [];
+        $sql = 'SELECT ws.* FROM warehouse_stocks ws';
+        if (isset($_GET['warehouseId'])) { $w[] = 'ws.warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+        if (isset($_GET['productId'])) { $w[] = 'ws.product_id = ?'; $params[] = $_GET['productId']; }
+        if (isset($_GET['lotNumber'])) { $w[] = 'ws.lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
+        $sql .= ' ORDER BY ws.warehouse_id, ws.product_id, ws.lot_number';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        json_response($stmt->fetchAll());
+    } else {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_product_lots(PDO $pdo, ?string $id): void {
+    if (method() === 'GET') {
+        if ($id) {
+            $stmt = $pdo->prepare('SELECT * FROM product_lots WHERE id = ?');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch();
+            $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            return;
+        }
+        $params = [];
+        $w = [];
+        $sql = 'SELECT * FROM product_lots';
+        if (isset($_GET['warehouseId'])) { $w[] = 'warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+        if (isset($_GET['productId'])) { $w[] = 'product_id = ?'; $params[] = $_GET['productId']; }
+        if (isset($_GET['status'])) { $w[] = 'status = ?'; $params[] = $_GET['status']; }
+        if (isset($_GET['lotNumber'])) { $w[] = 'lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
+        $sql .= ' ORDER BY purchase_date DESC, id DESC';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        json_response($stmt->fetchAll());
+    } elseif (method() === 'POST') {
+        // Create new product lot
+        $in = json_input();
+        
+        // Validate required fields
+        if (empty($in['lot_number']) || empty($in['product_id']) || empty($in['warehouse_id']) || empty($in['quantity_received'])) {
+            json_response(['error' => 'Missing required fields: lot_number, product_id, warehouse_id, quantity_received'], 400);
+            return;
+        }
+        
+        // Check if lot number already exists for this product
+        $checkStmt = $pdo->prepare('SELECT id FROM product_lots WHERE lot_number = ? AND product_id = ?');
+        $checkStmt->execute([$in['lot_number'], $in['product_id']]);
+        if ($checkStmt->fetch()) {
+            json_response(['error' => 'Lot number already exists for this product'], 409);
+            return;
+        }
+        
+        // Insert new lot
+        $stmt = $pdo->prepare('
+            INSERT INTO product_lots (
+                lot_number, product_id, warehouse_id, purchase_date, expiry_date, 
+                quantity_received, quantity_remaining, unit_cost, status, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ');
+        
+        $stmt->execute([
+            $in['lot_number'],
+            $in['product_id'],
+            $in['warehouse_id'],
+            $in['purchase_date'] ?? date('Y-m-d'),
+            $in['expiry_date'] ?? null,
+            $in['quantity_received'],
+            $in['quantity_received'], // Initial remaining quantity is the same as received
+            $in['unit_cost'] ?? 0,
+            $in['status'] ?? 'Active',
+            $in['notes'] ?? null
+        ]);
+        
+        // Update warehouse stock
+        $updateStockStmt = $pdo->prepare('
+            INSERT INTO warehouse_stocks (warehouse_id, product_id, lot_number, quantity, expiry_date, purchase_price, selling_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+            quantity = quantity + VALUES(quantity),
+            expiry_date = VALUES(expiry_date),
+            purchase_price = VALUES(purchase_price)
+        ');
+        
+        $updateStockStmt->execute([
+            $in['warehouse_id'],
+            $in['product_id'],
+            $in['lot_number'],
+            $in['quantity_received'],
+            $in['expiry_date'] ?? null,
+            $in['unit_cost'] ?? 0,
+            0 // selling_price - would need to get from product table
+        ]);
+        
+        // Create stock movement record
+        $movementStmt = $pdo->prepare('
+            INSERT INTO stock_movements (
+                warehouse_id, product_id, lot_number, movement_type, quantity, 
+                reference_type, reference_id, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ');
+        
+        $movementStmt->execute([
+            $in['warehouse_id'],
+            $in['product_id'],
+            $in['lot_number'],
+            'IN',
+            $in['quantity_received'],
+            'LOT',
+            $pdo->lastInsertId(),
+            $in['notes'] ?? 'Initial stock in'
+        ]);
+        
+        json_response(['id' => $pdo->lastInsertId()], 201);
+    } elseif (method() === 'PUT' && $id) {
+        // Update existing product lot
+        $in = json_input();
+        
+        // Get current lot data
+        $currentStmt = $pdo->prepare('SELECT * FROM product_lots WHERE id = ?');
+        $currentStmt->execute([$id]);
+        $current = $currentStmt->fetch();
+        
+        if (!$current) {
+            json_response(['error' => 'Lot not found'], 404);
+            return;
+        }
+        
+        // Build update query
+        $updateFields = [];
+        $updateValues = [];
+        
+        if (isset($in['expiry_date'])) {
+            $updateFields[] = 'expiry_date = ?';
+            $updateValues[] = $in['expiry_date'];
+        }
+        
+        if (isset($in['unit_cost'])) {
+            $updateFields[] = 'unit_cost = ?';
+            $updateValues[] = $in['unit_cost'];
+        }
+        
+        if (isset($in['status'])) {
+            $updateFields[] = 'status = ?';
+            $updateValues[] = $in['status'];
+        }
+        
+        if (isset($in['notes'])) {
+            $updateFields[] = 'notes = ?';
+            $updateValues[] = $in['notes'];
+        }
+        
+        if (empty($updateFields)) {
+            json_response(['error' => 'No fields to update'], 400);
+            return;
+        }
+        
+        $updateFields[] = 'updated_at = NOW()';
+        $updateValues[] = $id;
+        
+        $updateSql = 'UPDATE product_lots SET ' . implode(', ', $updateFields) . ' WHERE id = ?';
+        $updateStmt = $pdo->prepare($updateSql);
+        $updateStmt->execute($updateValues);
+        
+        json_response(['success' => true]);
+    } elseif (method() === 'DELETE' && $id) {
+        // Delete product lot
+        $stmt = $pdo->prepare('SELECT * FROM product_lots WHERE id = ?');
+        $stmt->execute([$id]);
+        $lot = $stmt->fetch();
+        
+        if (!$lot) {
+            json_response(['error' => 'Lot not found'], 404);
+            return;
+        }
+        
+        // Check if lot has been used (quantity remaining < quantity received)
+        if ($lot['quantity_remaining'] < $lot['quantity_received']) {
+            json_response(['error' => 'Cannot delete lot that has been used'], 409);
+            return;
+        }
+        
+        // Delete the lot
+        $deleteStmt = $pdo->prepare('DELETE FROM product_lots WHERE id = ?');
+        $deleteStmt->execute([$id]);
+        
+        // Update warehouse stock
+        $updateStockStmt = $pdo->prepare('
+            UPDATE warehouse_stocks 
+            SET quantity = quantity - ? 
+            WHERE warehouse_id = ? AND product_id = ? AND lot_number = ?
+        ');
+        
+        $updateStockStmt->execute([
+            $lot['quantity_remaining'],
+            $lot['warehouse_id'],
+            $lot['product_id'],
+            $lot['lot_number']
+        ]);
+        
+        // Create stock movement record
+        $movementStmt = $pdo->prepare('
+            INSERT INTO stock_movements (
+                warehouse_id, product_id, lot_number, movement_type, quantity, 
+                reference_type, reference_id, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ');
+        
+        $movementStmt->execute([
+            $lot['warehouse_id'],
+            $lot['product_id'],
+            $lot['lot_number'],
+            'OUT',
+            $lot['quantity_remaining'],
+            'LOT',
+            $id,
+            'Lot deletion'
+        ]);
+        
+        json_response(['success' => true]);
+    } else {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_stock_movements(PDO $pdo, ?string $id): void {
+    if (method() === 'GET') {
+        if ($id) {
+            $stmt = $pdo->prepare('SELECT * FROM stock_movements WHERE id = ?');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch();
+            $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            return;
+        }
+        $params = [];
+        $w = [];
+        $sql = 'SELECT * FROM stock_movements';
+        if (isset($_GET['warehouseId'])) { $w[] = 'warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+        if (isset($_GET['productId'])) { $w[] = 'product_id = ?'; $params[] = $_GET['productId']; }
+        if (isset($_GET['lotNumber'])) { $w[] = 'lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        if (isset($_GET['type'])) { $w[] = 'movement_type = ?'; $params[] = $_GET['type']; }
+        if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
+        $sql .= ' ORDER BY created_at DESC, id DESC';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        json_response($stmt->fetchAll());
+    } else {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
 

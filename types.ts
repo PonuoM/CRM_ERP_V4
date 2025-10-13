@@ -83,6 +83,81 @@ export interface WarehouseStock {
     updatedAt: string;
 }
 
+// Inventory & Purchasing types
+export interface Supplier {
+  id: number;
+  code: string;
+  name: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  province?: string;
+  taxId?: string;
+  paymentTerms?: string;
+  creditLimit?: number;
+  companyId: number;
+  isActive: boolean;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PurchaseStatus = 'Draft' | 'Ordered' | 'Partial' | 'Received' | 'Cancelled';
+export type PurchasePaymentStatus = 'Unpaid' | 'Partial' | 'Paid';
+
+export interface PurchaseItem {
+  id: number;
+  purchaseId: number;
+  productId: number;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  receivedQuantity: number;
+  lotNumber?: string;
+  notes?: string;
+}
+
+export interface Purchase {
+  id: number;
+  purchaseNumber: string;
+  supplierId: number;
+  warehouseId: number;
+  companyId: number;
+  purchaseDate: string; // YYYY-MM-DD
+  expectedDeliveryDate?: string;
+  receivedDate?: string;
+  totalAmount: number;
+  status: PurchaseStatus;
+  paymentStatus: PurchasePaymentStatus;
+  paymentMethod?: string;
+  notes?: string;
+  createdBy?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  items: PurchaseItem[];
+}
+
+export type ProductLotStatus = 'Active' | 'Depleted' | 'Expired';
+
+export interface ProductLot {
+  id: number;
+  lotNumber: string;
+  productId: number;
+  warehouseId: number;
+  purchaseDate: string; // YYYY-MM-DD
+  expiryDate?: string;
+  quantityReceived: number;
+  quantityRemaining: number;
+  unitCost: number;
+  supplierId?: number;
+  supplierInvoice?: string;
+  status: ProductLotStatus;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface StockMovement {
     id: number;
     warehouseId: number;
@@ -241,6 +316,7 @@ export interface Product {
   price: number;
   stock: number;
   companyId: number;
+  status?: string;
 }
 
 export interface Page {
