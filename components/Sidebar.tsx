@@ -37,6 +37,7 @@ const HOME_GROUP = 'Home';
 const SALES_OVERVIEW = 'Sales Overview';
 const CALLS_OVERVIEW = 'Calls Overview';
 const DATA_MGMT = 'Data Management';
+const INVENTORY_MGMT = 'Inventory Management';
 
 const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCollapsed, setIsCollapsed, onLogout, permissions }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [HOME_GROUP]: true });
@@ -51,6 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
     switch (s) {
       case 'Home': return 'หน้าหลัก';
       case 'Data Management': return 'จัดการข้อมูล';
+      case 'Inventory Management': return 'จัดการสินค้าและคลัง';
       case 'Dashboard': return 'แดชบอร์ด';
       case 'Sales Overview': return 'ภาพรวมการขาย';
       case 'Calls Overview': return 'ภาพรวมการโทร';
@@ -75,6 +77,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       case 'Call History': return '?????????????';
       case 'Companies': return 'บริษัท';
       case 'Warehouses': return 'คลังสินค้า';
+      case 'Warehouse Stock': return 'สต็อกคลังสินค้า';
+      case 'Lot Tracking': return 'ติดตาม Lot';
       default: return s;
     }
   };
@@ -93,17 +97,27 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   const dataChildren: NavItem[] = [
     ...(canView('data.users') ? [{ icon: Users, label: 'Users' }] as NavItem[] : []),
     ...(canView('data.permissions') ? [{ icon: Settings, label: 'Permissions' }] as NavItem[] : []),
-    ...(canView('data.products') ? [{ icon: Package, label: 'Products' }] as NavItem[] : []),
     ...(canView('data.teams') ? [{ icon: Briefcase, label: 'Teams' }] as NavItem[] : []),
     ...(canView('data.pages') ? [{ icon: Share2, label: 'Pages' }] as NavItem[] : []),
     ...(canView('data.tags') ? [{ icon: FileText, label: 'Tags' }] as NavItem[] : []),
     ...(canView('data.companies') ? [{ icon: Briefcase, label: 'Companies' }] as NavItem[] : []),
-    ...(canView('data.warehouses') ? [{ icon: Database, label: 'Warehouses' }] as NavItem[] : []),
   ];
   const dataGroup: NavItem = {
     icon: Database,
     label: DATA_MGMT,
     children: dataChildren,
+  };
+
+  const inventoryChildren: NavItem[] = [
+    ...(canView('inventory.products') ? [{ icon: Package, label: 'Products' }] as NavItem[] : []),
+    ...(canView('inventory.warehouses') ? [{ icon: Database, label: 'Warehouses' }] as NavItem[] : []),
+    ...(canView('inventory.stock') ? [{ icon: Database, label: 'Warehouse Stock' }] as NavItem[] : []),
+    ...(canView('inventory.lot') ? [{ icon: FileText, label: 'Lot Tracking' }] as NavItem[] : []),
+  ];
+  const inventoryGroup: NavItem = {
+    icon: Package,
+    label: INVENTORY_MGMT,
+    children: inventoryChildren,
   };
 
   const getNavItems = (): NavItem[] => {
@@ -114,6 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
         return [
           homeGroup,
           dataGroup,
+          inventoryGroup,
           { icon: Share2, label: 'Share' },
           { icon: Settings, label: 'Settings' },
           { icon: Search, label: 'Search' },

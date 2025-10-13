@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Order, LineItem, PaymentMethod, PaymentStatus, OrderStatus, Product, Promotion, Page, CodBox, Address, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade } from '../types';
+import { Customer, Order, LineItem, PaymentMethod, PaymentStatus, OrderStatus, Product, Promotion, Page, CodBox, Address, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade, Warehouse, WarehouseStock } from '../types';
+import { selectBestWarehouse } from '../utils/warehouseSelector';
 
 const emptyAddress: Address = { street: '', subdistrict: '', district: '', province: '', postalCode: '' };
 
@@ -8,6 +9,8 @@ interface CreateOrderPageProps {
   products: Product[];
   promotions: Promotion[];
   pages?: Page[];
+  warehouses?: Warehouse[];
+  warehouseStocks?: WarehouseStock[];
   onSave: (payload: { 
     order: Partial<Omit<Order, 'id' | 'orderDate' | 'companyId' | 'creatorId'>>, 
     newCustomer?: Omit<Customer, 'id' | 'companyId' | 'totalPurchases' | 'totalCalls' | 'tags' | 'assignmentHistory'>,
@@ -73,7 +76,17 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
   );
 };
 
-const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ customers, products, promotions, pages = [], onSave, onCancel, initialData }) => {
+const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ 
+  customers, 
+  products, 
+  promotions, 
+  pages = [], 
+  warehouses = [], 
+  warehouseStocks = [], 
+  onSave, 
+  onCancel, 
+  initialData 
+}) => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialData?.customer || null);
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
   const [newCustomerFirstName, setNewCustomerFirstName] = useState('');
@@ -90,6 +103,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ customers, products, 
     customerId: initialData?.customer?.id,
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
+  
+  // State for warehouse and lot selection
+  const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
+  const [availableLots, setAvailableLots] = useState<WarehouseStock[]>([]);
+  const [selectedLot, setSelectedLot] = useState<WarehouseStock | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [numBoxes, setNumBoxes] = useState(1);
   // Product selector modal state
@@ -141,23 +159,43 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ customers, products, 
     }
   }, [numBoxes, orderData.paymentMethod]);
   
-  const handleUseProfileAddressToggle = (checked: boolean) => {
-    setUseProfileAddress(checked);
-    if (checked && selectedCustomer?.address) {
-      setShippingAddress(selectedCustomer.address);
-    } else {
-      setShippingAddress(emptyAddress);
+  // Auto-select warehouse based on customer province
+  useEffect(() => {
+    if (selectedCustomer && warehouses.length > 0) {
+      const bestWarehouse = selectBestWarehouse(selectedCustomer.province, warehouses);
+      if (bestWarehouse) {
+        const warehouse = warehouses.find(w => w.id === bestWarehouse.warehouseId);
+        setSelectedWarehouse(warehouse || null);
+      }
     }
-  }
+  }, [selectedCustomer, warehouses]);
 
-  const searchResults = useMemo(() => {
-    if (!searchTerm || isCreatingNewCustomer) return [];
-    const lowerSearchTerm = searchTerm.toLowerCase();
-    return customers.filter(c => 
-      (`${c.firstName} ${c.lastName}`).toLowerCase().includes(lowerSearchTerm) || 
-      c.phone.includes(searchTerm)
-    );
-  }, [searchTerm, customers, isCreatingNewCustomer]);
+  // Get available lots for selected warehouse and product
+  useEffect(() => {
+    if (selectedWarehouse && orderData.items && orderData.items.length > 0) {
+      const firstItem = orderData.items[0];
+      if (firstItem.productName) {
+        const product = products.find(p => p.name === firstItem.productName);
+        if (product) {
+          const lots = warehouseStocks.filter(stock => 
+            stock.warehouseId === selectedWarehouse.id && 
+            stock.productId === product.id &&
+            (stock.quantity || 0) > (stock.reservedQuantity || 0)
+          );
+          // Sort by expiry date (FIFO) - earliest expiry first
+          lots.sort((a, b) => {
+            if (!a.expiryDate) return 1;
+            if (!b.expiryDate) return -1;
+            return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+          });
+          setAvailableLots(lots);
+          if (lots.length > 0) {
+            setSelectedLot(lots[0]);
+          }
+        }
+      }
+    }
+  }, [selectedWarehouse, orderData.items, products, warehouseStocks]);
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -488,6 +526,72 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ customers, products, 
                     <label htmlFor="use-profile-address" className="ml-2 text-sm text-[#0e141b]">ใช้ที่อยู่เดียวกับข้อมูลลูกค้า</label>
                   </div>
                   
+                  {/* Warehouse and Lot Information */}
+                  <div className="p-4 border border-gray-300 rounded-md bg-slate-50">
+                    <h3 className="font-medium text-[#0e141b] mb-3">ข้อมูลคลังสินค้าและ Lot</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm text-[#4e7397] mb-1">คลังสินค้าที่เลือก:</label>
+                        <div className="p-2 bg-white border rounded">
+                          {selectedWarehouse ? (
+                            <div>
+                              <span className="font-medium">{selectedWarehouse.name}</span>
+                              <span className="text-xs text-gray-500 ml-2">({selectedWarehouse.province})</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">ไม่ได้เลือกคลังสินค้า</span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm text-[#4e7397] mb-1">Lot ที่เลือก (FIFO):</label>
+                        <div className="p-2 bg-white border rounded">
+                          {selectedLot ? (
+                            <div>
+                              <span className="font-medium">{selectedLot.lotNumber}</span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                (คงเหลือ: {selectedLot.availableQuantity || (selectedLot.quantity - (selectedLot.reservedQuantity || 0))})
+                              </span>
+                              {selectedLot.expiryDate && (
+                                <span className="text-xs text-orange-600 ml-2">
+                                  (หมดอายุ: {selectedLot.expiryDate})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">ไม่มี Lot ที่สามารถใช้งาน</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {availableLots.length > 1 && (
+                      <div className="mt-2">
+                        <label className="text-sm text-[#4e7397] mb-1">Lots ที่มี (เรียง FIFO):</label>
+                        <div className="space-y-1">
+                          {availableLots.map((lot, index) => (
+                            <div 
+                              key={index} 
+                              className={`p-2 border rounded cursor-pointer ${
+                                selectedLot?.lotNumber === lot.lotNumber ? 'bg-blue-50 border-blue-300' : 'bg-white'
+                              }`}
+                              onClick={() => setSelectedLot(lot)}
+                            >
+                              <span className="text-sm font-medium">{lot.lotNumber}</span>
+                              <span className="text-xs text-gray-500 ml-2">
+                                (คงเหลือ: {lot.availableQuantity || (lot.quantity - (lot.reservedQuantity || 0))})
+                              </span>
+                              {lot.expiryDate && (
+                                <span className="text-xs text-orange-600 ml-2">
+                                  (หมดอายุ: {lot.expiryDate})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                   
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>

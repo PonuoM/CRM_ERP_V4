@@ -104,6 +104,18 @@ export async function listProducts() {
   return apiFetch('products');
 }
 
+export async function createProduct(payload: any) {
+  return apiFetch('products', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateProduct(id: number, payload: any) {
+  return apiFetch(`products/${encodeURIComponent(String(id))}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteProduct(id: number) {
+  return apiFetch(`products/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+}
+
 export async function listPromotions() {
   return apiFetch('promotions');
 }
@@ -328,4 +340,58 @@ export async function updateWarehouse(id: number, payload: Partial<{
 
 export async function deleteWarehouse(id: number) {
   return apiFetch(`warehouses/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+}
+
+// ==================== Inventory Queries ====================
+export async function listWarehouseStocks(params?: { warehouseId?: number; productId?: number; lotNumber?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.warehouseId) qs.set('warehouseId', String(params.warehouseId));
+  if (params?.productId) qs.set('productId', String(params.productId));
+  if (params?.lotNumber) qs.set('lotNumber', params.lotNumber);
+  const query = qs.toString();
+  return apiFetch(`warehouse_stocks${query ? `?${query}` : ''}`);
+}
+
+export async function getProductTotalStock(productId: number) {
+  return apiFetch(`products/${productId}/total_stock`);
+}
+
+export async function listProductLots(params?: { warehouseId?: number; productId?: number; status?: string; lotNumber?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.warehouseId) qs.set('warehouseId', String(params.warehouseId));
+  if (params?.productId) qs.set('productId', String(params.productId));
+  if (params?.status) qs.set('status', params.status);
+  if (params?.lotNumber) qs.set('lotNumber', params.lotNumber);
+  const query = qs.toString();
+  return apiFetch(`product_lots${query ? `?${query}` : ''}`);
+}
+
+export async function createProductLot(lotData: any) {
+  return apiFetch('product_lots', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(lotData)
+  });
+}
+
+export async function updateProductLot(lotId: number, lotData: any) {
+  return apiFetch(`product_lots/${lotId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(lotData)
+  });
+}
+
+export async function deleteProductLot(lotId: number) {
+  return apiFetch(`product_lots/${lotId}`, { method: 'DELETE' });
+}
+
+export async function listStockMovements(params?: { warehouseId?: number; productId?: number; lotNumber?: string; type?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.warehouseId) qs.set('warehouseId', String(params.warehouseId));
+  if (params?.productId) qs.set('productId', String(params.productId));
+  if (params?.lotNumber) qs.set('lotNumber', params.lotNumber);
+  if (params?.type) qs.set('type', params.type);
+  const query = qs.toString();
+  return apiFetch(`stock_movements${query ? `?${query}` : ''}`);
 }

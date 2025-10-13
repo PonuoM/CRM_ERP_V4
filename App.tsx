@@ -46,6 +46,9 @@ import TeamsManagementPage from './pages/TeamsManagementPage';
 import PagesManagementPage from './pages/PagesManagementPage';
 import TagsManagementPage from './pages/TagsManagementPage';
 import CallHistoryPage from './pages/CallHistoryPage';
+import ReceiveStockPage from './pages/ReceiveStockPage';
+import WarehouseStockViewPage from './pages/WarehouseStockViewPage';
+import LotTrackingPage from './pages/LotTrackingPage';
 
 
 const App: React.FC = () => {
@@ -657,15 +660,28 @@ const App: React.FC = () => {
   };
 
   // Handlers for modals and data updates
-  const openModal = (type: ModalState['type'], data?: any) => {
-    if (type === 'createOrder') {
-      // navigate to the full-page create order and pass initial data
-      setCreateOrderInitialData(data || null);
-      setActivePage('สร้างคำสั่งซื้อ');
-      return;
-    }
+  const openModal = (type: string, data?: any) => {
     setModalState({ type, data });
+    if (type === 'addProduct' || type === 'editProduct') {
+      setModalState({ type, data });
+    } else if (type === 'confirmDelete') {
+      setModalState({ type, data });
+    } else if (type === 'refreshProducts') {
+      // รีเฟรชข้อมูลสินค้า
+      fetchProducts();
+    }
   };
+
+  // Function to fetch products
+  const fetchProducts = async () => {
+    try {
+      const productsData = await listProducts();
+      setProducts(productsData);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    }
+  };
+
   const closeModal = () => setModalState({ type: null, data: null });
 
   const handleViewCustomer = (customer: Customer) => setViewingCustomerId(customer.id);
@@ -1287,6 +1303,18 @@ const App: React.FC = () => {
   };
 
   const handleSaveProduct = (productToSave: Omit<Product, 'id'> | Product) => {
+    // Check if product has lots and create them
+    if ('lots' in productToSave && Array.isArray(productToSave.lots) && productToSave.lots.length > 0) {
+      // Here we would normally create product lots in the database
+      // For now, we'll just log them
+      console.log('Product lots to save:', productToSave.lots);
+      
+      // In a real implementation, you would:
+      // 1. Create the product
+      // 2. For each lot, create a product lot record
+      // 3. Update warehouse_stocks with the lot information
+    }
+    
     setProducts(prev => {
         if ('id' in productToSave) {
             return prev.map(p => p.id === productToSave.id ? productToSave : p);
@@ -1931,6 +1959,9 @@ const App: React.FC = () => {
     if (activePage === 'Permissions') {
       return <PermissionsPage />;
     }
+    if (activePage === 'Settings') {
+      return <PermissionsPage />;
+    }
     if (activePage === 'Teams') {
       return <TeamsManagementPage users={companyUsers} />;
     }
@@ -1945,6 +1976,15 @@ const App: React.FC = () => {
     }
     if (activePage === 'Warehouses') {
       return <WarehouseManagementPage warehouses={warehouses} companies={companies} currentUser={currentUser} onWarehouseChange={setWarehouses} />;
+    }
+    if (activePage === 'Receive Stock') {
+      return <WarehouseStockViewPage currentUser={currentUser} warehouses={warehouses} />;
+    }
+    if (activePage === 'Warehouse Stock') {
+      return <WarehouseStockViewPage currentUser={currentUser} />;
+    }
+    if (activePage === 'Lot Tracking') {
+      return <LotTrackingPage currentUser={currentUser} />;
     }
     if (activePage === 'Team') {
       if (currentUser.role === UserRole.Supervisor) {
@@ -1988,6 +2028,7 @@ const App: React.FC = () => {
                             products={companyProducts}
                             promotions={promotions}
                             pages={pages}
+                            warehouses={warehouses}
                             onSave={handleCreateOrder}
                             onCancel={() => setActivePage('แดชบอร์ด')}
                         />;
@@ -2087,6 +2128,7 @@ const App: React.FC = () => {
                             products={companyProducts}
                             promotions={promotions}
                             pages={pages}
+                            warehouses={warehouses}
                             onSave={handleCreateOrder}
                             onCancel={() => setActivePage('แดชบอร์ด')}
                         />;
@@ -2212,6 +2254,7 @@ const App: React.FC = () => {
               onSave={handleSaveProduct}
               onClose={closeModal}
               companyId={currentUser.companyId}
+              warehouses={warehouses}
             />
           case 'editCustomer':
             return <EditCustomerModal
