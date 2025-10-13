@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CallHistory, UserRole } from '@/types';
-import { Phone, PhoneIncoming, Clock3, Users as UsersIcon, ChevronDown, Calendar, Download } from 'lucide-react';
+import { Phone, PhoneIncoming, Clock3, Users as UsersIcon, ChevronDown, Calendar, Download, Settings, X, ChevronLeft } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 
 interface CallsDashboardProps {
@@ -325,6 +325,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
   // State for users
   const [users, setUsers] = useState<any[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+
+  // State for sidebar
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [dashboardStats, setDashboardStats] = useState({
     totalCalls: 0,
@@ -698,116 +701,148 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
 
   return (
     <>
-      <div className="p-6">
-        {/* Date Range Selection */}
-        <div className="bg-white border rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <h3 className="text-lg font-semibold text-gray-700">อัปเดตข้อมูล OneCall</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">วันที่เริ่มต้น</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">วันที่สิ้นสุด</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                min={startDate}
-                disabled={!startDate}
-                className={`w-full border rounded-md px-3 py-2 text-sm ${!startDate ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-              />
-            </div>
-            <div className="flex items-end">
+      {/* Fixed Sidebar Toggle Button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="fixed right-0 top-1/2 transform -translate-y-1/2 z-40 bg-blue-600 text-white p-3 rounded-l-lg shadow-lg hover:bg-blue-700 transition-all duration-300 flex items-center justify-center"
+        title="จัดการข้อมูล OneCall"
+        style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+      >
+        <ChevronLeft className="w-5 h-5" />
+      </button>
+
+      {/* Off-canvas Sidebar */}
+      <div className={`fixed inset-0 z-50 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
+        <div className={`fixed inset-0 z-50 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
+          {/* Backdrop */}
+          <div
+            className={`absolute inset-0 bg-black bg-opacity-50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+
+          {/* Sidebar */}
+          <div className={`absolute right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            {/* Sidebar Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-700">จัดการข้อมูล OneCall</h3>
               <button
-                onClick={handleUpdateClick}
-                disabled={!startDate || !endDate || isLoading}
-                className={`w-full border rounded-md px-3 py-2 text-sm flex items-center justify-center gap-2 ${!startDate || !endDate || isLoading
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
+                onClick={() => setSidebarOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>กำลังดึงข้อมูล...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>อัปเดต</span>
-                  </>
-                )}
+                <X className="w-5 h-5" />
               </button>
             </div>
-          </div>
-        </div>
 
-        {/* Batch Management Table */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-md font-semibold text-gray-700">จัดการข้อมูล OneCall</h3>
-            <button
-              onClick={openCreateBatchModal}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
-            >
-              สร้าง Batch ใหม่
-            </button>
-          </div>
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-gray-500">
-                <tr>
-                  <th className="py-2 px-3 font-medium">ID</th>
-                  <th className="py-2 px-3 font-medium">วันที่เริ่มต้น</th>
-                  <th className="py-2 px-3 font-medium">วันที่สิ้นสุด</th>
-                  <th className="py-2 px-3 font-medium">จำนวนรายการ</th>
-                  <th className="py-2 px-3 font-medium">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batches.length > 0 ? (
-                  batches.map((batch) => (
-                    <tr key={batch.id} className="border-t">
-                      <td className="py-2 px-3">{batch.id}</td>
-                      <td className="py-2 px-3">{batch.startdate}</td>
-                      <td className="py-2 px-3">{batch.enddate}</td>
-                      <td className="py-2 px-3">{batch.amount_record}</td>
-                      <td className="py-2 px-3">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => openEditBatchModal(batch)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            แก้ไข
-                          </button>
-                          <button
-                            onClick={() => deleteBatch(batch.id)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            ลบ
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr className="border-t">
-                    <td className="py-2 px-3" colSpan={5}>ไม่มีข้อมูล</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            {/* Sidebar Content */}
+            <div className="p-4 overflow-y-auto h-full pb-20">
+              {/* Date Range Selection */}
+              <div className="bg-gray-50 border rounded-lg p-4 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar className="w-5 h-5 text-gray-500" />
+                  <h3 className="text-lg font-semibold text-gray-700">อัปเดตข้อมูล OneCall</h3>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">วันที่เริ่มต้น</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">วันที่สิ้นสุด</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={startDate}
+                      disabled={!startDate}
+                      className={`w-full border rounded-md px-3 py-2 text-sm ${!startDate ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <button
+                      onClick={handleUpdateClick}
+                      disabled={!startDate || !endDate || isLoading}
+                      className={`w-full border rounded-md px-3 py-2 text-sm flex items-center justify-center gap-2 ${
+                        !startDate || !endDate || isLoading
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>กำลังดึงข้อมูล...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          <span>อัปเดต</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Batch Management Table */}
+              <div className="bg-gray-50 border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-semibold text-gray-700">ข้อมูล Batch</h3>
+                  <button
+                    onClick={openCreateBatchModal}
+                    className="bg-blue-600 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-700"
+                  >
+                    สร้าง Batch
+                  </button>
+                </div>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-gray-500">
+                      <tr>
+                        <th className="py-2 px-2 font-medium text-xs">ID</th>
+                        <th className="py-2 px-2 font-medium text-xs">วันที่เริ่ม</th>
+                        <th className="py-2 px-2 font-medium text-xs">วันที่สิ้นสุด</th>
+                        <th className="py-2 px-2 font-medium text-xs">รายการ</th>
+                        <th className="py-2 px-2 font-medium text-xs">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batches.length > 0 ? (
+                        batches.map((batch) => (
+                          <tr key={batch.id} className="border-t">
+                            <td className="py-2 px-2 text-xs">{batch.id}</td>
+                            <td className="py-2 px-2 text-xs">{batch.startdate}</td>
+                            <td className="py-2 px-2 text-xs">{batch.enddate}</td>
+                            <td className="py-2 px-2 text-xs">{batch.amount_record}</td>
+                            <td className="py-2 px-2">
+                              <button
+                                onClick={() => deleteBatch(batch.id)}
+                                className="text-red-600 hover:text-red-800 text-xs"
+                              >
+                                ลบ
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="border-t">
+                          <td className="py-2 px-2 text-xs" colSpan={5}>ไม่มีข้อมูล</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="p-6">
 
         {/* Filters (layout only) */}
         <div className="bg-white border rounded-lg p-4 mb-6">
