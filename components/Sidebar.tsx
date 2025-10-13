@@ -38,6 +38,7 @@ const SALES_OVERVIEW = 'Sales Overview';
 const CALLS_OVERVIEW = 'Calls Overview';
 const DATA_MGMT = 'Data Management';
 const INVENTORY_MGMT = 'Inventory Management';
+const REPORTS_MGMT = 'Reports Management';
 
 const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCollapsed, setIsCollapsed, onLogout, permissions }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [HOME_GROUP]: true });
@@ -53,6 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       case 'Home': return 'หน้าหลัก';
       case 'Data Management': return 'จัดการข้อมูล';
       case 'Inventory Management': return 'จัดการสินค้าและคลัง';
+      case 'Reports Management': return 'จัดการรายงาน';
       case 'Dashboard': return 'แดชบอร์ด';
       case 'Sales Overview': return 'ภาพรวมการขาย';
       case 'Calls Overview': return 'ภาพรวมการโทร';
@@ -66,15 +68,18 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       case 'Tags': return 'แท็ก';
       case 'Orders': return 'คำสั่งซื้อ';
       case 'Customers': return 'ลูกค้า';
+      case 'Manage Customers': return 'ข้อมูลลูกค้า';
       case 'Manage Orders': return 'จัดการคำสั่งซื้อ';
       case 'Debt': return 'ติดตามหนี้';
       case 'Reports': return 'รายงาน';
       case 'Bulk Tracking': return 'บันทึกเลขพัสดุ';
-      case 'Share': return 'แชร์';
+      case 'Export History': return 'ประวัติการส่งออก';
+      case 'Import Export': return 'นำเข้าและส่งออกข้อมูล';
+      case 'Share': return 'แจกรายชื่อ';
       case 'Settings': return 'การตั้งค่า';
       case 'Search': return 'ค้นหา';
-      case 'Data': return '??????';
-      case 'Call History': return '?????????????';
+      case 'Data': return 'ข้อมูล';
+      case 'Call History': return 'ประวัติการโทร';
       case 'Companies': return 'บริษัท';
       case 'Warehouses': return 'คลังสินค้า';
       case 'Warehouse Stock': return 'สต็อกคลังสินค้า';
@@ -120,6 +125,28 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
     children: inventoryChildren,
   };
 
+  const reportsChildren: NavItem[] = [
+    ...(canView('reports.export_history') ? [{ icon: FileUp, label: 'Export History' }] as NavItem[] : []),
+    ...(canView('reports.import_export') ? [{ icon: FileUp, label: 'Import Export' }] as NavItem[] : []),
+    ...(canView('reports.reports') ? [{ icon: BarChart2, label: 'Reports' }] as NavItem[] : []),
+  ];
+  const reportsGroup: NavItem = {
+    icon: BarChart2,
+    label: REPORTS_MGMT,
+    children: reportsChildren,
+  };
+
+  // Customers group (dropdown)
+  const customersGroup: NavItem = {
+    icon: Users,
+    label: 'จัดการลูกค้า',
+    children: [
+      { icon: Users, label: 'Manage Customers' },
+      { icon: Users, label: 'ตระกร้าลูกค้า' },
+      { icon: Share2, label: 'แจกรายชื่อ' },
+    ],
+  };
+
   const getNavItems = (): NavItem[] => {
     switch (user.role) {
       case UserRole.Marketing:
@@ -129,19 +156,17 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           homeGroup,
           dataGroup,
           inventoryGroup,
-          { icon: Share2, label: 'Share' },
+          reportsGroup,
+          customersGroup,
           { icon: Settings, label: 'Settings' },
-          { icon: Search, label: 'Search' },
-          { icon: Database, label: 'Data' },
           { icon: Phone, label: 'Dtac Onecall' },
         ];
       case UserRole.AdminControl:
         return [
           homeGroup,
+          reportsGroup,
           { icon: Share2, label: 'Share' },
           { icon: Settings, label: 'Settings' },
-          { icon: Search, label: 'Search' },
-          { icon: Database, label: 'Data' },
           { icon: Phone, label: 'Dtac Onecall' },
         ];
       case UserRole.Admin:

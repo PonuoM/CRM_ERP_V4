@@ -47,6 +47,12 @@ export default function LoginPage() {
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      onLogin();
+    }
+  };
+
   const onLoadCustomers = async () => {
     setStatus('Loading customers...');
     try {
@@ -68,8 +74,21 @@ export default function LoginPage() {
           <span style={{ color: '#666', fontSize: 13 }}>{status}</span>
         </div>
         <div style={{ display: 'grid', gap: 8 }}>
-          <input placeholder="username" value={username} onChange={e => setUsername(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd' }} />
-          <input placeholder="password" type="password" value={password} onChange={e => setPassword(e.target.value)} style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd' }} />
+          <input 
+            placeholder="username" 
+            value={username} 
+            onChange={e => setUsername(e.target.value)} 
+            onKeyPress={handleKeyPress}
+            style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd' }} 
+          />
+          <input 
+            placeholder="password" 
+            type="password" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+            onKeyPress={handleKeyPress}
+            style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd' }} 
+          />
           <button onClick={onLogin} style={{ padding: 10, borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer' }}>Login</button>
         </div>
 

@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS users (
   company_id INT NOT NULL,
   team_id INT NULL,
   supervisor_id INT NULL,
+  status ENUM('active', 'inactive', 'resigned') NOT NULL DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_login DATETIME NULL,
+  login_count INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_users_company FOREIGN KEY (company_id) REFERENCES companies(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -263,6 +268,20 @@ CREATE INDEX idx_appointments_status ON appointments(status);
 CREATE INDEX idx_call_history_customer_id ON call_history(customer_id);
 CREATE INDEX idx_activities_customer_id ON activities(customer_id);
 CREATE INDEX idx_activities_timestamp ON activities(timestamp);
+
+-- User login history
+CREATE TABLE IF NOT EXISTS user_login_history (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ip_address VARCHAR(45) NULL,
+  user_agent TEXT NULL,
+  logout_time DATETIME NULL,
+  session_duration INT NULL COMMENT 'Session duration in seconds',
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_login_user_id (user_id),
+  INDEX idx_login_time (login_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Assignment history (tracks first-time ownership per agent)
 CREATE TABLE IF NOT EXISTS customer_assignment_history (

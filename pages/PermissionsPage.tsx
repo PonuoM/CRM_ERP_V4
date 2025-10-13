@@ -74,7 +74,7 @@ const PermissionsPage: React.FC = () => {
         { key: 'nav.bulk_tracking', label: 'บันทึกเลขพัสดุ', roles: [UserRole.Backoffice], desc: 'อัปโหลดเลขพัสดุแบบจำนวนมาก' },
         { key: 'nav.search', label: 'ค้นหา', roles: [UserRole.SuperAdmin, UserRole.Admin, UserRole.Backoffice, UserRole.Telesale, UserRole.Supervisor], desc: 'ค้นหาลูกค้า/คำสั่งซื้อ' },
         { key: 'nav.call_history', label: 'ประวัติการโทร', roles: [UserRole.SuperAdmin, UserRole.AdminControl, UserRole.Admin, UserRole.Telesale, UserRole.Supervisor, UserRole.Backoffice], desc: 'ประวัติการโทรที่บันทึกในระบบ กรองได้ตามวันที่/ชื่อลูกค้า/สถานะ' },
-        { key: 'nav.share', label: 'แชร์', roles: [UserRole.SuperAdmin, UserRole.AdminControl], desc: 'เมนูควบคุมภายในสำหรับผู้ดูแล' },
+        { key: 'nav.share', label: 'แจกรายชื่อ', roles: [UserRole.SuperAdmin, UserRole.AdminControl], desc: 'เมนูควบคุมภายในสำหรับผู้ดูแล' },
         { key: 'nav.settings', label: 'การตั้งค่า', roles: [UserRole.SuperAdmin, UserRole.AdminControl], desc: 'ตั้งค่าระบบ' },
         { key: 'nav.data', label: 'ข้อมูล', roles: [UserRole.SuperAdmin, UserRole.AdminControl], desc: 'เมนูข้อมูลภายใน' },
       ],

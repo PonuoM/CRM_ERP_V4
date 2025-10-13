@@ -35,6 +35,7 @@ import AddCustomerPage from './pages/AddCustomerPage';
 import TagManagementModal from './components/TagManagementModal';
 import ActivityLogModal from './components/ActivityLogModal';
 import DataManagementPage from './pages/DataManagementPage';
+import ImportExportPage from './pages/ImportExportPage';
 import CompanyManagementPage from './pages/CompanyManagementPage';
 import WarehouseManagementPage from './pages/WarehouseManagementPage';
 import CreateOrderPage from './pages/CreateOrderPage';
@@ -49,6 +50,8 @@ import CallHistoryPage from './pages/CallHistoryPage';
 import ReceiveStockPage from './pages/ReceiveStockPage';
 import WarehouseStockViewPage from './pages/WarehouseStockViewPage';
 import LotTrackingPage from './pages/LotTrackingPage';
+import ManageCustomersPage from './pages/ManageCustomersPage';
+import CustomerPoolsPage from './pages/CustomerPoolsPage';
 
 
 const App: React.FC = () => {
@@ -322,7 +325,7 @@ const App: React.FC = () => {
           },
           province: r.province || '',
           companyId: r.company_id,
-          assignedTo: r.assigned_to,
+          assignedTo: (r.assigned_to !== null && typeof r.assigned_to !== 'undefined') ? Number(r.assigned_to) : null,
           dateAssigned: r.date_assigned,
           dateRegistered: r.date_registered ?? undefined,
           followUpDate: r.follow_up_date ?? undefined,
@@ -1855,7 +1858,7 @@ const App: React.FC = () => {
       return <UserManagementPage users={companyUsers} openModal={openModal} currentUser={currentUser} allCompanies={companies} />;
     }
     
-    if (currentUser.role === UserRole.Backoffice && activePage === 'Export History') {
+    if ((currentUser.role === UserRole.Backoffice || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && activePage === 'Export History') {
       return <ExportHistoryPage />;
     }
     if (viewingCustomer) {
@@ -1931,7 +1934,7 @@ const App: React.FC = () => {
     if (activePage === 'Search') {
       return <CustomerSearchPage customers={companyCustomers} orders={companyOrders} users={companyUsers} currentUser={currentUser} onTakeCustomer={handleTakeCustomer} />;
     }
-    if (activePage === 'Share') {
+    if (activePage === 'Share' || activePage === 'แจกรายชื่อ') {
       return <CustomerDistributionPage allCustomers={companyCustomers} allUsers={companyUsers} setCustomers={setCustomers} />;
     }
     if (activePage === 'Data') {
@@ -2074,13 +2077,58 @@ const App: React.FC = () => {
                             onTakeCustomer={handleTakeCustomer}
                          />;
               case 'นำเข้าและส่งออกข้อมูล':
-                    return <DataManagementPage
+                    return <ImportExportPage
                                 allUsers={companyUsers}
                                 allCustomers={companyCustomers}
                                 allOrders={companyOrders}
                                 onImportSales={handleImportSales}
                                 onImportCustomers={handleImportCustomers}
                            />;
+              case 'Import Export':
+                    return <ImportExportPage
+                                allUsers={companyUsers}
+                                allCustomers={companyCustomers}
+                                allOrders={companyOrders}
+                                onImportSales={handleImportSales}
+                                onImportCustomers={handleImportCustomers}
+                           />;
+              case 'Export History':
+                    return <ExportHistoryPage />;
+              case 'Customers':
+                    return <CustomerSearchPage 
+                                customers={companyCustomers} 
+                                orders={companyOrders} 
+                                users={companyUsers} 
+                                currentUser={currentUser}
+                                onTakeCustomer={handleTakeCustomer}
+                             />;
+              case 'Manage Customers':
+                    return <ManageCustomersPage 
+                                allUsers={companyUsers}
+                                allCustomers={companyCustomers}
+                                allOrders={companyOrders}
+                                currentUser={currentUser}
+                                onTakeCustomer={handleTakeCustomer}
+                                openModal={openModal}
+                                onViewCustomer={handleViewCustomer}
+                             />;
+              case 'Customer Pools':
+                return <CustomerPoolsPage 
+                                users={companyUsers}
+                                customers={companyCustomers}
+                                currentUser={currentUser}
+                                onViewCustomer={handleViewCustomer}
+                                openModal={openModal}
+                            />;
+              case 'คลังลูกค้า':
+              case 'ตระกร้าลูกค้า':
+                return <CustomerPoolsPage 
+                                users={companyUsers}
+                                customers={companyCustomers}
+                                currentUser={currentUser}
+                                onViewCustomer={handleViewCustomer}
+                                openModal={openModal}
+                            />;
               default:
                 return <AdminDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openCreateOrderModal={() => openModal('createOrder')}/>;
           }
@@ -2113,6 +2161,7 @@ const App: React.FC = () => {
                         currentUser={currentUser}
                         onTakeCustomer={handleTakeCustomer}
                     />;
+
           default:
              return <AdminDashboard user={currentUser} orders={companyOrders.filter(o => o.creatorId === currentUser.id)} customers={companyCustomers.filter(c => c.assignedTo === currentUser.id)} openCreateOrderModal={() => openModal('createOrder')}/>;
         }
@@ -2170,6 +2219,7 @@ const App: React.FC = () => {
                     openModal={openModal}
                     systemTags={systemTags} 
                   />;
+
             default:
               return <TelesaleSummaryDashboard user={currentUser} customers={companyCustomers} orders={companyOrders} activities={activities} openModal={() => openModal('createOrder')} />;
          }
@@ -2192,6 +2242,8 @@ const App: React.FC = () => {
                 return <ReportsPage orders={companyOrders} />;
             case 'ค้นหาข้อมูลลูกค้า':
                 return <CustomerSearchPage customers={companyCustomers} orders={companyOrders} users={companyUsers} />;
+            case 'Export History':
+                return <ExportHistoryPage />;
             default:
                 return <BackofficeDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} />;
         }

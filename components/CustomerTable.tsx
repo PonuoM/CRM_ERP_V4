@@ -6,7 +6,8 @@ import { getRemainingTimeRounded } from '@/utils/time';
 interface CustomerTableProps {
   customers: Customer[];
   onViewCustomer: (customer: Customer) => void;
-  openModal: (type: ModalType, data: Customer) => void;
+  openModal?: (type: ModalType, data: Customer) => void;
+  pageSizeOptions?: number[];
 }
 
 const lifecycleLabel = (code: string) => ({
@@ -26,11 +27,11 @@ const statusColorMap: { [key: string]: string } = {
 };
 
 const CustomerTable: React.FC<CustomerTableProps> = (props) => {
-  const { customers, onViewCustomer, openModal } = props;
+  const { customers, onViewCustomer, openModal, pageSizeOptions = [5, 10, 20, 50] } = props;
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(pageSizeOptions[0] ?? 10);
   
   // Calculate pagination
   const totalItems = customers.length;
@@ -74,7 +75,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                     </div>
                 </div>
             )}
-             <button onClick={() => openModal('manageTags', customer)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500">
+             <button title="จัดการ TAG" onClick={() => openModal && openModal('manageTags', customer)} className="p-1 rounded-full hover:bg-gray-200 text-gray-500">
                 <Plus size={14} />
             </button>
         </div>
@@ -171,8 +172,8 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                   <TagColumn customer={customer} />
                 </td>
                 <td className="px-6 py-4 flex items-center space-x-2">
-                  <button onClick={() => onViewCustomer(customer)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"><Eye size={16} /></button>
-                  <button onClick={() => openModal('logCall', customer)} className="p-2 text-green-600 hover:bg-green-100 rounded-full"><PhoneCall size={16} /></button>
+                  <button title="ข้อมูลลูกค้า" onClick={() => onViewCustomer(customer)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"><Eye size={16} /></button>
+                  <button title="โทร/บันทึกการโทร" onClick={() => openModal && openModal('logCall', customer)} className="p-2 text-green-600 hover:bg-green-100 rounded-full"><PhoneCall size={16} /></button>
                 </td>
               </tr>
             )
@@ -206,10 +207,9 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
               onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
+              {pageSizeOptions.map(sz => (
+                <option key={sz} value={sz}>{sz}</option>
+              ))}
             </select>
           </div>
           

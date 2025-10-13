@@ -129,6 +129,9 @@ switch ($resource) {
         require_once 'ownership.php';
         handle_ownership($pdo, $id);
         break;
+    case 'user_login_history':
+        handle_user_login_history($pdo, $id);
+        break;
     default:
         json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
 }
@@ -147,14 +150,38 @@ function handle_auth(PDO $pdo, ?string $id): void {
         if ($username === '' || $password === '') {
             json_response(['ok' => false, 'error' => 'MISSING_CREDENTIALS'], 400);
         }
-        $stmt = $pdo->prepare('SELECT id, username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id FROM users WHERE username=? LIMIT 1');
+        
+        // Check if user status is active
+        $stmt = $pdo->prepare('SELECT id, username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status FROM users WHERE username=? LIMIT 1');
         $stmt->execute([$username]);
         $u = $stmt->fetch();
         if (!$u) json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
+        
+        // Check if user is active
+        if ($u['status'] !== 'active') {
+            json_response(['ok' => false, 'error' => 'ACCOUNT_INACTIVE', 'message' => 'Your account is not active'], 401);
+        }
+        
         // Demo: plaintext password match (replace with hashing in production)
         if (!hash_equals((string)$u['password'], (string)$password)) {
             json_response(['ok' => false, 'error' => 'INVALID_CREDENTIALS'], 401);
         }
+        
+        // Update last login and increment login count
+        try {
+            $updateStmt = $pdo->prepare('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?');
+            $updateStmt->execute([$u['id']]);
+            
+            // Record login history
+            $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+            $loginStmt = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
+            $loginStmt->execute([$u['id'], $ipAddress, $userAgent]);
+        } catch (Throwable $e) {
+            // Log error but don't fail login
+            error_log('Failed to update login info: ' . $e->getMessage());
+        }
+        
         unset($u['password']);
         json_response(['ok' => true, 'user' => $u]);
     }
@@ -165,12 +192,34 @@ function handle_users(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id FROM users WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $stmt = $pdo->query('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id FROM users ORDER BY id');
+                $companyId = $_GET['companyId'] ?? null;
+                $status = $_GET['status'] ?? null;
+                $sql = 'SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users';
+                $params = [];
+                $conditions = [];
+                
+                if ($companyId) {
+                    $conditions[] = 'company_id = ?';
+                    $params[] = $companyId;
+                }
+                
+                if ($status) {
+                    $conditions[] = 'status = ?';
+                    $params[] = $status;
+                }
+                
+                if (!empty($conditions)) {
+                    $sql .= ' WHERE ' . implode(' AND ', $conditions);
+                }
+                
+                $sql .= ' ORDER BY id';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
                 json_response($stmt->fetchAll());
             }
             break;
@@ -187,14 +236,16 @@ function handle_users(PDO $pdo, ?string $id): void {
             $companyId = $in['companyId'] ?? null;
             $teamId = $in['teamId'] ?? null;
             $supervisorId = $in['supervisorId'] ?? null;
+            $status = $in['status'] ?? 'active';
+            
             if ($username === '' || $first === '' || $last === '' || $role === '' || !$companyId) {
                 json_response(['error' => 'VALIDATION_FAILED', 'message' => 'username, firstName, lastName, role, companyId are required'], 400);
             }
             try {
-                $stmt = $pdo->prepare('INSERT INTO users(username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
-                $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $companyId, $teamId, $supervisorId]);
+                $stmt = $pdo->prepare('INSERT INTO users(username, password, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())');
+                $stmt->execute([$username, $password, $first, $last, $email, $phone, $role, $companyId, $teamId, $supervisorId, $status]);
                 $newId = (int)$pdo->lastInsertId();
-                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id FROM users WHERE id = ?');
+                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $get->execute([$newId]);
                 json_response($get->fetch(), 201);
             } catch (Throwable $e) {
@@ -224,6 +275,7 @@ function handle_users(PDO $pdo, ?string $id): void {
                 'companyId' => 'company_id',
                 'teamId' => 'team_id',
                 'supervisorId' => 'supervisor_id',
+                'status' => 'status',
             ];
             foreach ($map as $inKey => $col) {
                 if (array_key_exists($inKey, $in)) {
@@ -234,12 +286,14 @@ function handle_users(PDO $pdo, ?string $id): void {
             if (empty($fields)) {
                 json_response(['ok' => true]);
             }
+            // Always update updated_at timestamp
+            $fields[] = "updated_at = NOW()";
             $params[] = $id;
             try {
                 $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = ?';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
-                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id FROM users WHERE id = ?');
+                $get = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $get->execute([$id]);
                 $row = $get->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
@@ -250,12 +304,12 @@ function handle_users(PDO $pdo, ?string $id): void {
         case 'DELETE':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
             try {
-                $stmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
-                $stmt->execute([$id]);
+                // Instead of deleting, mark as resigned
+                $stmt = $pdo->prepare('UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?');
+                $stmt->execute(['resigned', $id]);
                 json_response(['ok' => true]);
             } catch (Throwable $e) {
-                // Likely foreign key constraint (assigned customers, orders, etc.)
-                json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 409);
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 409);
             }
             break;
         default:
@@ -1932,6 +1986,77 @@ function handle_stock_movements(PDO $pdo, ?string $id): void {
         json_response($stmt->fetchAll());
     } else {
         json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_user_login_history(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                // Get specific login history record
+                $stmt = $pdo->prepare('SELECT * FROM user_login_history WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } else {
+                // Get login history with filters
+                $userId = $_GET['userId'] ?? null;
+                $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+                $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+                
+                $sql = 'SELECT h.*, u.username, u.first_name, u.last_name 
+                        FROM user_login_history h 
+                        JOIN users u ON h.user_id = u.id';
+                $params = [];
+                $conditions = [];
+                
+                if ($userId) {
+                    $conditions[] = 'h.user_id = ?';
+                    $params[] = $userId;
+                }
+                
+                if (!empty($conditions)) {
+                    $sql .= ' WHERE ' . implode(' AND ', $conditions);
+                }
+                
+                $sql .= ' ORDER BY h.login_time DESC LIMIT ? OFFSET ?';
+                $params[] = $limit;
+                $params[] = $offset;
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            // Record logout time
+            $in = json_input();
+            $historyId = $in['historyId'] ?? null;
+            if (!$historyId) json_response(['error' => 'HISTORY_ID_REQUIRED'], 400);
+            
+            try {
+                $stmt = $pdo->prepare('SELECT login_time FROM user_login_history WHERE id = ? AND logout_time IS NULL');
+                $stmt->execute([$historyId]);
+                $record = $stmt->fetch();
+                
+                if (!$record) {
+                    json_response(['error' => 'INVALID_HISTORY_ID'], 404);
+                }
+                
+                $loginTime = new DateTime($record['login_time']);
+                $logoutTime = new DateTime();
+                $duration = $logoutTime->getTimestamp() - $loginTime->getTimestamp();
+                
+                $updateStmt = $pdo->prepare('UPDATE user_login_history SET logout_time = NOW(), session_duration = ? WHERE id = ?');
+                $updateStmt->execute([$duration, $historyId]);
+                
+                json_response(['ok' => true]);
+            } catch (Throwable $e) {
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
 
