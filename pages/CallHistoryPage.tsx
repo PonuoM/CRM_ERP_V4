@@ -1481,7 +1481,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-2">
@@ -1885,9 +1885,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                                             }}
                                           />
                                         </div>
-                                        <div className="flex justify-between">
+                                        <div className="flex justify-start">
                                           <span className="text-xs text-gray-600">{formatTime(currentPlayingId === recording.id ? currentTime : (pausedAudios.get(recording.id) || 0))}</span>
-                                          <span className="text-xs text-gray-600">{formatTime(duration)}</span>
                                         </div>
                                       </>
                                     )}

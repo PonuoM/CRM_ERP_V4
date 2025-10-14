@@ -32,6 +32,7 @@ export interface User {
   companyId: number;
   teamId?: number;
   supervisorId?: number;
+  status?: string; // 'active' | 'inactive' | 'resigned'
   customTags: Tag[];
 }
 

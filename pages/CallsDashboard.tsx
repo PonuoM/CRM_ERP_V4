@@ -1,10 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { CallHistory, UserRole } from '@/types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { CallHistory, User, UserRole } from '@/types';
 import { Phone, PhoneIncoming, Clock3, Users as UsersIcon, ChevronDown, Calendar, Download, Settings, X, ChevronLeft } from 'lucide-react';
 import StatCard from '@/components/StatCard';
+import LineChart from '@/components/LineChart';
+import PieChart from '@/components/PieChart';
 
 interface CallsDashboardProps {
   calls?: CallHistory[];
+  user?: User;
 }
 
 // JavaScript version of authenticateOneCall function
@@ -296,7 +299,7 @@ const saveLogToDatabase = async (logs: any[], batchId: number) => {
 };
 
 // Calls overview focused on layout only (neutral labels, no brand colors/names)
-const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
+const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [], user }) => {
   const [month, setMonth] = useState<string>(() => String(new Date().getMonth() + 1).padStart(2, '0'));
   const [year, setYear] = useState<string>(() => String(new Date().getFullYear()));
 
@@ -328,6 +331,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
 
   // State for sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isAdminControl = (user?.role === UserRole.SuperAdmin || user?.role === UserRole.AdminControl);
 
   const [dashboardStats, setDashboardStats] = useState({
     totalCalls: 0,
@@ -335,6 +339,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
     totalMinutes: 0,
     avgMinutes: 0
   });
+  const [employeeSummary, setEmployeeSummary] = useState<any[]>([]);
+  const [dailySeries, setDailySeries] = useState<{ date: string; count: number; total_minutes: number }[]>([]);
+  const [talkSummary, setTalkSummary] = useState<{ talked: number; not_talked: number }>({ talked: 0, not_talked: 0 });
 
   // Function to fetch dashboard stats
   const fetchDashboardStats = async () => {
@@ -351,6 +358,58 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
       }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
+    }
+  };
+
+  const fetchEmployeeSummary = async () => {
+    try {
+      const resp = await fetch(`/api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data && data.success && Array.isArray(data.data)) {
+        setEmployeeSummary(data.data);
+      } else {
+        setEmployeeSummary([]);
+      }
+    } catch (e) {
+      console.error('get_employee_summary', e);
+      setEmployeeSummary([]);
+    }
+  };
+
+  // Fetch daily aggregated series (full month)
+  const fetchDailySeries = async () => {
+    try {
+      const userParam = selectedUserId ? `&user_id=${encodeURIComponent(selectedUserId)}` : '';
+      const resp = await fetch(`/api/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data && data.success && Array.isArray(data.data)) {
+        setDailySeries(data.data);
+      } else {
+        setDailySeries([]);
+      }
+    } catch (e) {
+      console.error('Error fetching daily series:', e);
+      setDailySeries([]);
+    }
+  };
+
+  // Fetch talked vs not-talked summary (duration >= 40 is talked)
+  const fetchTalkSummary = async () => {
+    try {
+      const userParam = selectedUserId ? `&user_id=${encodeURIComponent(selectedUserId)}` : '';
+      const resp = await fetch(`/api/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data && data.success && data.data) {
+        setTalkSummary({ talked: data.data.talked || 0, not_talked: data.data.not_talked || 0 });
+      } else {
+        setTalkSummary({ talked: 0, not_talked: 0 });
+      }
+    } catch (e) {
+      console.error('Error fetching talk summary:', e);
+      setTalkSummary({ talked: 0, not_talked: 0 });
     }
   };
 
@@ -690,18 +749,29 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
     fetchBatches();
     fetchUsers();
     fetchDashboardStats();
+    fetchEmployeeSummary();
+    fetchDailySeries();
+    fetchTalkSummary();
   });
 
   // Update dashboard stats when month or year changes
   useState(() => {
     if (month && year) {
       fetchDashboardStats();
+      fetchEmployeeSummary();
     }
   }, [month, year]);
 
+  // Update daily chart when month/year/user filter changes
+  useEffect(() => {
+    fetchDailySeries();
+    fetchTalkSummary();
+  }, [month, year, selectedUserId]);
+
   return (
     <>
-      {/* Fixed Sidebar Toggle Button */}
+      {/* Fixed Sidebar Toggle Button (restricted) */}
+      {isAdminControl && (
       <button
         onClick={() => setSidebarOpen(true)}
         className="fixed right-0 top-1/2 transform -translate-y-1/2 z-40 bg-blue-600 text-white p-3 rounded-l-lg shadow-lg hover:bg-blue-700 transition-all duration-300 flex items-center justify-center"
@@ -710,8 +780,10 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
       >
         <ChevronLeft className="w-5 h-5" />
       </button>
+      )}
 
-      {/* Off-canvas Sidebar */}
+      {/* Off-canvas Sidebar (restricted) */}
+      {isAdminControl && (
       <div className={`fixed inset-0 z-50 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
         <div className={`fixed inset-0 z-50 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
           {/* Backdrop */}
@@ -841,6 +913,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
           </div>
         </div>
       </div>
+      )}
 
       <div className="p-6">
 
@@ -904,51 +977,30 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
           <StatCard title="เฉลี่ยต่อสาย (นาที)" value={dashboardStats.avgMinutes.toFixed(2)} subtext="ต่อวันทำการ" icon={UsersIcon} />
         </div>
 
-        {/* Chart and summary table (placeholders) */}
-        <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h3 className="text-md font-semibold text-gray-700 mb-4">แนวโน้มรายวัน</h3>
-            <svg width="100%" height="260" viewBox="0 0 600 260" className="w-full">
-              <line x1="40" y1="220" x2="580" y2="220" stroke="#E5E7EB" />
-              <line x1="40" y1="180" x2="580" y2="180" stroke="#E5E7EB" />
-              <line x1="40" y1="140" x2="580" y2="140" stroke="#E5E7EB" />
-              <line x1="40" y1="100" x2="580" y2="100" stroke="#E5E7EB" />
-              {/* Bars (static for layout) */}
-              {[60, 120, 90, 150, 80, 110, 70].map((h, i) => (
-                <rect key={i} x={60 + i * 70} y={220 - h} width="40" height={h} fill="#93C5FD" rx="4" />
-              ))}
-            </svg>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-md font-semibold text-gray-700">สรุปพนักงาน</h3>
-              <button className="border px-3 py-1.5 rounded text-sm">ส่งออก</button>
-            </div>
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-gray-500">
-                  <tr>
-                    <th className="py-2 px-3 font-medium">พนักงาน</th>
-                    <th className="py-2 px-3 font-medium">จำนวนสาย</th>
-                    <th className="py-2 px-3 font-medium">รับสาย</th>
-                    <th className="py-2 px-3 font-medium">เวลาสนทนา (นาที)</th>
-                    <th className="py-2 px-3 font-medium">เฉลี่ยต่อสาย (นาที)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-t">
-                    <td className="py-2 px-3">—</td>
-                    <td className="py-2 px-3">—</td>
-                    <td className="py-2 px-3">—</td>
-                    <td className="py-2 px-3">—</td>
-                    <td className="py-2 px-3">—</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+        {/* Daily line chart (Full month) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <LineChart
+            title="Daily Calls (Full Month)"
+            yLabel="Calls"
+            data={(dailySeries && dailySeries.length ? dailySeries : []).map(d => ({
+              label: d.date.substring(0, 10),
+              value: d.count || 0
+            }))}
+            color="#34D399"
+            xTickEvery={7}
+            height={220}
+          />
+          <PieChart
+            title="ได้คุย vs ไม่ได้คุย"
+            data={[
+              { label: 'ได้คุย (>=40s)', value: talkSummary.talked, color: '#34D399' },
+              { label: 'ไม่ได้คุย (<40s)', value: talkSummary.not_talked, color: '#E5E7EB' },
+            ]}
+            size={260}
+          />
         </div>
+
+        {/* Removed employee summary grid as requested */}
       </div>
 
       {/* Confirmation Modal */}
@@ -1064,3 +1116,4 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({ calls = [] }) => {
 };
 
 export default CallsDashboard;
+

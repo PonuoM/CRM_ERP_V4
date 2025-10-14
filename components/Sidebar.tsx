@@ -39,6 +39,7 @@ const CALLS_OVERVIEW = 'Calls Overview';
 const DATA_MGMT = 'Data Management';
 const INVENTORY_MGMT = 'Inventory Management';
 const REPORTS_MGMT = 'Reports Management';
+const PAGE_STATS = 'สถิติเพจ';
 
 const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCollapsed, setIsCollapsed, onLogout, permissions }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [HOME_GROUP]: true });
@@ -157,6 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           dataGroup,
           inventoryGroup,
           reportsGroup,
+          { icon: BarChart2, label: PAGE_STATS, children: [ { icon: FileText, label: 'หน้าเพจ' }, { icon: FileText, label: 'สถิติการมีส่วนร่วม' } ] },
           customersGroup,
           { icon: Settings, label: 'Settings' },
           { icon: Phone, label: 'Dtac Onecall' },
