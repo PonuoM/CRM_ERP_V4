@@ -3,6 +3,40 @@ import { Page, User } from '@/types';
 import Modal from '@/components/Modal';
 import { createPage, updatePage } from '@/services/api';
 
+// Function to fetch pages from pages.fm API
+const fetchPagesFromAPI = async () => {
+  try {
+    const accessToken = (import.meta as any).env.VITE_ACCESS_TOKEN || '';
+    
+    if (!accessToken) {
+      console.error('ACCESS_TOKEN not found in environment variables');
+      return null;
+    }
+
+    // Build URL with access_token parameter
+    const url = new URL('https://pages.fm/api/v1/pages');
+    url.searchParams.append('access_token', accessToken);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Pages.fm API Response:', data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching pages from pages.fm API:', error);
+    return null;
+  }
+};
+
 interface PagesManagementPageProps {
   pages?: Page[];
   currentUser?: User;
@@ -13,8 +47,19 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
   const [team, setTeam] = useState('all');
   const [status, setStatus] = useState('all');
   const [items, setItems] = useState<Page[]>(pages);
+  const [apiPages, setApiPages] = useState<any>(null);
 
   useEffect(() => { setItems(pages); }, [pages]);
+  
+  // Fetch pages from pages.fm API on component mount
+  useEffect(() => {
+    const fetchAPIPages = async () => {
+      const data = await fetchPagesFromAPI();
+      setApiPages(data);
+    };
+    
+    fetchAPIPages();
+  }, []);
 
   const filtered = useMemo(() => {
     const k = keyword.toLowerCase();
@@ -27,6 +72,63 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">เพจ</h2>
+      
+      {/* Pages.fm API Data */}
+      {apiPages && apiPages.categorized && (apiPages.categorized.activated || apiPages.categorized.inactivated) && (
+        <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4">ข้อมูลจาก Pages.fm API</h3>
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500">
+                <tr>
+                  <th className="py-2 px-3 font-medium">ID</th>
+                  <th className="py-2 px-3 font-medium">ชื่อเพจ</th>
+                  <th className="py-2 px-3 font-medium">แพลตฟอร์ม</th>
+                  <th className="py-2 px-3 font-medium">สถานะการเปิดใช้งาน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Activated pages */}
+                {apiPages.categorized.activated.map((page: any, index: number) => (
+                  <tr key={`activated-${page.id || index}`} className="border-t">
+                    <td className="py-2 px-3">{page.id}</td>
+                    <td className="py-2 px-3">{page.name}</td>
+                    <td className="py-2 px-3">{page.platform}</td>
+                    <td className="py-2 px-3">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        page.is_activated
+                          ? 'text-green-600 bg-green-100'
+                          : 'text-red-600 bg-red-100'
+                      }`}>
+                        {page.is_activated ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                
+                {/* Inactivated pages */}
+                {apiPages.categorized.inactivated && apiPages.categorized.inactivated.map((page: any, index: number) => (
+                  <tr key={`inactivated-${page.id || index}`} className="border-t">
+                    <td className="py-2 px-3">{page.id}</td>
+                    <td className="py-2 px-3">{page.name}</td>
+                    <td className="py-2 px-3">{page.platform}</td>
+                    <td className="py-2 px-3">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        page.is_activated
+                          ? 'text-green-600 bg-green-100'
+                          : 'text-red-600 bg-red-100'
+                      }`}>
+                        {page.is_activated ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
