@@ -52,7 +52,8 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
             platform: page.platform,
             is_activated: page.is_activated,
             category: page.is_activated ? 'activated' : 'inactivated',
-            user_count: userCount
+            user_count: userCount,
+            users: page.users || [] // Store the users array for display
           };
         });
         
@@ -159,166 +160,28 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
 
   const filtered = useMemo(() => {
     const k = keyword.toLowerCase();
-    return visiblePages.filter(p => (
+    let filteredPages = visiblePages.filter(p => (
       (!k || p.name.toLowerCase().includes(k)) &&
       (status === 'all' || (status === 'active' ? p.active : !p.active))
     ));
+    
+    // Sort by active status (active pages first)
+    filteredPages.sort((a, b) => {
+      // If both have the same active status, sort by name
+      if (a.active === b.active) {
+        return a.name.localeCompare(b.name);
+      }
+      // Active pages (true) should come before inactive pages (false)
+      return b.active ? 1 : -1;
+    });
+    
+    return filteredPages;
   }, [visiblePages, keyword, status]);
 
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">เพจ</h2>
       
-      
-      {/* Sync Results Table */}
-      {syncResult && syncResult.success && syncResult.pages && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">ผลลัพธ์การอัปเดตข้อมูล</h3>
-          <div className={`mb-4 p-3 rounded-md ${syncResult.errors > 0 ? 'bg-red-50' : 'bg-blue-50'}`}>
-            <p className={`text-sm ${syncResult.errors > 0 ? 'text-red-800' : 'text-blue-800'}`}>
-              อัปเดตสำเร็จ: {syncResult.count} เพจ (เพิ่ม {syncResult.inserted}, อัปเดต {syncResult.updated}, ข้าม {syncResult.skipped}, ข้อผิดพลาด {syncResult.errors})
-            </p>
-          </div>
-          
-          {/* Error Details */}
-          {syncResult.errorDetails && syncResult.errorDetails.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-md font-semibold text-red-700 mb-2">รายละเอียดข้อผิดพลาด:</h4>
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-gray-500">
-                    <tr>
-                      <th className="py-2 px-3 font-medium">Page ID</th>
-                      <th className="py-2 px-3 font-medium">Operation</th>
-                      <th className="py-2 px-3 font-medium">Raw Error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {syncResult.errorDetails.map((error: any, index: number) => (
-                      <tr key={index} className="border-t">
-                        <td className="py-2 px-3">{error.pageId}</td>
-                        <td className="py-2 px-3">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            error.operation === 'insert'
-                              ? 'text-green-600 bg-green-100'
-                              : 'text-blue-600 bg-blue-100'
-                          }`}>
-                            {error.operation}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-red-600 font-mono text-xs whitespace-pre-wrap">{error.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              
-              {/* Raw Error Messages */}
-              <div className="mt-4">
-                <h4 className="text-md font-semibold text-red-700 mb-2">Raw Error Messages:</h4>
-                <div className="bg-gray-100 p-3 rounded-md overflow-auto">
-                  <pre className="text-xs font-mono text-red-600 whitespace-pre-wrap">
-                    {syncResult.errorDetails.map((error: any, index: number) => (
-                      <div key={index}>
-                        <strong>Page {error.pageId} ({error.operation}):</strong> {error.error}
-                      </div>
-                    ))}
-                  </pre>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* SQL Commands */}
-          <div className="mb-4">
-            <div className="flex space-x-4 mb-2">
-              <button
-                className="px-3 py-1 bg-green-600 text-white text-sm rounded"
-                onClick={() => {
-                  const sqlTextarea = document.getElementById('insert-sql-textarea') as HTMLTextAreaElement;
-                  if (sqlTextarea) {
-                    sqlTextarea.select();
-                    document.execCommand('copy');
-                  }
-                }}
-              >
-                คัดลอก Insert SQL
-              </button>
-              <button
-                className="px-3 py-1 bg-blue-600 text-white text-sm rounded"
-                onClick={() => {
-                  const sqlTextarea = document.getElementById('update-sql-textarea') as HTMLTextAreaElement;
-                  if (sqlTextarea) {
-                    sqlTextarea.select();
-                    document.execCommand('copy');
-                  }
-                }}
-              >
-                คัดลอก Update SQL
-              </button>
-            </div>
-            
-            {/* Insert SQL */}
-            {syncResult.insertSQLs && syncResult.insertSQLs.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-md font-semibold text-gray-700 mb-2">คำสั่ง Insert SQL ({syncResult.insertSQLs.length} รายการ):</h4>
-                <textarea
-                  id="insert-sql-textarea"
-                  className="w-full h-32 p-2 border rounded-md text-xs font-mono bg-gray-50"
-                  value={syncResult.insertSQLs.join(';\n')}
-                  readOnly
-                />
-              </div>
-            )}
-            
-            {/* Update SQL */}
-            {syncResult.updateSQLs && syncResult.updateSQLs.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-md font-semibold text-gray-700 mb-2">คำสั่ง Update SQL ({syncResult.updateSQLs.length} รายการ):</h4>
-                <textarea
-                  id="update-sql-textarea"
-                  className="w-full h-32 p-2 border rounded-md text-xs font-mono bg-gray-50"
-                  value={syncResult.updateSQLs.join(';\n')}
-                  readOnly
-                />
-              </div>
-            )}
-          </div>
-          
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-gray-500">
-                <tr>
-                  <th className="py-2 px-3 font-medium">Page ID</th>
-                  <th className="py-2 px-3 font-medium">Name</th>
-                  <th className="py-2 px-3 font-medium">Platform</th>
-                  <th className="py-2 px-3 font-medium">Active</th>
-                  <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
-                </tr>
-              </thead>
-              <tbody>
-                {syncResult.pages.map((page: any, index: number) => (
-                  <tr key={index} className="border-t">
-                    <td className="py-2 px-3">{page.id}</td>
-                    <td className="py-2 px-3">{page.name}</td>
-                    <td className="py-2 px-3">{page.platform}</td>
-                    <td className="py-2 px-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        page.is_activated
-                          ? 'text-green-600 bg-green-100'
-                          : 'text-red-600 bg-red-100'
-                      }`}>
-                        {page.is_activated ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">{page.user_count || 0} คน</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
       
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -426,10 +289,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                   </span>
                 </td>
                 <td className="py-2 px-3">
-                  {syncResult && syncResult.pages && syncResult.pages.find((sp: any) => sp.id === p.id)
-                    ? syncResult.pages.find((sp: any) => sp.id === p.id).user_count || 0
-                    : 0
-                  } คน
+                  {p.user_count || 0} คน
                 </td>
                 <td className="py-2 px-3 text-right"><ManagePageButton page={p} onSaved={(updatedPage)=> setItems(prev => prev.map(x => x.id === updatedPage.id ? updatedPage : x))} /></td>
               </tr>
@@ -466,10 +326,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                         </span>
                       </td>
                       <td className="py-2 px-3">
-                        {syncResult && syncResult.pages && syncResult.pages.find((sp: any) => sp.id === p.id)
-                          ? syncResult.pages.find((sp: any) => sp.id === p.id).user_count || 0
-                          : 0
-                        } คน
+                        {p.user_count || 0} คน
                       </td>
                       <td className="py-2 px-3 text-right"><ManagePageButton page={p} onSaved={(updatedPage)=> setItems(prev => prev.map(x => x.id === updatedPage.id ? updatedPage : x))} /></td>
                     </tr>

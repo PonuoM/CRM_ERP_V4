@@ -56,24 +56,36 @@ try {
     
     // Get existing pages from database
     $existingPages = [];
-    $existingStmt = $pdo->prepare('SELECT page_id, still_in_list FROM pages WHERE company_id = ?');
+    $existingStmt = $pdo->prepare('SELECT page_id FROM pages WHERE company_id = ?');
     $existingStmt->execute([$companyId]);
     $existingResults = $existingStmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($existingResults as $row) {
-        $existingPages[$row['page_id']] = $row['still_in_list'];
+        $existingPages[] = $row['page_id'];
     }
     
-    // Generate SQL commands for each page
+    // Collect page IDs from the API response
+    $apiPageIds = [];
+    foreach ($pages as $page) {
+        if (isset($page['id'])) {
+            $apiPageIds[] = $page['id'];
+        }
+    }
+    
+    // First, set all existing pages to still_in_list = 0
+    $resetSQL = "UPDATE pages SET still_in_list = 0 WHERE company_id = ?";
+    $resetStmt = $pdo->prepare($resetSQL);
+    $resetStmt->execute([$companyId]);
+    
+    // Then, process pages from API response and set still_in_list = 1
     foreach ($pages as $index => $page) {
         $pageId = $page['id'] ?? null;
         $name = $page['name'] ?? '';
         $platform = $page['platform'] ?? '';
         $isActive = isset($page['is_activated']) ? ($page['is_activated'] ? 1 : 0) : 0;
-        $category = $page['category'] ?? '';
+        $userCount = isset($page['user_count']) ? (int)$page['user_count'] : 0;
         
-        // Determine still_in_list based on category
-        // If category is 'activated', still_in_list = 1, otherwise 0
-        $stillInList = ($category === 'activated') ? 1 : 0;
+        // Pages from API always have still_in_list = 1
+        $stillInList = 1;
         
         // Log the page data for debugging
         error_log("Processing page $index: " . json_encode($page));
@@ -85,22 +97,21 @@ try {
         }
         
         // Check if page exists in database
-        $pageExists = isset($existingPages[$pageId]);
-        $currentStillInList = $pageExists ? $existingPages[$pageId] : 1;
+        $pageExists = in_array($pageId, $existingPages);
         
         if ($pageExists) {
             // Generate UPDATE SQL using prepared statement
-            $updateSQL = "UPDATE pages SET name = ?, platform = ?, active = ?, still_in_list = ? WHERE page_id = ? AND company_id = ?";
-            $updateSQLs[] = $updateSQL . " [VALUES: '{$name}', '{$platform}', {$isActive}, {$stillInList}, '{$pageId}', {$companyId}]";
+            $updateSQL = "UPDATE pages SET name = ?, platform = ?, active = ?, still_in_list = ?, user_count = ? WHERE page_id = ? AND company_id = ?";
+            $updateSQLs[] = $updateSQL . " [VALUES: '{$name}', '{$platform}', {$isActive}, {$stillInList}, {$userCount}, '{$pageId}', {$companyId}]";
             
             try {
                 $stmt = $pdo->prepare($updateSQL);
-                $result = $stmt->execute([$name, $platform, $isActive, $stillInList, $pageId, $companyId]);
+                $result = $stmt->execute([$name, $platform, $isActive, $stillInList, $userCount, $pageId, $companyId]);
                 
                 if ($result) {
                     if ($stmt->rowCount() > 0) {
                         $updatedCount++;
-                        error_log("Successfully updated page: $pageId, still_in_list: {$stillInList}");
+                        error_log("Successfully updated page: $pageId, still_in_list: {$stillInList}, user_count: {$userCount}");
                     } else {
                         error_log("No changes needed for page: $pageId");
                     }
@@ -114,23 +125,23 @@ try {
                 $errorDetails[] = [
                     'pageId' => $pageId,
                     'operation' => 'update',
-                    'sql' => $updateSQL . " [VALUES: '{$name}', '{$platform}', {$isActive}, {$stillInList}, '{$pageId}', {$companyId}]",
+                    'sql' => $updateSQL . " [VALUES: '{$name}', '{$platform}', {$isActive}, {$stillInList}, {$userCount}, '{$pageId}', {$companyId}]",
                     'error' => $e->getMessage()
                 ];
             }
         } else {
             // Generate INSERT SQL using prepared statement
-            $insertSQL = "INSERT INTO pages (page_id, name, platform, company_id, active, still_in_list) VALUES (?, ?, ?, ?, ?, ?)";
-            $insertSQLs[] = $insertSQL . " [VALUES: '{$pageId}', '{$name}', '{$platform}', {$companyId}, {$isActive}, {$stillInList}]";
+            $insertSQL = "INSERT INTO pages (page_id, name, platform, company_id, active, still_in_list, user_count) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $insertSQLs[] = $insertSQL . " [VALUES: '{$pageId}', '{$name}', '{$platform}', {$companyId}, {$isActive}, {$stillInList}, {$userCount}]";
             
             try {
                 $stmt = $pdo->prepare($insertSQL);
-                $result = $stmt->execute([$pageId, $name, $platform, $companyId, $isActive, $stillInList]);
+                $result = $stmt->execute([$pageId, $name, $platform, $companyId, $isActive, $stillInList, $userCount]);
                 
                 if ($result) {
                     if ($stmt->rowCount() > 0) {
                         $insertedCount++;
-                        error_log("Successfully inserted page: $pageId, still_in_list: {$stillInList}");
+                        error_log("Successfully inserted page: $pageId, still_in_list: {$stillInList}, user_count: {$userCount}");
                     } else {
                         error_log("Failed to insert page: $pageId");
                         $errorCount++;
@@ -145,7 +156,7 @@ try {
                 $errorDetails[] = [
                     'pageId' => $pageId,
                     'operation' => 'insert',
-                    'sql' => $insertSQL . " [VALUES: '{$pageId}', '{$name}', '{$platform}', {$companyId}, {$isActive}, {$stillInList}]",
+                    'sql' => $insertSQL . " [VALUES: '{$pageId}', '{$name}', '{$platform}', {$companyId}, {$isActive}, {$stillInList}, {$userCount}]",
                     'error' => $e->getMessage()
                 ];
             }
