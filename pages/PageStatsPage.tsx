@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Order, Customer, CallHistory } from '@/types';
-import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Order, Customer, CallHistory, User } from '@/types';
+import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MultiLineChart from '@/components/MultiLineChart';
 
@@ -8,6 +8,14 @@ interface PageStatsPageProps {
   orders?: Order[];
   customers?: Customer[];
   calls?: CallHistory[];
+}
+
+interface EnvVariable {
+  id?: number;
+  key: string;
+  value: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 type DailyRow = {
@@ -38,6 +46,33 @@ function fmtDate(d: Date) {
 
 const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = [], calls = [] }) => {
   const [rangeDays, setRangeDays] = useState<number>(90);
+  const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
+  const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [newEnvVar, setNewEnvVar] = useState<EnvVariable>({
+    key: 'ACCESS_TOKEN_PANCAKE_',
+    value: ''
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Get current user from localStorage
+  useEffect(() => {
+    try {
+      const sessionData = localStorage.getItem('sessionUser');
+      if (sessionData) {
+        const session = JSON.parse(sessionData);
+        if (session) {
+          setCurrentUser(session);
+          setNewEnvVar({
+            key: `ACCESS_TOKEN_PANCAKE_${session.company_id}`,
+            value: ''
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error getting user from localStorage:', error);
+    }
+  }, []);
 
   const customersById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -171,6 +206,110 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     URL.revokeObjectURL(url);
   };
 
+  // Fetch env variables
+  useEffect(() => {
+    const fetchEnvVariables = async () => {
+      try {
+        const response = await fetch('api/Page_DB/env_manager.php');
+        if (response.ok) {
+          const data = await response.json();
+          setEnvVariables(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error fetching env variables:', error);
+      }
+    };
+
+    if (isEnvSidebarOpen) {
+      fetchEnvVariables();
+    }
+  }, [isEnvSidebarOpen]);
+
+  // Save env variable
+  const saveEnvVariable = async (envVar: EnvVariable) => {
+    if (!envVar.key.trim() || !envVar.value.trim()) {
+      alert('กรุณาระบุ key และ value');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('api/Page_DB/env_manager.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: envVar.key,
+          value: envVar.value
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Refresh env variables
+          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          if (fetchResponse.ok) {
+            const data = await fetchResponse.json();
+            setEnvVariables(Array.isArray(data) ? data : []);
+          }
+          // Reset new env var
+          setNewEnvVar({
+            key: currentUser ? `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}` : 'ACCESS_TOKEN_PANCAKE_',
+            value: ''
+          });
+          alert('บันทึกสำเร็จ');
+        } else {
+          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+        }
+      } else {
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      }
+    } catch (error) {
+      console.error('Error saving env variable:', error);
+      alert('เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Delete env variable
+  const deleteEnvVariable = async (key: string) => {
+    if (!confirm(`คุณต้องการลบตัวแปร ${key} หรือไม่?`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`api/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Refresh env variables
+          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          if (fetchResponse.ok) {
+            const data = await fetchResponse.json();
+            setEnvVariables(Array.isArray(data) ? data : []);
+          }
+          alert('ลบสำเร็จ');
+        } else {
+          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+        }
+      } else {
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      }
+    } catch (error) {
+      console.error('Error deleting env variable:', error);
+      alert('เกิดข้อผิดพลาดในการลบ');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Controls */}
@@ -277,6 +416,115 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           </table>
         </div>
       </div>
+
+      {/* Floating button for env management */}
+      <button
+        onClick={() => setIsEnvSidebarOpen(true)}
+        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
+        title="จัดการตัวแปรสภาพแวดล้อม"
+      >
+        <Settings className="w-6 h-6" />
+      </button>
+
+      {/* Off-canvas sidebar for env management */}
+      <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-50 ${
+        isEnvSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
+            <button
+              onClick={() => setIsEnvSidebarOpen(false)}
+              className="p-1 rounded-full hover:bg-gray-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
+              {/* Add new env variable */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-md font-medium mb-3">เพิ่มตัวแปรใหม่</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Key</label>
+                    <input
+                      type="text"
+                      value={newEnvVar.key}
+                      onChange={(e) => setNewEnvVar({ ...newEnvVar, key: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ACCESS_TOKEN_PANCAKE_1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
+                    <textarea
+                      value={newEnvVar.value}
+                      onChange={(e) => setNewEnvVar({ ...newEnvVar, value: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ค่าของตัวแปร"
+                      rows={3}
+                    />
+                  </div>
+                  <button
+                    onClick={() => saveEnvVariable(newEnvVar)}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {isLoading ? 'กำลังบันทึก...' : 'บันทึก'}
+                  </button>
+                </div>
+              </div>
+
+              {/* List existing env variables */}
+              <div>
+                <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
+                {envVariables.length === 0 ? (
+                  <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
+                ) : (
+                  <div className="space-y-2">
+                    {envVariables.map((envVar) => (
+                      <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 mr-2">
+                            <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
+                            <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
+                            {envVar.updated_at && (
+                              <div className="text-xs text-gray-400 mt-1">
+                                อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => deleteEnvVariable(envVar.key)}
+                            disabled={isLoading}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            title="ลบตัวแปร"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Overlay for sidebar */}
+      {isEnvSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setIsEnvSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 };
