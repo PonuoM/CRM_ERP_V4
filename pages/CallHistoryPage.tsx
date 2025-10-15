@@ -387,6 +387,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [activeAudios, setActiveAudios] = useState<Set<number>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // (Removed) Employee call overview state
 
   const currentUserFull = `${currentUser.firstName} ${currentUser.lastName}`.trim();
   const isPrivileged = currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl;
@@ -416,6 +418,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     }
     return [];
   }, [currentUser, users]);
+
+  // (Removed) Employee call overview fetch/effect
 
   // Function to handle recording playback with Authorization header
   const playRecording = async (recordingURL: string, id: number) => {
@@ -1072,43 +1076,147 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             setIsSearchLoading(false);
             return;
           }
-        } else {
-          // Normal request for other users or when customer phone is not provided
-          const response = await fetch(searchUrl, {
+        }
+        // Format phone numbers to +66 format
+        const formatPhoneToPlus66 = (phone: string) => {
+          if (phone.startsWith('0')) {
+            return '+66' + phone.substring(1);
+          }
+          return '+66' + phone;
+        };
+        
+        const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+        const formattedUserPhone = formatPhoneToPlus66(currentUser.phone);
+        
+        // First request: localparty = customer phone, remoteparty = user's phone
+        const params1 = new URLSearchParams(params.toString());
+        params1.delete('party');
+        params1.append('localparty', formattedCustomerPhone);
+        params1.append('remoteparty', formattedUserPhone);
+        
+        const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
+        
+        // Second request: localparty = user's phone, remoteparty = customer phone
+        const params2 = new URLSearchParams(params.toString());
+        params2.delete('party');
+        params2.append('localparty', formattedUserPhone);
+        params2.append('remoteparty', formattedCustomerPhone);
+        
+        const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
+        
+        // Execute both requests in parallel
+        const [response1, response2] = await Promise.all([
+          fetch(searchUrl1, {
             method: 'GET',
             headers: {
               'Authorization': authResult.token,
               'Accept': 'application/json'
             }
-          });
+          }),
+          fetch(searchUrl2, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          })
+        ]);
+        
+        // Parse both responses
+        let responseData1, responseData2;
+        
+        if (response1.ok) {
+          const responseText1 = await response1.text();
+          try {
+            responseData1 = JSON.parse(responseText1);
+          } catch (e) {
+            responseData1 = responseText1;
+          }
+        }
+        
+        if (response2.ok) {
+          const responseText2 = await response2.text();
+          try {
+            responseData2 = JSON.parse(responseText2);
+          } catch (e) {
+            responseData2 = responseText2;
+          }
+        }
+        
+        // Merge the results
+        const mergedData = {
+          objects: [
+            ...(responseData1?.objects || []),
+            ...(responseData2?.objects || [])
+          ]
+        };
+        
+        // Remove duplicates based on recording ID
+        const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
+          index === self.findIndex((t: any) => t.id === obj.id)
+        );
+        
+        mergedData.objects = uniqueObjects;
+        
+        // Sort by timestamp (newest first)
+        mergedData.objects.sort((a: any, b: any) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        
+        
+        if (mergedData && mergedData.objects) {
+          setRecordingsData(mergedData);
+          setFilteredRecordings(mergedData.objects);
+          // Update the searched agent when search is performed
+          setSearchedAgent(selectedAgent);
           
-          if (response.ok) {
-            const responseText = await response.text();
-            let responseData;
-            try {
-              responseData = JSON.parse(responseText);
-            } catch (e) {
-              responseData = responseText;
-            }
+          // Update pagination state for merged results
+          setCurrentPage(1);
+          setPageSize(20);
+          setTotalResults(mergedData.objects.length);
+          setNextPageUri('');
+          setPrevPageUri('');
+          setLimitReached(false);
+          
+          setIsSearchLoading(false);
+          return;
+        }
+      } else {
+        // Normal request for other users or when customer phone is not provided
+        const response = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': authResult.token,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          let responseData;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch (e) {
+            responseData = responseText;
+          }
+          
+          
+          if (responseData && responseData.objects) {
+            setRecordingsData(responseData);
+            setFilteredRecordings(responseData.objects);
+            // Update the searched agent when search is performed
+            setSearchedAgent(selectedAgent);
             
+            // Update pagination state
+            setCurrentPage(responseData.page || 1);
+            setPageSize(responseData.pageSize || 20);
+            setTotalResults(responseData.resultCount || 0);
+            setNextPageUri(responseData.nextPageUri || '');
+            setPrevPageUri(responseData.prevPageUri || '');
+            setLimitReached(responseData.limitReached || false);
             
-            if (responseData && responseData.objects) {
-              setRecordingsData(responseData);
-              setFilteredRecordings(responseData.objects);
-              // Update the searched agent when search is performed
-              setSearchedAgent(selectedAgent);
-              
-              // Update pagination state
-              setCurrentPage(responseData.page || 1);
-              setPageSize(responseData.pageSize || 20);
-              setTotalResults(responseData.resultCount || 0);
-              setNextPageUri(responseData.nextPageUri || '');
-              setPrevPageUri(responseData.prevPageUri || '');
-              setLimitReached(responseData.limitReached || false);
-              
-              setIsSearchLoading(false);
-              return;
-            }
+            setIsSearchLoading(false);
+            return;
           }
         }
       }
@@ -1116,47 +1224,49 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
       setIsSearchLoading(false);
     }
     
-    const filtered = recordingsData.objects.filter((recording: any) => {
-      // Apply filters based on the new data structure
-      if (qCustomer && !("Unknown".toLowerCase().includes(qCustomer.toLowerCase()))) return false;
-      if (qCustomerPhone && !recording.remoteParty?.includes(qCustomerPhone)) return false;
-      if (qAgentPhone && !recording.localParty?.includes(qAgentPhone)) return false;
-      
-      // Status filter - all recordings have status "ได้คุย"
-      if (status !== 'all' && status !== 'ได้คุย') return false;
-      
-      // Direction filter
-      if (direction !== 'all' && recording.direction !== direction) return false;
-      
-      // Date range filter
-      if (datetimeRange.start || datetimeRange.end) {
-        // Handle the format "2025-10-09 03:23:08" from the API
-        const recordingDate = new Date(recording.timestamp);
-        // Add 7 hours to convert from UTC to Asia/Bangkok
-        recordingDate.setHours(recordingDate.getHours() + 7);
+    // If we didn't make an API call, filter the existing recordings data
+    if (recordingsData && recordingsData.objects) {
+      const filtered = recordingsData.objects.filter((recording: any) => {
+        // Apply filters based on the new data structure
+        if (qCustomer && !("Unknown".toLowerCase().includes(qCustomer.toLowerCase()))) return false;
+        if (qCustomerPhone && !recording.remoteParty?.includes(qCustomerPhone)) return false;
+        if (qAgentPhone && !recording.localParty?.includes(qAgentPhone)) return false;
         
-        if (datetimeRange.start && recordingDate < new Date(datetimeRange.start)) return false;
-        if (datetimeRange.end) {
-          const e = new Date(datetimeRange.end);
-          if (recordingDate > e) return false;
+        // Status filter - all recordings have status "ได้คุย"
+        if (status !== 'all' && status !== 'ได้คุย') return false;
+        
+        // Direction filter
+        if (direction !== 'all' && recording.direction !== direction) return false;
+        
+        // Date range filter
+        if (datetimeRange.start || datetimeRange.end) {
+          // Handle the format "2025-10-09 03:23:08" from the API
+          const recordingDate = new Date(recording.timestamp);
+          // Add 7 hours to convert from UTC to Asia/Bangkok
+          recordingDate.setHours(recordingDate.getHours() + 7);
+          
+          if (datetimeRange.start && recordingDate < new Date(datetimeRange.start)) return false;
+          if (datetimeRange.end) {
+            const e = new Date(datetimeRange.end);
+            if (recordingDate > e) return false;
+          }
         }
-      }
+        
+        return true;
+      }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       
-      return true;
-    }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
-    
-    setFilteredRecordings(filtered);
-    
-    // Update pagination state for filtered results
-    setCurrentPage(1);
-    setPageSize(20);
-    setTotalResults(filtered.length);
-    setNextPageUri('');
-    setPrevPageUri('');
-    setLimitReached(false);
-    
-    setIsSearchLoading(false);
+      setFilteredRecordings(filtered);
+      
+      // Update pagination state for filtered results
+      setCurrentPage(1);
+      setPageSize(20);
+      setTotalResults(filtered.length);
+      setNextPageUri('');
+      setPrevPageUri('');
+      setLimitReached(false);
+      
+      setIsSearchLoading(false);
+    }
   };
   
   // Function to handle page change
@@ -1679,6 +1789,96 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
           </div>
         </div>
 
+        {/* Employee Call Overview Table (removed)
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <UserIcon className="w-5 h-5 text-gray-500" />
+              <h2 className="text-lg font-semibold text-gray-700">ภาพรวมการโทรของพนักงาน</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">เดือน:</label>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                onClick={fetchEmployeeCallData}
+                disabled={isLoadingEmployeeData}
+              >
+                {isLoadingEmployeeData ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                {isLoadingEmployeeData ? 'กำลังโหลด...' : 'ดึงข้อมูล'}
+              </button>
+            </div>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">รายชื่อพนักงาน</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ตำแหน่ง</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เบอร์โทร</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">วันที่ทำงาน</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เวลาโทร (นาที)</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">สายที่ได้คุย</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">โทรทั้งหมด</th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">เวลาโทร/วัน (นาที)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {isLoadingEmployeeData ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
+                        <p className="text-gray-500 text-sm font-medium">กำลังโหลดข้อมูล...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {employeeCallData.length > 0 ? (
+                      employeeCallData.map((employee) => (
+                        <tr key={employee.user_id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4 text-sm text-gray-800">{employee.first_name}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.role}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.phone}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.working_days}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.total_minutes}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.connected_calls}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.total_calls}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{employee.minutes_per_workday}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center">
+                          <div className="flex flex-col items-center">
+                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                              <UserIcon className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <p className="text-gray-500 text-sm font-medium">ไม่พบข้อมูล</p>
+                            <p className="text-gray-400 text-xs mt-1">ลองเลือกเดือนอื่นหรือกดปุ่ม "ดึงข้อมูล" เพื่อโหลดข้อมูลใหม่</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+*/}
         {/* Results Summary */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">

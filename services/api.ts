@@ -52,6 +52,23 @@ export async function login(username: string, password: string): Promise<LoginRe
   });
 }
 
+// Attendance APIs
+export async function listAttendance(params: { userId?: number; date?: string; start?: string; end?: string; roleOnly?: 'telesale'|'all'; kpis?: boolean; companyId?: number }) {
+  const qs = new URLSearchParams();
+  if (params.userId) qs.set('userId', String(params.userId));
+  if (params.date) qs.set('date', params.date);
+  if (params.start) qs.set('start', params.start);
+  if (params.end) qs.set('end', params.end);
+  if (params.roleOnly) qs.set('roleOnly', params.roleOnly);
+  if (params.companyId) qs.set('companyId', String(params.companyId));
+  const path = params.kpis ? 'attendance/kpis' : 'attendance';
+  return apiFetch(`${path}${qs.toString() ? `?${qs}` : ''}`);
+}
+
+export async function checkInAttendance(userId: number) {
+  return apiFetch('attendance/check_in', { method: 'POST', body: JSON.stringify({ userId }) });
+}
+
 export async function listCustomers(params?: { q?: string; companyId?: number; bucket?: string; userId?: number }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
@@ -118,6 +135,32 @@ export async function deleteProduct(id: number) {
 
 export async function listPromotions() {
   return apiFetch('promotions');
+}
+
+export async function createPromotion(promotionData: any) {
+  return apiFetch('promotions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(promotionData)
+  });
+}
+
+export async function updatePromotion(id: number, promotionData: any) {
+  return apiFetch(`promotions/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(promotionData)
+  });
+}
+
+export async function deletePromotion(id: number) {
+  return apiFetch(`promotions/${id}`, {
+    method: 'DELETE'
+  });
 }
 
 export async function listPages(companyId?: number) {
@@ -395,3 +438,13 @@ export async function listStockMovements(params?: { warehouseId?: number; produc
   const query = qs.toString();
   return apiFetch(`stock_movements${query ? `?${query}` : ''}`);
 }
+
+export async function listCallOverview(params?: { month?: string; userId?: number; companyId?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.month) qs.set('month', params.month);
+  if (params?.userId) qs.set('userId', String(params.userId));
+  if (params?.companyId) qs.set('companyId', String(params.companyId));
+  const query = qs.toString();
+  return apiFetch('call_overview' + (query ? ('?' + query) : ''));
+}
+
