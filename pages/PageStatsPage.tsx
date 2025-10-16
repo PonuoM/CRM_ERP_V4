@@ -45,7 +45,7 @@ function fmtDate(d: Date) {
 }
 
 const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = [], calls = [] }) => {
-  const [rangeDays, setRangeDays] = useState<number>(90);
+  const [rangeDays, setRangeDays] = useState<number | string>(7);
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
   const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -108,14 +108,71 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const startDate = useMemo(() => {
     const d = new Date();
     d.setHours(0,0,0,0);
-    d.setDate(d.getDate() - (rangeDays - 1));
+    
+    if (typeof rangeDays === 'number') {
+      d.setDate(d.getDate() - (rangeDays - 1));
+    } else {
+      switch (rangeDays) {
+        case 'thisWeek':
+          // Start of current week (Sunday)
+          const dayOfWeek = d.getDay();
+          d.setDate(d.getDate() - dayOfWeek);
+          break;
+        case 'lastWeek':
+          // Start of last week (Sunday) - exactly 7 days of last week only
+          const currentDayOfWeek = d.getDay();
+          const daysBackToLastWeekStart = currentDayOfWeek + 7;
+          d.setDate(d.getDate() - daysBackToLastWeekStart);
+          break;
+        case 'thisMonth':
+          // Start of current month
+          d.setDate(1);
+          break;
+        case 'lastMonth':
+          // Start of last month - only days from last month
+          d.setMonth(d.getMonth() - 1, 1);
+          break;
+      }
+    }
+    
     return d;
   }, [rangeDays]);
 
   const days: string[] = useMemo(() => {
     const res: string[] = [];
     const d = new Date(startDate);
-    for (let i = 0; i < rangeDays; i++) {
+    
+    let daysToGenerate: number;
+    if (typeof rangeDays === 'number') {
+      daysToGenerate = rangeDays;
+    } else {
+      switch (rangeDays) {
+        case 'thisWeek':
+          // From start of week to today
+          daysToGenerate = new Date().getDay() + 1;
+          break;
+        case 'lastWeek':
+          // Exactly 7 days of last week
+          daysToGenerate = 7;
+          break;
+        case 'thisMonth':
+          // From start of month to today
+          daysToGenerate = new Date().getDate();
+          break;
+        case 'lastMonth':
+          // Full previous month - calculate days in that month
+          const lastMonthForCalc = new Date();
+          lastMonthForCalc.setMonth(lastMonthForCalc.getMonth() - 1);
+          // Last day of previous month
+          const lastDayOfPrevMonth = new Date(lastMonthForCalc.getFullYear(), lastMonthForCalc.getMonth() + 1, 0).getDate();
+          daysToGenerate = lastDayOfPrevMonth;
+          break;
+        default:
+          daysToGenerate = 7;
+      }
+    }
+    
+    for (let i = 0; i < daysToGenerate; i++) {
       res.push(fmtDate(d));
       d.setDate(d.getDate() + 1);
     }
@@ -192,7 +249,30 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     const endPrev = new Date(startDate);
     endPrev.setDate(endPrev.getDate() - 1);
     const startPrev = new Date(endPrev);
-    startPrev.setDate(startPrev.getDate() - (rangeDays - 1));
+    
+    let daysToSubtract: number;
+    if (typeof rangeDays === 'number') {
+      daysToSubtract = rangeDays - 1;
+    } else {
+      switch (rangeDays) {
+        case 'thisWeek':
+          daysToSubtract = 7; // Previous week
+          break;
+        case 'lastWeek':
+          daysToSubtract = 7; // Week before last week
+          break;
+        case 'thisMonth':
+          daysToSubtract = 30; // Approximate previous month
+          break;
+        case 'lastMonth':
+          daysToSubtract = 30; // Month before last month
+          break;
+        default:
+          daysToSubtract = 7;
+      }
+    }
+    
+    startPrev.setDate(startPrev.getDate() - daysToSubtract);
     const inPrevRange = (iso: string) => iso >= fmtDate(startPrev) && iso <= fmtDate(endPrev);
     const newCustomersPrev = customers.filter(c => c.dateRegistered && inPrevRange(c.dateRegistered.slice(0,10))).length;
     const ordersPrev = orders.filter(o => inPrevRange(o.orderDate.slice(0,10))).length;
@@ -377,14 +457,68 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       // Calculate timestamps using local timezone
       const now = new Date();
-      const until = Math.floor(now.getTime() / 1000); // Current timestamp in seconds
-      
-      // Calculate since: today at midnight minus rangeDays in local timezone
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Set to midnight today in local timezone
-      const daysAgo = new Date(today);
-      daysAgo.setDate(daysAgo.getDate() - (rangeDays - 1)); // Subtract rangeDays-1 days
-      const since = Math.floor(daysAgo.getTime() / 1000); // Convert to unix timestamp
+      
+      let untilDate: Date;
+      
+      if (typeof rangeDays === 'number' || rangeDays === 'thisWeek' || rangeDays === 'thisMonth') {
+        // For numeric ranges, thisWeek, and thisMonth, use current time
+        untilDate = now;
+      } else {
+        switch (rangeDays) {
+          case 'lastWeek':
+            // End of last week (Saturday)
+            const lastWeekEnd = new Date(today);
+            const currentDayOfWeek = new Date().getDay();
+            lastWeekEnd.setDate(lastWeekEnd.getDate() - currentDayOfWeek - 1); // Go back to last week's Saturday
+            lastWeekEnd.setHours(23, 59, 59, 999); // End of the day
+            untilDate = lastWeekEnd;
+            break;
+          case 'lastMonth':
+            // Last day of last month
+            const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0); // Last day of previous month
+            lastMonthEnd.setHours(23, 59, 59, 999); // End of the day
+            untilDate = lastMonthEnd;
+            break;
+          default:
+            untilDate = now;
+        }
+      }
+      
+      const until = Math.floor(untilDate.getTime() / 1000); // Current timestamp in seconds
+      let sinceDate: Date;
+      
+      if (typeof rangeDays === 'number') {
+        sinceDate = new Date(today);
+        sinceDate.setDate(sinceDate.getDate() - (rangeDays - 1));
+      } else {
+        switch (rangeDays) {
+          case 'thisWeek':
+            sinceDate = new Date(today);
+            sinceDate.setDate(sinceDate.getDate() - new Date().getDay()); // Days since Sunday
+            break;
+          case 'lastWeek':
+            // Calculate the start of last week (Sunday)
+            const lastWeekStart = new Date(today);
+            const currentDayOfWeek = new Date().getDay();
+            lastWeekStart.setDate(lastWeekStart.getDate() - currentDayOfWeek - 7); // Go back to last week's Sunday
+            sinceDate = lastWeekStart;
+            break;
+          case 'thisMonth':
+            sinceDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
+            break;
+          case 'lastMonth':
+            // First day of last month
+            sinceDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            break;
+          default:
+            sinceDate = new Date(today);
+            sinceDate.setDate(sinceDate.getDate() - 7);
+        }
+      }
+      
+      const since = Math.floor(sinceDate.getTime() / 1000); // Convert to unix timestamp
 
       // Fetch page statistics with select_fields parameter
       const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
@@ -420,10 +554,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-500" />
-            <select value={rangeDays} onChange={e => setRangeDays(Number(e.target.value))} className="border rounded-md px-3 py-2 text-sm">
+            <select value={rangeDays} onChange={e => setRangeDays(e.target.value === 'thisWeek' || e.target.value === 'lastWeek' || e.target.value === 'thisMonth' || e.target.value === 'lastMonth' ? e.target.value : Number(e.target.value))} className="border rounded-md px-3 py-2 text-sm">
               <option value={7}>7 วันย้อนหลัง</option>
               <option value={30}>30 วันย้อนหลัง</option>
               <option value={90}>90 วันย้อนหลัง</option>
+              <option value="thisWeek">สัปดาห์นี้</option>
+              <option value="lastWeek">สัปดาห์ที่แล้ว</option>
+              <option value="thisMonth">เดือนนี้</option>
+              <option value="lastMonth">เดือนที่แล้ว</option>
             </select>
             <div className="relative">
               <input
@@ -433,7 +571,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 onChange={(e) => setPageSearchTerm(e.target.value)}
                 onFocus={() => setIsSelectOpen(true)}
                 onBlur={() => setTimeout(() => setIsSelectOpen(false), 200)}
-                className="border rounded-md px-3 py-2 pr-8 text-sm w-64"
+                className="border rounded-md px-3 py-2 pr-8 text-sm w-96"
               />
               <button
                 onClick={() => setIsSelectOpen(!isSelectOpen)}
@@ -525,7 +663,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       {/* Chart */}
       <div className="mb-6">
-        <MultiLineChart title="ภาพรวมของหน้า" series={chartSeries} yLabel="จำนวน" xLabelEvery={rangeDays >= 60 ? 4 : 1} />
+        <MultiLineChart title="ภาพรวมของหน้า" series={chartSeries} yLabel="จำนวน" xLabelEvery={(typeof rangeDays === 'number' && rangeDays >= 60) || rangeDays === 'thisMonth' || rangeDays === 'lastMonth' ? 4 : 1} />
       </div>
 
       {/* KPIs */}
