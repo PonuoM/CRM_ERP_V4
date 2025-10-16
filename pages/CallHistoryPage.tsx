@@ -852,12 +852,28 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     return { params: [params], isDualRequest: false };
   };
 
+  // Function to reset all filter values except pagination
+  const resetFilters = () => {
+    setQCustomer('');
+    setQCustomerPhone('');
+    setQAgentPhone('');
+    setSelectedAgent('');
+    setStatus('all');
+    setDirection('all');
+    setRange({ start: '', end: '' });
+    setDatetimeRange({ start: '', end: '' });
+    // Don't reset pagination values (currentPage and pageSize)
+  };
+
   // Function to filter recordings data based on current filter values
   const filterRecordings = async () => {
     if (!recordingsData || !recordingsData.objects) {
       setFilteredRecordings([]);
       return;
     }
+    
+    // Reset page to 1 but keep current pageSize
+    setCurrentPage(1);
     
     // Set search loading state
     setIsSearchLoading(true);
@@ -2050,6 +2066,16 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   <Search className="w-4 h-4" />
                 )}
                 {isSearchLoading ? 'กำลังค้นหา...' : 'ค้นหา'}
+              </button>
+              <button
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors flex items-center justify-center gap-2"
+                onClick={resetFilters}
+                disabled={isSearchLoading}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                ล้างค่า
               </button>
               <button
                 className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
