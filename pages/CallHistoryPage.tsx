@@ -1951,18 +1951,6 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
             </div>
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <UserIcon className="w-4 h-4 text-gray-400" />
-                ชื่อลูกค้า
-              </label>
-              <input
-                value={qCustomer}
-                onChange={e=>setQCustomer(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="ค้นหาชื่อลูกค้า"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Phone className="w-4 h-4 text-gray-400" />
                 เบอร์โทรลูกค้า
               </label>
@@ -2011,7 +1999,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   ))}
                 </select>
               </div>
-            ) : (
+            ) : currentUser.role !== UserRole.Telesale ? (
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <UserIcon className="w-4 h-4 text-gray-400" />
@@ -2024,7 +2012,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
                   placeholder="ค้นหา"
                 />
               </div>
-            )}
+            ) : null}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">Direction</label>
               <select
