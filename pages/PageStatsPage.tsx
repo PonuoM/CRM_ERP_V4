@@ -59,7 +59,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [usePageStats, setUsePageStats] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('hourly');
+  const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('daily');
   const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
   const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
 
@@ -617,23 +617,6 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 </div>
               )}
             </div>
-            {usePageStats && (
-              <div className="flex items-center gap-2 ml-2">
-                <span className="text-sm text-gray-600">มุมมอง:</span>
-                <button
-                  onClick={() => setViewMode('hourly')}
-                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'hourly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  รายชั่วโมง
-                </button>
-                <button
-                  onClick={() => setViewMode('daily')}
-                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                >
-                  รายวัน
-                </button>
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -677,9 +660,28 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       {/* Table */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 overflow-auto">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-md font-semibold text-gray-700">
-            รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
-          </h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-md font-semibold text-gray-700">
+              รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
+            </h3>
+            {usePageStats && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">มุมมอง:</span>
+                <button
+                  onClick={() => setViewMode('daily')}
+                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  รายวัน
+                </button>
+                <button
+                  onClick={() => setViewMode('hourly')}
+                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'hourly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  รายชั่วโมง
+                </button>
+              </div>
+            )}
+          </div>
           <div className="text-xs text-gray-500">
             {usePageStats ? 'ข้อมูลจาก Pages.fm API' : 'สถิติต่อวัน'}
           </div>
