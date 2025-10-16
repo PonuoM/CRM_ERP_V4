@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, User, UserRole } from '@/types';
-import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus } from 'lucide-react';
+import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MultiLineChart from '@/components/MultiLineChart';
 
@@ -56,6 +56,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pages, setPages] = useState<Array<{id: number, name: string, page_id: string}>>([]);
   const [selectedPage, setSelectedPage] = useState<string>('');
+  const [pageStatsData, setPageStatsData] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [usePageStats, setUsePageStats] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -329,6 +332,81 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   };
 
+  // Fetch page stats from Pages.fm API
+  const fetchPageStats = async () => {
+    if (!selectedPage || !currentUser) {
+      alert('กรุณาเลือกเพจ');
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // First, get the access token from env variables
+      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        return;
+      }
+
+      // Generate page access token
+      const tokenResponse = await fetch(`https://pages.fm/api/v1/pages/${selectedPage}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error('ไม่สามารถสร้าง page access token ได้');
+      }
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenData.success || !tokenData.page_access_token) {
+        throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
+      }
+
+      // Calculate timestamps
+      const now = new Date();
+      const until = Math.floor(now.getTime() / 1000); // Current timestamp in seconds
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - (rangeDays - 1));
+      startDate.setHours(0, 0, 0, 0); // Set to midnight
+      const since = Math.floor(startDate.getTime() / 1000);
+
+      // Fetch page statistics with select_fields parameter
+      const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
+      const statsResponse = await fetch(`https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${since}&until=${until}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`);
+
+      if (!statsResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูลสถิติได้');
+      }
+      const statsData = await statsResponse.json();
+      
+      if (statsData.success && statsData.data) {
+        // Sort data from newest to oldest
+        const sortedData = [...statsData.data].sort((a, b) =>
+          new Date(b.hour).getTime() - new Date(a.hour).getTime()
+        );
+        setPageStatsData(sortedData);
+        setUsePageStats(true);
+      } else {
+        throw new Error('ไม่สามารถดึงข้อมูลสถิติได้: ' + (statsData.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error fetching page stats:', error);
+      alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Controls */}
@@ -364,8 +442,27 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setRangeDays(rangeDays)} className="border rounded-md px-3 py-2 text-sm flex items-center gap-1"><RefreshCcw className="w-4 h-4"/> รีเฟรช</button>
-            <button onClick={exportCSV} className="border rounded-md px-3 py-2 text-sm flex items-center gap-1"><Download className="w-4 h-4"/> ดาวน์โหลด CSV</button>
+            <button
+              onClick={() => setRangeDays(rangeDays)}
+              className={`border rounded-md px-3 py-2 text-sm flex items-center gap-1 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={usePageStats}
+            >
+              <RefreshCcw className="w-4 h-4"/> รีเฟรช
+            </button>
+            <button
+              onClick={exportCSV}
+              className={`border rounded-md px-3 py-2 text-sm flex items-center gap-1 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={usePageStats}
+            >
+              <Download className="w-4 h-4"/> ดาวน์โหลด CSV
+            </button>
+            <button
+              onClick={fetchPageStats}
+              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+              disabled={isSearching || !selectedPage}
+            >
+              <Search className="w-4 h-4"/> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+            </button>
           </div>
         </div>
       </div>
@@ -386,8 +483,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       {/* Table */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 overflow-auto">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-md font-semibold text-gray-700">รายละเอียดสถิติ</h3>
-          <div className="text-xs text-gray-500">สถิติต่อวัน</div>
+          <h3 className="text-md font-semibold text-gray-700">
+            รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
+          </h3>
+          <div className="text-xs text-gray-500">
+            {usePageStats ? 'ข้อมูลจาก Pages.fm API' : 'สถิติต่อวัน'}
+          </div>
         </div>
         <div className="w-full overflow-auto">
           <table className="min-w-[1200px] w-full text-sm">
@@ -412,45 +513,111 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               </tr>
             </thead>
             <tbody>
-              {daily.map(r => (
-                <tr key={r.date} className="border-t border-gray-100">
-                  <td className="px-3 py-2 text-gray-700">{r.date}</td>
-                  <td className="px-3 py-2 text-right">{r.newCustomers}</td>
-                  <td className="px-3 py-2 text-right">{r.totalPhones}</td>
-                  <td className="px-3 py-2 text-right">{r.newPhones}</td>
-                  <td className="px-3 py-2 text-right">{r.totalComments}</td>
-                  <td className="px-3 py-2 text-right">{r.totalChats}</td>
-                  <td className="px-3 py-2 text-right">{r.totalPageComments}</td>
-                  <td className="px-3 py-2 text-right">{r.totalPageChats}</td>
-                  <td className="px-3 py-2 text-right">{r.newChats}</td>
-                  <td className="px-3 py-2 text-right">{r.chatsFromOldCustomers}</td>
-                  <td className="px-3 py-2 text-right">{r.webLoggedIn}</td>
-                  <td className="px-3 py-2 text-right">{r.webGuest}</td>
-                  <td className="px-3 py-2 text-right">{r.ordersCount}</td>
-                  <td className="px-3 py-2 text-right">{r.pctPurchasePerNewCustomer.toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-right">{r.pctPurchasePerPhone.toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-right">{r.ratioNewPhonesToNewCustomers.toFixed(2)}</td>
-                </tr>
-              ))}
+              {usePageStats && pageStatsData.length > 0 ? (
+                pageStatsData.map((item, index) => {
+                  // Convert hour string to date format
+                  const date = new Date(item.hour);
+                  const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                  
+                  return (
+                    <tr key={index} className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-700">{formattedDate}</td>
+                      <td className="px-3 py-2 text-right">{item.new_customer_count}</td>
+                      <td className="px-3 py-2 text-right">{item.uniq_phone_number_count}</td>
+                      <td className="px-3 py-2 text-right">{item.phone_number_count}</td>
+                      <td className="px-3 py-2 text-right">{item.customer_comment_count}</td>
+                      <td className="px-3 py-2 text-right">{item.customer_inbox_count}</td>
+                      <td className="px-3 py-2 text-right">{item.page_comment_count}</td>
+                      <td className="px-3 py-2 text-right">{item.page_inbox_count}</td>
+                      <td className="px-3 py-2 text-right">{item.new_inbox_count}</td>
+                      <td className="px-3 py-2 text-right">{item.inbox_interactive_count}</td>
+                      <td className="px-3 py-2 text-right">{item.today_uniq_website_referral}</td>
+                      <td className="px-3 py-2 text-right">{item.today_website_guest_referral}</td>
+                      <td className="px-3 py-2 text-right">{item.order_count || 0}</td>
+                      <td className="px-3 py-2 text-right">{item.order_count_per_new_cus ? (item.order_count_per_new_cus * 100).toFixed(2) + '%' : '-'}</td>
+                      <td className="px-3 py-2 text-right">{item.order_count_per_phone ? (item.order_count_per_phone * 100).toFixed(2) + '%' : '-'}</td>
+                      <td className="px-3 py-2 text-right">{item.new_phone_count_per_new_customer_count ? (item.new_phone_count_per_new_customer_count * 100).toFixed(2) : '-'}</td>
+                    </tr>
+                  );
+                })
+              ) : (
+                daily.map(r => (
+                  <tr key={r.date} className="border-t border-gray-100">
+                    <td className="px-3 py-2 text-gray-700">{r.date}</td>
+                    <td className="px-3 py-2 text-right">{r.newCustomers}</td>
+                    <td className="px-3 py-2 text-right">{r.totalPhones}</td>
+                    <td className="px-3 py-2 text-right">{r.newPhones}</td>
+                    <td className="px-3 py-2 text-right">{r.totalComments}</td>
+                    <td className="px-3 py-2 text-right">{r.totalChats}</td>
+                    <td className="px-3 py-2 text-right">{r.totalPageComments}</td>
+                    <td className="px-3 py-2 text-right">{r.totalPageChats}</td>
+                    <td className="px-3 py-2 text-right">{r.newChats}</td>
+                    <td className="px-3 py-2 text-right">{r.chatsFromOldCustomers}</td>
+                    <td className="px-3 py-2 text-right">{r.webLoggedIn}</td>
+                    <td className="px-3 py-2 text-right">{r.webGuest}</td>
+                    <td className="px-3 py-2 text-right">{r.ordersCount}</td>
+                    <td className="px-3 py-2 text-right">{r.pctPurchasePerNewCustomer.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{r.pctPurchasePerPhone.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{r.ratioNewPhonesToNewCustomers.toFixed(2)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
                 <td className="px-3 py-2">รวม</td>
-                <td className="px-3 py-2 text-right">{totals.newCustomers}</td>
-                <td className="px-3 py-2 text-right">{totals.totalPhones}</td>
-                <td className="px-3 py-2 text-right">{totals.newPhones}</td>
-                <td className="px-3 py-2 text-right">{totals.totalComments}</td>
-                <td className="px-3 py-2 text-right">{totals.totalChats}</td>
-                <td className="px-3 py-2 text-right">{totals.totalPageComments}</td>
-                <td className="px-3 py-2 text-right">{totals.totalPageChats}</td>
-                <td className="px-3 py-2 text-right">{totals.newChats}</td>
-                <td className="px-3 py-2 text-right">{totals.chatsFromOldCustomers}</td>
-                <td className="px-3 py-2 text-right">{totals.webLoggedIn}</td>
-                <td className="px-3 py-2 text-right">{totals.webGuest}</td>
-                <td className="px-3 py-2 text-right">{totals.ordersCount}</td>
-                <td className="px-3 py-2 text-right"></td>
-                <td className="px-3 py-2 text-right"></td>
-                <td className="px-3 py-2 text-right"></td>
+                {usePageStats && pageStatsData.length > 0 ? (
+                  <>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0)}</td>
+                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {pageStatsData.length > 0 && pageStatsData.some(item => item.order_count_per_new_cus)
+                        ? ((pageStatsData.reduce((sum, item) => sum + (item.order_count_per_new_cus || 0), 0) / pageStatsData.filter(item => item.order_count_per_new_cus).length) * 100).toFixed(2) + '%'
+                        : '-'
+                      }
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {pageStatsData.length > 0 && pageStatsData.some(item => item.order_count_per_phone)
+                        ? ((pageStatsData.reduce((sum, item) => sum + (item.order_count_per_phone || 0), 0) / pageStatsData.filter(item => item.order_count_per_phone).length) * 100).toFixed(2) + '%'
+                        : '-'
+                      }
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {pageStatsData.length > 0 && pageStatsData.some(item => item.new_phone_count_per_new_customer_count)
+                        ? (pageStatsData.reduce((sum, item) => sum + (item.new_phone_count_per_new_customer_count || 0), 0) / pageStatsData.filter(item => item.new_phone_count_per_new_customer_count).length).toFixed(2)
+                        : '-'
+                      }
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-2 text-right">{totals.newCustomers}</td>
+                    <td className="px-3 py-2 text-right">{totals.totalPhones}</td>
+                    <td className="px-3 py-2 text-right">{totals.newPhones}</td>
+                    <td className="px-3 py-2 text-right">{totals.totalComments}</td>
+                    <td className="px-3 py-2 text-right">{totals.totalChats}</td>
+                    <td className="px-3 py-2 text-right">{totals.totalPageComments}</td>
+                    <td className="px-3 py-2 text-right">{totals.totalPageChats}</td>
+                    <td className="px-3 py-2 text-right">{totals.newChats}</td>
+                    <td className="px-3 py-2 text-right">{totals.chatsFromOldCustomers}</td>
+                    <td className="px-3 py-2 text-right">{totals.webLoggedIn}</td>
+                    <td className="px-3 py-2 text-right">{totals.webGuest}</td>
+                    <td className="px-3 py-2 text-right">{totals.ordersCount}</td>
+                    <td className="px-3 py-2 text-right"></td>
+                    <td className="px-3 py-2 text-right"></td>
+                    <td className="px-3 py-2 text-right"></td>
+                  </>
+                )}
               </tr>
             </tfoot>
           </table>
