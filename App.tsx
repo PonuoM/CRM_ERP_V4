@@ -49,11 +49,13 @@ import TeamsManagementPage from './pages/TeamsManagementPage';
 import PagesManagementPage from './pages/PagesManagementPage';
 import TagsManagementPage from './pages/TagsManagementPage';
 import CallHistoryPage from './pages/CallHistoryPage';
+import CallDetailsPage from './pages/CallDetailsPage';
 import ReceiveStockPage from './pages/ReceiveStockPage';
 import WarehouseStockViewPage from './pages/WarehouseStockViewPage';
 import LotTrackingPage from './pages/LotTrackingPage';
 import ManageCustomersPage from './pages/ManageCustomersPage';
 import CustomerPoolsPage from './pages/CustomerPoolsPage';
+import PromotionsPage from './pages/PromotionsPage';
 
 
 const App: React.FC = () => {
@@ -64,7 +66,7 @@ const App: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const page = urlParams.get('page');
     if (page === 'search') return 'Search';
-    return 'à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”';
+    return 'แดชบอร์ด';
   };
   
   const shouldHideSidebar = () => {
@@ -100,7 +102,7 @@ const App: React.FC = () => {
       postalCode: '10110',
       phone: '02-123-4567',
       email: 'bangkok@alphaseeds.com',
-      managerName: 'à¸ªà¸¡à¸Šà¸²à¸¢ à¹ƒà¸ˆà¸”à¸µ',
+      managerName: 'à¸ªà¸¡à¸Šà¸²à¸¢ à¹ƒà¸ˆà¸"à¸µ',
       managerPhone: '081-234-5678',
       responsibleProvinces: ['à¸à¸£à¸¸à¸‡à¹€à¸—à¸žà¸¡à¸«à¸²à¸™à¸„à¸£', 'à¸™à¸™à¸—à¸šà¸¸à¸£à¸µ', 'à¸›à¸—à¸¸à¸¡à¸˜à¸²à¸™à¸µ', 'à¸ªà¸¡à¸¸à¸—à¸£à¸›à¸£à¸²à¸à¸²à¸£', 'à¸ªà¸¡à¸¸à¸—à¸£à¸ªà¸²à¸„à¸£'],
       isActive: true,
@@ -119,7 +121,7 @@ const App: React.FC = () => {
       postalCode: '50200',
       phone: '053-123-456',
       email: 'chiangmai@alphaseeds.com',
-      managerName: 'à¸ªà¸¡à¸«à¸à¸´à¸‡ à¸£à¸±à¸à¸”à¸µ',
+      managerName: 'à¸ªà¸¡à¸«à¸à¸´à¸‡ à¸£à¸±à¸à¸"à¸µ',
       managerPhone: '082-345-6789',
       responsibleProvinces: ['à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ', 'à¹€à¸Šà¸µà¸¢à¸‡à¸£à¸²à¸¢', 'à¸¥à¸³à¸›à¸²à¸‡', 'à¸¥à¸³à¸žà¸¹à¸™', 'à¹à¸¡à¹ˆà¸®à¹ˆà¸­à¸‡à¸ªà¸­à¸™'],
       isActive: true,
@@ -710,7 +712,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
-        description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${updatedOrder.id} à¸ˆà¸²à¸ '${originalOrder.orderStatus}' à¹€à¸›à¹‡à¸™ '${updatedOrder.orderStatus}'`,
+        description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${updatedOrder.id} à¸ˆà¸²à¸ '${originalOrder.orderStatus}' à¹€à¸›à¹‡à¸™ '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`
       });
     }
@@ -721,7 +723,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified,
-        description: `à¸¢à¸·à¸™à¸¢à¸±à¸™à¸à¸²à¸£à¸Šà¸³à¸£à¸°à¹€à¸‡à¸´à¸™à¸ªà¸³à¸«à¸£à¸±à¸šà¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${updatedOrder.id}`,
+        description: `à¸¢à¸·à¸™à¸¢à¸±à¸™à¸à¸²à¸£à¸Šà¸³à¸£à¸°à¹€à¸‡à¸´à¸™à¸ªà¸³à¸«à¸£à¸±à¸šà¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`
       });
     }
@@ -734,7 +736,7 @@ const App: React.FC = () => {
             customerId: updatedOrder.customerId,
             timestamp: new Date().toISOString(),
             type: ActivityType.TrackingAdded,
-            description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking [${newTracking.join(', ')}] à¹ƒà¸™à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${updatedOrder.id}`,
+            description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking [${newTracking.join(', ')}] à¹ƒà¸™à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${updatedOrder.id}`,
             actorName: `${currentUser.firstName} ${currentUser.lastName}`
         });
     }
@@ -777,7 +779,7 @@ const App: React.FC = () => {
   };
 
   const handleCancelOrder = async (orderId: string) => {
-    if(window.confirm('à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸à¸­à¸­à¹€à¸”à¸­à¸£à¹Œà¸™à¸µà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?')) {
+    if(window.confirm('à¸„à¸¸à¸"à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸à¸­à¸­à¹€à¸"à¸­à¸£à¹Œà¸™à¸µà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?')) {
         const orderToCancel = orders.find(o => o.id === orderId);
         if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
              const newActivity: Activity = {
@@ -785,7 +787,7 @@ const App: React.FC = () => {
                 customerId: orderToCancel.customerId,
                 timestamp: new Date().toISOString(),
                 type: ActivityType.OrderCancelled,
-                description: `à¸¢à¸à¹€à¸¥à¸´à¸à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${orderId}`,
+                description: `à¸¢à¸à¹€à¸¥à¸´à¸à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${orderId}`,
                 actorName: `${currentUser.firstName} ${currentUser.lastName}`
             };
             if (true) {
@@ -822,7 +824,7 @@ const App: React.FC = () => {
                       customerId: o.customerId,
                       timestamp: new Date().toISOString(),
                       type: ActivityType.OrderStatusChanged,
-                      description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${o.id} à¸ˆà¸²à¸ '${OrderStatus.Pending}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Picking}'`,
+                      description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${o.id} à¸ˆà¸²à¸ '${OrderStatus.Pending}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Picking}'`,
                       actorName: `${currentUser.firstName} ${currentUser.lastName}`
                   });
                   return { ...o, orderStatus: OrderStatus.Picking };
@@ -870,7 +872,7 @@ const App: React.FC = () => {
                 customerId: (orderToUpdate as Order).customerId,
                 timestamp: new Date().toISOString(),
                 type: ActivityType.TrackingAdded,
-                description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking ${update.trackingNumber} à¸ªà¸³à¸«à¸£à¸±à¸šà¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${update.orderId}`,
+                description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking ${update.trackingNumber} à¸ªà¸³à¸«à¸£à¸±à¸šà¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${update.orderId}`,
                 actorName: `${currentUser.firstName} ${currentUser.lastName}`
             });
 
@@ -886,7 +888,7 @@ const App: React.FC = () => {
                     customerId: (orderToUpdate as Order).customerId,
                     timestamp: new Date().toISOString(),
                     type: ActivityType.OrderStatusChanged,
-                    description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ ${update.orderId} à¸ˆà¸²à¸ '${OrderStatus.Picking}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Shipping}'`,
+                    description: `à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸ªà¸–à¸²à¸™à¸°à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ ${update.orderId} à¸ˆà¸²à¸ '${OrderStatus.Picking}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Shipping}'`,
                     actorName: `${currentUser.firstName} ${currentUser.lastName}`
                 });
             }
@@ -969,7 +971,7 @@ const App: React.FC = () => {
           console.log('Customer created successfully:', newCustomer.id);
         } catch (e) { 
           console.error('create customer API failed', e);
-          alert('à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¸ªà¸£à¹‰à¸²à¸‡à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡');
+          alert('à¹€à¸à¸´à¸"à¸‚à¹‰à¸­à¸œà¸´à¸"à¸žà¸¥à¸²à¸"à¹ƒà¸™à¸à¸²à¸£à¸ªà¸£à¹‰à¸²à¸‡à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆ à¸à¸£à¸¸à¸"à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡');
           return; // Don't proceed with order creation if customer creation fails
         }
         setCustomers(prev => [newCustomer, ...prev]);
@@ -1088,7 +1090,7 @@ const App: React.FC = () => {
       }
     } catch (e) { 
       console.error('create order API failed', e);
-      alert('à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡');
+      alert('à¹€à¸à¸´à¸"à¸‚à¹‰à¸­à¸œà¸´à¸"à¸žà¸¥à¸²à¸"à¹ƒà¸™à¸à¸²à¸£à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸"à¸­à¸£à¹Œ à¸à¸£à¸¸à¸"à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡');
       return; // Don't add to local state if API fails
     }
 
@@ -1097,7 +1099,7 @@ const App: React.FC = () => {
       customerId: newOrder.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.OrderCreated,
-      description: `à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸”à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆ ${newOrder.id}`,
+      description: `à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸"à¸­à¸£à¹Œà¹ƒà¸«à¸¡à¹ˆ ${newOrder.id}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`
     };
     try {
@@ -1150,7 +1152,7 @@ const App: React.FC = () => {
     }
 
     closeModal();
-    setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”'); // Go back to dashboard after creating
+    setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"'); // Go back to dashboard after creating
   };
 
   const handleUpdateCustomer = async (updatedCustomer: Customer) => {
@@ -1184,7 +1186,7 @@ const App: React.FC = () => {
   };
   
   const handleTakeCustomer = (customerToTake: Customer) => {
-    if (window.confirm(`à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸£à¸±à¸šà¸¥à¸¹à¸à¸„à¹‰à¸² "${customerToTake.firstName} ${customerToTake.lastName}" à¸¡à¸²à¸”à¸¹à¹à¸¥à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`)) {
+    if (window.confirm(`à¸„à¸¸à¸"à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸£à¸±à¸šà¸¥à¸¹à¸à¸„à¹‰à¸² "${customerToTake.firstName} ${customerToTake.lastName}" à¸¡à¸²à¸"à¸¹à¹à¸¥à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`)) {
         setCustomers(prev => prev.map(c => 
             c.id === customerToTake.id 
             ? { 
@@ -1306,7 +1308,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error('Failed to delete user via API', e);
-      alert('à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸ˆà¸²à¸à¸£à¸°à¸šà¸šà¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ (à¸­à¸²à¸ˆà¸¡à¸µà¸à¸²à¸£à¸­à¹‰à¸²à¸‡à¸­à¸´à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸­à¸·à¹ˆà¸™)');
+      alert('ลบผู้ใช้จากระบบไม่สำเร็จ (อาจมีการอ้างอิงข้อมูลอื่น)');
     }
   };
 
@@ -1355,7 +1357,7 @@ const App: React.FC = () => {
           cropType: callLogData.cropType,
           areaSize: callLogData.areaSize,
           notes: callLogData.notes,
-          duration: callLogData.duration,
+          duration: callLogData.duration ?? undefined,
         });
       } catch (e) { console.error('create call API failed', e); }
     }
@@ -1433,12 +1435,12 @@ const App: React.FC = () => {
             id: Math.max(...appointments.map(a => a.id), 0) + 1,
             customerId: customerId,
             date: newFollowUpDate,
-            title: `à¹‚à¸—à¸£à¸•à¸´à¸”à¸•à¸²à¸¡à¸œà¸¥ (${callLogData.result})`,
-            status: 'à¸£à¸­à¸à¸²à¸£à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£',
-            notes: callLogData.notes || `à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸±à¸•à¹‚à¸™à¸¡à¸±à¸•à¸´à¸ˆà¸²à¸à¸à¸²à¸£à¸šà¸±à¸™à¸—à¸¶à¸à¸à¸²à¸£à¹‚à¸—à¸£`,
+            title: `โทรติดตามผล (${callLogData.result})`,
+            status: 'รอการดำเนินการ',
+            notes: callLogData.notes || `สร้างอัตโนมัติจากการบันทึกการโทร`,
         };
         if (true) {
-          try { await createAppointment({ customerId, date: newFollowUpDate, title: newAppointment.title, status: 'à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£', notes: newAppointment.notes }); } catch (e) { console.error('create appointment API failed', e); }
+          try { await createAppointment({ customerId, date: newFollowUpDate, title: newAppointment.title, status: 'รอการดำเนินการ', notes: newAppointment.notes }); } catch (e) { console.error('create appointment API failed', e); }
         }
         setAppointments(prev => [newAppointment, ...prev]);
         try {
@@ -1577,7 +1579,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
         ...appointmentData,
         id: Math.max(...appointments.map(a => a.id), 0) + 1,
-        status: 'à¸£à¸­à¸à¸²à¸£à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£',
+        status: 'รอการดำเนินการ',
     };
     if (true) {
       try {
@@ -1585,7 +1587,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: 'à¸£à¸­à¸à¸²à¸£à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£',
+          status: 'รอการดำเนินการ',
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -1635,7 +1637,7 @@ const App: React.FC = () => {
       customerId: appointmentData.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `à¸ªà¸£à¹‰à¸²à¸‡à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢: ${appointmentData.title}`,
+      description: `สร้างนัดหมาย: ${appointmentData.title}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`
     };
     if (true) {
@@ -1662,12 +1664,12 @@ const App: React.FC = () => {
     
     const updatedAppointment = {
       ...appointmentToUpdate,
-      status: 'à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™'
+      status: 'เสร็จสิ้น'
     };
     
     if (true) {
       try {
-        await updateAppointment(appointmentId, { status: 'à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™' });
+        await updateAppointment(appointmentId, { status: 'เสร็จสิ้น' });
       } catch (e) {
         console.error('update appointment API failed', e);
         // If API fails, still update local state
@@ -1688,7 +1690,7 @@ const App: React.FC = () => {
       a.id !== appointmentId
     );
     
-    const hasPendingAppointments = customerAppointments.some(a => a.status !== 'à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™');
+    const hasPendingAppointments = customerAppointments.some(a => a.status !== 'เสร็จสิ้น');
     
     // If no pending appointments, update customer lifecycle status
     if (!hasPendingAppointments) {
@@ -1755,7 +1757,7 @@ const App: React.FC = () => {
       customerId: appointmentToUpdate.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢ "${appointmentToUpdate.title}" à¸–à¸¹à¸à¸—à¸³à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸«à¸¡à¸²à¸¢à¸§à¹ˆà¸²à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™`,
+      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้น`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`
     };
     if (true) {
@@ -1811,12 +1813,12 @@ const App: React.FC = () => {
         return prev.map(u => {
             if (u.id === currentUser.id) {
                 if (u.customTags.length >= 10) {
-                    alert('à¸„à¸¸à¸“à¸ªà¸£à¹‰à¸²à¸‡ Tag à¸ªà¹ˆà¸§à¸™à¸•à¸±à¸§à¹„à¸”à¹‰à¸ªà¸¹à¸‡à¸ªà¸¸à¸” 10 Tag à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™');
+                    alert('คุณสร้าง Tag ส่วนตัวได้สูงสุด 10 Tag เท่านั้น');
                     return u;
                 }
                 const existingTag = [...systemTags, ...u.customTags].find(t => t.name.toLowerCase() === tagName.toLowerCase());
                 if (existingTag) {
-                    alert('à¸¡à¸µ Tag à¸™à¸µà¹‰à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§');
+                    alert('มี Tag นี้อยู่แล้ว');
                     return u;
                 }
                 
@@ -1837,13 +1839,13 @@ const App: React.FC = () => {
       // This is a placeholder for the complex sales import logic.
       // In a real application, this would process a file, update customers and orders.
       console.log('Importing sales...');
-      alert('à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™à¸™à¸³à¹€à¸‚à¹‰à¸²à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸à¸³à¸¥à¸±à¸‡à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸à¸²à¸£à¸žà¸±à¸’à¸™à¸²');
+      alert('ฟังก์ชันนำเข้ายอดขายกำลังอยู่ในระหว่างการพัฒนา');
   };
 
   const handleImportCustomers = () => {
       // This is a placeholder for the customer import logic.
       console.log('Importing customers...');
-      alert('à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™à¸™à¸³à¹€à¸‚à¹‰à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²à¸à¸³à¸¥à¸±à¸‡à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™à¸£à¸°à¸«à¸§à¹ˆà¸²à¸‡à¸à¸²à¸£à¸žà¸±à¸’à¸™à¸²');
+      alert('ฟังก์ชันนำเข้าลูกค้ากำลังอยู่ในระหว่างการพัฒนา');
   };
 
   const renderPage = () => {
@@ -1870,7 +1872,7 @@ const App: React.FC = () => {
       return <CustomerDetailPage 
         customer={viewingCustomer}
         orders={companyOrders.filter(o => o.customerId === viewingCustomer.id)}
-        callHistory={callHistory.filter(c => c.customerId === viewingCustomer.id)} 
+        callHistory={callHistory.filter(c => c.customerId === viewingCustomer.id)}
         appointments={appointments.filter(a => a.customerId === viewingCustomer.id)}
         activities={activities.filter(a => a.customerId === viewingCustomer.id)}
         onClose={handleCloseCustomerDetail}
@@ -1893,9 +1895,6 @@ const App: React.FC = () => {
     }
 
     // Page stats (Super Admin): group default or specific page
-    if (activePage === 'à¸ªà¸–à¸´à¸•à¸´à¹€à¸žà¸ˆ' || activePage === 'à¸«à¸™à¹‰à¸²à¹€à¸žà¸ˆ') {
-      return <PageStatsPage orders={companyOrders} customers={companyCustomers} calls={callHistory} />;
-    }
     if (activePage === 'สถิติเพจ' || activePage === 'หน้าเพจ') {
       return <PageStatsPage orders={companyOrders} customers={companyCustomers} calls={callHistory} />;
     }
@@ -1904,7 +1903,7 @@ const App: React.FC = () => {
     }
 
     // New, neutral sidebar labels mapping with role guard
-    if (activePage === 'Dashboard') {
+    if (activePage === 'Dashboard' || activePage === 'แดชบอร์ด') {
       if (currentUser.role === UserRole.Backoffice) {
         return <BackofficeDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} />;
       }
@@ -1950,7 +1949,7 @@ const App: React.FC = () => {
     if (activePage === 'Search') {
       return <CustomerSearchPage customers={companyCustomers} orders={companyOrders} users={companyUsers} currentUser={currentUser} onTakeCustomer={handleTakeCustomer} />;
     }
-    if (activePage === 'Share' || activePage === 'à¹à¸ˆà¸à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­') {
+    if (activePage === 'Share' || activePage === 'แจกรายชื่อ') {
       return <CustomerDistributionPage allCustomers={companyCustomers} allUsers={companyUsers} setCustomers={setCustomers} />;
     }
     if (activePage === 'Data') {
@@ -2026,15 +2025,21 @@ const App: React.FC = () => {
     if (activePage === 'Bulk Tracking') {
       return <BulkTrackingPage orders={companyOrders} onBulkUpdateTracking={handleBulkUpdateTracking} />;
     }
-    if (activePage === 'Call History' || activePage === 'à¸›à¸£à¸°à¸§à¸±à¸•à¸´à¸à¸²à¸£à¹‚à¸—à¸£' || activePage === 'Dtac Onecall') {
+    if (activePage === 'Call Details') {
+      return <CallDetailsPage currentUser={currentUser} />;
+    }
+    if (activePage === 'Call History' || activePage === 'ประวัติการโทร' || activePage === 'Dtac Onecall') {
       return <CallHistoryPage currentUser={currentUser} calls={callHistory} customers={companyCustomers} users={companyUsers} />;
+    }
+    if (activePage === 'โปรโมชั่นที่กำลังใช้งาน' || activePage === 'ประวัติโปรโมชั่น' || activePage === 'สร้างโปรโมชั่นใหม่') {
+      return <PromotionsPage />;
     }
 
     switch (currentUser.role) {
       case UserRole.SuperAdmin:
       case UserRole.AdminControl:
           switch(activePage) {
-              case 'à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”':
+              case 'à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"':
                 return <AdminDashboard 
                             user={currentUser} 
                             orders={companyOrders} 
@@ -2049,18 +2054,18 @@ const App: React.FC = () => {
                             pages={pages}
                             warehouses={warehouses}
                             onSave={handleCreateOrder}
-                            onCancel={() => setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”')}
+                            onCancel={() => setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"')}
                         />;
               case 'à¹€à¸žà¸´à¹ˆà¸¡à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸¥à¸¹à¸à¸„à¹‰à¸²':
                 return <AddCustomerPage
                             companyUsers={companyUsers}
-                            onCancel={() => setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”')}
+                            onCancel={() => setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"')}
                             onSave={(customerData, andCreateOrder) => {
                                 const newCustomer = handleSaveCustomer(customerData);
                                 if (andCreateOrder) {
                                     setActivePage('à¸ªà¸£à¹‰à¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­');
                                 } else {
-                                    setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”');
+                                    setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"');
                                 }
                             }}
                        />;
@@ -2070,14 +2075,14 @@ const App: React.FC = () => {
                             allUsers={companyUsers}
                             setCustomers={setCustomers}
                        />;
-              case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰':
+              case 'à¸ˆà¸±à¸"à¸à¸²à¸£à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰':
                 return <UserManagementPage 
                             users={companyUsers} 
                             openModal={openModal} 
                             currentUser={currentUser} 
                             allCompanies={companies} 
                         />;
-              case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²':
+              case 'à¸ˆà¸±à¸"à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²':
                   return <ProductManagementPage 
                             products={companyProducts} 
                             openModal={openModal}
@@ -2151,7 +2156,7 @@ const App: React.FC = () => {
 
       case UserRole.Admin:
         switch(activePage) {
-          case 'à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”':
+          case 'à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"':
              return <AdminDashboard 
                         user={currentUser} 
                         orders={companyOrders.filter(o => o.creatorId === currentUser.id)} 
@@ -2165,10 +2170,10 @@ const App: React.FC = () => {
                         promotions={promotions}
                         pages={pages}
                         onSave={handleCreateOrder}
-                        onCancel={() => setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”')}
+                        onCancel={() => setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"')}
                     />;
-          case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­':
-            return <TelesaleOrdersPage user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} title="à¸¢à¸­à¸”à¸‚à¸²à¸¢à¸‚à¸­à¸‡à¸‰à¸±à¸™" onCancelOrder={handleCancelOrder} />;
+          case 'à¸ˆà¸±à¸"à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­':
+            return <TelesaleOrdersPage user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} title="ยอดขายของฉัน" onCancelOrder={handleCancelOrder} />;
           case 'à¸„à¹‰à¸™à¸«à¸²à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸¥à¸¹à¸à¸„à¹‰à¸²':
             return <CustomerSearchPage 
                         customers={companyCustomers} 
@@ -2185,7 +2190,7 @@ const App: React.FC = () => {
       case UserRole.Telesale:
       case UserRole.Supervisor:
          switch(activePage) {
-            case 'à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”':
+            case 'à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"':
                 return <TelesaleSummaryDashboard user={currentUser} customers={companyCustomers} orders={companyOrders} activities={activities} openModal={() => setActivePage('à¸ªà¸£à¹‰à¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­')} />;
             case 'à¸ªà¸£à¹‰à¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­':
                 return <CreateOrderPage
@@ -2195,9 +2200,9 @@ const App: React.FC = () => {
                             pages={pages}
                             warehouses={warehouses}
                             onSave={handleCreateOrder}
-                            onCancel={() => setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”')}
+                            onCancel={() => setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"')}
                         />;
-            case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸¥à¸¹à¸à¸„à¹‰à¸²':
+            case 'à¸ˆà¸±à¸"à¸à¸²à¸£à¸¥à¸¹à¸à¸„à¹‰à¸²':
               return <TelesaleDashboard 
                         user={currentUser} 
                         customers={companyCustomers} 
@@ -2213,7 +2218,7 @@ const App: React.FC = () => {
                         }}
                         systemTags={systemTags}
                     />;
-            case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­':
+            case 'à¸ˆà¸±à¸"à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­':
               return <TelesaleOrdersPage user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} onCancelOrder={handleCancelOrder} />;
             case 'à¸„à¹‰à¸™à¸«à¸²à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸¥à¸¹à¸à¸„à¹‰à¸²':
               return <CustomerSearchPage 
@@ -2223,7 +2228,7 @@ const App: React.FC = () => {
                         currentUser={currentUser}
                         onTakeCustomer={handleTakeCustomer}
                     />;
-            case 'à¸”à¸¹à¹à¸¥à¸—à¸µà¸¡':
+            case 'à¸"à¸¹à¹à¸¥à¸—à¸µà¸¡':
               return currentUser.role === UserRole.Supervisor 
                 ? <SupervisorTeamPage user={currentUser} allUsers={users} allCustomers={companyCustomers} allOrders={companyOrders} /> 
                 : <TelesaleDashboard 
@@ -2246,17 +2251,17 @@ const App: React.FC = () => {
 
       case UserRole.Backoffice:
         switch(activePage) {
-            case 'à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”':
+            case 'แดชบอร์ด':
                 return <BackofficeDashboard user={currentUser} orders={companyOrders} customers={companyCustomers} openModal={openModal} />;
-            case 'à¸ˆà¸±à¸”à¸à¸²à¸£à¸­à¸­à¹€à¸”à¸­à¸£à¹Œ':
+            case 'จัดการออเดอร์':
                 return <ManageOrdersPage user={currentUser} orders={companyOrders} customers={companyCustomers} users={companyUsers} openModal={openModal} onProcessOrders={handleProcessOrders} />;
-            case 'à¸™à¸³à¹€à¸‚à¹‰à¸² Tracking':
+            case 'นำเข้า Tracking':
                 return <BulkTrackingPage orders={companyOrders} onBulkUpdateTracking={handleBulkUpdateTracking} />;
-            case 'à¸•à¸´à¸”à¸•à¸²à¸¡à¸«à¸™à¸µà¹‰':
+            case 'ติดตามหนี้':
                 return <DebtCollectionPage user={currentUser} orders={companyOrders} customers={companyCustomers} users={companyUsers} openModal={openModal} />;
-            case 'à¸£à¸²à¸¢à¸‡à¸²à¸™':
+            case 'รายงาน':
                 return <ReportsPage orders={companyOrders} />;
-            case 'à¸„à¹‰à¸™à¸«à¸²à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸¥à¸¹à¸à¸„à¹‰à¸²':
+            case 'ค้นหาข้อมูลลูกค้า':
                 return <CustomerSearchPage customers={companyCustomers} orders={companyOrders} users={companyUsers} />;
             case 'Export History':
                 return <ExportHistoryPage />;
@@ -2265,7 +2270,7 @@ const App: React.FC = () => {
         }
         
       default:
-        return <div className="p-6">à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸šà¸—à¸šà¸²à¸—à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</div>;
+        return <div className="p-6">à¸à¸£à¸¸à¸"à¸²à¹€à¸¥à¸·à¸­à¸à¸šà¸—à¸šà¸²à¸—à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰</div>;
     }
   };
   
@@ -2288,7 +2293,7 @@ const App: React.FC = () => {
                         onSave={handleCreateOrder}
                         onClose={() => {
                           closeModal();
-                          setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”');
+                          setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"');
                         }}
                         initialData={modalState.data}
                      />
@@ -2385,7 +2390,7 @@ const App: React.FC = () => {
                 value={currentUserRole}
                 onChange={(e) => {
                     setCurrentUserRole(e.target.value as UserRole);
-                    setActivePage('à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”');
+                    setActivePage('à¹à¸"à¸Šà¸šà¸­à¸£à¹Œà¸"');
                     handleCloseCustomerDetail();
                 }}
                 className="appearance-none cursor-pointer bg-gray-100 border border-gray-200 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block w-full py-2 pl-3 pr-8"

@@ -1,0 +1,413 @@
+import React, { useState, useEffect } from 'react';
+import { Promotion, Product, PromotionItem } from '../types';
+import { apiFetch } from '../services/api';
+import Modal from './Modal';
+
+interface PromotionModalProps {
+  promotion: Promotion | null;
+  products: Product[];
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const PromotionModal: React.FC<PromotionModalProps> = ({
+  promotion,
+  products,
+  isOpen,
+  onClose
+}) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    sku: '',
+    description: '',
+    startDate: '',
+    endDate: '',
+    active: true
+  });
+  
+  const [promotionItems, setPromotionItems] = useState<PromotionItem[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [itemForm, setItemForm] = useState({
+    quantity: 1,
+    isFreebie: false,
+    priceOverride: ''
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (promotion) {
+      setFormData({
+        name: promotion.name || '',
+        sku: promotion.sku || '',
+        description: promotion.description || '',
+        startDate: promotion.startDate ? promotion.startDate.split('T')[0] : '',
+        endDate: promotion.endDate ? promotion.endDate.split('T')[0] : '',
+        active: promotion.active
+      });
+      setPromotionItems([...promotion.items]);
+    } else {
+      // Reset form for new promotion
+      setFormData({
+        name: '',
+        sku: '',
+        description: '',
+        startDate: '',
+        endDate: '',
+        active: true
+      });
+      setPromotionItems([]);
+    }
+  }, [promotion]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+  };
+
+  const handleItemFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target;
+    setItemForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
+               name === 'quantity' ? parseInt(value) || 0 :
+               name === 'priceOverride' ? (value ? parseFloat(value) : '') : value
+    }));
+  };
+
+  const addPromotionItem = () => {
+    if (!selectedProductId) {
+      setError('กรุณาเลือกสินค้า');
+      return;
+    }
+
+    const newItem: PromotionItem = {
+      id: Date.now(), // temporary ID
+      promotionId: promotion?.id || 0,
+      productId: selectedProductId,
+      quantity: itemForm.quantity,
+      isFreebie: itemForm.isFreebie,
+      priceOverride: itemForm.priceOverride ? parseFloat(itemForm.priceOverride) : undefined
+    };
+
+    setPromotionItems(prev => [...prev, newItem]);
+    
+    // Reset form
+    setSelectedProductId(null);
+    setItemForm({
+      quantity: 1,
+      isFreebie: false,
+      priceOverride: ''
+    });
+    setError('');
+  };
+
+  const removePromotionItem = (id: number) => {
+    setPromotionItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name) {
+      setError('กรุณากรอกชื่อโปรโมชั่น');
+      return;
+    }
+
+    if (promotionItems.length === 0) {
+      setError('กรุณาเพิ่มสินค้าในโปรโมชั่นอย่างน้อย 1 รายการ');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const promotionData = {
+        ...formData,
+        items: promotionItems.map(item => ({
+          id: item.id > 10000 ? undefined : item.id, // Only include real IDs
+          productId: item.productId,
+          quantity: item.quantity,
+          isFreebie: item.isFreebie,
+          priceOverride: item.priceOverride
+        }))
+      };
+
+      const url = promotion ? `promotions/${promotion.id}` : 'promotions';
+      const method = promotion ? 'PUT' : 'POST';
+
+      await apiFetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(promotionData)
+      });
+
+      onClose();
+    } catch (err) {
+      setError(`เกิดข้อผิดพลาดในการ${promotion ? 'อัปเดต' : 'สร้าง'}โปรโมชั่น กรุณาลองใหม่อีกครั้ง`);
+      console.error('Error saving promotion:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getProductName = (productId: number) => {
+    const product = products.find(p => p.id === productId);
+    return product ? product.name : `Product #${productId}`;
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={promotion ? 'แก้ไขโปรโมชั่น' : 'สร้างโปรโมชั่นใหม่'}>
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              ชื่อโปรโมชั่น *
+            </label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              required
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="sku" className="block text-sm font-medium text-gray-700 mb-1">
+              รหัสโปรโมชั่น
+            </label>
+            <input
+              type="text"
+              id="sku"
+              name="sku"
+              value={formData.sku}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+            รายละเอียด
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
+              วันที่เริ่มต้น
+            </label>
+            <input
+              type="date"
+              id="startDate"
+              name="startDate"
+              value={formData.startDate}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
+              วันที่สิ้นสุด
+            </label>
+            <input
+              type="date"
+              id="endDate"
+              name="endDate"
+              value={formData.endDate}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="active"
+              checked={formData.active}
+              onChange={handleInputChange}
+              className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+            />
+            <span className="text-sm text-gray-700">เปิดใช้งาน</span>
+          </label>
+        </div>
+
+        <div>
+          <h4 className="text-md font-medium text-gray-900 mb-2">รายการสินค้าในโปรโมชั่น</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+            <div>
+              <select
+                value={selectedProductId || ''}
+                onChange={(e) => setSelectedProductId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              >
+                <option value="">-- เลือกสินค้า --</option>
+                {products.map(product => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <input
+                type="number"
+                name="quantity"
+                value={itemForm.quantity}
+                onChange={handleItemFormChange}
+                min="1"
+                placeholder="จำนวน"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <input
+                type="number"
+                name="priceOverride"
+                value={itemForm.priceOverride}
+                onChange={handleItemFormChange}
+                step="0.01"
+                min="0"
+                placeholder="ราคาพิเศษ"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              />
+            </div>
+            
+            <button
+              type="button"
+              onClick={addPromotionItem}
+              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+            >
+              เพิ่ม
+            </button>
+          </div>
+          
+          <div className="flex items-center mb-2">
+            <input
+              type="checkbox"
+              id="isFreebie"
+              name="isFreebie"
+              checked={itemForm.isFreebie}
+              onChange={handleItemFormChange}
+              className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+            />
+            <label htmlFor="isFreebie" className="text-sm text-gray-700">
+              สินค้านี้เป็นของแถม (ฟรี)
+            </label>
+          </div>
+          
+          {promotionItems.length > 0 && (
+            <div className="mt-2 max-h-40 overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      สินค้า
+                    </th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      จำนวน
+                    </th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ราคาพิเศษ
+                    </th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ประเภท
+                    </th>
+                    <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      การจัดการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {promotionItems.map(item => (
+                    <tr key={item.id}>
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
+                        {getProductName(item.productId)}
+                      </td>
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
+                        {item.quantity}
+                      </td>
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
+                        {item.priceOverride ? `฿${item.priceOverride}` : '-'}
+                      </td>
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        {item.isFreebie ? (
+                          <span className="px-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            ฟรี
+                          </span>
+                        ) : (
+                          <span className="px-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                            หลัก
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
+                        <button
+                          type="button"
+                          onClick={() => removePromotionItem(item.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          ลบ
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="mr-2 px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+          >
+            {loading ? 'กำลังบันทึก...' : (promotion ? 'อัปเดต' : 'สร้าง')}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+export default PromotionModal;

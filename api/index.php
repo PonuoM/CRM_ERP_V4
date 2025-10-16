@@ -132,6 +132,12 @@ switch ($resource) {
     case 'user_login_history':
         handle_user_login_history($pdo, $id);
         break;
+    case 'attendance':
+        handle_attendance($pdo, $id, $action);
+        break;
+    case 'call_overview':
+        handle_call_overview($pdo);
+        break;
     default:
         json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
 }
@@ -171,19 +177,25 @@ function handle_auth(PDO $pdo, ?string $id): void {
         try {
             $updateStmt = $pdo->prepare('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?');
             $updateStmt->execute([$u['id']]);
-            
-            // Record login history
-            $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
-            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-            $loginStmt = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
-            $loginStmt->execute([$u['id'], $ipAddress, $userAgent]);
+
+            // Optionally record work login when explicitly requested
+            $workLogin = isset($in['workLogin']) ? (bool)$in['workLogin'] : false;
+            if ($workLogin) {
+                $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
+                $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+                $loginStmt = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
+                $loginStmt->execute([$u['id'], $ipAddress, $userAgent]);
+                $loginHistoryId = (int)$pdo->lastInsertId();
+            }
         } catch (Throwable $e) {
             // Log error but don't fail login
             error_log('Failed to update login info: ' . $e->getMessage());
         }
         
         unset($u['password']);
-        json_response(['ok' => true, 'user' => $u]);
+        $resp = ['ok' => true, 'user' => $u];
+        if (isset($loginHistoryId)) { $resp['loginHistoryId'] = $loginHistoryId; }
+        json_response($resp);
     }
     json_response(['error' => 'NOT_FOUND'], 404);
 }
@@ -2061,3 +2073,118 @@ function handle_user_login_history(PDO $pdo, ?string $id): void {
 }
 
 
+function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
+    switch (method()) {
+        case 'GET':
+            // Parameters
+            $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+            $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : null;
+            $date = $_GET['date'] ?? null;         // yyyy-mm-dd
+            $start = $_GET['start'] ?? null;       // yyyy-mm-dd
+            $end = $_GET['end'] ?? null;           // yyyy-mm-dd
+            $roleOnly = $_GET['roleOnly'] ?? 'telesale'; // telesale|all
+
+            // On-demand recompute to include ongoing sessions (COALESCE(logout_time, NOW()))
+            try {
+                if ($date) {
+                    $stmt = $pdo->prepare('CALL sp_compute_daily_attendance(?)');
+                    $stmt->execute([$date]);
+                } elseif ($start && $end) {
+                    $stmt = $pdo->prepare('CALL sp_fill_attendance_for_range(?, ?)');
+                    $stmt->execute([$start, $end]);
+                } else {
+                    $pdo->query('CALL sp_compute_daily_attendance(CURDATE())');
+                }
+            } catch (Throwable $e) {
+                json_response(['error' => 'ATTENDANCE_SP_MISSING', 'message' => $e->getMessage()], 500);
+            }
+
+            // Choose view/source
+            $isKpis = ($id === 'kpis' || $action === 'kpis');
+            $base = $isKpis ? 'v_user_daily_kpis' : 'v_user_daily_attendance';
+            $sql = "SELECT * FROM {$base} WHERE 1";
+            $params = [];
+
+            if ($userId) { $sql .= ' AND user_id = ?'; $params[] = $userId; }
+            if ($date) { $sql .= ' AND work_date = ?'; $params[] = $date; }
+            if ($start && $end) { $sql .= ' AND work_date BETWEEN ? AND ?'; $params[] = $start; $params[] = $end; }
+            if ($roleOnly !== 'all') { $sql .= " AND role IN ('Telesale','Supervisor Telesale')"; }
+            if ($companyId) { $sql .= ' AND user_id IN (SELECT id FROM users WHERE company_id = ?)'; $params[] = $companyId; }
+
+            $sql .= ' ORDER BY work_date DESC, user_id';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response($stmt->fetchAll());
+
+        case 'POST':
+            // Sub-actions: /attendance/check_in
+            if ($id === 'check_in') {
+                $in = json_input();
+                $userId = isset($in['userId']) ? (int)$in['userId'] : null;
+                if (!$userId) { json_response(['error' => 'USER_ID_REQUIRED'], 400); }
+                // Guard: ensure role is telesale/supervisor and active
+                $uStmt = $pdo->prepare("SELECT role, status FROM users WHERE id = ?");
+                $uStmt->execute([$userId]);
+                $user = $uStmt->fetch();
+                if (!$user) { json_response(['error' => 'NOT_FOUND'], 404); }
+                if ($user['status'] !== 'active' || !in_array($user['role'], ['Telesale','Supervisor Telesale'])) {
+                    json_response(['error' => 'FORBIDDEN_ROLE'], 403);
+                }
+
+                $today = (new DateTime('now'))->format('Y-m-d');
+
+                // If there is already a login record today, return it to avoid duplicates
+                $exists = $pdo->prepare('SELECT id, login_time FROM user_login_history WHERE user_id = ? AND login_time >= ? AND login_time < DATE_ADD(?, INTERVAL 1 DAY) ORDER BY login_time ASC LIMIT 1');
+                $exists->execute([$userId, $today, $today]);
+                $row = $exists->fetch();
+                if ($row) {
+                    // Recompute attendance for today and return current attendance row
+                    try { $pdo->prepare('CALL sp_upsert_user_daily_attendance(?, ?)')->execute([$userId, $today]); } catch (Throwable $e) {}
+                    $att = $pdo->prepare('SELECT * FROM v_user_daily_attendance WHERE user_id = ? AND work_date = ?');
+                    $att->execute([$userId, $today]);
+                    json_response(['ok' => true, 'already' => true, 'loginHistoryId' => (int)$row['id'], 'loginTime' => $row['login_time'], 'attendance' => $att->fetch() ?: null]);
+                }
+
+                // Create a new login history row (explicit work check-in)
+                $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
+                $ins = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
+                $ins->execute([$userId, $ip, $ua]);
+                $hid = (int)$pdo->lastInsertId();
+                // Compute attendance for today
+                try { $pdo->prepare('CALL sp_upsert_user_daily_attendance(?, ?)')->execute([$userId, $today]); } catch (Throwable $e) {}
+                $att = $pdo->prepare('SELECT * FROM v_user_daily_attendance WHERE user_id = ? AND work_date = ?');
+                $att->execute([$userId, $today]);
+                json_response(['ok' => true, 'loginHistoryId' => $hid, 'attendance' => $att->fetch() ?: null]);
+            }
+            json_response(['error' => 'NOT_FOUND'], 404);
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+
+
+
+function handle_call_overview(PDO $pdo): void {
+    if (method() !== 'GET') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+
+    $month = $_GET['month'] ?? null; // YYYY-MM
+    $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+    $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : null;
+
+    $sql = 'SELECT * FROM v_telesale_call_overview_monthly WHERE 1';
+    $params = [];
+    if ($month) { $sql .= ' AND month_key = ?'; $params[] = $month; }
+    if ($userId) { $sql .= ' AND user_id = ?'; $params[] = $userId; }
+    if ($companyId) { $sql .= ' AND user_id IN (SELECT id FROM users WHERE company_id = ?)'; $params[] = $companyId; }
+    $sql .= ' ORDER BY month_key DESC, user_id';
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        json_response($stmt->fetchAll());
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}

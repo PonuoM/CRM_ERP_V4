@@ -40,6 +40,8 @@ const DATA_MGMT = 'Data Management';
 const INVENTORY_MGMT = 'Inventory Management';
 const REPORTS_MGMT = 'Reports Management';
 const PAGE_STATS = 'สถิติเพจ';
+const CALL_MGMT = 'จัดการการโทร';
+const PROMO_MGMT = 'โปรโมชั่น';
 
 const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCollapsed, setIsCollapsed, onLogout, permissions }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [HOME_GROUP]: true });
@@ -59,6 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       case 'Dashboard': return 'แดชบอร์ด';
       case 'Sales Overview': return 'ภาพรวมการขาย';
       case 'Calls Overview': return 'ภาพรวมการโทร';
+      case 'Call Management': return 'จัดการการโทร';
+      case 'Promotions': return 'โปรโมชั่น';
       case 'Marketing': return 'การตลาด';
       case 'Users': return 'ผู้ใช้งาน';
       case 'Permissions': return 'สิทธิ์การใช้งาน';
@@ -92,12 +96,35 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   const homeChildren: NavItem[] = [
     ...(canView('home.dashboard') ? [{ icon: LayoutDashboard, label: 'แดชบอร์ด' }] as NavItem[] : []),
     ...(canView('home.sales_overview') ? [{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[] : []),
-    ...(canView('home.calls_overview') ? [{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[] : []),
   ];
   const homeGroup: NavItem = {
     icon: Home,
     label: HOME_GROUP,
     children: homeChildren,
+  };
+
+  // Call Management group (dropdown)
+  const callChildren: NavItem[] = [
+    ...(canView('calls.overview') ? [{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[] : []),
+    ...(canView('calls.details') ? [{ icon: Phone, label: 'Call Details' }] as NavItem[] : []),
+    ...(canView('calls.dtac') ? [{ icon: Phone, label: 'Dtac Onecall' }] as NavItem[] : []),
+  ];
+  const callGroup: NavItem = {
+    icon: Phone,
+    label: CALL_MGMT,
+    children: callChildren,
+  };
+
+  // Promotions Management group
+  const promoChildren: NavItem[] = [
+    ...(canView('promo.active') ? [{ icon: BarChart2, label: 'โปรโมชั่นที่กำลังใช้งาน' }] as NavItem[] : []),
+    ...(canView('promo.history') ? [{ icon: FileText, label: 'ประวัติโปรโมชั่น' }] as NavItem[] : []),
+    ...(canView('promo.create') ? [{ icon: FileUp, label: 'สร้างโปรโมชั่นใหม่' }] as NavItem[] : []),
+  ];
+  const promoGroup: NavItem = {
+    icon: BarChart2,
+    label: PROMO_MGMT,
+    children: promoChildren,
   };
 
   const dataChildren: NavItem[] = [
@@ -119,6 +146,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
     ...(canView('inventory.warehouses') ? [{ icon: Database, label: 'Warehouses' }] as NavItem[] : []),
     ...(canView('inventory.stock') ? [{ icon: Database, label: 'Warehouse Stock' }] as NavItem[] : []),
     ...(canView('inventory.lot') ? [{ icon: FileText, label: 'Lot Tracking' }] as NavItem[] : []),
+    ...(canView('inventory.promotions') ? [{ icon: BarChart2, label: 'โปรโมชั่นที่กำลังใช้งาน' }] as NavItem[] : []),
   ];
   const inventoryGroup: NavItem = {
     icon: Package,
@@ -147,6 +175,16 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
       { icon: Share2, label: 'แจกรายชื่อ' },
     ],
   };
+  // Fixed customers submenu with clear labels that route correctly
+  const customersGroupFixed = {
+    icon: Users,
+    label: (customersGroup && (customersGroup as any).label) || 'Customers',
+    children: [
+      { icon: Users, label: 'Customers' },
+      { icon: Users, label: 'Customer Pools' },
+      { icon: Share2, label: 'Share' },
+    ],
+  } as NavItem;
 
   const getNavItems = (): NavItem[] => {
     switch (user.role) {
@@ -159,9 +197,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           inventoryGroup,
           reportsGroup,
           { icon: BarChart2, label: PAGE_STATS, children: [ { icon: FileText, label: 'หน้าเพจ' }, { icon: FileText, label: 'สถิติการมีส่วนร่วม' } ] },
-          customersGroup,
+          customersGroupFixed,
+          callGroup,
           { icon: Settings, label: 'Settings' },
-          { icon: Phone, label: 'Dtac Onecall' },
         ];
       case UserRole.AdminControl:
         return [
@@ -169,25 +207,30 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           reportsGroup,
           { icon: Share2, label: 'Share' },
           { icon: Settings, label: 'Settings' },
-          { icon: Phone, label: 'Dtac Onecall' },
+          callGroup,
         ];
       case UserRole.Admin:
         return [
           homeGroup,
           ...(canView('nav.orders') ? [{ icon: ShoppingCart, label: 'Orders' }] as NavItem[] : []),
           ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
-          { icon: Phone, label: 'Dtac Onecall' },
+          callGroup,
         ];
       case UserRole.Telesale:
       case UserRole.Supervisor:
-        return [
+        const telesaleItems: NavItem[] = [
           homeGroup,
           ...(canView('nav.customers') ? [{ icon: Users, label: 'Customers' }] as NavItem[] : []),
           ...(canView('nav.orders') ? [{ icon: ShoppingCart, label: 'Orders' }] as NavItem[] : []),
           ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
-          { icon: Phone, label: 'Dtac Onecall' },
-          ...(user.role === UserRole.Supervisor ? [{ icon: Briefcase, label: 'Team' }] : []),
+          callGroup,
         ];
+        
+        if (user.role === UserRole.Supervisor) {
+          telesaleItems.push({ icon: Briefcase, label: 'Team' });
+        }
+        
+        return telesaleItems;
       case UserRole.Backoffice:
         return [
           homeGroup,
@@ -196,7 +239,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
           ...(canView('nav.reports') ? [{ icon: BarChart2, label: 'Reports' }] as NavItem[] : []),
           ...(canView('nav.bulk_tracking') ? [{ icon: FileUp, label: 'Bulk Tracking' }] as NavItem[] : []),
-          { icon: Phone, label: 'Dtac Onecall' },
+          callGroup,
         ];
       default:
         return [homeGroup];
@@ -208,7 +251,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   const renderNavItem = (item: NavItem) => {
     const isGroup = Array.isArray(item.children);
     const isOpen = !!openGroups[item.label];
-    const isActive = activePage === item.label || item.children?.some(c => c.label === activePage);
+    // Check if this group is active (either the group itself or any of its children)
+    const isActive = isGroup 
+      ? item.children?.some(c => c.label === activePage)
+      : activePage === item.label;
 
     if (isGroup) {
       return (
@@ -220,8 +266,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
               newOpenState[item.label] = !openGroups[item.label];
               setOpenGroups(newOpenState);
               
-              // Set active page to this main menu to highlight it
-              setActivePage(item.label);
+              // Don't set active page to this main menu - only highlight it visually
+              // setActivePage(item.label);
             }}
             className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${
               isCollapsed ? 'px-3' : 'px-4'
