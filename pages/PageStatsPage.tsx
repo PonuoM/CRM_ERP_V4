@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, User, UserRole } from '@/types';
-import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search, ChevronDown } from 'lucide-react';
+import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MultiLineChart from '@/components/MultiLineChart';
 
@@ -62,6 +62,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('daily');
   const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
   const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
+  const [useCustomDateRange, setUseCustomDateRange] = useState<boolean>(false);
+  const [customDateRange, setCustomDateRange] = useState<string>('');
+  const [isRangePopoverOpen, setIsRangePopoverOpen] = useState<boolean>(false);
+  const [rangeTempStart, setRangeTempStart] = useState<Date | null>(null);
+  const [rangeTempEnd, setRangeTempEnd] = useState<Date | null>(null);
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
   // Get current user from localStorage
   useEffect(() => {
@@ -106,6 +115,16 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   }, [customers]);
 
   const startDate = useMemo(() => {
+    if (useCustomDateRange && customDateRange) {
+      // Parse the date range string "YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm"
+      const [startPart] = customDateRange.split(' - ');
+      if (startPart) {
+        const d = new Date(startPart);
+        d.setHours(0,0,0,0);
+        return d;
+      }
+    }
+    
     const d = new Date();
     d.setHours(0,0,0,0);
     
@@ -136,48 +155,35 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
     
     return d;
-  }, [rangeDays]);
+  }, [rangeDays, useCustomDateRange, customDateRange]);
+
+  const endDate = useMemo(() => {
+    if (useCustomDateRange && customDateRange) {
+      // Parse the date range string "YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm"
+      const [, endPart] = customDateRange.split(' - ');
+      if (endPart) {
+        const d = new Date(endPart);
+        d.setHours(23,59,59,999);
+        return d;
+      }
+    }
+    
+    return new Date();
+  }, [useCustomDateRange, customDateRange]);
 
   const days: string[] = useMemo(() => {
     const res: string[] = [];
     const d = new Date(startDate);
+    const end = new Date(endDate);
     
-    let daysToGenerate: number;
-    if (typeof rangeDays === 'number') {
-      daysToGenerate = rangeDays;
-    } else {
-      switch (rangeDays) {
-        case 'thisWeek':
-          // From start of week to today
-          daysToGenerate = new Date().getDay() + 1;
-          break;
-        case 'lastWeek':
-          // Exactly 7 days of last week
-          daysToGenerate = 7;
-          break;
-        case 'thisMonth':
-          // From start of month to today
-          daysToGenerate = new Date().getDate();
-          break;
-        case 'lastMonth':
-          // Full previous month - calculate days in that month
-          const lastMonthForCalc = new Date();
-          lastMonthForCalc.setMonth(lastMonthForCalc.getMonth() - 1);
-          // Last day of previous month
-          const lastDayOfPrevMonth = new Date(lastMonthForCalc.getFullYear(), lastMonthForCalc.getMonth() + 1, 0).getDate();
-          daysToGenerate = lastDayOfPrevMonth;
-          break;
-        default:
-          daysToGenerate = 7;
-      }
-    }
-    
-    for (let i = 0; i < daysToGenerate; i++) {
+    // Calculate days from start to end date
+    while (d <= end) {
       res.push(fmtDate(d));
       d.setDate(d.getDate() + 1);
     }
+    
     return res;
-  }, [startDate, rangeDays]);
+  }, [startDate, endDate]);
 
   const daily: DailyRow[] = useMemo(() => {
     const rows: DailyRow[] = [];
@@ -537,7 +543,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       
       let untilDate: Date;
       
-      if (typeof rangeDays === 'number' || rangeDays === 'thisWeek' || rangeDays === 'thisMonth') {
+      if (useCustomDateRange && customDateRange) {
+        const [, endPart] = customDateRange.split(' - ');
+        if (endPart) {
+          untilDate = new Date(endPart);
+          untilDate.setHours(23, 59, 59, 999);
+        }
+      } else if (typeof rangeDays === 'number' || rangeDays === 'thisWeek' || rangeDays === 'thisMonth') {
         // For numeric ranges, thisWeek, and thisMonth, use current time
         untilDate = now;
       } else {
@@ -564,7 +576,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const until = Math.floor(untilDate.getTime() / 1000); // Current timestamp in seconds
       let sinceDate: Date;
       
-      if (typeof rangeDays === 'number') {
+      if (useCustomDateRange && customDateRange) {
+        const [startPart] = customDateRange.split(' - ');
+        if (startPart) {
+          sinceDate = new Date(startPart);
+          sinceDate.setHours(0, 0, 0, 0);
+        }
+      } else if (typeof rangeDays === 'number') {
         sinceDate = new Date(today);
         sinceDate.setDate(sinceDate.getDate() - (rangeDays - 1));
       } else {
@@ -629,7 +647,35 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-500" />
-            <select value={rangeDays} onChange={e => setRangeDays(e.target.value === 'thisWeek' || e.target.value === 'lastWeek' || e.target.value === 'thisMonth' || e.target.value === 'lastMonth' ? e.target.value : Number(e.target.value))} className="border rounded-md px-3 py-2 text-sm">
+            <select
+              value={rangeDays}
+              onChange={e => {
+                const value = e.target.value;
+                if (value === 'custom') {
+                  setUseCustomDateRange(true);
+                  // Set default date range for custom selection
+                  const today = new Date();
+                  const lastWeek = new Date(today);
+                  lastWeek.setDate(today.getDate() - 7);
+                  
+                  // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
+                  const formatDateTime = (date: Date) => {
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    const h = String(date.getHours()).padStart(2, '0');
+                    const min = String(date.getMinutes()).padStart(2, '0');
+                    return `${y}-${m}-${d}T${h}:${min}`;
+                  };
+                  
+                  setCustomDateRange(`${formatDateTime(lastWeek)} - ${formatDateTime(today)}`);
+                } else {
+                  setUseCustomDateRange(false);
+                  setRangeDays(value === 'thisWeek' || value === 'lastWeek' || value === 'thisMonth' || value === 'lastMonth' ? value : Number(value));
+                }
+              }}
+              className="border rounded-md px-3 py-2 text-sm"
+            >
               <option value={7}>7 วันย้อนหลัง</option>
               <option value={30}>30 วันย้อนหลัง</option>
               <option value={90}>90 วันย้อนหลัง</option>
@@ -637,7 +683,141 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               <option value="lastWeek">สัปดาห์ที่แล้ว</option>
               <option value="thisMonth">เดือนนี้</option>
               <option value="lastMonth">เดือนที่แล้ว</option>
+              <option value="custom">เลือกช่วงวันที่</option>
             </select>
+            {useCustomDateRange && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Initialize temp dates from current range or defaults
+                    const [sRaw, eRaw] = (customDateRange || '').split(' - ');
+                    const s = sRaw ? new Date(sRaw) : new Date(startDate);
+                    const e = eRaw ? new Date(eRaw) : new Date(endDate);
+                    setRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
+                    setRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
+                    setVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                    setIsRangePopoverOpen(v => !v);
+                  }}
+                  className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white"
+                >
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <span className="text-gray-700">
+                    {(() => {
+                      const [sRaw, eRaw] = (customDateRange || '').split(' - ');
+                      const s = sRaw ? new Date(sRaw) : startDate;
+                      const e = eRaw ? new Date(eRaw) : endDate;
+                      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                    })()}
+                  </span>
+                </button>
+
+                {isRangePopoverOpen && (
+                  <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                    <div className="flex items-center justify-between mb-3">
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                      <div className="text-sm text-gray-600">Select date range</div>
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                    </div>
+
+                    <div className="flex gap-4">
+                      {(() => {
+                        const renderMonth = (monthStart: Date) => {
+                          const firstDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+                          const startWeekDay = firstDay.getDay();
+                          const gridStart = new Date(firstDay);
+                          gridStart.setDate(firstDay.getDate() - startWeekDay);
+                          const days: Date[] = [];
+                          for (let i = 0; i < 42; i++) {
+                            const d = new Date(gridStart);
+                            d.setDate(gridStart.getDate() + i);
+                            days.push(d);
+                          }
+                          const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                          const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                          const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+                          const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                          return (
+                            <div className="w-[320px]">
+                              <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
+                              <div className="grid grid-cols-7 gap-1 text-[12px] text-gray-500 mb-1">
+                                {weekDays.map(d => <div key={d} className="text-center py-1">{d}</div>)}
+                              </div>
+                              <div className="grid grid-cols-7 gap-1">
+                                {days.map((d, idx) => {
+                                  const isCurrMonth = d.getMonth() === monthStart.getMonth();
+                                  const selectedStart = rangeTempStart && isSameDay(d, rangeTempStart);
+                                  const selectedEnd = rangeTempEnd && isSameDay(d, rangeTempEnd);
+                                  const between = inBetween(d, rangeTempStart, rangeTempEnd) && !selectedStart && !selectedEnd;
+                                  const base = `text-sm text-center py-1.5 rounded cursor-pointer select-none`;
+                                  const tone = selectedStart || selectedEnd
+                                    ? 'bg-blue-600 text-white'
+                                    : between
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : isCurrMonth
+                                        ? 'text-gray-900 hover:bg-gray-100'
+                                        : 'text-gray-400 hover:bg-gray-100';
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`${base} ${tone}`}
+                                      onClick={() => {
+                                        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                        if (!rangeTempStart || (rangeTempStart && rangeTempEnd)) {
+                                          setRangeTempStart(day);
+                                          setRangeTempEnd(null);
+                                          return;
+                                        }
+                                        if (day.getTime() < rangeTempStart.getTime()) {
+                                          setRangeTempEnd(rangeTempStart);
+                                          setRangeTempStart(day);
+                                        } else {
+                                          setRangeTempEnd(day);
+                                        }
+                                      }}
+                                    >
+                                      {d.getDate()}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        };
+                        return (
+                          <>
+                            {renderMonth(new Date(visibleMonth))}
+                            {renderMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()+1, 1))}
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
+                      <div>
+                        <span className="mr-2">Start: {rangeTempStart ? rangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        <span>End: {rangeTempEnd ? rangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setRangeTempStart(null); setRangeTempEnd(null); }}>Clear</button>
+                        <button
+                          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+                          disabled={!rangeTempStart && !rangeTempEnd}
+                          onClick={() => {
+                            const s = rangeTempStart ? new Date(rangeTempStart) : new Date(startDate);
+                            const e = rangeTempEnd ? new Date(rangeTempEnd) : (rangeTempStart ? new Date(rangeTempStart) : new Date(endDate));
+                            s.setHours(0,0,0,0);
+                            e.setHours(23,59,59,999);
+                            setCustomDateRange(`${s.toISOString()} - ${e.toISOString()}`);
+                            setIsRangePopoverOpen(false);
+                          }}
+                        >Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="relative">
               <input
                 type="text"
