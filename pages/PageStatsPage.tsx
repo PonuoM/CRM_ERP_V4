@@ -372,13 +372,16 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
       }
 
-      // Calculate timestamps
+      // Calculate timestamps using local timezone
       const now = new Date();
       const until = Math.floor(now.getTime() / 1000); // Current timestamp in seconds
-      const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - (rangeDays - 1));
-      startDate.setHours(0, 0, 0, 0); // Set to midnight
-      const since = Math.floor(startDate.getTime() / 1000);
+      
+      // Calculate since: today at midnight minus 7 days in local timezone
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to midnight today in local timezone
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7); // Subtract 7 days
+      const since = Math.floor(sevenDaysAgo.getTime() / 1000); // Convert to unix timestamp
 
       // Fetch page statistics with select_fields parameter
       const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
@@ -490,26 +493,26 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             {usePageStats ? 'ข้อมูลจาก Pages.fm API' : 'สถิติต่อวัน'}
           </div>
         </div>
-        <div className="w-full overflow-auto">
-          <table className="min-w-[1200px] w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1800px] w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-gray-600">
-                <th className="px-3 py-2 text-left">เวลา</th>
-                <th className="px-3 py-2 text-right">ลูกค้าใหม่</th>
-                <th className="px-3 py-2 text-right">เบอร์โทรศัพท์ทั้งหมด</th>
-                <th className="px-3 py-2 text-right">เบอร์โทรใหม่</th>
-                <th className="px-3 py-2 text-right">คอมเม้นจากลูกค้าทั้งหมด</th>
-                <th className="px-3 py-2 text-right">แชทจากลูกค้าทั้งหมด</th>
-                <th className="px-3 py-2 text-right">ความคิดเห็นจากเพจทั้งหมด</th>
-                <th className="px-3 py-2 text-right">แชทจากเพจทั้งหมด</th>
-                <th className="px-3 py-2 text-right">แชทใหม่</th>
-                <th className="px-3 py-2 text-right">แชทจากลูกค้าเก่า</th>
-                <th className="px-3 py-2 text-right">ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)</th>
-                <th className="px-3 py-2 text-right">ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)</th>
-                <th className="px-3 py-2 text-right">ยอดออเดอร์</th>
-                <th className="px-3 py-2 text-right">% สั่งซื้อ ต่อลูกค้าใหม่</th>
-                <th className="px-3 py-2 text-right">% สั่งซื้อ ต่อเบอร์โทรศัพท์</th>
-                <th className="px-3 py-2 text-right">สัดส่วนเบอร์โทรใหม่/ลูกค้าใหม่</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap min-w-[150px]">เวลา</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">ลูกค้าใหม่</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">เบอร์โทรศัพท์ทั้งหมด</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">เบอร์โทรใหม่</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[130px]">คอมเม้นจากลูกค้าทั้งหมด</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[130px]">แชทจากลูกค้าทั้งหมด</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[130px]">ความคิดเห็นจากเพจทั้งหมด</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">แชทจากเพจทั้งหมด</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">แชทใหม่</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">แชทจากลูกค้าเก่า</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[140px]">ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[150px]">ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[100px]">ยอดออเดอร์</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[120px]">% สั่งซื้อ ต่อลูกค้าใหม่</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[130px]">% สั่งซื้อ ต่อเบอร์โทรศัพท์</th>
+                <th className="px-3 py-2 text-right whitespace-nowrap min-w-[140px]">สัดส่วนเบอร์โทรใหม่/ลูกค้าใหม่</th>
               </tr>
             </thead>
             <tbody>
@@ -521,101 +524,119 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   
                   return (
                     <tr key={index} className="border-t border-gray-100">
-                      <td className="px-3 py-2 text-gray-700">{formattedDate}</td>
-                      <td className="px-3 py-2 text-right">{item.new_customer_count}</td>
-                      <td className="px-3 py-2 text-right">{item.uniq_phone_number_count}</td>
-                      <td className="px-3 py-2 text-right">{item.phone_number_count}</td>
-                      <td className="px-3 py-2 text-right">{item.customer_comment_count}</td>
-                      <td className="px-3 py-2 text-right">{item.customer_inbox_count}</td>
-                      <td className="px-3 py-2 text-right">{item.page_comment_count}</td>
-                      <td className="px-3 py-2 text-right">{item.page_inbox_count}</td>
-                      <td className="px-3 py-2 text-right">{item.new_inbox_count}</td>
-                      <td className="px-3 py-2 text-right">{item.inbox_interactive_count}</td>
-                      <td className="px-3 py-2 text-right">{item.today_uniq_website_referral}</td>
-                      <td className="px-3 py-2 text-right">{item.today_website_guest_referral}</td>
-                      <td className="px-3 py-2 text-right">{item.order_count || 0}</td>
-                      <td className="px-3 py-2 text-right">{item.order_count_per_new_cus ? (item.order_count_per_new_cus * 100).toFixed(2) + '%' : '-'}</td>
-                      <td className="px-3 py-2 text-right">{item.order_count_per_phone ? (item.order_count_per_phone * 100).toFixed(2) + '%' : '-'}</td>
-                      <td className="px-3 py-2 text-right">{item.new_phone_count_per_new_customer_count ? (item.new_phone_count_per_new_customer_count * 100).toFixed(2) : '-'}</td>
+                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.phone_number_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_comment_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_inbox_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_comment_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_inbox_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_inbox_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.inbox_interactive_count}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_uniq_website_referral}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_website_guest_referral}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.order_count || 0}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {item.new_customer_count > 0
+                          ? ((item.order_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
+                          : '-'
+                        }
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {item.uniq_phone_number_count > 0
+                          ? ((item.order_count || 0) / item.uniq_phone_number_count * 100).toFixed(2) + '%'
+                          : '-'
+                        }
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {item.new_customer_count > 0
+                          ? ((item.uniq_phone_number_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
+                          : '-'
+                        }
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 daily.map(r => (
                   <tr key={r.date} className="border-t border-gray-100">
-                    <td className="px-3 py-2 text-gray-700">{r.date}</td>
-                    <td className="px-3 py-2 text-right">{r.newCustomers}</td>
-                    <td className="px-3 py-2 text-right">{r.totalPhones}</td>
-                    <td className="px-3 py-2 text-right">{r.newPhones}</td>
-                    <td className="px-3 py-2 text-right">{r.totalComments}</td>
-                    <td className="px-3 py-2 text-right">{r.totalChats}</td>
-                    <td className="px-3 py-2 text-right">{r.totalPageComments}</td>
-                    <td className="px-3 py-2 text-right">{r.totalPageChats}</td>
-                    <td className="px-3 py-2 text-right">{r.newChats}</td>
-                    <td className="px-3 py-2 text-right">{r.chatsFromOldCustomers}</td>
-                    <td className="px-3 py-2 text-right">{r.webLoggedIn}</td>
-                    <td className="px-3 py-2 text-right">{r.webGuest}</td>
-                    <td className="px-3 py-2 text-right">{r.ordersCount}</td>
-                    <td className="px-3 py-2 text-right">{r.pctPurchasePerNewCustomer.toFixed(2)}%</td>
-                    <td className="px-3 py-2 text-right">{r.pctPurchasePerPhone.toFixed(2)}%</td>
-                    <td className="px-3 py-2 text-right">{r.ratioNewPhonesToNewCustomers.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{r.date}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.newCustomers}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPhones}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.newPhones}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalComments}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPageComments}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.totalPageChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.newChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.chatsFromOldCustomers}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.webLoggedIn}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.webGuest}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.ordersCount}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.pctPurchasePerNewCustomer.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.pctPurchasePerPhone.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.ratioNewPhonesToNewCustomers.toFixed(2)}</td>
                   </tr>
                 ))
               )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
-                <td className="px-3 py-2">รวม</td>
+                <td className="px-3 py-2 whitespace-nowrap">รวม</td>
                 {usePageStats && pageStatsData.length > 0 ? (
                   <>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0)}</td>
-                    <td className="px-3 py-2 text-right">{pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {pageStatsData.length > 0 && pageStatsData.some(item => item.order_count_per_new_cus)
-                        ? ((pageStatsData.reduce((sum, item) => sum + (item.order_count_per_new_cus || 0), 0) / pageStatsData.filter(item => item.order_count_per_new_cus).length) * 100).toFixed(2) + '%'
-                        : '-'
-                      }
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {(() => {
+                        const totalOrders = pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0);
+                        const totalNewCustomers = pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0);
+                        return totalNewCustomers > 0 ? (totalOrders / totalNewCustomers * 100).toFixed(2) + '%' : '-';
+                      })()}
                     </td>
-                    <td className="px-3 py-2 text-right">
-                      {pageStatsData.length > 0 && pageStatsData.some(item => item.order_count_per_phone)
-                        ? ((pageStatsData.reduce((sum, item) => sum + (item.order_count_per_phone || 0), 0) / pageStatsData.filter(item => item.order_count_per_phone).length) * 100).toFixed(2) + '%'
-                        : '-'
-                      }
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {(() => {
+                        const totalOrders = pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0);
+                        const totalPhones = pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0);
+                        return totalPhones > 0 ? (totalOrders / totalPhones * 100).toFixed(2) + '%' : '-';
+                      })()}
                     </td>
-                    <td className="px-3 py-2 text-right">
-                      {pageStatsData.length > 0 && pageStatsData.some(item => item.new_phone_count_per_new_customer_count)
-                        ? (pageStatsData.reduce((sum, item) => sum + (item.new_phone_count_per_new_customer_count || 0), 0) / pageStatsData.filter(item => item.new_phone_count_per_new_customer_count).length).toFixed(2)
-                        : '-'
-                      }
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {(() => {
+                        const totalNewCustomers = pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0);
+                        const totalPhones = pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0);
+                        return totalNewCustomers > 0 ? (totalPhones / totalNewCustomers * 100).toFixed(2) + '%' : '-';
+                      })()}
                     </td>
                   </>
                 ) : (
                   <>
-                    <td className="px-3 py-2 text-right">{totals.newCustomers}</td>
-                    <td className="px-3 py-2 text-right">{totals.totalPhones}</td>
-                    <td className="px-3 py-2 text-right">{totals.newPhones}</td>
-                    <td className="px-3 py-2 text-right">{totals.totalComments}</td>
-                    <td className="px-3 py-2 text-right">{totals.totalChats}</td>
-                    <td className="px-3 py-2 text-right">{totals.totalPageComments}</td>
-                    <td className="px-3 py-2 text-right">{totals.totalPageChats}</td>
-                    <td className="px-3 py-2 text-right">{totals.newChats}</td>
-                    <td className="px-3 py-2 text-right">{totals.chatsFromOldCustomers}</td>
-                    <td className="px-3 py-2 text-right">{totals.webLoggedIn}</td>
-                    <td className="px-3 py-2 text-right">{totals.webGuest}</td>
-                    <td className="px-3 py-2 text-right">{totals.ordersCount}</td>
-                    <td className="px-3 py-2 text-right"></td>
-                    <td className="px-3 py-2 text-right"></td>
-                    <td className="px-3 py-2 text-right"></td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.newCustomers}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.totalPhones}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.newPhones}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.totalComments}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.totalChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.totalPageComments}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.totalPageChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.newChats}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.chatsFromOldCustomers}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.webLoggedIn}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.webGuest}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{totals.ordersCount}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"></td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"></td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap"></td>
                   </>
                 )}
               </tr>
