@@ -387,6 +387,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
   const [activeAudios, setActiveAudios] = useState<Set<number>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isFirstLoad = useRef(true);
   
   // (Removed) Employee call overview state
 
@@ -704,34 +705,37 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
 
   // Load recordings data on component mount
   useEffect(() => {
-    const loadRecordings = async () => {
-      setIsLoading(true);
-      setIsDataLoading(true);
-      try {
-        // First, authenticate to get the access token
-        const authResult = await authenticateOneCall();
-        if (authResult.success && authResult.token) {
-          setAccessToken(authResult.token);
-          
-          // Then load recordings data with current user info
-          const result = await getRecordingsData(currentUser);
-          if (result.success && result.data) {
-            setRecordingsData(result.data);
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false;
+      const loadRecordings = async () => {
+        setIsLoading(true);
+        setIsDataLoading(true);
+        try {
+          // First, authenticate to get the access token
+          const authResult = await authenticateOneCall();
+          if (authResult.success && authResult.token) {
+            setAccessToken(authResult.token);
+            
+            // Then load recordings data with current user info
+            const result = await getRecordingsData(currentUser);
+            if (result.success && result.data) {
+              setRecordingsData(result.data);
+            } else {
+              // Handle error silently
+            }
           } else {
             // Handle error silently
           }
-        } else {
+        } catch (error) {
           // Handle error silently
+        } finally {
+          setIsLoading(false);
+          setIsDataLoading(false);
         }
-      } catch (error) {
-        // Handle error silently
-      } finally {
-        setIsLoading(false);
-        setIsDataLoading(false);
-      }
-    };
+      };
 
-    loadRecordings();
+      loadRecordings();
+    }
   }, [currentUser]);
 
   // Function to filter recordings data based on current filter values
