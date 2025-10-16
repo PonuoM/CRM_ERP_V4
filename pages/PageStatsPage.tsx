@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Order, Customer, CallHistory, User } from '@/types';
+import { Order, Customer, CallHistory, User, UserRole } from '@/types';
 import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MultiLineChart from '@/components/MultiLineChart';
@@ -54,6 +54,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     value: ''
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [pages, setPages] = useState<Array<{id: number, name: string, page_id: string}>>([]);
+  const [selectedPage, setSelectedPage] = useState<string>('');
 
   // Get current user from localStorage
   useEffect(() => {
@@ -72,6 +74,23 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     } catch (error) {
       console.error('Error getting user from localStorage:', error);
     }
+  }, []);
+
+  // Fetch pages for filter dropdown
+  useEffect(() => {
+    const fetchPages = async () => {
+      try {
+        const response = await fetch('api/index.php/pages');
+        if (response.ok) {
+          const data = await response.json();
+          setPages(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error fetching pages:', error);
+      }
+    };
+
+    fetchPages();
   }, []);
 
   const customersById = useMemo(() => {
@@ -322,6 +341,27 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               <option value={30}>30 วันย้อนหลัง</option>
               <option value={90}>90 วันย้อนหลัง</option>
             </select>
+            <select
+              value={selectedPage}
+              onChange={(e) => {
+                const pageId = e.target.value;
+                setSelectedPage(pageId);
+                if (pageId) {
+                  setNewEnvVar({
+                    ...newEnvVar,
+                    key: `ACCESS_TOKEN_PANCAKE_${pageId}`
+                  });
+                }
+              }}
+              className="border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">เลือกเพจ...</option>
+              {pages.map((page) => (
+                <option key={page.id} value={page.page_id || page.id.toString()}>
+                  {page.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setRangeDays(rangeDays)} className="border rounded-md px-3 py-2 text-sm flex items-center gap-1"><RefreshCcw className="w-4 h-4"/> รีเฟรช</button>
@@ -417,109 +457,113 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         </div>
       </div>
 
-      {/* Floating button for env management */}
-      <button
-        onClick={() => setIsEnvSidebarOpen(true)}
-        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
-        title="จัดการตัวแปรสภาพแวดล้อม"
-      >
-        <Settings className="w-6 h-6" />
-      </button>
+      {/* Floating button for env management - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
+        <button
+          onClick={() => setIsEnvSidebarOpen(true)}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
+          title="จัดการตัวแปรสภาพแวดล้อม"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+      )}
 
-      {/* Off-canvas sidebar for env management */}
-      <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-50 ${
-        isEnvSidebarOpen ? 'translate-x-0' : 'translate-x-full'
-      }`}>
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
-            <button
-              onClick={() => setIsEnvSidebarOpen(false)}
-              className="p-1 rounded-full hover:bg-gray-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+      {/* Off-canvas sidebar for env management - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
+        <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-50 ${
+          isEnvSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}>
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
+              <button
+                onClick={() => setIsEnvSidebarOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-4">
-              {/* Add new env variable */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-md font-medium mb-3">เพิ่มตัวแปรใหม่</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Key</label>
-                    <input
-                      type="text"
-                      value={newEnvVar.key}
-                      onChange={(e) => setNewEnvVar({ ...newEnvVar, key: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="ACCESS_TOKEN_PANCAKE_1"
-                    />
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-4">
+                {/* Add new env variable */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="text-md font-medium mb-3">เพิ่มตัวแปรใหม่</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Key</label>
+                      <input
+                        type="text"
+                        value={newEnvVar.key}
+                        onChange={(e) => setNewEnvVar({ ...newEnvVar, key: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="ACCESS_TOKEN_PANCAKE_1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
+                      <textarea
+                        value={newEnvVar.value}
+                        onChange={(e) => setNewEnvVar({ ...newEnvVar, value: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="ค่าของตัวแปร"
+                        rows={3}
+                      />
+                    </div>
+                    <button
+                      onClick={() => saveEnvVariable(newEnvVar)}
+                      disabled={isLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      {isLoading ? 'กำลังบันทึก...' : 'บันทึก'}
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-                    <textarea
-                      value={newEnvVar.value}
-                      onChange={(e) => setNewEnvVar({ ...newEnvVar, value: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="ค่าของตัวแปร"
-                      rows={3}
-                    />
-                  </div>
-                  <button
-                    onClick={() => saveEnvVariable(newEnvVar)}
-                    disabled={isLoading}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    {isLoading ? 'กำลังบันทึก...' : 'บันทึก'}
-                  </button>
                 </div>
-              </div>
 
-              {/* List existing env variables */}
-              <div>
-                <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
-                {envVariables.length === 0 ? (
-                  <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
-                ) : (
-                  <div className="space-y-2">
-                    {envVariables.map((envVar) => (
-                      <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 mr-2">
-                            <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
-                            <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
-                            {envVar.updated_at && (
-                              <div className="text-xs text-gray-400 mt-1">
-                                อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
-                              </div>
-                            )}
+                {/* List existing env variables */}
+                <div>
+                  <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
+                  {envVariables.length === 0 ? (
+                    <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {envVariables.map((envVar) => (
+                        <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 mr-2">
+                              <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
+                              <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
+                              {envVar.updated_at && (
+                                <div className="text-xs text-gray-400 mt-1">
+                                  อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => deleteEnvVariable(envVar.key)}
+                              disabled={isLoading}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded"
+                              title="ลบตัวแปร"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => deleteEnvVariable(envVar.key)}
-                            disabled={isLoading}
-                            className="p-1 text-red-500 hover:bg-red-50 rounded"
-                            title="ลบตัวแปร"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Overlay for sidebar */}
-      {isEnvSidebarOpen && (
+      {/* Overlay for sidebar - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && isEnvSidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={() => setIsEnvSidebarOpen(false)}
