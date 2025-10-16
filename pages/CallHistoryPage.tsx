@@ -738,6 +738,105 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     }
   }, [currentUser]);
 
+  // Function to create search parameters for SuperAdmin and AdminControl users
+  const createSearchParams = () => {
+    // Default parameters
+    const params: any = {
+      baseUrl: '/onecall/orktrack/rest/recordings',
+      range: 'custom',
+      sort: '',
+      page: 1,
+      pagesize: 20,
+      maxresults: -1,
+      includetags: true,
+      includemetadata: true,
+      includeprograms: true
+    };
+    
+    // Add startdate as today at midnight UTC+7 converted to UTC+0
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0); // Set to midnight
+    startDate.setHours(startDate.getHours() - 7); // Convert from UTC+7 to UTC+0
+    
+    const year = startDate.getFullYear();
+    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+    const day = String(startDate.getDate()).padStart(2, '0');
+    const hours = String(startDate.getHours()).padStart(2, '0');
+    const minutes = String(startDate.getMinutes()).padStart(2, '0');
+    const seconds = String(startDate.getSeconds()).padStart(2, '0');
+    params.startdate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    
+    // Add date range if specified
+    if (datetimeRange.start) {
+      const startDate = new Date(datetimeRange.start);
+      startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+      const year = startDate.getFullYear();
+      const month = String(startDate.getMonth() + 1).padStart(2, '0');
+      const day = String(startDate.getDate()).padStart(2, '0');
+      const hours = String(startDate.getHours()).padStart(2, '0');
+      const minutes = String(startDate.getMinutes()).padStart(2, '0');
+      const seconds = String(startDate.getSeconds()).padStart(2, '0');
+      params.startdate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    }
+    
+    if (datetimeRange.end) {
+      const endDate = new Date(datetimeRange.end);
+      endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+      const year = endDate.getFullYear();
+      const month = String(endDate.getMonth() + 1).padStart(2, '0');
+      const day = String(endDate.getDate()).padStart(2, '0');
+      const hours = String(endDate.getHours()).padStart(2, '0');
+      const minutes = String(endDate.getMinutes()).padStart(2, '0');
+      const seconds = String(endDate.getSeconds()).padStart(2, '0');
+      params.enddate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      params.maxresults = -1; // Set to -1 when enddate is set
+    }
+    
+    // Add direction filter if specified
+    if (direction !== 'all') {
+      params.direction = direction;
+    }
+    
+    // Handle phone filters
+    const hasCustomerPhone = qCustomerPhone && qCustomerPhone.trim() !== '';
+    const hasSelectedAgent = selectedAgent && selectedAgent.trim() !== '';
+    
+    // Format phone numbers to +66 format
+    const formatPhoneToPlus66 = (phone: string) => {
+      if (phone.startsWith('0')) {
+        return '+66' + phone.substring(1);
+      }
+      return '+66' + phone;
+    };
+    
+    // Case 1: Only one phone is specified
+    if ((hasCustomerPhone && !hasSelectedAgent) || (!hasCustomerPhone && hasSelectedAgent)) {
+      const phone = hasCustomerPhone ? qCustomerPhone : selectedAgent;
+      if (phone) {
+        params.party = formatPhoneToPlus66(phone);
+      }
+    }
+    // Case 2: Both phones are specified - return two sets of parameters
+    else if (hasCustomerPhone && hasSelectedAgent) {
+      const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+      const formattedAgentPhone = formatPhoneToPlus66(selectedAgent);
+      
+      const params1 = { ...params };
+      params1.localparty = formattedAgentPhone;
+      params1.remoteparty = formattedCustomerPhone;
+      delete params1.party; // Remove party parameter
+      
+      const params2 = { ...params };
+      params2.localparty = formattedCustomerPhone;
+      params2.remoteparty = formattedAgentPhone;
+      delete params2.party; // Remove party parameter
+      
+      return { params: [params1, params2], isDualRequest: true };
+    }
+    
+    return { params: [params], isDualRequest: false };
+  };
+
   // Function to filter recordings data based on current filter values
   const filterRecordings = async () => {
     if (!recordingsData || !recordingsData.objects) {
@@ -748,125 +847,239 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     // Set search loading state
     setIsSearchLoading(true);
     
-    // API Configuration parameters (default values)
-    const apiConfig: any = {
-      baseUrl: '/onecall/orktrack/rest/recordings',
-      range: 'custom',
-      sort: '',
-      page: 1,
-      pagesize: pageSize,
-      maxresults: -1,
-      includetags: true,
-      includemetadata: true,
-      includeprograms: true
-    };
-    
-    // Build URL parameters for debugging with default config
-    const params = new URLSearchParams();
-    
-    // Add default parameters
-    params.append('range', apiConfig.range);
-    params.append('sort', apiConfig.sort);
-    params.append('page', apiConfig.page.toString());
-    params.append('pagesize', apiConfig.pagesize.toString());
-    params.append('maxresults', apiConfig.maxresults.toString());
-    params.append('includetags', apiConfig.includetags.toString());
-    params.append('includemetadata', apiConfig.includemetadata.toString());
-    params.append('includeprograms', apiConfig.includeprograms.toString());
-    
-    // Add filter parameters
-    if (qCustomer) params.append('customer', qCustomer);
-    if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
-    if (qAgentPhone) params.append('agentPhone', qAgentPhone);
-    if (status !== 'all') params.append('status', status);
-    if (direction !== 'all') params.append('direction', direction);
-    
-    // Handle startdate parameter
-    let startDateFormatted = '';
-    if (datetimeRange.start) {
-      // Format datetime for API
-      const startDate = new Date(datetimeRange.start);
-      startDate.setHours(startDate.getHours() - 7); // Convert to UTC
-      const year = startDate.getFullYear();
-      const month = String(startDate.getMonth() + 1).padStart(2, '0');
-      const day = String(startDate.getDate()).padStart(2, '0');
-      const hours = String(startDate.getHours()).padStart(2, '0');
-      const minutes = String(startDate.getMinutes()).padStart(2, '0');
-      const seconds = String(startDate.getSeconds()).padStart(2, '0');
-      startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-      params.append('startdate', startDateFormatted);
-    } else {
-      // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
-      const startDate = new Date();
-      startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
-      startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
-      
-      const year = startDate.getFullYear();
-      const month = String(startDate.getMonth() + 1).padStart(2, '0');
-      const day = String(startDate.getDate()).padStart(2, '0');
-      const hours = String(startDate.getHours()).padStart(2, '0');
-      const minutes = String(startDate.getMinutes()).padStart(2, '0');
-      const seconds = String(startDate.getSeconds()).padStart(2, '0');
-      startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-      params.append('startdate', startDateFormatted);
-    }
-    
-    if (datetimeRange.end) {
-      // Format datetime for API
-      const endDate = new Date(datetimeRange.end);
-      endDate.setHours(endDate.getHours() - 7); // Convert to UTC
-      const year = endDate.getFullYear();
-      const month = String(endDate.getMonth() + 1).padStart(2, '0');
-      const day = String(endDate.getDate()).padStart(2, '0');
-      const hours = String(endDate.getHours()).padStart(2, '0');
-      const minutes = String(endDate.getMinutes()).padStart(2, '0');
-      const seconds = String(endDate.getSeconds()).padStart(2, '0');
-      const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-      params.append('enddate', endDateFormatted);
-      
-      // Set maxresults to -1 when enddate is set
-      params.set('maxresults', '-1');
-    }
-    
-    // Add party parameter for Admin users when selectedAgent is set
-    if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
-      const formattedPhone = selectedAgent.startsWith('0')
-        ? '+66' + selectedAgent.substring(1)
-        : '+66' + selectedAgent;
-      params.append('party', formattedPhone);
-    }
-    // Add party parameter for Supervisor users (use selectedAgent if set, otherwise use current user's phone)
-    else if (currentUser && currentUser.role === UserRole.Supervisor) {
-      const phoneToUse = selectedAgent || currentUser.phone;
-      if (phoneToUse) {
-        const formattedPhone = phoneToUse.startsWith('0')
-          ? '+66' + phoneToUse.substring(1)
-          : '+66' + phoneToUse;
-        params.append('party', formattedPhone);
-      }
-    }
-    // Add party parameter for Telesale users
-    else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
-      const formattedPhone = currentUser.phone.startsWith('0')
-        ? '+66' + currentUser.phone.substring(1)
-        : '+66' + currentUser.phone;
-      params.append('party', formattedPhone);
-    }
-    
-    // Create the search URL
-    const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
-    
-    // Always fetch new data from API when search button is clicked
     try {
       // First, authenticate to get the access token
       const authResult = await authenticateOneCall();
-      if (authResult.success && authResult.token) {
-        setAccessToken(authResult.token);
+      if (!authResult.success || !authResult.token) {
+        setIsSearchLoading(false);
+        return;
+      }
+      
+      setAccessToken(authResult.token);
+      
+      // Use different logic based on user role
+      if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin)) {
+        // Use the new createSearchParams function for AdminControl and SuperAdmin
+        const { params: paramsList, isDualRequest } = createSearchParams();
         
-        // Special handling for Telesale and Admin users with customer phone and selected agent
-        if (currentUser && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && qCustomerPhone) {
-          // Get the phone number to use (selectedAgent for admins, currentUser.phone for telesale)
-          const agentPhone = (currentUser.role === UserRole.Supervisor || currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent
+        if (isDualRequest) {
+          // Execute both requests in parallel
+          const requests = paramsList.map(paramObj => {
+            const urlParams = new URLSearchParams();
+            Object.entries(paramObj).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) {
+                urlParams.append(key, value.toString());
+              }
+            });
+            
+            const url = `${paramObj.baseUrl}?${urlParams.toString()}`;
+            
+            return fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': authResult.token,
+                'Accept': 'application/json'
+              }
+            });
+          });
+          
+          const responses = await Promise.all(requests);
+          
+          // Parse all responses
+          const allObjects: any[] = [];
+          
+          for (const response of responses) {
+            if (response.ok) {
+              const responseText = await response.text();
+              let responseData;
+              try {
+                responseData = JSON.parse(responseText);
+              } catch (e) {
+                responseData = responseText;
+              }
+              
+              if (responseData && responseData.objects) {
+                allObjects.push(...responseData.objects);
+              }
+            }
+          }
+          
+          // Remove duplicates based on recording ID
+          const uniqueObjects = allObjects.filter((obj: any, index: number, self: any[]) =>
+            index === self.findIndex((t: any) => t.id === obj.id)
+          );
+          
+          // Sort by timestamp (newest first)
+          uniqueObjects.sort((a: any, b: any) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          
+          // Update state with merged results
+          const mergedData = {
+            objects: uniqueObjects,
+            page: 1,
+            pageSize: 20,
+            resultCount: uniqueObjects.length
+          };
+          
+          setRecordingsData(mergedData);
+          setFilteredRecordings(uniqueObjects);
+          setSearchedAgent(selectedAgent);
+          setCurrentPage(1);
+          setPageSize(20);
+          setTotalResults(uniqueObjects.length);
+          setNextPageUri('');
+          setPrevPageUri('');
+          setLimitReached(false);
+        } else {
+          // Single request
+          const paramObj = paramsList[0];
+          const urlParams = new URLSearchParams();
+          Object.entries(paramObj).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              urlParams.append(key, value.toString());
+            }
+          });
+          
+          const url = `${paramObj.baseUrl}?${urlParams.toString()}`;
+          
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
+            }
+            
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              setSearchedAgent(selectedAgent);
+              setCurrentPage(responseData.page || 1);
+              setPageSize(responseData.pageSize || 20);
+              setTotalResults(responseData.resultCount || 0);
+              setNextPageUri(responseData.nextPageUri || '');
+              setPrevPageUri(responseData.prevPageUri || '');
+              setLimitReached(responseData.limitReached || false);
+            }
+          }
+        }
+      } else {
+        // Use the original logic for other user roles
+        // API Configuration parameters (default values)
+        const apiConfig: any = {
+          baseUrl: '/onecall/orktrack/rest/recordings',
+          range: 'custom',
+          sort: '',
+          page: 1,
+          pagesize: pageSize,
+          maxresults: -1,
+          includetags: true,
+          includemetadata: true,
+          includeprograms: true
+        };
+        
+        // Build URL parameters
+        const params = new URLSearchParams();
+        
+        // Add default parameters
+        params.append('range', apiConfig.range);
+        params.append('sort', apiConfig.sort);
+        params.append('page', apiConfig.page.toString());
+        params.append('pagesize', apiConfig.pagesize.toString());
+        params.append('maxresults', apiConfig.maxresults.toString());
+        params.append('includetags', apiConfig.includetags.toString());
+        params.append('includemetadata', apiConfig.includemetadata.toString());
+        params.append('includeprograms', apiConfig.includeprograms.toString());
+        
+        // Add filter parameters
+        if (qCustomer) params.append('customer', qCustomer);
+        if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
+        if (qAgentPhone) params.append('agentPhone', qAgentPhone);
+        if (status !== 'all') params.append('status', status);
+        if (direction !== 'all') params.append('direction', direction);
+        
+        // Handle startdate parameter
+        let startDateFormatted = '';
+        if (datetimeRange.start) {
+          // Format datetime for API
+          const startDate = new Date(datetimeRange.start);
+          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        } else {
+          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
+          const startDate = new Date();
+          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+          
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        }
+        
+        if (datetimeRange.end) {
+          // Format datetime for API
+          const endDate = new Date(datetimeRange.end);
+          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+          const year = endDate.getFullYear();
+          const month = String(endDate.getMonth() + 1).padStart(2, '0');
+          const day = String(endDate.getDate()).padStart(2, '0');
+          const hours = String(endDate.getHours()).padStart(2, '0');
+          const minutes = String(endDate.getMinutes()).padStart(2, '0');
+          const seconds = String(endDate.getSeconds()).padStart(2, '0');
+          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('enddate', endDateFormatted);
+          
+          // Set maxresults to -1 when enddate is set
+          params.set('maxresults', '-1');
+        }
+        
+        // Add party parameter for Supervisor users (use selectedAgent if set, otherwise use current user's phone)
+        if (currentUser && currentUser.role === UserRole.Supervisor) {
+          const phoneToUse = selectedAgent || currentUser.phone;
+          if (phoneToUse) {
+            const formattedPhone = phoneToUse.startsWith('0')
+              ? '+66' + phoneToUse.substring(1)
+              : '+66' + phoneToUse;
+            params.append('party', formattedPhone);
+          }
+        }
+        // Add party parameter for Telesale users
+        else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+          const formattedPhone = currentUser.phone.startsWith('0')
+            ? '+66' + currentUser.phone.substring(1)
+            : '+66' + currentUser.phone;
+          params.append('party', formattedPhone);
+        }
+        
+        // Create the search URL
+        const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
+        
+        // Special handling for users with customer phone and selected agent
+        if (qCustomerPhone && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor)) {
+          // Get the phone number to use
+          const agentPhone = currentUser.role === UserRole.Supervisor && selectedAgent
             ? selectedAgent
             : currentUser.phone;
           
@@ -957,318 +1170,53 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
             );
             
-            
-            if (mergedData && mergedData.objects) {
-              setRecordingsData(mergedData);
-              setFilteredRecordings(mergedData.objects);
-              // Update the searched agent when search is performed
-              setSearchedAgent(selectedAgent);
-              
-              // Update pagination state for merged results
-              setCurrentPage(1);
-              setPageSize(20);
-              setTotalResults(mergedData.objects.length);
-              setNextPageUri('');
-              setPrevPageUri('');
-              setLimitReached(false);
-              
-              setIsSearchLoading(false);
-              return;
-            }
-          }
-          // Format phone numbers to +66 format
-          const formatPhoneToPlus66 = (phone: string) => {
-            if (phone.startsWith('0')) {
-              return '+66' + phone.substring(1);
-            }
-            return '+66' + phone;
-          };
-          
-          const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
-          const formattedUserPhone = formatPhoneToPlus66(currentUser.phone);
-          
-          // First request: localparty = customer phone, remoteparty = user's phone
-          const params1 = new URLSearchParams(params.toString());
-          params1.delete('party');
-          params1.append('localparty', formattedCustomerPhone);
-          params1.append('remoteparty', formattedUserPhone);
-          
-          const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
-          
-          // Second request: localparty = user's phone, remoteparty = customer phone
-          const params2 = new URLSearchParams(params.toString());
-          params2.delete('party');
-          params2.append('localparty', formattedUserPhone);
-          params2.append('remoteparty', formattedCustomerPhone);
-          
-          const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
-          
-          // Execute both requests in parallel
-          const [response1, response2] = await Promise.all([
-            fetch(searchUrl1, {
-              method: 'GET',
-              headers: {
-                'Authorization': authResult.token,
-                'Accept': 'application/json'
-              }
-            }),
-            fetch(searchUrl2, {
-              method: 'GET',
-              headers: {
-                'Authorization': authResult.token,
-                'Accept': 'application/json'
-              }
-            })
-          ]);
-          
-          // Parse both responses
-          let responseData1, responseData2;
-          
-          if (response1.ok) {
-            const responseText1 = await response1.text();
-            try {
-              responseData1 = JSON.parse(responseText1);
-            } catch (e) {
-              responseData1 = responseText1;
-            }
-          }
-          
-          if (response2.ok) {
-            const responseText2 = await response2.text();
-            try {
-              responseData2 = JSON.parse(responseText2);
-            } catch (e) {
-              responseData2 = responseText2;
-            }
-          }
-          
-          // Merge the results
-          const mergedData = {
-            objects: [
-              ...(responseData1?.objects || []),
-              ...(responseData2?.objects || [])
-            ]
-          };
-          
-          // Remove duplicates based on recording ID
-          const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
-            index === self.findIndex((t: any) => t.id === obj.id)
-          );
-          
-          mergedData.objects = uniqueObjects;
-          
-          // Sort by timestamp (newest first)
-          mergedData.objects.sort((a: any, b: any) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-          
-          
-          if (mergedData && mergedData.objects) {
+            // Update state with merged results
             setRecordingsData(mergedData);
             setFilteredRecordings(mergedData.objects);
-            // Update the searched agent when search is performed
             setSearchedAgent(selectedAgent);
-            
-            // Update pagination state for merged results
             setCurrentPage(1);
             setPageSize(20);
             setTotalResults(mergedData.objects.length);
             setNextPageUri('');
             setPrevPageUri('');
             setLimitReached(false);
-            
-            setIsSearchLoading(false);
-            return;
           }
-        }
-        // Format phone numbers to +66 format
-        const formatPhoneToPlus66 = (phone: string) => {
-          if (phone.startsWith('0')) {
-            return '+66' + phone.substring(1);
-          }
-          return '+66' + phone;
-        };
-        
-        const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
-        const formattedUserPhone = formatPhoneToPlus66(currentUser.phone);
-        
-        // First request: localparty = customer phone, remoteparty = user's phone
-        const params1 = new URLSearchParams(params.toString());
-        params1.delete('party');
-        params1.append('localparty', formattedCustomerPhone);
-        params1.append('remoteparty', formattedUserPhone);
-        
-        const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
-        
-        // Second request: localparty = user's phone, remoteparty = customer phone
-        const params2 = new URLSearchParams(params.toString());
-        params2.delete('party');
-        params2.append('localparty', formattedUserPhone);
-        params2.append('remoteparty', formattedCustomerPhone);
-        
-        const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
-        
-        // Execute both requests in parallel
-        const [response1, response2] = await Promise.all([
-          fetch(searchUrl1, {
+        } else {
+          // Normal request
+          const response = await fetch(searchUrl, {
             method: 'GET',
             headers: {
               'Authorization': authResult.token,
               'Accept': 'application/json'
             }
-          }),
-          fetch(searchUrl2, {
-            method: 'GET',
-            headers: {
-              'Authorization': authResult.token,
-              'Accept': 'application/json'
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
             }
-          })
-        ]);
-        
-        // Parse both responses
-        let responseData1, responseData2;
-        
-        if (response1.ok) {
-          const responseText1 = await response1.text();
-          try {
-            responseData1 = JSON.parse(responseText1);
-          } catch (e) {
-            responseData1 = responseText1;
-          }
-        }
-        
-        if (response2.ok) {
-          const responseText2 = await response2.text();
-          try {
-            responseData2 = JSON.parse(responseText2);
-          } catch (e) {
-            responseData2 = responseText2;
-          }
-        }
-        
-        // Merge the results
-        const mergedData = {
-          objects: [
-            ...(responseData1?.objects || []),
-            ...(responseData2?.objects || [])
-          ]
-        };
-        
-        // Remove duplicates based on recording ID
-        const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
-          index === self.findIndex((t: any) => t.id === obj.id)
-        );
-        
-        mergedData.objects = uniqueObjects;
-        
-        // Sort by timestamp (newest first)
-        mergedData.objects.sort((a: any, b: any) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        
-        
-        if (mergedData && mergedData.objects) {
-          setRecordingsData(mergedData);
-          setFilteredRecordings(mergedData.objects);
-          // Update the searched agent when search is performed
-          setSearchedAgent(selectedAgent);
-          
-          // Update pagination state for merged results
-          setCurrentPage(1);
-          setPageSize(20);
-          setTotalResults(mergedData.objects.length);
-          setNextPageUri('');
-          setPrevPageUri('');
-          setLimitReached(false);
-          
-          setIsSearchLoading(false);
-          return;
-        }
-      } else {
-        // Normal request for other users or when customer phone is not provided
-        const response = await fetch(searchUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': authResult.token,
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const responseText = await response.text();
-          let responseData;
-          try {
-            responseData = JSON.parse(responseText);
-          } catch (e) {
-            responseData = responseText;
-          }
-          
-          
-          if (responseData && responseData.objects) {
-            setRecordingsData(responseData);
-            setFilteredRecordings(responseData.objects);
-            // Update the searched agent when search is performed
-            setSearchedAgent(selectedAgent);
             
-            // Update pagination state
-            setCurrentPage(responseData.page || 1);
-            setPageSize(responseData.pageSize || 20);
-            setTotalResults(responseData.resultCount || 0);
-            setNextPageUri(responseData.nextPageUri || '');
-            setPrevPageUri(responseData.prevPageUri || '');
-            setLimitReached(responseData.limitReached || false);
-            
-            setIsSearchLoading(false);
-            return;
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              setSearchedAgent(selectedAgent);
+              setCurrentPage(responseData.page || 1);
+              setPageSize(responseData.pageSize || 20);
+              setTotalResults(responseData.resultCount || 0);
+              setNextPageUri(responseData.nextPageUri || '');
+              setPrevPageUri(responseData.prevPageUri || '');
+              setLimitReached(responseData.limitReached || false);
+            }
           }
         }
       }
     } catch (error) {
-      setIsSearchLoading(false);
-    }
-    
-    // If we didn't make an API call, filter the existing recordings data
-    if (recordingsData && recordingsData.objects) {
-      const filtered = recordingsData.objects.filter((recording: any) => {
-        // Apply filters based on the new data structure
-        if (qCustomer && !("Unknown".toLowerCase().includes(qCustomer.toLowerCase()))) return false;
-        if (qCustomerPhone && !recording.remoteParty?.includes(qCustomerPhone)) return false;
-        if (qAgentPhone && !recording.localParty?.includes(qAgentPhone)) return false;
-        
-        // Status filter - all recordings have status "ได้คุย"
-        if (status !== 'all' && status !== 'ได้คุย') return false;
-        
-        // Direction filter
-        if (direction !== 'all' && recording.direction !== direction) return false;
-        
-        // Date range filter
-        if (datetimeRange.start || datetimeRange.end) {
-          // Handle the format "2025-10-09 03:23:08" from the API
-          const recordingDate = new Date(recording.timestamp);
-          // Add 7 hours to convert from UTC to Asia/Bangkok
-          recordingDate.setHours(recordingDate.getHours() + 7);
-          
-          if (datetimeRange.start && recordingDate < new Date(datetimeRange.start)) return false;
-          if (datetimeRange.end) {
-            const e = new Date(datetimeRange.end);
-            if (recordingDate > e) return false;
-          }
-        }
-        
-        return true;
-      }).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      setFilteredRecordings(filtered);
-      
-      // Update pagination state for filtered results
-      setCurrentPage(1);
-      setPageSize(20);
-      setTotalResults(filtered.length);
-      setNextPageUri('');
-      setPrevPageUri('');
-      setLimitReached(false);
-      
+      console.error('Error filtering recordings:', error);
+    } finally {
       setIsSearchLoading(false);
     }
   };
