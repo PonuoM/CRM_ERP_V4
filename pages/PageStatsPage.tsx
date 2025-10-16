@@ -376,12 +376,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const now = new Date();
       const until = Math.floor(now.getTime() / 1000); // Current timestamp in seconds
       
-      // Calculate since: today at midnight minus 7 days in local timezone
+      // Calculate since: today at midnight minus rangeDays in local timezone
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Set to midnight today in local timezone
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7); // Subtract 7 days
-      const since = Math.floor(sevenDaysAgo.getTime() / 1000); // Convert to unix timestamp
+      const daysAgo = new Date(today);
+      daysAgo.setDate(daysAgo.getDate() - (rangeDays - 1)); // Subtract rangeDays-1 days
+      const since = Math.floor(daysAgo.getTime() / 1000); // Convert to unix timestamp
 
       // Fetch page statistics with select_fields parameter
       const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
