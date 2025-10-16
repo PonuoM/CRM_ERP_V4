@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, User, UserRole } from '@/types';
-import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search } from 'lucide-react';
+import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search, ChevronDown } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import MultiLineChart from '@/components/MultiLineChart';
 
@@ -59,6 +59,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [usePageStats, setUsePageStats] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('hourly');
+  const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
+  const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -422,27 +425,77 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               <option value={30}>30 วันย้อนหลัง</option>
               <option value={90}>90 วันย้อนหลัง</option>
             </select>
-            <select
-              value={selectedPage}
-              onChange={(e) => {
-                const pageId = e.target.value;
-                setSelectedPage(pageId);
-                if (pageId) {
-                  setNewEnvVar({
-                    ...newEnvVar,
-                    key: `ACCESS_TOKEN_PANCAKE_${pageId}`
-                  });
-                }
-              }}
-              className="border rounded-md px-3 py-2 text-sm"
-            >
-              <option value="">เลือกเพจ...</option>
-              {pages.map((page) => (
-                <option key={page.id} value={page.page_id || page.id.toString()}>
-                  {page.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="เลือกหรือค้นหาเพจ..."
+                value={pageSearchTerm}
+                onChange={(e) => setPageSearchTerm(e.target.value)}
+                onFocus={() => setIsSelectOpen(true)}
+                onBlur={() => setTimeout(() => setIsSelectOpen(false), 200)}
+                className="border rounded-md px-3 py-2 pr-8 text-sm w-64"
+              />
+              <button
+                onClick={() => setIsSelectOpen(!isSelectOpen)}
+                className="absolute right-2 top-2.5 text-gray-500 hover:text-gray-700"
+              >
+                <ChevronDown className={`w-4 h-4 transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {pageSearchTerm && (
+                <button
+                  onClick={() => setPageSearchTerm('')}
+                  className="absolute right-8 top-2.5 text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              {isSelectOpen && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {pages
+                    .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
+                    .map((page) => (
+                      <div
+                        key={page.id}
+                        onMouseDown={() => {
+                          setSelectedPage(page.page_id || page.id.toString());
+                          setPageSearchTerm(page.name);
+                          setNewEnvVar({
+                            ...newEnvVar,
+                            key: `ACCESS_TOKEN_PANCAKE_${page.page_id || page.id.toString()}`
+                          });
+                          setIsSelectOpen(false);
+                        }}
+                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                      >
+                        {page.name}
+                      </div>
+                    ))
+                  }
+                  {pages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-2 text-gray-500 text-sm">
+                      ไม่พบเพจที่ตรงกัน
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {usePageStats && (
+              <div className="flex items-center gap-2 ml-2">
+                <span className="text-sm text-gray-600">มุมมอง:</span>
+                <button
+                  onClick={() => setViewMode('hourly')}
+                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'hourly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  รายชั่วโมง
+                </button>
+                <button
+                  onClick={() => setViewMode('daily')}
+                  className={`px-3 py-1 text-sm rounded-md ${viewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  รายวัน
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -517,47 +570,107 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             </thead>
             <tbody>
               {usePageStats && pageStatsData.length > 0 ? (
-                pageStatsData.map((item, index) => {
-                  // Convert hour string to date format
-                  const date = new Date(item.hour);
-                  const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                (() => {
+                  // Process data based on view mode
+                  let displayData = [];
                   
-                  return (
-                    <tr key={index} className="border-t border-gray-100">
-                      <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.phone_number_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_comment_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_inbox_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_comment_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_inbox_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_inbox_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.inbox_interactive_count}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_uniq_website_referral}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_website_guest_referral}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{item.order_count || 0}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {item.new_customer_count > 0
-                          ? ((item.order_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
-                          : '-'
-                        }
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {item.uniq_phone_number_count > 0
-                          ? ((item.order_count || 0) / item.uniq_phone_number_count * 100).toFixed(2) + '%'
-                          : '-'
-                        }
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {item.new_customer_count > 0
-                          ? ((item.uniq_phone_number_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
-                          : '-'
-                        }
-                      </td>
-                    </tr>
-                  );
-                })
+                  if (viewMode === 'daily') {
+                    // Aggregate data by day
+                    const dailyMap = new Map();
+                    
+                    pageStatsData.forEach(item => {
+                      const date = new Date(item.hour);
+                      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                      
+                      if (!dailyMap.has(dateKey)) {
+                        dailyMap.set(dateKey, {
+                          date: dateKey,
+                          new_customer_count: 0,
+                          uniq_phone_number_count: 0,
+                          phone_number_count: 0,
+                          customer_comment_count: 0,
+                          customer_inbox_count: 0,
+                          page_comment_count: 0,
+                          page_inbox_count: 0,
+                          new_inbox_count: 0,
+                          inbox_interactive_count: 0,
+                          today_uniq_website_referral: 0,
+                          today_website_guest_referral: 0,
+                          order_count: 0
+                        });
+                      }
+                      
+                      const dayData = dailyMap.get(dateKey);
+                      dayData.new_customer_count += item.new_customer_count;
+                      dayData.uniq_phone_number_count += item.uniq_phone_number_count;
+                      dayData.phone_number_count += item.phone_number_count;
+                      dayData.customer_comment_count += item.customer_comment_count;
+                      dayData.customer_inbox_count += item.customer_inbox_count;
+                      dayData.page_comment_count += item.page_comment_count;
+                      dayData.page_inbox_count += item.page_inbox_count;
+                      dayData.new_inbox_count += item.new_inbox_count;
+                      dayData.inbox_interactive_count += item.inbox_interactive_count;
+                      dayData.today_uniq_website_referral += item.today_uniq_website_referral;
+                      dayData.today_website_guest_referral += item.today_website_guest_referral;
+                      dayData.order_count += item.order_count || 0;
+                    });
+                    
+                    displayData = Array.from(dailyMap.values()).sort((a, b) =>
+                      new Date(b.date).getTime() - new Date(a.date).getTime()
+                    );
+                  } else {
+                    // Use hourly data
+                    displayData = pageStatsData;
+                  }
+                  
+                  return displayData.map((item, index) => {
+                    let formattedDate;
+                    
+                    if (viewMode === 'daily') {
+                      formattedDate = item.date;
+                    } else {
+                      // Convert hour string to date format
+                      const date = new Date(item.hour);
+                      formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                    }
+                    
+                    return (
+                      <tr key={index} className="border-t border-gray-100">
+                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_customer_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.uniq_phone_number_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.phone_number_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_comment_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.customer_inbox_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_comment_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.page_inbox_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.new_inbox_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.inbox_interactive_count}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_uniq_website_referral}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.today_website_guest_referral}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{item.order_count || 0}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {item.new_customer_count > 0
+                            ? ((item.order_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {item.uniq_phone_number_count > 0
+                            ? ((item.order_count || 0) / item.uniq_phone_number_count * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {item.new_customer_count > 0
+                            ? ((item.uniq_phone_number_count || 0) / item.new_customer_count * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
               ) : (
                 daily.map(r => (
                   <tr key={r.date} className="border-t border-gray-100">
@@ -585,41 +698,118 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap">รวม</td>
                 {usePageStats && pageStatsData.length > 0 ? (
-                  <>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">{pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {(() => {
-                        const totalOrders = pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0);
-                        const totalNewCustomers = pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0);
-                        return totalNewCustomers > 0 ? (totalOrders / totalNewCustomers * 100).toFixed(2) + '%' : '-';
-                      })()}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {(() => {
-                        const totalOrders = pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0);
-                        const totalPhones = pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0);
-                        return totalPhones > 0 ? (totalOrders / totalPhones * 100).toFixed(2) + '%' : '-';
-                      })()}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {(() => {
-                        const totalNewCustomers = pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0);
-                        const totalPhones = pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0);
-                        return totalNewCustomers > 0 ? (totalPhones / totalNewCustomers * 100).toFixed(2) + '%' : '-';
-                      })()}
-                    </td>
-                  </>
+                  (() => {
+                    // Calculate totals based on view mode
+                    let totalsData;
+                    
+                    if (viewMode === 'daily') {
+                      // Use the same aggregated data as in the table body
+                      const dailyMap = new Map();
+                      
+                      pageStatsData.forEach(item => {
+                        const date = new Date(item.hour);
+                        const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                        
+                        if (!dailyMap.has(dateKey)) {
+                          dailyMap.set(dateKey, {
+                            new_customer_count: 0,
+                            uniq_phone_number_count: 0,
+                            phone_number_count: 0,
+                            customer_comment_count: 0,
+                            customer_inbox_count: 0,
+                            page_comment_count: 0,
+                            page_inbox_count: 0,
+                            new_inbox_count: 0,
+                            inbox_interactive_count: 0,
+                            today_uniq_website_referral: 0,
+                            today_website_guest_referral: 0,
+                            order_count: 0
+                          });
+                        }
+                        
+                        const dayData = dailyMap.get(dateKey);
+                        dayData.new_customer_count += item.new_customer_count;
+                        dayData.uniq_phone_number_count += item.uniq_phone_number_count;
+                        dayData.phone_number_count += item.phone_number_count;
+                        dayData.customer_comment_count += item.customer_comment_count;
+                        dayData.customer_inbox_count += item.customer_inbox_count;
+                        dayData.page_comment_count += item.page_comment_count;
+                        dayData.page_inbox_count += item.page_inbox_count;
+                        dayData.new_inbox_count += item.new_inbox_count;
+                        dayData.inbox_interactive_count += item.inbox_interactive_count;
+                        dayData.today_uniq_website_referral += item.today_uniq_website_referral;
+                        dayData.today_website_guest_referral += item.today_website_guest_referral;
+                        dayData.order_count += item.order_count || 0;
+                      });
+                      
+                      const dailyData = Array.from(dailyMap.values());
+                      totalsData = {
+                        totalNewCustomers: dailyData.reduce((sum, item) => sum + item.new_customer_count, 0),
+                        totalPhones: dailyData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+                        totalNewPhones: dailyData.reduce((sum, item) => sum + item.phone_number_count, 0),
+                        totalComments: dailyData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+                        totalChats: dailyData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+                        totalPageComments: dailyData.reduce((sum, item) => sum + item.page_comment_count, 0),
+                        totalPageChats: dailyData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+                        totalNewChats: dailyData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+                        totalChatsFromOldCustomers: dailyData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+                        totalWebLoggedIn: dailyData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+                        totalWebGuest: dailyData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+                        totalOrders: dailyData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+                      };
+                    } else {
+                      // Use hourly data
+                      totalsData = {
+                        totalNewCustomers: pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0),
+                        totalPhones: pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+                        totalNewPhones: pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0),
+                        totalComments: pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+                        totalChats: pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+                        totalPageComments: pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0),
+                        totalPageChats: pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+                        totalNewChats: pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+                        totalChatsFromOldCustomers: pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+                        totalWebLoggedIn: pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+                        totalWebGuest: pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+                        totalOrders: pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+                      };
+                    }
+                    
+                    return (
+                      <>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalNewCustomers}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalPhones}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalNewPhones}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalComments}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalChats}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalPageComments}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalPageChats}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalNewChats}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalChatsFromOldCustomers}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalWebLoggedIn}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalWebGuest}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalOrders}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {totalsData.totalNewCustomers > 0
+                            ? (totalsData.totalOrders / totalsData.totalNewCustomers * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {totalsData.totalPhones > 0
+                            ? (totalsData.totalOrders / totalsData.totalPhones * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {totalsData.totalNewCustomers > 0
+                            ? (totalsData.totalPhones / totalsData.totalNewCustomers * 100).toFixed(2) + '%'
+                            : '-'
+                          }
+                        </td>
+                      </>
+                    );
+                  })()
                 ) : (
                   <>
                     <td className="px-3 py-2 text-right whitespace-nowrap">{totals.newCustomers}</td>
