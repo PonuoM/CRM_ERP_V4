@@ -223,6 +223,26 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   }, [customers, orders, calls, customersById, days]);
 
   const totals = useMemo(() => {
+    // If we have page stats data from API, use those totals instead
+    if (usePageStats && pageStatsData.length > 0) {
+      const totalsData = {
+        newCustomers: pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0),
+        totalPhones: pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+        newPhones: pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0),
+        totalComments: pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+        totalChats: pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+        totalPageComments: pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0),
+        totalPageChats: pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+        newChats: pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+        chatsFromOldCustomers: pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+        webLoggedIn: pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+        webGuest: pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+        ordersCount: pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+      };
+      return totalsData;
+    }
+    
+    // Otherwise use the mock data totals
     return daily.reduce((acc, r) => {
       acc.newCustomers += r.newCustomers;
       acc.totalPhones += r.totalPhones;
@@ -242,7 +262,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       totalPageComments: 0, totalPageChats: 0, newChats: 0, chatsFromOldCustomers: 0,
       webLoggedIn: 0, webGuest: 0, ordersCount: 0
     } as any);
-  }, [daily]);
+  }, [daily, usePageStats, pageStatsData]);
 
   const prevPeriodTotals = useMemo(() => {
     // Previous N days period for trend
@@ -285,11 +305,66 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     return ((curr - prev) / prev) * 100;
   };
 
-  const chartLabels = useMemo(() => daily.map(d => d.date.slice(5)), [daily]);
-  const chartSeries = useMemo(() => [
-    { name: 'จำนวนคอมเม้น', color: '#3B82F6', data: daily.map(d => ({ label: d.date.slice(5), value: d.totalComments })) },
-    { name: 'จำนวนข้อความ', color: '#10B981', data: daily.map(d => ({ label: d.date.slice(5), value: d.totalChats })) },
-  ], [daily]);
+  // Prepare chart data based on whether we're using page stats or mock data
+  const chartData = useMemo(() => {
+    if (usePageStats && pageStatsData.length > 0) {
+      // Process data from API
+      let processedData = [];
+      
+      if (viewMode === 'daily') {
+        // Aggregate data by day
+        const dailyMap = new Map();
+        
+        pageStatsData.forEach(item => {
+          const date = new Date(item.hour);
+          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+          
+          if (!dailyMap.has(dateKey)) {
+            dailyMap.set(dateKey, {
+              date: dateKey,
+              totalComments: 0,
+              totalChats: 0
+            });
+          }
+          
+          const dayData = dailyMap.get(dateKey);
+          dayData.totalComments += item.customer_comment_count;
+          dayData.totalChats += item.customer_inbox_count;
+        });
+        
+        processedData = Array.from(dailyMap.values()).sort((a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+      } else {
+        // Use hourly data
+        processedData = pageStatsData.map(item => {
+          const date = new Date(item.hour);
+          return {
+            date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`,
+            totalComments: item.customer_comment_count,
+            totalChats: item.customer_inbox_count
+          };
+        }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      }
+      
+      return {
+        labels: processedData.map(d => d.date.slice(5)),
+        series: [
+          { name: 'จำนวนคอมเม้น', color: '#3B82F6', data: processedData.map(d => ({ label: d.date.slice(5), value: d.totalComments })) },
+          { name: 'จำนวนข้อความ', color: '#10B981', data: processedData.map(d => ({ label: d.date.slice(5), value: d.totalChats })) }
+        ]
+      };
+    } else {
+      // Use mock data
+      return {
+        labels: daily.map(d => d.date.slice(5)),
+        series: [
+          { name: 'จำนวนคอมเม้น', color: '#3B82F6', data: daily.map(d => ({ label: d.date.slice(5), value: d.totalComments })) },
+          { name: 'จำนวนข้อความ', color: '#10B981', data: daily.map(d => ({ label: d.date.slice(5), value: d.totalChats })) }
+        ]
+      };
+    }
+  }, [daily, usePageStats, pageStatsData, viewMode]);
 
   const exportCSV = () => {
     const headers = [
@@ -646,7 +721,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       {/* Chart */}
       <div className="mb-6">
-        <MultiLineChart title="ภาพรวมของหน้า" series={chartSeries} yLabel="จำนวน" xLabelEvery={(typeof rangeDays === 'number' && rangeDays >= 60) || rangeDays === 'thisMonth' || rangeDays === 'lastMonth' ? 4 : 1} />
+        <MultiLineChart title="ภาพรวมของหน้า" series={chartData.series} yLabel="จำนวน" xLabelEvery={(typeof rangeDays === 'number' && rangeDays >= 60) || rangeDays === 'thisMonth' || rangeDays === 'lastMonth' ? 4 : 1} />
       </div>
 
       {/* KPIs */}
