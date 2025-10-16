@@ -648,7 +648,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-500" />
             <select
-              value={rangeDays}
+              value={useCustomDateRange ? 'custom' : rangeDays}
               onChange={e => {
                 const value = e.target.value;
                 if (value === 'custom') {
