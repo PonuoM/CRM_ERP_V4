@@ -1356,47 +1356,225 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
     setPageSize(newPageSize);
     setCurrentPage(1); // Reset to first page
     
-    // Create a new request with the selected page size
+    // Use the same logic as the search button
     setIsSearchLoading(true);
     
     try {
       // First, authenticate to get the access token
       const authResult = await authenticateOneCall();
-      if (authResult.success && authResult.token) {
-        // Build URL parameters with the selected page size
+      if (!authResult.success || !authResult.token) {
+        setIsSearchLoading(false);
+        return;
+      }
+      
+      setAccessToken(authResult.token);
+      
+      // Use different logic based on user role
+      if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin)) {
+        // Use the createSearchParams function for AdminControl and SuperAdmin
+        const { params: paramsList, isDualRequest } = createSearchParams();
+        
+        // Update pagesize in all parameter sets
+        paramsList.forEach(paramObj => {
+          paramObj.pagesize = newPageSize;
+          paramObj.page = 1; // Reset to first page
+        });
+        
+        if (isDualRequest) {
+          // Execute both requests in parallel
+          const requests = paramsList.map(paramObj => {
+            const urlParams = new URLSearchParams();
+            Object.entries(paramObj).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) {
+                urlParams.append(key, value.toString());
+              }
+            });
+            
+            const url = `${paramObj.baseUrl}?${urlParams.toString()}`;
+            
+            return fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': authResult.token,
+                'Accept': 'application/json'
+              }
+            });
+          });
+          
+          const responses = await Promise.all(requests);
+          
+          // Parse all responses
+          const allObjects: any[] = [];
+          
+          for (const response of responses) {
+            if (response.ok) {
+              const responseText = await response.text();
+              let responseData;
+              try {
+                responseData = JSON.parse(responseText);
+              } catch (e) {
+                responseData = responseText;
+              }
+              
+              if (responseData && responseData.objects) {
+                allObjects.push(...responseData.objects);
+              }
+            }
+          }
+          
+          // Remove duplicates based on recording ID
+          const uniqueObjects = allObjects.filter((obj: any, index: number, self: any[]) =>
+            index === self.findIndex((t: any) => t.id === obj.id)
+          );
+          
+          // Sort by timestamp (newest first)
+          uniqueObjects.sort((a: any, b: any) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          
+          // Update state with merged results
+          const mergedData = {
+            objects: uniqueObjects,
+            page: 1,
+            pageSize: newPageSize,
+            resultCount: uniqueObjects.length
+          };
+          
+          setRecordingsData(mergedData);
+          setFilteredRecordings(uniqueObjects);
+          setSearchedAgent(selectedAgent);
+          setCurrentPage(1);
+          setPageSize(newPageSize);
+          setTotalResults(uniqueObjects.length);
+          setNextPageUri('');
+          setPrevPageUri('');
+          setLimitReached(false);
+        } else {
+          // Single request
+          const paramObj = paramsList[0];
+          const urlParams = new URLSearchParams();
+          Object.entries(paramObj).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              urlParams.append(key, value.toString());
+            }
+          });
+          
+          const url = `${paramObj.baseUrl}?${urlParams.toString()}`;
+          
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
+            }
+            
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              setSearchedAgent(selectedAgent);
+              setCurrentPage(responseData.page || 1);
+              setPageSize(responseData.pageSize || newPageSize);
+              setTotalResults(responseData.resultCount || 0);
+              setNextPageUri(responseData.nextPageUri || '');
+              setPrevPageUri(responseData.prevPageUri || '');
+              setLimitReached(responseData.limitReached || false);
+            }
+          }
+        }
+      } else {
+        // Use the original logic for other user roles
+        // API Configuration parameters (default values)
+        const apiConfig: any = {
+          baseUrl: '/onecall/orktrack/rest/recordings',
+          range: 'custom',
+          sort: '',
+          page: 1, // Reset to first page
+          pagesize: newPageSize,
+          maxresults: -1,
+          includetags: true,
+          includemetadata: true,
+          includeprograms: true
+        };
+        
+        // Build URL parameters
         const params = new URLSearchParams();
         
         // Add default parameters
-        params.append('range', 'custom');
-        params.append('sort', '');
-        params.append('page', '1'); // Reset to first page
-        params.append('pagesize', newPageSize.toString());
-        params.append('maxresults', '-1');
-        params.append('includetags', 'true');
-        params.append('includemetadata', 'true');
-        params.append('includeprograms', 'true');
+        params.append('range', apiConfig.range);
+        params.append('sort', apiConfig.sort);
+        params.append('page', apiConfig.page.toString());
+        params.append('pagesize', apiConfig.pagesize.toString());
+        params.append('maxresults', apiConfig.maxresults.toString());
+        params.append('includetags', apiConfig.includetags.toString());
+        params.append('includemetadata', apiConfig.includemetadata.toString());
+        params.append('includeprograms', apiConfig.includeprograms.toString());
         
-        // Use default startdate (today's date at midnight) - not from filter
-        const startDate = new Date();
-        startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
-        startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+        // Add filter parameters
+        if (qCustomer) params.append('customer', qCustomer);
+        if (qCustomerPhone) params.append('customerPhone', qCustomerPhone);
+        if (qAgentPhone) params.append('agentPhone', qAgentPhone);
+        if (status !== 'all') params.append('status', status);
+        if (direction !== 'all') params.append('direction', direction);
         
-        const year = startDate.getFullYear();
-        const month = String(startDate.getMonth() + 1).padStart(2, '0');
-        const day = String(startDate.getDate()).padStart(2, '0');
-        const hours = String(startDate.getHours()).padStart(2, '0');
-        const minutes = String(startDate.getMinutes()).padStart(2, '0');
-        const seconds = String(startDate.getSeconds()).padStart(2, '0');
-        const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-        params.append('startdate', startDateFormatted);
+        // Handle startdate parameter
+        let startDateFormatted = '';
+        if (datetimeRange.start) {
+          // Format datetime for API
+          const startDate = new Date(datetimeRange.start);
+          startDate.setHours(startDate.getHours() - 7); // Convert to UTC
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        } else {
+          // Set default startdate as today's date at midnight (00:00:00) minus 7 hours
+          const startDate = new Date();
+          startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+          startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+          
+          const year = startDate.getFullYear();
+          const month = String(startDate.getMonth() + 1).padStart(2, '0');
+          const day = String(startDate.getDate()).padStart(2, '0');
+          const hours = String(startDate.getHours()).padStart(2, '0');
+          const minutes = String(startDate.getMinutes()).padStart(2, '0');
+          const seconds = String(startDate.getSeconds()).padStart(2, '0');
+          startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('startdate', startDateFormatted);
+        }
         
-        // Add party parameter based on user role
-        if (currentUser && (currentUser.role === UserRole.AdminControl || currentUser.role === UserRole.SuperAdmin) && selectedAgent) {
-          const formattedPhone = selectedAgent.startsWith('0')
-            ? '+66' + selectedAgent.substring(1)
-            : '+66' + selectedAgent;
-          params.append('party', formattedPhone);
-        } else if (currentUser && currentUser.role === UserRole.Supervisor) {
+        if (datetimeRange.end) {
+          // Format datetime for API
+          const endDate = new Date(datetimeRange.end);
+          endDate.setHours(endDate.getHours() - 7); // Convert to UTC
+          const year = endDate.getFullYear();
+          const month = String(endDate.getMonth() + 1).padStart(2, '0');
+          const day = String(endDate.getDate()).padStart(2, '0');
+          const hours = String(endDate.getHours()).padStart(2, '0');
+          const minutes = String(endDate.getMinutes()).padStart(2, '0');
+          const seconds = String(endDate.getSeconds()).padStart(2, '0');
+          const endDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+          params.append('enddate', endDateFormatted);
+          
+          // Set maxresults to -1 when enddate is set
+          params.set('maxresults', '-1');
+        }
+        
+        // Add party parameter for Supervisor users (use selectedAgent if set, otherwise use current user's phone)
+        if (currentUser && currentUser.role === UserRole.Supervisor) {
           const phoneToUse = selectedAgent || currentUser.phone;
           if (phoneToUse) {
             const formattedPhone = phoneToUse.startsWith('0')
@@ -1404,47 +1582,173 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({ currentUser, calls, c
               : '+66' + phoneToUse;
             params.append('party', formattedPhone);
           }
-        } else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+        }
+        // Add party parameter for Telesale users
+        else if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
           const formattedPhone = currentUser.phone.startsWith('0')
             ? '+66' + currentUser.phone.substring(1)
             : '+66' + currentUser.phone;
           params.append('party', formattedPhone);
         }
         
-        const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
+        // Create the search URL
+        const searchUrl = `${apiConfig.baseUrl}?${params.toString()}`;
         
-        const response = await fetch(searchUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': authResult.token,
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const responseText = await response.text();
-          let responseData;
-          try {
-            responseData = JSON.parse(responseText);
-          } catch (e) {
-            responseData = responseText;
-          }
+        // Special handling for users with customer phone and selected agent
+        if (qCustomerPhone && (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor)) {
+          // Get the phone number to use
+          const agentPhone = currentUser.role === UserRole.Supervisor && selectedAgent
+            ? selectedAgent
+            : currentUser.phone;
           
-          if (responseData && responseData.objects) {
-            setRecordingsData(responseData);
-            setFilteredRecordings(responseData.objects);
+          if (agentPhone) {
+            // Format phone numbers to +66 format
+            const formatPhoneToPlus66 = (phone: string) => {
+              // Remove any non-digit characters first
+              const digitsOnly = phone.replace(/\D/g, '');
+              
+              // If starts with 0, remove 0 and add +66
+              if (digitsOnly.startsWith('0')) {
+                return '+66' + digitsOnly.substring(1);
+              }
+              // If starts with 66, add + at the beginning
+              else if (digitsOnly.startsWith('66')) {
+                return '+' + digitsOnly;
+              }
+              // If starts with +66, return as is
+              else if (digitsOnly.startsWith('66') && phone.startsWith('+')) {
+                return phone;
+              }
+              // Default case: add +66
+              else {
+                return '+66' + digitsOnly;
+              }
+            };
             
-            // Update pagination state
-            setCurrentPage(responseData.page || 1);
-            setPageSize(responseData.pageSize || newPageSize);
-            setTotalResults(responseData.resultCount || 0);
-            setNextPageUri(responseData.nextPageUri || '');
-            setPrevPageUri(responseData.prevPageUri || '');
-            setLimitReached(responseData.limitReached || false);
+            const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+            const formattedAgentPhone = formatPhoneToPlus66(agentPhone);
+            
+            // First request: localparty = agent phone, remoteparty = customer phone
+            const params1 = new URLSearchParams(params.toString());
+            params1.delete('party');
+            params1.append('localparty', formattedAgentPhone);
+            params1.append('remoteparty', formattedCustomerPhone);
+            
+            const searchUrl1 = `${apiConfig.baseUrl}?${params1.toString()}`;
+            
+            // Second request: localparty = customer phone, remoteparty = agent phone
+            const params2 = new URLSearchParams(params.toString());
+            params2.delete('party');
+            params2.append('localparty', formattedCustomerPhone);
+            params2.append('remoteparty', formattedAgentPhone);
+            
+            const searchUrl2 = `${apiConfig.baseUrl}?${params2.toString()}`;
+            
+            // Execute both requests in parallel
+            const [response1, response2] = await Promise.all([
+              fetch(searchUrl1, {
+                method: 'GET',
+                headers: {
+                  'Authorization': authResult.token,
+                  'Accept': 'application/json'
+                }
+              }),
+              fetch(searchUrl2, {
+                method: 'GET',
+                headers: {
+                  'Authorization': authResult.token,
+                  'Accept': 'application/json'
+                }
+              })
+            ]);
+            
+            // Parse both responses
+            let responseData1, responseData2;
+            
+            if (response1.ok) {
+              const responseText1 = await response1.text();
+              try {
+                responseData1 = JSON.parse(responseText1);
+              } catch (e) {
+                responseData1 = responseText1;
+              }
+            }
+            
+            if (response2.ok) {
+              const responseText2 = await response2.text();
+              try {
+                responseData2 = JSON.parse(responseText2);
+              } catch (e) {
+                responseData2 = responseText2;
+              }
+            }
+            
+            // Merge the results
+            const mergedData = {
+              objects: [
+                ...(responseData1?.objects || []),
+                ...(responseData2?.objects || [])
+              ]
+            };
+            
+            // Remove duplicates based on recording ID
+            const uniqueObjects = mergedData.objects.filter((obj: any, index: number, self: any[]) =>
+              index === self.findIndex((t: any) => t.id === obj.id)
+            );
+            
+            mergedData.objects = uniqueObjects;
+            
+            // Sort by timestamp (newest first)
+            mergedData.objects.sort((a: any, b: any) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+            
+            // Update state with merged results
+            setRecordingsData(mergedData);
+            setFilteredRecordings(mergedData.objects);
+            setSearchedAgent(selectedAgent);
+            setCurrentPage(1);
+            setPageSize(newPageSize);
+            setTotalResults(mergedData.objects.length);
+            setNextPageUri('');
+            setPrevPageUri('');
+            setLimitReached(false);
+          }
+        } else {
+          // Normal request
+          const response = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': authResult.token,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            let responseData;
+            try {
+              responseData = JSON.parse(responseText);
+            } catch (e) {
+              responseData = responseText;
+            }
+            
+            if (responseData && responseData.objects) {
+              setRecordingsData(responseData);
+              setFilteredRecordings(responseData.objects);
+              setSearchedAgent(selectedAgent);
+              setCurrentPage(responseData.page || 1);
+              setPageSize(responseData.pageSize || newPageSize);
+              setTotalResults(responseData.resultCount || 0);
+              setNextPageUri(responseData.nextPageUri || '');
+              setPrevPageUri(responseData.prevPageUri || '');
+              setLimitReached(responseData.limitReached || false);
+            }
           }
         }
       }
     } catch (error) {
+      console.error('Error changing page size:', error);
       // If there's an error, revert to the previous page size
       setPageSize(pageSize);
     } finally {
