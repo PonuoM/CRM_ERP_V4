@@ -519,13 +519,45 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             <h3 className="font-semibold text-gray-700">ปฏิสัมพันธ์กับลูกค้า</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <ReactApexChart options={talkGauge.options} series={talkGauge.series} type="radialBar" height={220} />
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard title="ข้อมูลเข้าทั้งหมด" value={String(totalCalls)} subtext="รวมทุกช่องทาง" icon={Activity} />
-              <StatCard title="การติดต่อใหม่" value={String(sum.newInteract)} subtext="ลูกค้าใหม่" icon={UsersIcon} />
-              <StatCard title="การติดต่อเดิม" value={String(sum.oldInteract)} subtext="ลูกค้าเก่า" icon={UsersIcon} />
-              <StatCard title="ได้คุย (>=40s)" value={String(talkedCalls)} subtext={`${talkRate.toFixed(1)}% ของทั้งหมด`} icon={Phone} />
-            </div>
+            {useEngagementData && engagementData && engagementData.data ? (
+              (() => {
+                const series = engagementData.data.series || [];
+                const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                
+                const totalEngagement = totalSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                const totalNewCustomerReplied = newCustomerRepliedSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                const totalOldCustomerReplied = totalEngagement - totalNewCustomerReplied;
+                
+                // Create new gauge options for engagement data
+                const engagementGauge = makeSemiGauge(
+                  totalEngagement > 0 ? (totalNewCustomerReplied / totalEngagement) * 100 : 0,
+                  '#34D399'
+                );
+                
+                return (
+                  <>
+                    <ReactApexChart options={engagementGauge.options} series={engagementGauge.series} type="radialBar" height={220} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <StatCard title="การติดต่อทั้งหมด" value={String(totalEngagement)} subtext="รวมทุกช่องทาง" icon={Activity} />
+                      <StatCard title="การติดต่อใหม่" value={String(totalNewCustomerReplied)} subtext="ลูกค้าใหม่" icon={UsersIcon} />
+                      <StatCard title="การติดต่อเดิม" value={String(totalOldCustomerReplied)} subtext="ลูกค้าเก่า" icon={UsersIcon} />
+                      <StatCard title="% ติดต่อใหม่" value={`${totalEngagement > 0 ? ((totalNewCustomerReplied / totalEngagement) * 100).toFixed(1) : 0}%`} subtext="ของทั้งหมด" icon={UsersIcon} />
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <ReactApexChart options={talkGauge.options} series={talkGauge.series} type="radialBar" height={220} />
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard title="ข้อมูลเข้าทั้งหมด" value={String(totalCalls)} subtext="รวมทุกช่องทาง" icon={Activity} />
+                  <StatCard title="การติดต่อใหม่" value={String(sum.newInteract)} subtext="ลูกค้าใหม่" icon={UsersIcon} />
+                  <StatCard title="การติดต่อเดิม" value={String(sum.oldInteract)} subtext="ลูกค้าเก่า" icon={UsersIcon} />
+                  <StatCard title="ได้คุย (>=40s)" value={String(talkedCalls)} subtext={`${talkRate.toFixed(1)}% ของทั้งหมด`} icon={Phone} />
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="bg-white p-5 rounded-lg border">
@@ -533,13 +565,49 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             <h3 className="font-semibold text-gray-700">สั่งซื้อ</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <ReactApexChart options={orderRate.options} series={orderRate.series} type="radialBar" height={220} />
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard title="ยอดออเดอร์" value={String(totalOrders)} subtext="ทั้งหมด" icon={ShoppingCart} />
-              <StatCard title="ออเดอร์ลูกค้าใหม่" value={String(ordersFromNewCustomers)} subtext="ในช่วงเวลา" icon={ShoppingCart} />
-              <StatCard title="อัตราการสั่งซื้อ" value={`${(totalCalls>0?(totalOrders/totalCalls)*100:0).toFixed(2)}%`} subtext="ต่อการติดต่อทั้งหมด" icon={ShoppingCart} />
-              <StatCard title="% ซื้อต่อลูกค้าใหม่" value={`${(sum.newInteract>0?(ordersFromNewCustomers/sum.newInteract)*100:0).toFixed(2)}%`} subtext="ต่อลูกค้าใหม่" icon={ShoppingCart} />
-            </div>
+            {useEngagementData && engagementData && engagementData.data ? (
+              (() => {
+                const series = engagementData.data.series || [];
+                const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+                const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+                const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                
+                const totalEngagement = totalSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                const totalOrders = orderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                const totalOldOrders = oldOrderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                const totalNewOrders = totalOrders - totalOldOrders;
+                const totalNewCustomerReplied = newCustomerRepliedSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                
+                // Create new gauge options for order data
+                const orderGauge = makeSemiGauge(
+                  totalEngagement > 0 ? (totalOrders / totalEngagement) * 100 : 0,
+                  '#3B82F6'
+                );
+                
+                return (
+                  <>
+                    <ReactApexChart options={orderGauge.options} series={orderGauge.series} type="radialBar" height={220} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <StatCard title="ยอดออเดอร์" value={String(totalOrders)} subtext="ทั้งหมด" icon={ShoppingCart} />
+                      <StatCard title="ออเดอร์ลูกค้าใหม่" value={String(totalNewOrders)} subtext="ในช่วงเวลา" icon={ShoppingCart} />
+                      <StatCard title="อัตราการสั่งซื้อ" value={`${totalEngagement > 0 ? ((totalOrders / totalEngagement) * 100).toFixed(2) : 0}%`} subtext="ต่อการติดต่อทั้งหมด" icon={ShoppingCart} />
+                      <StatCard title="% ซื้อต่อลูกค้าใหม่" value={`${totalNewCustomerReplied > 0 ? ((totalNewOrders / totalNewCustomerReplied) * 100).toFixed(2) : 0}%`} subtext="ต่อลูกค้าใหม่" icon={ShoppingCart} />
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <ReactApexChart options={orderRate.options} series={orderRate.series} type="radialBar" height={220} />
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard title="ยอดออเดอร์" value={String(totalOrders)} subtext="ทั้งหมด" icon={ShoppingCart} />
+                  <StatCard title="ออเดอร์ลูกค้าใหม่" value={String(ordersFromNewCustomers)} subtext="ในช่วงเวลา" icon={ShoppingCart} />
+                  <StatCard title="อัตราการสั่งซื้อ" value={`${(totalCalls>0?(totalOrders/totalCalls)*100:0).toFixed(2)}%`} subtext="ต่อการติดต่อทั้งหมด" icon={ShoppingCart} />
+                  <StatCard title="% ซื้อต่อลูกค้าใหม่" value={`${(sum.newInteract>0?(ordersFromNewCustomers/sum.newInteract)*100:0).toFixed(2)}%`} subtext="ต่อลูกค้าใหม่" icon={ShoppingCart} />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
