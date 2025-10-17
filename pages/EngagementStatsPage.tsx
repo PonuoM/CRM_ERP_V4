@@ -50,6 +50,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     value: ''
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [engagementData, setEngagementData] = useState<any>(null);
+  const [useEngagementData, setUseEngagementData] = useState<boolean>(false);
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -212,7 +215,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Page-filtered orders (used by time/user tabs only)
   const ordersInRangeForTable = useMemo(() => {
     if (selectedPageId === 'all') return ordersInRange;
-    const pageName = allPages.find(p => p.id === selectedPageId)?.name;
+    const pageName = allPages.find(p => (p.page_id || p.id) === selectedPageId)?.name;
     return ordersInRange.filter(o => (typeof o.salesChannelPageId !== 'undefined' && o.salesChannelPageId === selectedPageId) || (pageName && o.salesChannel === pageName));
   }, [ordersInRange, selectedPageId, allPages]);
 
@@ -329,7 +332,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     const add = (k: string) => (agg[k] = agg[k] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 });
     // No call -> page linkage in current schema; keep 0 for interactions
     for (const o of ordersInRange) {
-      const name = (o.salesChannelPageId && allPages.find(p => p.id === o.salesChannelPageId)?.name) || o.salesChannel || 'ไม่ระบุ';
+      const name = (o.salesChannelPageId && allPages.find(p => (p.page_id || p.id) === o.salesChannelPageId)?.name) || o.salesChannel || 'ไม่ระบุ';
       const a = add(name);
       a.totalOrders += 1;
       const isNew = (() => { const cu = customers.find(c => c.id === o.customerId); return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); })();
@@ -337,6 +340,85 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     }
     return agg;
   }, [ordersInRange, allPages, customers]);
+
+  // Fetch engagement data from Pages.fm API
+  const fetchEngagementData = async () => {
+    if (!selectedPageId || selectedPageId === 'all' || !currentUser) {
+      alert('กรุณาเลือกเพจ');
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // First, get the access token from env variables
+      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        return;
+      }
+
+      // Generate page access token
+      const tokenResponse = await fetch(`https://pages.fm/api/v1/pages/${selectedPageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error('ไม่สามารถสร้าง page access token ได้');
+      }
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenData.success || !tokenData.page_access_token) {
+        throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
+      }
+
+      // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
+      const formatDateForAPI = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      };
+
+      const formattedStartDate = formatDateForAPI(startDate);
+      const formattedEndDate = formatDateForAPI(endDate);
+      const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
+
+      // Fetch engagement statistics
+      const engagementResponse = await fetch(
+        `https://pages.fm/api/public_api/v1/pages/${selectedPageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${selectedPageId}&date_range=${encodeURIComponent(dateRange)}`
+      );
+
+      if (!engagementResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล engagement ได้');
+      }
+      const engagementResult = await engagementResponse.json();
+      
+      if (engagementResult.success && engagementResult.data) {
+        setEngagementData(engagementResult);
+        setUseEngagementData(true);
+      } else {
+        throw new Error('ไม่สามารถดึงข้อมูล engagement ได้: ' + (engagementResult.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error fetching engagement data:', error);
+      alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -391,9 +473,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
                   .map((page) => (
                     <div
-                      key={page.id}
+                      key={page.page_id || page.id}
                       onMouseDown={() => {
-                        setSelectedPageId(page.id);
+                        setSelectedPageId(page.page_id || page.id);
                         setPageSearchTerm(page.name);
                         setIsSelectOpen(false);
                         // Clear any error when a page is selected
@@ -421,6 +503,13 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             )}
           </div>
         </div>
+        <button
+          onClick={fetchEngagementData}
+          className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+          disabled={isSearching || selectedPageId === 'all'}
+        >
+          <Search className="w-4 h-4"/> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+        </button>
       </div>
 
       {/* Top gauges */}
@@ -465,6 +554,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             <div className="text-sm text-gray-500">
               กำลังแสดงข้อมูล: {selectedPageId === 'all' ? 'ทุกเพจ' : pageSearchTerm || 'ทุกเพจ'}
             </div>
+            {useEngagementData && (
+              <div className="text-sm text-blue-600">
+                ข้อมูลจาก Pages.fm API
+              </div>
+            )}
           </div>
         </div>
         {activeTab === 'time' && (
@@ -489,31 +583,104 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
-                <tr key={r.date} className="border-t border-gray-100">
-                  <td className="px-3 py-2 text-gray-700">{r.date}</td>
-                  <td className="px-3 py-2 text-right">{r.newInteract}</td>
-                  <td className="px-3 py-2 text-right">{r.oldInteract}</td>
-                  <td className="px-3 py-2 text-right">{r.totalInteract}</td>
-                  <td className="px-3 py-2 text-right">{r.talked}</td>
-                  <td className="px-3 py-2 text-right">{r.totalOrders}</td>
-                  <td className="px-3 py-2 text-right">{r.ordersFromNew}</td>
-                  <td className="px-3 py-2 text-right">{r.pctOrderPerInteract.toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-right">{r.pctOrderPerNew.toFixed(2)}%</td>
-                </tr>
-              ))}
+              {useEngagementData && engagementData && engagementData.data ? (
+                (() => {
+                  const categories = engagementData.data.categories || [];
+                  const series = engagementData.data.series || [];
+                  
+                  // Find the series we need
+                  const inboxSeries = series.find((s: any) => s.name === 'inbox') || { data: [] };
+                  const commentSeries = series.find((s: any) => s.name === 'comment') || { data: [] };
+                  const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                  const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                  const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+                  const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+                  
+                  return categories.map((date: string, index: number) => {
+                    const inbox = inboxSeries.data[index] || 0;
+                    const comment = commentSeries.data[index] || 0;
+                    const total = totalSeries.data[index] || 0;
+                    const newCustomerReplied = newCustomerRepliedSeries.data[index] || 0;
+                    const orderCount = orderCountSeries.data[index] || 0;
+                    const oldOrderCount = oldOrderCountSeries.data[index] || 0;
+                    
+                    const oldCustomerReplied = total - newCustomerReplied;
+                    const newOrderCount = orderCount - oldOrderCount;
+                    
+                    return (
+                      <tr key={date} className="border-t border-gray-100">
+                        <td className="px-3 py-2 text-gray-700">{date}</td>
+                        <td className="px-3 py-2 text-right">{newCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{oldCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{total}</td>
+                        <td className="px-3 py-2 text-right">{total}</td>
+                        <td className="px-3 py-2 text-right">{orderCount}</td>
+                        <td className="px-3 py-2 text-right">{newOrderCount}</td>
+                        <td className="px-3 py-2 text-right">{total > 0 ? ((orderCount / total) * 100).toFixed(2) : 0}%</td>
+                        <td className="px-3 py-2 text-right">{newCustomerReplied > 0 ? ((newOrderCount / newCustomerReplied) * 100).toFixed(2) : 0}%</td>
+                      </tr>
+                    );
+                  });
+                })()
+              ) : (
+                rows.map(r => (
+                  <tr key={r.date} className="border-t border-gray-100">
+                    <td className="px-3 py-2 text-gray-700">{r.date}</td>
+                    <td className="px-3 py-2 text-right">{r.newInteract}</td>
+                    <td className="px-3 py-2 text-right">{r.oldInteract}</td>
+                    <td className="px-3 py-2 text-right">{r.totalInteract}</td>
+                    <td className="px-3 py-2 text-right">{r.talked}</td>
+                    <td className="px-3 py-2 text-right">{r.totalOrders}</td>
+                    <td className="px-3 py-2 text-right">{r.ordersFromNew}</td>
+                    <td className="px-3 py-2 text-right">{r.pctOrderPerInteract.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{r.pctOrderPerNew.toFixed(2)}%</td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
                 <td className="px-3 py-2">รวม</td>
-                <td className="px-3 py-2 text-right">{sum.newInteract}</td>
-                <td className="px-3 py-2 text-right">{sum.oldInteract}</td>
-                <td className="px-3 py-2 text-right">{sum.totalInteract}</td>
-                <td className="px-3 py-2 text-right">{sum.talked}</td>
-                <td className="px-3 py-2 text-right">{sum.totalOrders}</td>
-                <td className="px-3 py-2 text-right">{sum.ordersFromNew}</td>
-                <td className="px-3 py-2 text-right">{(sum.totalInteract>0?(sum.totalOrders/sum.totalInteract)*100:0).toFixed(2)}%</td>
-                <td className="px-3 py-2 text-right">{(sum.newInteract>0?(sum.ordersFromNew/sum.newInteract)*100:0).toFixed(2)}%</td>
+                {useEngagementData && engagementData && engagementData.data ? (
+                  (() => {
+                    const series = engagementData.data.series || [];
+                    const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                    const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                    const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+                    const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+                    
+                    const totalEngagement = totalSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalNewCustomerReplied = newCustomerRepliedSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalOrders = orderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalOldOrders = oldOrderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalNewOrders = totalOrders - totalOldOrders;
+                    const totalOldCustomerReplied = totalEngagement - totalNewCustomerReplied;
+                    
+                    return (
+                      <>
+                        <td className="px-3 py-2 text-right">{totalNewCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{totalOldCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalOrders}</td>
+                        <td className="px-3 py-2 text-right">{totalNewOrders}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement > 0 ? ((totalOrders / totalEngagement) * 100).toFixed(2) : 0}%</td>
+                        <td className="px-3 py-2 text-right">{totalNewCustomerReplied > 0 ? ((totalNewOrders / totalNewCustomerReplied) * 100).toFixed(2) : 0}%</td>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <>
+                    <td className="px-3 py-2 text-right">{sum.newInteract}</td>
+                    <td className="px-3 py-2 text-right">{sum.oldInteract}</td>
+                    <td className="px-3 py-2 text-right">{sum.totalInteract}</td>
+                    <td className="px-3 py-2 text-right">{sum.talked}</td>
+                    <td className="px-3 py-2 text-right">{sum.totalOrders}</td>
+                    <td className="px-3 py-2 text-right">{sum.ordersFromNew}</td>
+                    <td className="px-3 py-2 text-right">{(sum.totalInteract>0?(sum.totalOrders/sum.totalInteract)*100:0).toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{(sum.newInteract>0?(sum.ordersFromNew/sum.newInteract)*100:0).toFixed(2)}%</td>
+                  </>
+                )}
               </tr>
             </tfoot>
           </table>
@@ -542,23 +709,48 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 </tr>
               </thead>
               <tbody>
-                {activeAdminUsers.map(u => {
-                  const name = `${u.firstName} ${u.lastName}`.trim();
-                  const v = (userAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 };
-                  return (
-                    <tr key={name} className="border-t border-gray-100">
-                      <td className="px-3 py-2">{name}</td>
-                      <td className="px-3 py-2 text-right">{v.newInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.oldInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.totalInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.talked}</td>
-                      <td className="px-3 py-2 text-right">{v.totalOrders}</td>
-                      <td className="px-3 py-2 text-right">{v.ordersFromNew}</td>
-                      <td className="px-3 py-2 text-right">{(v.totalInteract>0?(v.totalOrders/v.totalInteract)*100:0).toFixed(2)}%</td>
-                      <td className="px-3 py-2 text-right">{(v.newInteract>0?(v.ordersFromNew/v.newInteract)*100:0).toFixed(2)}%</td>
-                    </tr>
-                  );
-                })}
+                {useEngagementData && engagementData && engagementData.users_engagements ? (
+                  engagementData.users_engagements.map((user: any) => {
+                    const totalEngagement = user.total_engagement || 0;
+                    const newCustomerReplied = user.new_customer_replied_count || 0;
+                    const oldCustomerReplied = totalEngagement - newCustomerReplied;
+                    const totalOrders = user.order_count || 0;
+                    const oldOrders = user.old_order_count || 0;
+                    const newOrders = totalOrders - oldOrders;
+                    
+                    return (
+                      <tr key={user.user_id} className="border-t border-gray-100">
+                        <td className="px-3 py-2">{user.name}</td>
+                        <td className="px-3 py-2 text-right">{newCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{oldCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalOrders}</td>
+                        <td className="px-3 py-2 text-right">{newOrders}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement > 0 ? ((totalOrders / totalEngagement) * 100).toFixed(2) : 0}%</td>
+                        <td className="px-3 py-2 text-right">{newCustomerReplied > 0 ? ((newOrders / newCustomerReplied) * 100).toFixed(2) : 0}%</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  activeAdminUsers.map(u => {
+                    const name = `${u.firstName} ${u.lastName}`.trim();
+                    const v = (userAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 };
+                    return (
+                      <tr key={name} className="border-t border-gray-100">
+                        <td className="px-3 py-2">{name}</td>
+                        <td className="px-3 py-2 text-right">{v.newInteract}</td>
+                        <td className="px-3 py-2 text-right">{v.oldInteract}</td>
+                        <td className="px-3 py-2 text-right">{v.totalInteract}</td>
+                        <td className="px-3 py-2 text-right">{v.talked}</td>
+                        <td className="px-3 py-2 text-right">{v.totalOrders}</td>
+                        <td className="px-3 py-2 text-right">{v.ordersFromNew}</td>
+                        <td className="px-3 py-2 text-right">{(v.totalInteract>0?(v.totalOrders/v.totalInteract)*100:0).toFixed(2)}%</td>
+                        <td className="px-3 py-2 text-right">{(v.newInteract>0?(v.ordersFromNew/v.newInteract)*100:0).toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -586,19 +778,23 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 </tr>
               </thead>
               <tbody>
-                {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => { const name = p.name; const v = (pageAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 }; return (
-                  <tr key={name} className="border-t border-gray-100">
-                    <td className="px-3 py-2">{name}</td>
-                    <td className="px-3 py-2 text-right">{v.newInteract}</td>
-                    <td className="px-3 py-2 text-right">{v.oldInteract}</td>
-                    <td className="px-3 py-2 text-right">{v.totalInteract}</td>
-                    <td className="px-3 py-2 text-right">{v.talked}</td>
-                    <td className="px-3 py-2 text-right">{v.totalOrders}</td>
-                    <td className="px-3 py-2 text-right">{v.ordersFromNew}</td>
-                    <td className="px-3 py-2 text-right">{(v.totalInteract>0?(v.totalOrders/v.totalInteract)*100:0).toFixed(2)}%</td>
-                    <td className="px-3 py-2 text-right">{(v.newInteract>0?(v.ordersFromNew/v.newInteract)*100:0).toFixed(2)}%</td>
-                  </tr>
-                );})}
+                {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => {
+                  const name = p.name;
+                  const v = (pageAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 };
+                  return (
+                    <tr key={p.page_id || p.id} className="border-t border-gray-100">
+                      <td className="px-3 py-2">{name}</td>
+                      <td className="px-3 py-2 text-right">{v.newInteract}</td>
+                      <td className="px-3 py-2 text-right">{v.oldInteract}</td>
+                      <td className="px-3 py-2 text-right">{v.totalInteract}</td>
+                      <td className="px-3 py-2 text-right">{v.talked}</td>
+                      <td className="px-3 py-2 text-right">{v.totalOrders}</td>
+                      <td className="px-3 py-2 text-right">{v.ordersFromNew}</td>
+                      <td className="px-3 py-2 text-right">{(v.totalInteract>0?(v.totalOrders/v.totalInteract)*100:0).toFixed(2)}%</td>
+                      <td className="px-3 py-2 text-right">{(v.newInteract>0?(v.ordersFromNew/v.newInteract)*100:0).toFixed(2)}%</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
