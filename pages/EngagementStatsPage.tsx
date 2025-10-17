@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, Page, User, UserRole } from '@/types';
 import ReactApexChart from 'react-apexcharts';
 import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Search, Settings, Save } from 'lucide-react';
-import StatCard from '@/components/StatCard';
+import StatCard from '@/components/StatCard_EngagementPage';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
 interface EngagementStatsPageProps {

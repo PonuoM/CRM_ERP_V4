@@ -57,6 +57,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [pages, setPages] = useState<Array<{id: number, name: string, page_id: string}>>([]);
   const [selectedPage, setSelectedPage] = useState<string>('');
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
+  const [prevPageStatsData, setPrevPageStatsData] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [usePageStats, setUsePageStats] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'hourly' | 'daily'>('daily');
@@ -271,6 +272,25 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   }, [daily, usePageStats, pageStatsData]);
 
   const prevPeriodTotals = useMemo(() => {
+    // If we have page stats data from API, use those totals instead
+    if (usePageStats && prevPageStatsData.length > 0) {
+      const prevTotalsData = {
+        newCustomersPrev: prevPageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0),
+        totalPhonesPrev: prevPageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+        newPhonesPrev: prevPageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0),
+        totalCommentsPrev: prevPageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+        totalChatsPrev: prevPageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+        totalPageCommentsPrev: prevPageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0),
+        totalPageChatsPrev: prevPageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+        newChatsPrev: prevPageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+        chatsFromOldCustomersPrev: prevPageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+        webLoggedInPrev: prevPageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+        webGuestPrev: prevPageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+        ordersPrev: prevPageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+      };
+      return prevTotalsData;
+    }
+    
     // Previous N days period for trend
     const endPrev = new Date(startDate);
     endPrev.setDate(endPrev.getDate() - 1);
@@ -304,7 +324,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     const ordersPrev = orders.filter(o => inPrevRange(o.orderDate.slice(0,10))).length;
     const callsPrev = calls.filter(cl => inPrevRange(cl.date.slice(0,10))).length;
     return { newCustomersPrev, ordersPrev, callsPrev };
-  }, [customers, orders, calls, startDate, rangeDays]);
+  }, [customers, orders, calls, startDate, rangeDays, usePageStats, prevPageStatsData]);
 
   const pctChange = (curr: number, prev: number) => {
     if (prev === 0) return curr > 0 ? 100 : 0;
@@ -542,6 +562,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       today.setHours(0, 0, 0, 0); // Set to midnight today in local timezone
       
       let untilDate: Date;
+      let sinceDate: Date;
       
       if (useCustomDateRange && customDateRange) {
         const [, endPart] = customDateRange.split(' - ');
@@ -549,9 +570,22 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           untilDate = new Date(endPart);
           untilDate.setHours(23, 59, 59, 999);
         }
+        const [startPart] = customDateRange.split(' - ');
+        if (startPart) {
+          sinceDate = new Date(startPart);
+          sinceDate.setHours(0, 0, 0, 0);
+        }
       } else if (typeof rangeDays === 'number' || rangeDays === 'thisWeek' || rangeDays === 'thisMonth') {
         // For numeric ranges, thisWeek, and thisMonth, use current time
         untilDate = now;
+        sinceDate = new Date(today);
+        if (typeof rangeDays === 'number') {
+          sinceDate.setDate(sinceDate.getDate() - (rangeDays - 1));
+        } else if (rangeDays === 'thisWeek') {
+          sinceDate.setDate(sinceDate.getDate() - new Date().getDay()); // Days since Sunday
+        } else if (rangeDays === 'thisMonth') {
+          sinceDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
+        }
       } else {
         switch (rangeDays) {
           case 'lastWeek':
@@ -561,60 +595,46 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             lastWeekEnd.setDate(lastWeekEnd.getDate() - currentDayOfWeek - 1); // Go back to last week's Saturday
             lastWeekEnd.setHours(23, 59, 59, 999); // End of the day
             untilDate = lastWeekEnd;
+            // Start of last week (Sunday)
+            const lastWeekStart = new Date(today);
+            lastWeekStart.setDate(lastWeekStart.getDate() - currentDayOfWeek - 7); // Go back to last week's Sunday
+            sinceDate = lastWeekStart;
             break;
           case 'lastMonth':
             // Last day of last month
             const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0); // Last day of previous month
             lastMonthEnd.setHours(23, 59, 59, 999); // End of the day
             untilDate = lastMonthEnd;
-            break;
-          default:
-            untilDate = now;
-        }
-      }
-      
-      const until = Math.floor(untilDate.getTime() / 1000); // Current timestamp in seconds
-      let sinceDate: Date;
-      
-      if (useCustomDateRange && customDateRange) {
-        const [startPart] = customDateRange.split(' - ');
-        if (startPart) {
-          sinceDate = new Date(startPart);
-          sinceDate.setHours(0, 0, 0, 0);
-        }
-      } else if (typeof rangeDays === 'number') {
-        sinceDate = new Date(today);
-        sinceDate.setDate(sinceDate.getDate() - (rangeDays - 1));
-      } else {
-        switch (rangeDays) {
-          case 'thisWeek':
-            sinceDate = new Date(today);
-            sinceDate.setDate(sinceDate.getDate() - new Date().getDay()); // Days since Sunday
-            break;
-          case 'lastWeek':
-            // Calculate the start of last week (Sunday)
-            const lastWeekStart = new Date(today);
-            const currentDayOfWeek = new Date().getDay();
-            lastWeekStart.setDate(lastWeekStart.getDate() - currentDayOfWeek - 7); // Go back to last week's Sunday
-            sinceDate = lastWeekStart;
-            break;
-          case 'thisMonth':
-            sinceDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
-            break;
-          case 'lastMonth':
             // First day of last month
             sinceDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             break;
           default:
+            untilDate = now;
             sinceDate = new Date(today);
             sinceDate.setDate(sinceDate.getDate() - 7);
         }
       }
       
+      const until = Math.floor(untilDate.getTime() / 1000); // Current timestamp in seconds
       const since = Math.floor(sinceDate.getTime() / 1000); // Convert to unix timestamp
+
+      // Calculate previous period dates for comparison
+      const prevPeriodDays = typeof rangeDays === 'number' ? rangeDays : 7;
+      const prevEndDate = new Date(sinceDate);
+      prevEndDate.setDate(prevEndDate.getDate() - 1);
+      prevEndDate.setHours(23, 59, 59, 999);
+      
+      const prevStartDate = new Date(prevEndDate);
+      prevStartDate.setDate(prevStartDate.getDate() - (prevPeriodDays - 1));
+      prevStartDate.setHours(0, 0, 0, 0);
+      
+      const prevUntil = Math.floor(prevEndDate.getTime() / 1000);
+      const prevSince = Math.floor(prevStartDate.getTime() / 1000);
 
       // Fetch page statistics with select_fields parameter
       const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
+      
+      // Fetch current period data
       const statsResponse = await fetch(`https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${since}&until=${until}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`);
 
       if (!statsResponse.ok) {
@@ -629,6 +649,24 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         );
         setPageStatsData(sortedData);
         setUsePageStats(true);
+        
+        // Fetch previous period data for comparison
+        try {
+          const prevStatsResponse = await fetch(`https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`);
+          
+          if (prevStatsResponse.ok) {
+            const prevStatsData = await prevStatsResponse.json();
+            if (prevStatsData.success && prevStatsData.data) {
+              const prevSortedData = [...prevStatsData.data].sort((a, b) =>
+                new Date(b.hour).getTime() - new Date(a.hour).getTime()
+              );
+              setPrevPageStatsData(prevSortedData);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching previous period stats:', error);
+          // Don't throw an error here, we can continue without previous period data
+        }
       } else {
         throw new Error('ไม่สามารถดึงข้อมูลสถิติได้: ' + (statsData.message || 'Unknown error'));
       }
@@ -906,10 +944,92 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <StatCard title="เบอร์โทรใหม่" value={totals.newPhones.toString()} subtext={`${pctChange(totals.newPhones, prevPeriodTotals.newCustomersPrev).toFixed(1)}% ช่วงก่อนหน้า`} icon={Phone} />
-        <StatCard title="จำนวนแชท" value={totals.totalChats.toString()} subtext={`${pctChange(totals.totalChats, prevPeriodTotals.callsPrev).toFixed(1)}% ช่วงก่อนหน้า`} icon={MessageSquare} />
-        <StatCard title="ลูกค้าใหม่" value={totals.newCustomers.toString()} subtext={`${pctChange(totals.newCustomers, prevPeriodTotals.newCustomersPrev).toFixed(1)}% ช่วงก่อนหน้า`} icon={UserPlus} />
-        <StatCard title="ยอดออเดอร์" value={totals.ordersCount.toString()} subtext={`${pctChange(totals.ordersCount, prevPeriodTotals.ordersPrev).toFixed(1)}% ช่วงก่อนหน้า`} icon={ShoppingCart} />
+        {/* Create tooltip text for previous period date range */}
+        {(() => {
+          const prevPeriodStart = new Date(startDate);
+          const prevPeriodEnd = new Date(startDate);
+          let daysToSubtract: number;
+          
+          if (typeof rangeDays === 'number') {
+            daysToSubtract = rangeDays;
+          } else {
+            switch (rangeDays) {
+              case 'thisWeek':
+                daysToSubtract = 7;
+                break;
+              case 'lastWeek':
+                daysToSubtract = 7;
+                break;
+              case 'thisMonth':
+                daysToSubtract = 30;
+                break;
+              case 'lastMonth':
+                daysToSubtract = 30;
+                break;
+              default:
+                daysToSubtract = 7;
+            }
+          }
+          
+          if (useCustomDateRange && customDateRange) {
+            const [sRaw] = customDateRange.split(' - ');
+            if (sRaw) {
+              const start = new Date(sRaw);
+              const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+              prevPeriodEnd.setDate(start.getDate() - 1);
+              prevPeriodEnd.setHours(23, 59, 59, 999);
+              prevPeriodStart.setDate(prevPeriodEnd.getDate() - days + 1);
+              prevPeriodStart.setHours(0, 0, 0, 0);
+            }
+          } else {
+            prevPeriodStart.setDate(prevPeriodStart.getDate() - daysToSubtract);
+            prevPeriodEnd.setDate(prevPeriodEnd.getDate() - 1);
+            prevPeriodStart.setHours(0, 0, 0, 0);
+            prevPeriodEnd.setHours(23, 59, 59, 999);
+          }
+          
+          const formatDate = (date: Date) => {
+            const d = date.getDate();
+            const m = date.getMonth() + 1;
+            const y = date.getFullYear();
+            return `${d}/${m}/${y}`;
+          };
+          
+          const prevPeriodText = `เปรียบเทียบกับช่วง ${formatDate(prevPeriodStart)} - ${formatDate(prevPeriodEnd)}`;
+          
+          return (
+            <>
+              <StatCard
+                title="เบอร์โทรใหม่"
+                value={totals.newPhones.toString()}
+                subtext={`${pctChange(totals.newPhones, prevPeriodTotals.newPhonesPrev || prevPeriodTotals.newCustomersPrev).toFixed(1)}% ช่วงก่อนหน้า`}
+                icon={Phone}
+                titleText={prevPeriodText}
+              />
+              <StatCard
+                title="จำนวนแชท"
+                value={totals.totalChats.toString()}
+                subtext={`${pctChange(totals.totalChats, prevPeriodTotals.totalChatsPrev || prevPeriodTotals.callsPrev).toFixed(1)}% ช่วงก่อนหน้า`}
+                icon={MessageSquare}
+                titleText={prevPeriodText}
+              />
+              <StatCard
+                title="ลูกค้าใหม่"
+                value={totals.newCustomers.toString()}
+                subtext={`${pctChange(totals.newCustomers, prevPeriodTotals.newCustomersPrev).toFixed(1)}% ช่วงก่อนหน้า`}
+                icon={UserPlus}
+                titleText={prevPeriodText}
+              />
+              <StatCard
+                title="ยอดออเดอร์"
+                value={totals.ordersCount.toString()}
+                subtext={`${pctChange(totals.ordersCount, prevPeriodTotals.ordersPrev).toFixed(1)}% ช่วงก่อนหน้า`}
+                icon={ShoppingCart}
+                titleText={prevPeriodText}
+              />
+            </>
+          );
+        })()}
       </div>
 
       {/* Table */}
