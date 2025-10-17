@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, Page, User, UserRole } from '@/types';
 import ReactApexChart from 'react-apexcharts';
-import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Search, Settings, Save } from 'lucide-react';
+import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Search, Settings, Save, Download, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import StatCard from '@/components/StatCard_EngagementPage';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
@@ -53,6 +53,20 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [engagementData, setEngagementData] = useState<any>(null);
   const [useEngagementData, setUseEngagementData] = useState<boolean>(false);
+  
+  // Export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [exportDateRange, setExportDateRange] = useState<string>(''); // For custom date range in export modal
+  const [exportRangeTempStart, setExportRangeTempStart] = useState<Date | null>(null);
+  const [exportRangeTempEnd, setExportRangeTempEnd] = useState<Date | null>(null);
+  const [exportVisibleMonth, setExportVisibleMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [isExportRangePopoverOpen, setIsExportRangePopoverOpen] = useState<boolean>(false);
+  const [selectedPagesForExport, setSelectedPagesForExport] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportProgress, setExportProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -464,6 +478,257 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     }
   };
 
+  // Export CSV function for mock data
+  const exportCSV = () => {
+    const headers = [
+      'Page ID', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'ได้คุย', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'
+    ];
+    const csvRows = rows.map(r => [
+      selectedPageId === 'all' ? '' : String(selectedPageId), r.date, r.newInteract, r.oldInteract, r.totalInteract, r.talked, r.totalOrders, r.ordersFromNew, r.pctOrderPerInteract.toFixed(2), r.pctOrderPerNew.toFixed(2)
+    ]);
+    csvRows.push([
+      '', 'รวม', sum.newInteract, sum.oldInteract, sum.totalInteract, sum.talked, sum.totalOrders, sum.ordersFromNew, '', ''
+    ]);
+    
+    // Add BOM for UTF-8 to ensure proper Thai character display in Excel
+    const BOM = '\uFEFF';
+    const csvContent = [headers, ...csvRows].map(r => r.join(',')).join('\n');
+    const csvWithBOM = BOM + csvContent;
+    
+    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `engagement-stats-${fmtDate(startDate)}-to-${fmtDate(endDate)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Fetch engagement stats for export
+  const fetchEngagementStatsForExport = async (pageId: string, accessToken: string, since: number, until: number) => {
+    // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
+    const formatDateForAPI = (timestamp: number) => {
+      const date = new Date(timestamp * 1000);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    };
+
+    const formattedStartDate = formatDateForAPI(since);
+    const formattedEndDate = formatDateForAPI(until);
+    const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
+
+    // Generate page access token
+    const tokenResponse = await fetchWithRetry(
+      `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
+    );
+
+    if (!tokenResponse.ok) {
+      throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
+    }
+    const tokenData = await tokenResponse.json();
+    
+    if (!tokenData.success || !tokenData.page_access_token) {
+      throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
+    }
+
+    // Fetch engagement statistics
+    const engagementResponse = await fetchWithRetry(
+      `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${pageId}&date_range=${encodeURIComponent(dateRange)}`,
+      { method: 'GET' }
+    );
+
+    if (!engagementResponse.ok) {
+      throw new Error('ไม่สามารถดึงข้อมูล engagement ได้');
+    }
+    const engagementResult = await engagementResponse.json();
+    
+    if (!engagementResult.success || !engagementResult.data) {
+      throw new Error('ไม่สามารถดึงข้อมูล engagement ได้: ' + (engagementResult.message || 'Unknown error'));
+    }
+    
+    return engagementResult;
+  };
+
+  // Export data from API to CSV
+  const exportAPIDataToCSV = async () => {
+    if (!currentUser || selectedPagesForExport.size === 0) {
+      alert('กรุณาเลือกเพจอย่างน้อย 1 เพจ');
+      return;
+    }
+
+    // Parse date range
+    if (!exportDateRange) {
+      alert('กรุณาเลือกช่วงวันที่');
+      return;
+    }
+
+    const [sRaw, eRaw] = exportDateRange.split(' - ');
+    if (!sRaw || !eRaw) {
+      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      return;
+    }
+
+    const s = new Date(sRaw);
+    const e = new Date(eRaw);
+    s.setHours(0, 0, 0, 0);
+    e.setHours(23, 59, 59, 999);
+
+    const since = Math.floor(s.getTime() / 1000);
+    const until = Math.floor(e.getTime() / 1000);
+
+    setIsExporting(true);
+    setExportProgress({current: 0, total: selectedPagesForExport.size});
+
+    try {
+      // Get access token
+      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        return;
+      }
+
+      // Collect all data
+      const allData: any[] = [];
+      let completedPages = 0;
+
+      // Fetch data for each selected page
+      for (const pageId of selectedPagesForExport) {
+        try {
+          const pageData = await fetchEngagementStatsForExport(pageId, accessToken, since, until);
+          const pageName = allPages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
+          
+          // Add page name and page_id to each record
+          if (pageData.data && pageData.data.categories) {
+            const categories = pageData.data.categories || [];
+            const series = pageData.data.series || [];
+            
+            // Find the series we need
+            const inboxSeries = series.find((s: any) => s.name === 'inbox') || { data: [] };
+            const commentSeries = series.find((s: any) => s.name === 'comment') || { data: [] };
+            const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+            const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+            const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+            const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+            
+            // Create rows for each date
+            categories.forEach((date: string, index: number) => {
+              const inbox = inboxSeries.data[index] || 0;
+              const comment = commentSeries.data[index] || 0;
+              const total = totalSeries.data[index] || 0;
+              const newCustomerReplied = newCustomerRepliedSeries.data[index] || 0;
+              const orderCount = orderCountSeries.data[index] || 0;
+              const oldOrderCount = oldOrderCountSeries.data[index] || 0;
+              
+              const oldCustomerReplied = total - newCustomerReplied;
+              const newOrderCount = orderCount - oldOrderCount;
+              
+              allData.push({
+                page_id: pageId,
+                page_name: pageName,
+                date: date,
+                newCustomerReplied: newCustomerReplied,
+                oldCustomerReplied: oldCustomerReplied,
+                total: total,
+                orderCount: orderCount,
+                newOrderCount: newOrderCount
+              });
+            });
+          }
+          
+          completedPages++;
+          setExportProgress({current: completedPages, total: selectedPagesForExport.size});
+        } catch (error) {
+          console.error(`Error fetching data for page ${pageId}:`, error);
+          completedPages++;
+          setExportProgress({current: completedPages, total: selectedPagesForExport.size});
+        }
+      }
+
+      // Sort data by date
+      allData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Generate CSV
+      const headers = [
+        'Page ID', 'เพจ', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'ได้คุย', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'
+      ];
+      
+      const rows = allData.map(item => {
+        return [
+          item.page_id,
+          item.page_name,
+          item.date,
+          item.newCustomerReplied,
+          item.oldCustomerReplied,
+          item.total,
+          item.total,
+          item.orderCount,
+          item.newOrderCount,
+          item.total > 0 ? ((item.orderCount / item.total) * 100).toFixed(2) + '%' : '-',
+          item.newCustomerReplied > 0 ? ((item.newOrderCount / item.newCustomerReplied) * 100).toFixed(2) + '%' : '-'
+        ];
+      });
+      
+      // Add BOM for UTF-8 to ensure proper Thai character display in Excel
+      const BOM = '\uFEFF';
+      const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const csvWithBOM = BOM + csvContent;
+      
+      const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `engagement-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      // Close modal after successful export
+      setIsExportModalOpen(false);
+      alert('ส่งออกข้อมูลเรียบร้อย');
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('Server internal error')) {
+        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+      } else {
+        alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล: ' + errorMessage);
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Toggle page selection for export
+  const togglePageSelection = (pageId: string) => {
+    setSelectedPagesForExport(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(pageId)) {
+        newSet.delete(pageId);
+      } else {
+        newSet.add(pageId);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center gap-3 mb-4">
@@ -553,6 +818,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           disabled={isSearching || selectedPageId === 'all'}
         >
           <Search className="w-4 h-4"/> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+        </button>
+        <button
+          onClick={() => setIsExportModalOpen(true)}
+          className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
+        >
+          <Download className="w-4 h-4"/> ดาวน์โหลด CSV
         </button>
       </div>
 
@@ -1024,6 +1295,253 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={() => setIsEnvSidebarOpen(false)}
         />
+      )}
+      
+      {/* Export Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">ส่งออกข้อมูลเป็น CSV</h2>
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+                disabled={isExporting}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Date Range Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกช่วงวันที่</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Initialize temp dates from current range or defaults
+                      const [sRaw, eRaw] = (exportDateRange || '').split(' - ');
+                      const s = sRaw ? new Date(sRaw) : new Date(startDate);
+                      const e = eRaw ? new Date(eRaw) : new Date(endDate);
+                      setExportRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
+                      setExportRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
+                      setExportVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                      setIsExportRangePopoverOpen(!isExportRangePopoverOpen);
+                    }}
+                    className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white w-full"
+                  >
+                    <Calendar className="w-4 h-4 text-gray-500" />
+                    <span className="text-gray-700">
+                      {(() => {
+                        const [sRaw, eRaw] = (exportDateRange || '').split(' - ');
+                        const s = sRaw ? new Date(sRaw) : startDate;
+                        const e = eRaw ? new Date(eRaw) : endDate;
+                        return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                      })()}
+                    </span>
+                  </button>
+                  
+                  {/* Date Range Popover */}
+                  {isExportRangePopoverOpen && (
+                    <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                      <div className="flex items-center justify-between mb-3">
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                        <div className="text-sm text-gray-600">Select date range</div>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                      </div>
+
+                      <div className="flex gap-4">
+                        {(() => {
+                          const renderMonth = (monthStart: Date) => {
+                            const firstDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+                            const startWeekDay = firstDay.getDay();
+                            const gridStart = new Date(firstDay);
+                            gridStart.setDate(firstDay.getDate() - startWeekDay);
+                            const days: Date[] = [];
+                            for (let i = 0; i < 42; i++) {
+                              const d = new Date(gridStart);
+                              d.setDate(gridStart.getDate() + i);
+                              days.push(d);
+                            }
+                            const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                            const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                            const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+                            const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                            return (
+                              <div className="w-[320px]">
+                                <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
+                                <div className="grid grid-cols-7 gap-1 text-[12px] text-gray-500 mb-1">
+                                  {weekDays.map(d => <div key={d} className="text-center py-1">{d}</div>)}
+                                </div>
+                                <div className="grid grid-cols-7 gap-1">
+                                  {days.map((d, idx) => {
+                                    const isCurrMonth = d.getMonth() === monthStart.getMonth();
+                                    const selectedStart = exportRangeTempStart && isSameDay(d, exportRangeTempStart);
+                                    const selectedEnd = exportRangeTempEnd && isSameDay(d, exportRangeTempEnd);
+                                    const between = inBetween(d, exportRangeTempStart, exportRangeTempEnd) && !selectedStart && !selectedEnd;
+                                    const base = `text-sm text-center py-1.5 rounded cursor-pointer select-none`;
+                                    const tone = selectedStart || selectedEnd
+                                      ? 'bg-blue-600 text-white'
+                                      : between
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : isCurrMonth
+                                          ? 'text-gray-900 hover:bg-gray-100'
+                                          : 'text-gray-400 hover:bg-gray-100';
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`${base} ${tone}`}
+                                        onClick={() => {
+                                          const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                          if (!exportRangeTempStart || (exportRangeTempStart && exportRangeTempEnd)) {
+                                            setExportRangeTempStart(day);
+                                            setExportRangeTempEnd(null);
+                                            return;
+                                          }
+                                          if (day.getTime() < exportRangeTempStart.getTime()) {
+                                            setExportRangeTempEnd(exportRangeTempStart);
+                                            setExportRangeTempStart(day);
+                                          } else {
+                                            setExportRangeTempEnd(day);
+                                          }
+                                        }}
+                                      >
+                                        {d.getDate()}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          };
+                          return (
+                            <>
+                              {renderMonth(new Date(exportVisibleMonth))}
+                              {renderMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()+1, 1))}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
+                        <div>
+                          <span className="mr-2">Start: {exportRangeTempStart ? exportRangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                          <span>End: {exportRangeTempEnd ? exportRangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setExportRangeTempStart(null); setExportRangeTempEnd(null); }}>Clear</button>
+                          <button
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!exportRangeTempStart && !exportRangeTempEnd}
+                            onClick={() => {
+                              const s = exportRangeTempStart ? new Date(exportRangeTempStart) : new Date(startDate);
+                              const e = exportRangeTempEnd ? new Date(exportRangeTempEnd) : (exportRangeTempStart ? new Date(exportRangeTempStart) : new Date(endDate));
+                              s.setHours(0,0,0,0);
+                              e.setHours(23,59,59,999);
+                              
+                              // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
+                              const formatDateTime = (date: Date) => {
+                                const y = date.getFullYear();
+                                const m = String(date.getMonth() + 1).padStart(2, '0');
+                                const d = String(date.getDate()).padStart(2, '0');
+                                const h = String(date.getHours()).padStart(2, '0');
+                                const min = String(date.getMinutes()).padStart(2, '0');
+                                return `${y}-${m}-${d}T${h}:${min}`;
+                              };
+                              
+                              setExportDateRange(`${formatDateTime(s)} - ${formatDateTime(e)}`);
+                              setIsExportRangePopoverOpen(false);
+                            }}
+                          >Apply</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Page Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  เลือกเพจ ({selectedPagesForExport.size} จาก {allPages.length} เพจ)
+                </label>
+                <div className="border rounded-md p-3 max-h-60 overflow-y-auto">
+                  <div className="flex items-center mb-2">
+                    <input
+                      type="checkbox"
+                      id="selectAllPages"
+                      checked={selectedPagesForExport.size === allPages.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedPagesForExport(new Set(allPages.map(p => p.page_id || p.id.toString())));
+                        } else {
+                          setSelectedPagesForExport(new Set());
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <label htmlFor="selectAllPages" className="text-sm font-medium">
+                      เลือกทั้งหมด
+                    </label>
+                  </div>
+                  <div className="space-y-2">
+                    {allPages.map((page) => (
+                      <div key={page.id} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`page-${page.id}`}
+                          checked={selectedPagesForExport.has(page.page_id || page.id.toString())}
+                          onChange={() => togglePageSelection(page.page_id || page.id.toString())}
+                          className="mr-2"
+                        />
+                        <label htmlFor={`page-${page.id}`} className="text-sm">
+                          {page.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              {isExporting && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-700">กำลังส่งออกข้อมูล...</span>
+                    <span className="text-sm text-gray-700">
+                      {exportProgress.current} / {exportProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  disabled={isExporting}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={exportAPIDataToCSV}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+                  disabled={isExporting || selectedPagesForExport.size === 0 || !exportDateRange}
+                >
+                  {isExporting ? 'กำลังส่งออก...' : 'ดาวน์โหลด CSV'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
