@@ -84,6 +84,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [selectedPagesForExport, setSelectedPagesForExport] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
+  const [exportViewMode, setExportViewMode] = useState<'daily' | 'hourly'>('daily');
 
   // Get current user from localStorage
   useEffect(() => {
@@ -540,8 +541,63 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         }
       }
 
+      // Process data based on export view mode
+      let processedData = [];
+      
+      if (exportViewMode === 'daily') {
+        // Aggregate data by day
+        const dailyMap = new Map();
+        
+        allData.forEach(item => {
+          const date = new Date(item.hour);
+          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+          const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
+          const pageName = item.page_name;
+          const uniqueKey = `${pageId}-${dateKey}`;
+          
+          if (!dailyMap.has(uniqueKey)) {
+            dailyMap.set(uniqueKey, {
+              page_id: pageId,
+              page_name: pageName,
+              date: dateKey,
+              new_customer_count: 0,
+              uniq_phone_number_count: 0,
+              phone_number_count: 0,
+              customer_comment_count: 0,
+              customer_inbox_count: 0,
+              page_comment_count: 0,
+              page_inbox_count: 0,
+              new_inbox_count: 0,
+              inbox_interactive_count: 0,
+              today_uniq_website_referral: 0,
+              today_website_guest_referral: 0,
+              order_count: 0
+            });
+          }
+          
+          const dayData = dailyMap.get(uniqueKey);
+          dayData.new_customer_count += item.new_customer_count;
+          dayData.uniq_phone_number_count += item.uniq_phone_number_count;
+          dayData.phone_number_count += item.phone_number_count;
+          dayData.customer_comment_count += item.customer_comment_count;
+          dayData.customer_inbox_count += item.customer_inbox_count;
+          dayData.page_comment_count += item.page_comment_count;
+          dayData.page_inbox_count += item.page_inbox_count;
+          dayData.new_inbox_count += item.new_inbox_count;
+          dayData.inbox_interactive_count += item.inbox_interactive_count;
+          dayData.today_uniq_website_referral += item.today_uniq_website_referral;
+          dayData.today_website_guest_referral += item.today_website_guest_referral;
+          dayData.order_count += item.order_count || 0;
+        });
+        
+        processedData = Array.from(dailyMap.values());
+      } else {
+        // Use hourly data as is
+        processedData = allData;
+      }
+      
       // Sort data by date
-      allData.sort((a, b) => new Date(b.hour).getTime() - new Date(a.hour).getTime());
+      processedData.sort((a, b) => new Date(b.hour || b.date).getTime() - new Date(a.hour || a.date).getTime());
 
       // Generate CSV
       const headers = [
@@ -550,9 +606,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         'แชทใหม่', 'แชทจากลูกค้าเก่า', 'ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)', 'ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)', 'ยอดออเดอร์'
       ];
       
-      const rows = allData.map(item => {
-        const date = new Date(item.hour);
-        const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+      const rows = processedData.map(item => {
+        let formattedDate;
+        
+        if (exportViewMode === 'daily') {
+          formattedDate = item.date;
+        } else {
+          const date = new Date(item.hour);
+          formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+        }
         
         // Find the page_id for this item
         const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
@@ -1120,7 +1182,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 onChange={(e) => setPageSearchTerm(e.target.value)}
                 onFocus={() => setIsSelectOpen(true)}
                 onBlur={() => setTimeout(() => setIsSelectOpen(false), 200)}
-                className="border rounded-md px-3 py-2 pr-8 text-sm w-96"
+                className="border rounded-md px-3 py-2 pr-8 text-sm w-full max-w-lg"
               />
               <button
                 onClick={() => setIsSelectOpen(!isSelectOpen)}
@@ -1871,6 +1933,25 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* View Mode Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกรูปแบบการส่งออก</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setExportViewMode('daily')}
+                    className={`px-4 py-2 text-sm rounded-md ${exportViewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    รายวัน
+                  </button>
+                  <button
+                    onClick={() => setExportViewMode('hourly')}
+                    className={`px-4 py-2 text-sm rounded-md ${exportViewMode === 'hourly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    รายชั่วโมง
+                  </button>
                 </div>
               </div>
 
