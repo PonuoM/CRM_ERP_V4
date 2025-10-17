@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, Page, User, UserRole } from '@/types';
 import ReactApexChart from 'react-apexcharts';
-import { Users as UsersIcon, Phone, ShoppingCart, Activity } from 'lucide-react';
+import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Search } from 'lucide-react';
 import StatCard from '@/components/StatCard';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 
@@ -30,6 +30,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return { start: start.toISOString(), end: end.toISOString() };
   });
   const [activeTab, setActiveTab] = useState<'time' | 'user' | 'page'>('time');
+  const [pageSearchTerm, setPageSearchTerm] = useState<string>('');
+  const [isSelectOpen, setIsSelectOpen] = useState<boolean>(false);
+  const [pageSelectError, setPageSelectError] = useState<string>('');
+  const [allPages, setAllPages] = useState<Array<{id: number, name: string, page_id: string}>>([]);
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -39,8 +43,25 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   const startDate = useMemo(() => new Date(range.start), [range.start]);
   const endDate = useMemo(() => new Date(range.end), [range.end]);
-  const activePages = useMemo(() => pages.filter(p => p.active), [pages]);
+  const activePages = useMemo(() => allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)), [allPages, pages]);
   const [selectedPageId, setSelectedPageId] = useState<number | 'all'>('all');
+
+  // Fetch pages for filter dropdown
+  useEffect(() => {
+    const fetchPages = async () => {
+      try {
+        const response = await fetch('api/index.php/pages');
+        if (response.ok) {
+          const data = await response.json();
+          setAllPages(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error fetching pages:', error);
+      }
+    };
+
+    fetchPages();
+  }, []);
 
   const inRange = (iso: string) => {
     const t = new Date(iso).getTime();
@@ -52,9 +73,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Page-filtered orders (used by time/user tabs only)
   const ordersInRangeForTable = useMemo(() => {
     if (selectedPageId === 'all') return ordersInRange;
-    const pageName = pages.find(p => p.id === selectedPageId)?.name;
+    const pageName = allPages.find(p => p.id === selectedPageId)?.name;
     return ordersInRange.filter(o => (typeof o.salesChannelPageId !== 'undefined' && o.salesChannelPageId === selectedPageId) || (pageName && o.salesChannel === pageName));
-  }, [ordersInRange, selectedPageId, pages]);
+  }, [ordersInRange, selectedPageId, allPages]);
 
   const talkedCalls = useMemo(() => callsInRange.filter(c => (c.duration ?? 0) >= 40).length, [callsInRange]);
   const totalCalls = callsInRange.length;
@@ -169,20 +190,98 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     const add = (k: string) => (agg[k] = agg[k] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 });
     // No call -> page linkage in current schema; keep 0 for interactions
     for (const o of ordersInRange) {
-      const name = (o.salesChannelPageId && pages.find(p => p.id === o.salesChannelPageId)?.name) || o.salesChannel || 'ไม่ระบุ';
+      const name = (o.salesChannelPageId && allPages.find(p => p.id === o.salesChannelPageId)?.name) || o.salesChannel || 'ไม่ระบุ';
       const a = add(name);
       a.totalOrders += 1;
       const isNew = (() => { const cu = customers.find(c => c.id === o.customerId); return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); })();
       if (isNew) a.ordersFromNew += 1;
     }
     return agg;
-  }, [ordersInRange, pages, customers]);
+  }, [ordersInRange, allPages, customers]);
 
   return (
     <div className="p-6">
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-lg font-semibold text-gray-800">สถิติการมีส่วนร่วม</h2>
         <DateRangePicker value={range} onApply={setRange} />
+        {/* Page Selection */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">เลือกเพจ:</span>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="เลือกหรือค้นหาเพจ..."
+              value={pageSearchTerm}
+              onChange={(e) => setPageSearchTerm(e.target.value)}
+              onFocus={() => setIsSelectOpen(true)}
+              onBlur={() => setTimeout(() => setIsSelectOpen(false), 200)}
+              className="border rounded-md px-3 py-1.5 pr-8 text-sm w-64"
+            />
+            <button
+              onClick={() => setIsSelectOpen(!isSelectOpen)}
+              className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-700"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {pageSearchTerm && (
+              <button
+                onClick={() => {
+                  setPageSearchTerm('');
+                  setSelectedPageId('all');
+                }}
+                className="absolute right-8 top-1.5 text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            {isSelectOpen && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {pageSearchTerm === '' && (
+                  <div
+                    onMouseDown={() => {
+                      setSelectedPageId('all');
+                      setPageSearchTerm('ทุกเพจ');
+                      setIsSelectOpen(false);
+                    }}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                  >
+                    ทุกเพจ
+                  </div>
+                )}
+                {allPages
+                  .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
+                  .map((page) => (
+                    <div
+                      key={page.id}
+                      onMouseDown={() => {
+                        setSelectedPageId(page.id);
+                        setPageSearchTerm(page.name);
+                        setIsSelectOpen(false);
+                        // Clear any error when a page is selected
+                        if (pageSelectError) {
+                          setPageSelectError('');
+                        }
+                      }}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                    >
+                      {page.name}
+                    </div>
+                  ))
+                }
+                {allPages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).length === 0 && (
+                  <div className="px-3 py-2 text-gray-500 text-sm">
+                    ไม่พบเพจที่ตรงกัน
+                  </div>
+                )}
+              </div>
+            )}
+            {pageSelectError && (
+              <div className="text-red-500 text-xs mt-1">
+                กรุณาเลือกเพจ
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Top gauges */}
@@ -224,18 +323,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             <button onClick={() => setActiveTab('time')} className={`px-3 py-1.5 rounded-md ${activeTab==='time'?'bg-green-600 text-white':'bg-gray-100 text-gray-600'}`}>ตามเวลา</button>
             <button onClick={() => setActiveTab('user')} className={`px-3 py-1.5 rounded-md ${activeTab==='user'?'bg-green-600 text-white':'bg-gray-100 text-gray-600'}`}>ตามพนักงาน</button>
             <button onClick={() => setActiveTab('page')} className={`px-3 py-1.5 rounded-md ${activeTab==='page'?'bg-green-600 text-white':'bg-gray-100 text-gray-600'}`}>ตามเพจ</button>
-            {(activeTab === 'time' || activeTab === 'user') && (
-              <select
-                value={selectedPageId === 'all' ? '' : String(selectedPageId)}
-                onChange={e => setSelectedPageId(e.target.value ? Number(e.target.value) : 'all')}
-                className="ml-2 border rounded-md px-2 py-1.5 text-sm"
-              >
-                <option value="">ทุกเพจ</option>
-                {activePages.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )}
+            <div className="text-sm text-gray-500">
+              กำลังแสดงข้อมูล: {selectedPageId === 'all' ? 'ทุกเพจ' : pageSearchTerm || 'ทุกเพจ'}
+            </div>
           </div>
         </div>
         {activeTab === 'time' && (
@@ -357,7 +447,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 </tr>
               </thead>
               <tbody>
-                {pages.filter(p => p.active).map(p => { const name = p.name; const v = (pageAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 }; return (
+                {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => { const name = p.name; const v = (pageAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 }; return (
                   <tr key={name} className="border-t border-gray-100">
                     <td className="px-3 py-2">{name}</td>
                     <td className="px-3 py-2 text-right">{v.newInteract}</td>
