@@ -33,7 +33,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     const end = new Date();
     end.setSeconds(59,0);
     const start = new Date(end);
-    start.setDate(start.getDate() - 89);
+    start.setDate(start.getDate() - 7);
     start.setHours(0,0,0,0);
     return { start: start.toISOString(), end: end.toISOString() };
   });
