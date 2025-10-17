@@ -341,6 +341,39 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return agg;
   }, [ordersInRange, allPages, customers]);
 
+  // Helper function for retrying API requests
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response> => {
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options);
+        
+        // Check for server internal error
+        if (response.status === 500) {
+          const errorText = await response.text();
+          if (errorText.includes('Server internal error')) {
+            throw new Error('Server internal error');
+          }
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If it's not a server internal error or we've reached max retries, don't retry
+        if (!lastError.message.includes('Server internal error') || i === maxRetries - 1) {
+          throw lastError;
+        }
+        
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      }
+    }
+    
+    throw lastError || new Error('Unknown error');
+  };
+
   // Fetch engagement data from Pages.fm API
   const fetchEngagementData = async () => {
     if (!selectedPageId || selectedPageId === 'all' || !currentUser) {
@@ -351,7 +384,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     setIsSearching(true);
     try {
       // First, get the access token from env variables
-      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -365,12 +398,15 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       }
 
       // Generate page access token
-      const tokenResponse = await fetch(`https://pages.fm/api/v1/pages/${selectedPageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const tokenResponse = await fetchWithRetry(
+        `https://pages.fm/api/v1/pages/${selectedPageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
         }
-      });
+      );
 
       if (!tokenResponse.ok) {
         throw new Error('ไม่สามารถสร้าง page access token ได้');
@@ -397,8 +433,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
 
       // Fetch engagement statistics
-      const engagementResponse = await fetch(
-        `https://pages.fm/api/public_api/v1/pages/${selectedPageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${selectedPageId}&date_range=${encodeURIComponent(dateRange)}`
+      const engagementResponse = await fetchWithRetry(
+        `https://pages.fm/api/public_api/v1/pages/${selectedPageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${selectedPageId}&date_range=${encodeURIComponent(dateRange)}`,
+        { method: 'GET' }
       );
 
       if (!engagementResponse.ok) {
@@ -414,7 +451,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       }
     } catch (error) {
       console.error('Error fetching engagement data:', error);
-      alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : String(error)));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Show a user-friendly message for server internal errors
+      if (errorMessage.includes('Server internal error')) {
+        alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
+      } else {
+        alert('เกิดข้อผิดพลาด: ' + errorMessage);
+      }
     } finally {
       setIsSearching(false);
     }

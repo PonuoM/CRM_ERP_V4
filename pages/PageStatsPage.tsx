@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Order, Customer, CallHistory, User, UserRole } from '@/types';
 import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, UserPlus, ShoppingCart, Settings, X, Save, Plus, Search, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import StatCard from '@/components/StatCard';
+import StatCard from '@/components/StatCard_EngagementPage';
 import MultiLineChart from '@/components/MultiLineChart';
 
 interface PageStatsPageProps {
@@ -516,6 +516,39 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   };
 
+  // Helper function for retrying API requests
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response> => {
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options);
+        
+        // Check for server internal error
+        if (response.status === 500) {
+          const errorText = await response.text();
+          if (errorText.includes('Server internal error')) {
+            throw new Error('Server internal error');
+          }
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If it's not a server internal error or we've reached max retries, don't retry
+        if (!lastError.message.includes('Server internal error') || i === maxRetries - 1) {
+          throw lastError;
+        }
+        
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      }
+    }
+    
+    throw lastError || new Error('Unknown error');
+  };
+
   // Fetch page stats from Pages.fm API
   const fetchPageStats = async () => {
     if (!selectedPage || !currentUser) {
@@ -526,7 +559,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     setIsSearching(true);
     try {
       // First, get the access token from env variables
-      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -540,12 +573,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       }
 
       // Generate page access token
-      const tokenResponse = await fetch(`https://pages.fm/api/v1/pages/${selectedPage}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const tokenResponse = await fetchWithRetry(
+        `https://pages.fm/api/v1/pages/${selectedPage}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
         }
-      });
+      );
 
       if (!tokenResponse.ok) {
         throw new Error('ไม่สามารถสร้าง page access token ได้');
