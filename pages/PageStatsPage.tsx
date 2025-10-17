@@ -2425,6 +2425,18 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     </span>
                   </button>
                   
+                  {/* Color legend */}
+                  <div className="mt-2 text-xs text-gray-600 flex gap-4">
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-green-500 rounded"></div>
+                      <span>ข้อมูลถูกอัปเดตแล้ว</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                      <span>วันปัจจุบัน</span>
+                    </div>
+                  </div>
+                  
                   {/* Date Range Popover */}
                   {isDatabaseRangePopoverOpen && (
                     <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
@@ -2468,6 +2480,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                     const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                                     const isDateInDatabase = existingDatesInDatabase.has(dateKey);
                                     
+                                    // Check if this date is today
+                                    const today = new Date();
+                                    const isToday = d.getFullYear() === today.getFullYear() &&
+                                                   d.getMonth() === today.getMonth() &&
+                                                   d.getDate() === today.getDate();
+                                    
                                     const base = `text-sm text-center py-1.5 rounded select-none`;
                                     let tone = '';
                                     let isDisabled = false;
@@ -2475,6 +2493,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                     if (isDateInDatabase) {
                                       // Date exists in database - green and disabled
                                       tone = 'bg-green-500 text-white cursor-not-allowed opacity-75';
+                                      isDisabled = true;
+                                    } else if (isToday) {
+                                      // Today - orange and disabled
+                                      tone = 'bg-orange-500 text-white cursor-not-allowed opacity-75';
                                       isDisabled = true;
                                     } else if (selectedStart || selectedEnd) {
                                       tone = 'bg-blue-600 text-white';
