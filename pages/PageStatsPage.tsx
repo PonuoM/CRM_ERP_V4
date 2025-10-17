@@ -85,6 +85,23 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
   const [exportViewMode, setExportViewMode] = useState<'daily' | 'hourly'>('daily');
+  const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
+  const [databaseDateRange, setDatabaseDateRange] = useState<string>('');
+  const [databaseRangeTempStart, setDatabaseRangeTempStart] = useState<Date | null>(null);
+  const [databaseRangeTempEnd, setDatabaseRangeTempEnd] = useState<Date | null>(null);
+  const [databaseVisibleMonth, setDatabaseVisibleMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [isDatabaseRangePopoverOpen, setIsDatabaseRangePopoverOpen] = useState<boolean>(false);
+  // No longer need selected pages for database - we'll process all pages
+  const [databaseViewMode] = useState<'daily'>('daily'); // Always use daily mode for database updates
+  const [isUpdatingDatabase, setIsUpdatingDatabase] = useState<boolean>(false);
+  const [databaseUpdateProgress, setDatabaseUpdateProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
+  const [existingDatesInDatabase, setExistingDatesInDatabase] = useState<Set<string>>(new Set());
+  const [batchRecords, setBatchRecords] = useState<any[]>([]);
+  const [selectedBatches, setSelectedBatches] = useState<Set<number>>(new Set());
+  const [isDeletingBatches, setIsDeletingBatches] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -120,6 +137,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     };
 
     fetchPages();
+    fetchExistingDateRanges();
   }, []);
 
   const customersById = useMemo(() => {
@@ -668,6 +686,289 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   };
 
+  // Update data from API to Database
+  const updateAPIDataToDatabase = async () => {
+    if (!currentUser || pages.length === 0) {
+      alert('ไม่พบข้อมูลเพจ');
+      return;
+    }
+
+    // Parse date range
+    if (!databaseDateRange) {
+      alert('กรุณาเลือกช่วงวันที่');
+      return;
+    }
+
+    const [sRaw, eRaw] = databaseDateRange.split(' - ');
+    if (!sRaw || !eRaw) {
+      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      return;
+    }
+
+    const s = new Date(sRaw);
+    const e = new Date(eRaw);
+    s.setHours(0, 0, 0, 0);
+    e.setHours(23, 59, 59, 999);
+
+    // Check if any dates in the selected range already exist in the database
+    const conflictingDates: string[] = [];
+    const current = new Date(s);
+    while (current <= e) {
+      const dateKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+      if (existingDatesInDatabase.has(dateKey)) {
+        conflictingDates.push(dateKey);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    if (conflictingDates.length > 0) {
+      alert(`ไม่สามารถอัปเดตข้อมูลในช่วงวันที่ที่เลือกได้ เนื่องจากมีข้อมูลอยู่แล้วในฐานข้อมูล:\n${conflictingDates.join(', ')}`);
+      return;
+    }
+
+    const since = Math.floor(s.getTime() / 1000);
+    const until = Math.floor(e.getTime() / 1000);
+
+    setIsUpdatingDatabase(true);
+    setDatabaseUpdateProgress({current: 0, total: pages.length});
+
+    try {
+      // Get access token
+      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        return;
+      }
+
+      // Collect all data
+      const allData: any[] = [];
+      let completedPages = 0;
+
+      // Fetch data for all pages
+      for (const page of pages) {
+        const pageId = page.page_id || page.id.toString();
+        try {
+          // Generate page access token for each page
+          const tokenResponse = await fetchWithRetry(
+            `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
+          }
+          const tokenData = await tokenResponse.json();
+          
+          if (!tokenData.success || !tokenData.page_access_token) {
+            throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
+          }
+
+          // Fetch data from API 1 (Pages.fm statistics)
+          const pageData1 = await fetchPageStatsForExport(pageId, tokenData.page_access_token, since, until);
+          const pageName = page.name || pageId;
+          
+          // Add page name to each record from API 1
+          pageData1.forEach((record: any) => {
+            record.page_name = pageName;
+            record.api_source = 'pages_fm';
+          });
+          
+          allData.push(...pageData1);
+          
+          // TODO: Fetch data from API 2
+          // This is where you would add the second API call
+          // For example:
+          // const pageData2 = await fetchFromSecondAPI(pageId, since, until);
+          // pageData2.forEach((record: any) => {
+          //   record.page_name = pageName;
+          //   record.api_source = 'second_api';
+          // });
+          // allData.push(...pageData2);
+          completedPages++;
+          setDatabaseUpdateProgress({current: completedPages, total: pages.length});
+        } catch (error) {
+          console.error(`Error fetching data for page ${pageId}:`, error);
+          completedPages++;
+          setDatabaseUpdateProgress({current: completedPages, total: pages.length});
+        }
+      }
+
+      // Process data based on database view mode
+      let processedData = [];
+      
+      if (databaseViewMode === 'daily') {
+        // Aggregate data by day
+        const dailyMap = new Map();
+        
+        allData.forEach(item => {
+          const date = new Date(item.hour);
+          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+          const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
+          const pageName = item.page_name;
+          const uniqueKey = `${pageId}-${dateKey}`;
+          
+          if (!dailyMap.has(uniqueKey)) {
+            dailyMap.set(uniqueKey, {
+              page_id: pageId,
+              page_name: pageName,
+              time_column: dateKey,
+              new_customers: 0,
+              total_phones: 0,
+              new_phones: 0,
+              total_comments: 0,
+              total_chats: 0,
+              total_page_comments: 0,
+              total_page_chats: 0,
+              new_chats: 0,
+              chats_from_old_customers: 0,
+              web_logged_in: 0,
+              web_guest: 0,
+              orders_count: 0
+            });
+          }
+          
+          const dayData = dailyMap.get(uniqueKey);
+          dayData.new_customers += item.new_customer_count;
+          dayData.total_phones += item.uniq_phone_number_count;
+          dayData.new_phones += item.phone_number_count;
+          dayData.total_comments += item.customer_comment_count;
+          dayData.total_chats += item.customer_inbox_count;
+          dayData.total_page_comments += item.page_comment_count;
+          dayData.total_page_chats += item.page_inbox_count;
+          dayData.new_chats += item.new_inbox_count;
+          dayData.chats_from_old_customers += item.inbox_interactive_count;
+          dayData.web_logged_in += item.today_uniq_website_referral;
+          dayData.web_guest += item.today_website_guest_referral;
+          dayData.orders_count += item.order_count || 0;
+        });
+        
+        processedData = Array.from(dailyMap.values());
+      } else {
+        // Use hourly data as is
+        processedData = allData.map(item => {
+          const date = new Date(item.hour);
+          const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          
+          return {
+            page_id: item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '',
+            page_name: item.page_name,
+            time_column: formattedDate,
+            new_customers: item.new_customer_count,
+            total_phones: item.uniq_phone_number_count,
+            new_phones: item.phone_number_count,
+            total_comments: item.customer_comment_count,
+            total_chats: item.customer_inbox_count,
+            total_page_comments: item.page_comment_count,
+            total_page_chats: item.page_inbox_count,
+            new_chats: item.new_inbox_count,
+            chats_from_old_customers: item.inbox_interactive_count,
+            web_logged_in: item.today_uniq_website_referral,
+            web_guest: item.today_website_guest_referral,
+            orders_count: item.order_count || 0
+          };
+        });
+      }
+
+      let response: Response | null = null;
+      
+      try {
+        // Send data to database
+        response = await fetch('api/Page_DB/page_stats_import.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dateRange: databaseDateRange,
+            pages: pages.map(p => p.page_id || p.id.toString()),
+            viewMode: databaseViewMode,
+            apiData: processedData
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('ไม่สามารถอัปเดตข้อมูลในฐานข้อมูลได้');
+        }
+
+        const result = await response.json();
+        
+        if (result.success) {
+          alert(`อัปเดตข้อมูลเรียบร้อย: ${result.message}`);
+          setIsDatabaseModalOpen(false);
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error updating database:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Try to get more detailed error information if it's a fetch error
+        if (error instanceof TypeError && error.message.includes('JSON') && response) {
+          // This might be a JSON parsing error, let's get the raw response
+          try {
+            const responseText = await response.text();
+            console.error('Raw response:', responseText);
+            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ไม่สามารถแปลคำตอบจากเซิร์ฟเวอร์ได้. ตรวจสอบ console สำหรับข้อมูลเพิ่มเติม');
+          } catch (textError) {
+            alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
+          }
+        } else {
+          alert('เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ' + errorMessage);
+        }
+      } finally {
+        setIsUpdatingDatabase(false);
+      }
+    } catch (error) {
+      console.error('Error in updateAPIDataToDatabase:', error);
+      setIsUpdatingDatabase(false);
+    }
+  };
+
+  // Helper function for retrying API requests
+  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response> => {
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options);
+        
+        // Check for server internal error
+        if (response.status === 500) {
+          const errorText = await response.text();
+          if (errorText.includes('Server internal error')) {
+            throw new Error('Server internal error');
+          }
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If it's not a server internal error or we've reached max retries, don't retry
+        if (!lastError.message.includes('Server internal error') || i === maxRetries - 1) {
+          throw lastError;
+        }
+        
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      }
+    }
+    
+    throw lastError || new Error('Unknown error');
+  };
+
   // Toggle page selection for export
   const togglePageSelection = (pageId: string) => {
     setSelectedPagesForExport(prev => {
@@ -785,37 +1086,69 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   };
 
-  // Helper function for retrying API requests
-  const fetchWithRetry = async (url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response> => {
-    let lastError: Error | null = null;
-    
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        const response = await fetch(url, options);
-        
-        // Check for server internal error
-        if (response.status === 500) {
-          const errorText = await response.text();
-          if (errorText.includes('Server internal error')) {
-            throw new Error('Server internal error');
+
+  // Fetch existing date ranges from database
+  const fetchExistingDateRanges = async () => {
+    try {
+      const response = await fetch('api/Page_DB/get_date_ranges.php');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          if (data.existingDates) {
+            setExistingDatesInDatabase(new Set(data.existingDates));
+          }
+          if (data.dateRanges) {
+            setBatchRecords(data.dateRanges);
           }
         }
-        
-        return response;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        // If it's not a server internal error or we've reached max retries, don't retry
-        if (!lastError.message.includes('Server internal error') || i === maxRetries - 1) {
-          throw lastError;
-        }
-        
-        // Wait before retrying with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
       }
+    } catch (error) {
+      console.error('Error fetching existing date ranges:', error);
     }
-    
-    throw lastError || new Error('Unknown error');
+  };
+
+  // Delete selected batches
+  const deleteSelectedBatches = async () => {
+    if (selectedBatches.size === 0) {
+      alert('กรุณาเลือก batch อย่างน้อย 1 รายการ');
+      return;
+    }
+
+    if (!confirm(`คุณต้องการลบ batch ที่เลือก (${selectedBatches.size} รายการ) หรือไม่? ข้อมูลที่เกี่ยวข้องจะถูกลบทั้งหมด`)) {
+      return;
+    }
+
+    setIsDeletingBatches(true);
+    try {
+      const response = await fetch('api/Page_DB/delete_batches.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batchIds: Array.from(selectedBatches)
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert(`ลบข้อมูลสำเร็จ: ${result.message}`);
+          setSelectedBatches(new Set());
+          // Refresh the batch records
+          fetchExistingDateRanges();
+        } else {
+          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+        }
+      } else {
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      }
+    } catch (error) {
+      console.error('Error deleting batches:', error);
+      alert('เกิดข้อผิดพลาดในการลบข้อมูล');
+    } finally {
+      setIsDeletingBatches(false);
+    }
   };
 
   // Fetch page stats from Pages.fm API
@@ -1069,7 +1402,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 </button>
 
                 {isRangePopoverOpen && (
-                  <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                  <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
                     <div className="flex items-center justify-between mb-3">
                       <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                       <div className="text-sm text-gray-600">Select date range</div>
@@ -1182,7 +1515,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 onChange={(e) => setPageSearchTerm(e.target.value)}
                 onFocus={() => setIsSelectOpen(true)}
                 onBlur={() => setTimeout(() => setIsSelectOpen(false), 200)}
-                className="border rounded-md px-3 py-2 pr-8 text-sm w-full max-w-lg"
+                className="border rounded-md px-3 py-2 pr-8 text-sm w-full min-w-[400px]"
               />
               <button
                 onClick={() => setIsSelectOpen(!isSelectOpen)}
@@ -1199,7 +1532,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 </button>
               )}
               {isSelectOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto min-w-[400px]">
                   {pages
                     .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
                     .map((page) => (
@@ -1242,6 +1575,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
             >
               <Download className="w-4 h-4"/> ดาวน์โหลด CSV
+            </button>
+            <button
+              onClick={() => {
+                setIsDatabaseModalOpen(true);
+                fetchExistingDateRanges();
+              }}
+              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+            >
+              <Save className="w-4 h-4"/> อัปเดต Database
             </button>
             <button
               onClick={fetchPageStats}
@@ -1819,7 +2161,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   
                   {/* Date Range Popover */}
                   {isExportRangePopoverOpen && (
-                    <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                    <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
                       <div className="flex items-center justify-between mb-3">
                         <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                         <div className="text-sm text-gray-600">Select date range</div>
@@ -2032,6 +2374,317 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 >
                   {isExporting ? 'กำลังส่งออก...' : 'ดาวน์โหลด CSV'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Database Update Modal */}
+      {isDatabaseModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">อัปเดตข้อมูลใน Database</h2>
+              <button
+                onClick={() => setIsDatabaseModalOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+                disabled={isUpdatingDatabase}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Date Range Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกช่วงวันที่</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Initialize temp dates from current range or defaults
+                      const [sRaw, eRaw] = (databaseDateRange || '').split(' - ');
+                      const s = sRaw ? new Date(sRaw) : new Date(startDate);
+                      const e = eRaw ? new Date(eRaw) : new Date(endDate);
+                      setDatabaseRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
+                      setDatabaseRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
+                      setDatabaseVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                      setIsDatabaseRangePopoverOpen(!isDatabaseRangePopoverOpen);
+                    }}
+                    className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white w-full"
+                  >
+                    <Calendar className="w-4 h-4 text-gray-500" />
+                    <span className="text-gray-700">
+                      {databaseDateRange ? (() => {
+                        const [sRaw, eRaw] = databaseDateRange.split(' - ');
+                        const s = sRaw ? new Date(sRaw) : startDate;
+                        const e = eRaw ? new Date(eRaw) : endDate;
+                        return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                      })() : 'กรุณาเลือกวันที่'}
+                    </span>
+                  </button>
+                  
+                  {/* Date Range Popover */}
+                  {isDatabaseRangePopoverOpen && (
+                    <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                        <div className="text-sm text-gray-600">Select date range</div>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                      </div>
+
+                      <div className="flex gap-4">
+                        {(() => {
+                          const renderMonth = (monthStart: Date) => {
+                            const firstDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+                            const startWeekDay = firstDay.getDay();
+                            const gridStart = new Date(firstDay);
+                            gridStart.setDate(firstDay.getDate() - startWeekDay);
+                            const days: Date[] = [];
+                            for (let i = 0; i < 42; i++) {
+                              const d = new Date(gridStart);
+                              d.setDate(gridStart.getDate() + i);
+                              days.push(d);
+                            }
+                            const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                            const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                            const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+                            const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                            return (
+                              <div className="w-[320px]">
+                                <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
+                                <div className="grid grid-cols-7 gap-1 text-[12px] text-gray-500 mb-1">
+                                  {weekDays.map(d => <div key={d} className="text-center py-1">{d}</div>)}
+                                </div>
+                                <div className="grid grid-cols-7 gap-1">
+                                  {days.map((d, idx) => {
+                                    const isCurrMonth = d.getMonth() === monthStart.getMonth();
+                                    const selectedStart = databaseRangeTempStart && isSameDay(d, databaseRangeTempStart);
+                                    const selectedEnd = databaseRangeTempEnd && isSameDay(d, databaseRangeTempEnd);
+                                    const between = inBetween(d, databaseRangeTempStart, databaseRangeTempEnd) && !selectedStart && !selectedEnd;
+                                    
+                                    // Check if this date exists in the database
+                                    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                    const isDateInDatabase = existingDatesInDatabase.has(dateKey);
+                                    
+                                    const base = `text-sm text-center py-1.5 rounded select-none`;
+                                    let tone = '';
+                                    let isDisabled = false;
+                                    
+                                    if (isDateInDatabase) {
+                                      // Date exists in database - green and disabled
+                                      tone = 'bg-green-500 text-white cursor-not-allowed opacity-75';
+                                      isDisabled = true;
+                                    } else if (selectedStart || selectedEnd) {
+                                      tone = 'bg-blue-600 text-white';
+                                    } else if (between) {
+                                      tone = 'bg-blue-100 text-blue-700';
+                                    } else if (isCurrMonth) {
+                                      tone = 'text-gray-900 hover:bg-gray-100';
+                                    } else {
+                                      tone = 'text-gray-400 hover:bg-gray-100';
+                                    }
+                                    
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`${base} ${tone}`}
+                                        onClick={() => {
+                                          if (isDisabled) return;
+                                          
+                                          const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                          if (!databaseRangeTempStart || (databaseRangeTempStart && databaseRangeTempEnd)) {
+                                            setDatabaseRangeTempStart(day);
+                                            setDatabaseRangeTempEnd(null);
+                                            return;
+                                          }
+                                          if (day.getTime() < databaseRangeTempStart.getTime()) {
+                                            setDatabaseRangeTempEnd(databaseRangeTempStart);
+                                            setDatabaseRangeTempStart(day);
+                                          } else {
+                                            setDatabaseRangeTempEnd(day);
+                                          }
+                                        }}
+                                      >
+                                        {d.getDate()}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          };
+                          return (
+                            <>
+                              {renderMonth(new Date(databaseVisibleMonth))}
+                              {renderMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()+1, 1))}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
+                        <div>
+                          <span className="mr-2">Start: {databaseRangeTempStart ? databaseRangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                          <span>End: {databaseRangeTempEnd ? databaseRangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setDatabaseRangeTempStart(null); setDatabaseRangeTempEnd(null); }}>Clear</button>
+                          <button
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!databaseRangeTempStart && !databaseRangeTempEnd}
+                            onClick={() => {
+                              const s = databaseRangeTempStart ? new Date(databaseRangeTempStart) : new Date(startDate);
+                              const e = databaseRangeTempEnd ? new Date(databaseRangeTempEnd) : (databaseRangeTempStart ? new Date(databaseRangeTempStart) : new Date(endDate));
+                              s.setHours(0,0,0,0);
+                              e.setHours(23,59,59,999);
+                              
+                              // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
+                              const formatDateTime = (date: Date) => {
+                                const y = date.getFullYear();
+                                const m = String(date.getMonth() + 1).padStart(2, '0');
+                                const d = String(date.getDate()).padStart(2, '0');
+                                const h = String(date.getHours()).padStart(2, '0');
+                                const min = String(date.getMinutes()).padStart(2, '0');
+                                return `${y}-${m}-${d}T${h}:${min}`;
+                              };
+                              
+                              setDatabaseDateRange(`${formatDateTime(s)} - ${formatDateTime(e)}`);
+                              setIsDatabaseRangePopoverOpen(false);
+                            }}
+                          >Apply</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* View Mode is fixed to daily - no selection needed */}
+
+              {/* All pages will be processed automatically */}
+
+              {/* Progress Bar */}
+              {isUpdatingDatabase && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-700">กำลังอัปเดตข้อมูล...</span>
+                    <span className="text-sm text-gray-700">
+                      {databaseUpdateProgress.current} / {databaseUpdateProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{ width: `${(databaseUpdateProgress.current / databaseUpdateProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  onClick={() => setIsDatabaseModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  disabled={isUpdatingDatabase}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={updateAPIDataToDatabase}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+                  disabled={isUpdatingDatabase || !databaseDateRange}
+                >
+                  {isUpdatingDatabase ? 'กำลังอัปเดต...' : 'อัปเดต Database'}
+                </button>
+              </div>
+              
+              {/* Batch Records Table */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-semibold text-gray-700">ประวัติการอัปโหลดข้อมูล</h3>
+                  <div className="flex items-center gap-2">
+                    {selectedBatches.size > 0 && (
+                      <button
+                        onClick={deleteSelectedBatches}
+                        className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
+                        disabled={isDeletingBatches}
+                      >
+                        {isDeletingBatches ? 'กำลังลบ...' : `ลบที่เลือก (${selectedBatches.size})`}
+                      </button>
+                    )}
+                    <button
+                      onClick={fetchExistingDateRanges}
+                      className="px-3 py-1.5 border rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <RefreshCcw className="w-4 h-4 inline mr-1" />
+                      รีเฟรช
+                    </button>
+                  </div>
+                </div>
+                
+                {batchRecords.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">ไม่มีข้อมูล batch</p>
+                ) : (
+                  <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600 sticky top-0">
+                          <th className="px-3 py-2 text-left">
+                            <input
+                              type="checkbox"
+                              checked={selectedBatches.size === batchRecords.length && batchRecords.length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBatches(new Set(batchRecords.map(r => r.id)));
+                                } else {
+                                  setSelectedBatches(new Set());
+                                }
+                              }}
+                              className="mr-2"
+                            />
+                            Batch ID
+                          </th>
+                          <th className="px-3 py-2 text-left">ช่วงวันที่</th>
+                          <th className="px-3 py-2 text-left">จำนวนรายการ</th>
+                          <th className="px-3 py-2 text-left">วันที่สร้าง</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {batchRecords.map((batch) => (
+                          <tr key={batch.id} className="border-t border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedBatches.has(batch.id)}
+                                onChange={() => {
+                                  setSelectedBatches(prev => {
+                                    const newSet = new Set(prev);
+                                    if (newSet.has(batch.id)) {
+                                      newSet.delete(batch.id);
+                                    } else {
+                                      newSet.add(batch.id);
+                                    }
+                                    return newSet;
+                                  });
+                                }}
+                                className="mr-2"
+                              />
+                              {batch.id}
+                            </td>
+                            <td className="px-3 py-2 text-gray-700">{batch.date_range}</td>
+                            <td className="px-3 py-2 text-gray-700">{batch.record_count || 0}</td>
+                            <td className="px-3 py-2 text-gray-700">
+                              {new Date(batch.created_at).toLocaleString('th-TH')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>
