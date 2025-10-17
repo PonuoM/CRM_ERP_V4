@@ -156,3 +156,16 @@ SET @sql = (SELECT IF(
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- Drop page_name column from page_stats_log table if it exists
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE table_schema = DATABASE()
+     AND table_name = 'page_stats_log'
+     AND column_name = 'page_name') > 0,
+    'ALTER TABLE page_stats_log DROP COLUMN page_name;',
+    'SELECT "page_name column does not exist" as message;'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

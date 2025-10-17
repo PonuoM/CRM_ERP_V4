@@ -822,7 +822,6 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           if (!dailyMap.has(uniqueKey)) {
             dailyMap.set(uniqueKey, {
               page_id: pageId,
-              page_name: pageName,
               time_column: dateKey,
               new_customers: 0,
               total_phones: 0,
@@ -863,7 +862,6 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           
           return {
             page_id: item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '',
-            page_name: item.page_name,
             time_column: formattedDate,
             new_customers: item.new_customer_count,
             total_phones: item.uniq_phone_number_count,

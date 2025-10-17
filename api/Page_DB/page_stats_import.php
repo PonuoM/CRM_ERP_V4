@@ -62,12 +62,12 @@ try {
     // Prepare statement for inserting stats data
     $stmt = $conn->prepare("
         INSERT INTO page_stats_log (
-            batch_id, page_id, page_name, time_column,
+            batch_id, page_id, time_column,
             new_customers, total_phones, new_phones,
             total_comments, total_chats, total_page_comments,
             total_page_chats, new_chats, chats_from_old_customers,
             web_logged_in, web_guest, orders_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
         new_customers = VALUES(new_customers),
         total_phones = VALUES(total_phones),
@@ -95,7 +95,6 @@ try {
         // Debug: Log each item
         error_log("Processing item $index: " . print_r($item, true));
         $pageId = $item['page_id'] ?? '';
-        $pageName = $item['page_name'] ?? '';
         $timeColumn = $item['time_column'] ?? '';
         $newCustomers = intval($item['new_customers'] ?? 0);
         $totalPhones = intval($item['total_phones'] ?? 0);
@@ -111,7 +110,7 @@ try {
         $ordersCount = intval($item['orders_count'] ?? 0);
         
         $stmt->execute([
-            $batchId, $pageId, $pageName, $timeColumn,
+            $batchId, $pageId, $timeColumn,
             $newCustomers, $totalPhones, $newPhones,
             $totalComments, $totalChats, $totalPageComments,
             $totalPageChats, $newChats, $chatsFromOldCustomers,
