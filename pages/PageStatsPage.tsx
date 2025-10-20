@@ -2101,35 +2101,44 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 {/* List existing env variables */}
                 <div>
                   <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
-                  {envVariables.length === 0 ? (
-                    <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {envVariables.map((envVar) => (
-                        <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 mr-2">
-                              <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
-                              <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
-                              {envVar.updated_at && (
-                                <div className="text-xs text-gray-400 mt-1">
-                                  อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
-                                </div>
-                              )}
+                  {(() => {
+                    // Filter env variables to show only ACCESS_TOKEN_PANCAKE_* for current user's company
+                    const filteredEnvVars = envVariables.filter(envVar =>
+                      envVar.key.startsWith('ACCESS_TOKEN_PANCAKE_') &&
+                      currentUser &&
+                      envVar.key === `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`
+                    );
+                    
+                    return filteredEnvVars.length === 0 ? (
+                      <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredEnvVars.map((envVar) => (
+                          <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 mr-2">
+                                <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
+                                <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
+                                {envVar.updated_at && (
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => deleteEnvVariable(envVar.key)}
+                                disabled={isLoading}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                title="ลบตัวแปร"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             </div>
-                            <button
-                              onClick={() => deleteEnvVariable(envVar.key)}
-                              disabled={isLoading}
-                              className="p-1 text-red-500 hover:bg-red-50 rounded"
-                              title="ลบตัวแปร"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
