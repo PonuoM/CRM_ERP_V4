@@ -94,6 +94,16 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // State for all pages engagement data
   const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
   const [isLoadingAllPagesData, setIsLoadingAllPagesData] = useState<boolean>(false);
+  
+  // State for page tab date range
+  const [pageTabDateRange, setPageTabDateRange] = useState<DateRange>(() => {
+    const end = new Date();
+    end.setSeconds(59,0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 7);
+    start.setHours(0,0,0,0);
+    return { start: start.toISOString(), end: end.toISOString() };
+  });
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -1010,7 +1020,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   };
 
   // Fetch engagement data for all pages
-  const fetchAllPagesEngagementData = async () => {
+  const fetchAllPagesEngagementData = async (dateRangeToUse?: DateRange) => {
     if (!currentUser) {
       alert('กรุณาเข้าสู่ระบบ');
       return;
@@ -1040,6 +1050,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         throw new Error(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
       }
 
+      // Use the provided date range or the page tab date range
+      const rangeToUse = dateRangeToUse || pageTabDateRange;
+      const rangeStart = new Date(rangeToUse.start);
+      const rangeEnd = new Date(rangeToUse.end);
+
       // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
       const formatDateForAPI = (date: Date) => {
         const day = String(date.getDate()).padStart(2, '0');
@@ -1051,8 +1066,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
       };
 
-      const formattedStartDate = formatDateForAPI(startDate);
-      const formattedEndDate = formatDateForAPI(endDate);
+      const formattedStartDate = formatDateForAPI(rangeStart);
+      const formattedEndDate = formatDateForAPI(rangeEnd);
       const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
 
       const pagesData: Record<string, any> = {};
@@ -1489,8 +1504,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 )}
               </tr>
             </tfoot>
-          </table>
-        </div>
+            </table>
+          </div>
         )}
 
         {activeTab === 'user' && (
@@ -1564,21 +1579,174 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
         {activeTab === 'page' && (
           <div className="overflow-auto">
-            <div className="flex items-center justify-between mb-3">
+            {/* Control Section - Centered */}
+            <div className="flex flex-col items-center gap-3 mb-4">
+              {/* Date Range Input for Page Tab */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    // Initialize temp dates from current page tab range
+                    const s = new Date(pageTabDateRange.start);
+                    const e = new Date(pageTabDateRange.end);
+                    setUploadRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
+                    setUploadRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
+                    setUploadVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                    
+                    // Calculate position for popover
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setUploadPopoverPosition({
+                      top: rect.top + window.scrollY - 5, // Position above the input
+                      left: rect.left + window.scrollX
+                    });
+                    
+                    setIsUploadRangePopoverOpen(!isUploadRangePopoverOpen);
+                  }}
+                  className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white"
+                >
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <span className="text-gray-700">
+                    {(() => {
+                      const s = new Date(pageTabDateRange.start);
+                      const e = new Date(pageTabDateRange.end);
+                      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                    })()}
+                  </span>
+                </button>
+                
+                {/* Date Range Popover - Reusing the same popover as upload modal */}
+                {isUploadRangePopoverOpen && (
+                  <div className="fixed z-[60] bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{
+                    top: `${uploadPopoverPosition.top - 380}px`, // Move popover above input
+                    left: `${uploadPopoverPosition.left}px`,
+                  }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setUploadVisibleMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                      <div className="text-sm text-gray-600">Select date range</div>
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setUploadVisibleMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                    </div>
+
+                    <div className="flex gap-4">
+                      {(() => {
+                        const renderMonth = (monthStart: Date) => {
+                          const firstDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+                          const startWeekDay = firstDay.getDay();
+                          const gridStart = new Date(firstDay);
+                          gridStart.setDate(firstDay.getDate() - startWeekDay);
+                          const days: Date[] = [];
+                          for (let i = 0; i < 42; i++) {
+                            const d = new Date(gridStart);
+                            d.setDate(gridStart.getDate() + i);
+                            days.push(d);
+                          }
+                          const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                          const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                          const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+                          const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                          return (
+                            <div className="w-[320px]">
+                              <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
+                              <div className="grid grid-cols-7 gap-1 text-[12px] text-gray-500 mb-1">
+                                {weekDays.map(d => <div key={d} className="text-center py-1">{d}</div>)}
+                              </div>
+                              <div className="grid grid-cols-7 gap-1">
+                                {days.map((d, idx) => {
+                                  const isCurrMonth = d.getMonth() === monthStart.getMonth();
+                                  const selectedStart = uploadRangeTempStart && isSameDay(d, uploadRangeTempStart);
+                                  const selectedEnd = uploadRangeTempEnd && isSameDay(d, uploadRangeTempEnd);
+                                  const between = inBetween(d, uploadRangeTempStart, uploadRangeTempEnd) && !selectedStart && !selectedEnd;
+                                  
+                                  const base = `text-sm text-center py-1.5 rounded select-none`;
+                                  const tone = selectedStart || selectedEnd
+                                    ? 'bg-blue-600 text-white'
+                                    : between
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : isCurrMonth
+                                        ? 'text-gray-900 hover:bg-gray-100'
+                                        : 'text-gray-400 hover:bg-gray-100';
+                                  
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`${base} ${tone}`}
+                                      onClick={() => {
+                                        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                        if (!uploadRangeTempStart || (uploadRangeTempStart && uploadRangeTempEnd)) {
+                                          setUploadRangeTempStart(day);
+                                          setUploadRangeTempEnd(null);
+                                          return;
+                                        }
+                                        if (day.getTime() < uploadRangeTempStart.getTime()) {
+                                          setUploadRangeTempEnd(uploadRangeTempStart);
+                                          setUploadRangeTempStart(day);
+                                        } else {
+                                          setUploadRangeTempEnd(day);
+                                        }
+                                      }}
+                                    >
+                                      {d.getDate()}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        };
+                        return (
+                          <>
+                            {renderMonth(new Date(uploadVisibleMonth))}
+                            {renderMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()+1, 1))}
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
+                      <div>
+                        <span className="mr-2">Start: {uploadRangeTempStart ? uploadRangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        <span>End: {uploadRangeTempEnd ? uploadRangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setUploadRangeTempStart(null); setUploadRangeTempEnd(null); }}>Clear</button>
+                        <button
+                          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+                          disabled={!uploadRangeTempStart && !uploadRangeTempEnd}
+                          onClick={() => {
+                            const s = uploadRangeTempStart ? new Date(uploadRangeTempStart) : new Date(pageTabDateRange.start);
+                            const e = uploadRangeTempEnd ? new Date(uploadRangeTempEnd) : (uploadRangeTempStart ? new Date(uploadRangeTempStart) : new Date(pageTabDateRange.end));
+                            s.setHours(0,0,0,0);
+                            e.setHours(23,59,59,999);
+                            
+                            setPageTabDateRange({ start: s.toISOString(), end: e.toISOString() });
+                            setIsUploadRangePopoverOpen(false);
+                          }}
+                        >Apply</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Load Button - Centered */}
               <button
-                onClick={fetchAllPagesEngagementData}
+                onClick={() => fetchAllPagesEngagementData(pageTabDateRange)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
                 disabled={isLoadingAllPagesData || !currentUser}
               >
                 {isLoadingAllPagesData ? 'กำลังโหลดข้อมูล...' : 'โหลดข้อมูลทุกเพจ'}
               </button>
+              
+              {/* Status Message */}
               {Object.keys(allPagesEngagementData).length > 0 && (
                 <div className="text-sm text-gray-600">
                   แสดงข้อมูล {Object.keys(allPagesEngagementData).length} เพจ
                 </div>
               )}
             </div>
-            <table className="min-w-[1200px] w-full text-sm">
+            
+            {/* Table - Only show after data is loaded */}
+            {Object.keys(allPagesEngagementData).length > 0 && (
+              <table className="min-w-[1200px] w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-600">
                   <th className="px-3 py-2 text-left">เพจ/ช่องทาง</th>
@@ -1648,6 +1816,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 })}
               </tbody>
             </table>
+            )}
           </div>
         )}
       </div>
@@ -1768,7 +1937,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       {/* Export Modal */}
       {isExportModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className={`bg-white rounded-lg p-6 w-full max-w-4xl ${isExportRangePopoverOpen ? 'h-auto' : 'max-h-[90vh]'} overflow-y-auto`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">ส่งออกข้อมูลเป็น CSV</h2>
               <button
@@ -1812,7 +1981,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   
                   {/* Date Range Popover */}
                   {isExportRangePopoverOpen && (
-                    <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                    <div className="absolute z-50 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{
+                      bottom: '100%', // Position above the input
+                      marginBottom: '5px'
+                    }}>
                       <div className="flex items-center justify-between mb-3">
                         <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                         <div className="text-sm text-gray-600">Select date range</div>
@@ -2015,7 +2187,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       {/* Upload Modal */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className={`bg-white rounded-lg p-6 w-full max-w-4xl ${isUploadRangePopoverOpen ? 'h-auto' : 'max-h-[90vh]'} overflow-y-auto`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">อัปโหลดข้อมูลลง Database</h2>
               <button
@@ -2046,7 +2218,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                       // Calculate position for popover
                       const rect = event.currentTarget.getBoundingClientRect();
                       setUploadPopoverPosition({
-                        top: rect.bottom + window.scrollY + 5,
+                        top: rect.top + window.scrollY - 5, // Position above the input
                         left: rect.left + window.scrollX
                       });
                       
@@ -2068,7 +2240,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   {/* Date Range Popover */}
                   {isUploadRangePopoverOpen && (
                     <div className="fixed z-[60] bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{
-                      top: `${uploadPopoverPosition.top}px`,
+                      top: `${uploadPopoverPosition.top - 380}px`, // Move popover above input
                       left: `${uploadPopoverPosition.left}px`,
                     }}>
                       <div className="flex items-center justify-between mb-3">
