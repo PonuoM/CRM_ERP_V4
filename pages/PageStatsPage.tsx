@@ -102,6 +102,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [batchRecords, setBatchRecords] = useState<any[]>([]);
   const [selectedBatches, setSelectedBatches] = useState<Set<number>>(new Set());
   const [isDeletingBatches, setIsDeletingBatches] = useState<boolean>(false);
+  
+  // State for access token warning modal
+  const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
+  const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
 
   // Get current user from localStorage
   useEffect(() => {
@@ -139,6 +143,19 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     fetchPages();
     fetchExistingDateRanges();
   }, []);
+
+  // Check for access token when component mounts
+  useEffect(() => {
+    if (currentUser && !isEnvSidebarOpen && !wasEnvSidebarOpened) {
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
+      
+      // Show warning modal immediately if no token is found and env sidebar is not open and wasn't recently opened
+      if (!hasAccessToken) {
+        setIsAccessTokenWarningOpen(true);
+      }
+    }
+  }, [currentUser, envVariables, isEnvSidebarOpen, wasEnvSidebarOpened]);
 
   const customersById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -1168,7 +1185,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
-        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        setIsAccessTokenWarningOpen(true);
         return;
       }
 
@@ -2010,7 +2027,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       {/* Floating button for env management - Only for Super Admin and Admin Control */}
       {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
         <button
-          onClick={() => setIsEnvSidebarOpen(true)}
+          onClick={() => {
+            setIsAccessTokenWarningOpen(false);
+            setIsEnvSidebarOpen(true);
+            setWasEnvSidebarOpened(true);
+          }}
           className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
           title="จัดการตัวแปรสภาพแวดล้อม"
         >
@@ -2028,7 +2049,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
               <button
-                onClick={() => setIsEnvSidebarOpen(false)}
+                onClick={() => {
+                  setIsEnvSidebarOpen(false);
+                  // Reset the flag after a delay to prevent modal from showing immediately
+                  setTimeout(() => setWasEnvSidebarOpened(false), 1000);
+                }}
                 className="p-1 rounded-full hover:bg-gray-100"
               >
                 <X className="w-5 h-5" />
@@ -2717,6 +2742,35 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={() => setIsEnvSidebarOpen(false)}
         />
+      )}
+      
+      {/* Access Token Warning Modal */}
+      {isAccessTokenWarningOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">ไม่พบ ACCESS_TOKEN_PANCAKE_</h2>
+              <button
+                onClick={() => setIsAccessTokenWarningOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-center">
+              <div className="text-red-500 text-6xl mb-4">⚠️</div>
+              <p className="text-gray-600 mb-6">
+                กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่ม ACCESS_TOKEN_PANCAKE_{currentUser?.company_id} สำหรับบริษัทของคุณ
+              </p>
+              <button
+                onClick={() => setIsAccessTokenWarningOpen(false)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
