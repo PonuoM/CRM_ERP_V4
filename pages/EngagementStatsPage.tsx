@@ -887,6 +887,22 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       // Log all engagement data to console
       console.log('All Engagement Data:', allEngagementData);
       
+      // First, ensure tables exist
+      try {
+        const setupResponse = await fetch('api/Page_DB/setup_engagement_tables.php', {
+          method: 'GET'
+        });
+        
+        if (!setupResponse.ok) {
+          console.warn('Table setup failed, but continuing with upload');
+        } else {
+          const setupResult = await setupResponse.json();
+          console.log('Table setup result:', setupResult);
+        }
+      } catch (error) {
+        console.warn('Table setup error, but continuing with upload:', error);
+      }
+      
       // Save data to database
       const saveResponse = await fetch('api/Page_DB/page_engagement_upload.php', {
         method: 'POST',
