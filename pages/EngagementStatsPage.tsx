@@ -78,6 +78,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [isUploadRangePopoverOpen, setIsUploadRangePopoverOpen] = useState<boolean>(false);
+  const [uploadPopoverPosition, setUploadPopoverPosition] = useState<{top: number, left: number}>({top: 0, left: 0});
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadBatches, setUploadBatches] = useState<Array<{
     id: number;
@@ -1860,7 +1861,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(event) => {
                       // Initialize temp dates from current range or defaults
                       const [sRaw, eRaw] = (uploadDateRange || '').split(' - ');
                       const s = sRaw ? new Date(sRaw) : new Date(startDate);
@@ -1868,6 +1869,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                       setUploadRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
                       setUploadRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
                       setUploadVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                      
+                      // Calculate position for popover
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setUploadPopoverPosition({
+                        top: rect.bottom + window.scrollY + 5,
+                        left: rect.left + window.scrollX
+                      });
+                      
                       setIsUploadRangePopoverOpen(!isUploadRangePopoverOpen);
                     }}
                     className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white w-full"
@@ -1885,7 +1894,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   
                   {/* Date Range Popover */}
                   {isUploadRangePopoverOpen && (
-                    <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                    <div className="fixed z-[60] bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{
+                      top: `${uploadPopoverPosition.top}px`,
+                      left: `${uploadPopoverPosition.left}px`,
+                    }}>
                       <div className="flex items-center justify-between mb-3">
                         <button className="p-1 rounded hover:bg-gray-100" onClick={() => setUploadVisibleMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                         <div className="text-sm text-gray-600">Select date range</div>
