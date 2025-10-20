@@ -87,6 +87,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     createdAt: string;
   }>>([]);
 
+  // State for tracking existing dates in database
+  const [existingDatesInDatabase, setExistingDatesInDatabase] = useState<Set<string>>(new Set());
+
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
     customers.forEach(c => { map[c.id] = c });
@@ -132,6 +135,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     };
 
     fetchPages();
+    fetchExistingDateRanges();
+    fetchUploadBatches();
   }, []);
 
   // Fetch env variables
@@ -152,6 +157,29 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       fetchEnvVariables();
     }
   }, [isEnvSidebarOpen]);
+
+  // Fetch upload batches from database
+  const fetchUploadBatches = async () => {
+    try {
+      const response = await fetch('api/Page_DB/get_date_ranges.php?source=page_engagement');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.dateRanges) {
+          // Transform the data to match the expected format
+          const batches = data.dateRanges.map((batch: any) => ({
+            id: batch.id,
+            dateRange: batch.date_range,
+            status: 'completed' as const, // All batches from database are completed
+            recordsCount: batch.record_count || 0,
+            createdAt: batch.created_at
+          }));
+          setUploadBatches(batches);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching upload batches:', error);
+    }
+  };
 
   // Save env variable
   const saveEnvVariable = async (envVar: EnvVariable) => {
@@ -235,6 +263,24 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       alert('เกิดข้อผิดพลาดในการลบ');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Fetch existing date ranges from database
+  const fetchExistingDateRanges = async () => {
+    try {
+      // Use only page_engagement data for the EngagementStatsPage
+      const response = await fetch('api/Page_DB/get_date_ranges.php?source=page_engagement');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          if (data.existingDates) {
+            setExistingDatesInDatabase(new Set(data.existingDates));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching existing date ranges:', error);
     }
   };
 
@@ -936,6 +982,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             }
           : batch
       ));
+      
+      // Refresh batches from database to get the actual database ID
+      fetchUploadBatches();
       
       alert(`อัปโหลดข้อมูลสำเร็จจาก ${allEngagementData.length} เพจ ทั้งหมด ${saveResult.recordsCount || totalRecords} รายการ`);
     } catch (error) {
@@ -1872,19 +1921,46 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                                     const selectedStart = uploadRangeTempStart && isSameDay(d, uploadRangeTempStart);
                                     const selectedEnd = uploadRangeTempEnd && isSameDay(d, uploadRangeTempEnd);
                                     const between = inBetween(d, uploadRangeTempStart, uploadRangeTempEnd) && !selectedStart && !selectedEnd;
-                                    const base = `text-sm text-center py-1.5 rounded cursor-pointer select-none`;
-                                    const tone = selectedStart || selectedEnd
-                                      ? 'bg-blue-600 text-white'
-                                      : between
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : isCurrMonth
-                                          ? 'text-gray-900 hover:bg-gray-100'
-                                          : 'text-gray-400 hover:bg-gray-100';
+                                    
+                                    // Check if this date exists in the database
+                                    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                    const isDateInDatabase = existingDatesInDatabase.has(dateKey);
+                                    
+                                    // Check if this date is today
+                                    const today = new Date();
+                                    const isToday = d.getFullYear() === today.getFullYear() &&
+                                                   d.getMonth() === today.getMonth() &&
+                                                   d.getDate() === today.getDate();
+                                    
+                                    const base = `text-sm text-center py-1.5 rounded select-none`;
+                                    let tone = '';
+                                    let isDisabled = false;
+                                    
+                                    if (isDateInDatabase) {
+                                      // Date exists in database - green and disabled
+                                      tone = 'bg-green-500 text-white cursor-not-allowed opacity-75';
+                                      isDisabled = true;
+                                    } else if (isToday) {
+                                      // Today - orange and disabled
+                                      tone = 'bg-orange-500 text-white cursor-not-allowed opacity-75';
+                                      isDisabled = true;
+                                    } else if (selectedStart || selectedEnd) {
+                                      tone = 'bg-blue-600 text-white';
+                                    } else if (between) {
+                                      tone = 'bg-blue-100 text-blue-700';
+                                    } else if (isCurrMonth) {
+                                      tone = 'text-gray-900 hover:bg-gray-100';
+                                    } else {
+                                      tone = 'text-gray-400 hover:bg-gray-100';
+                                    }
+                                    
                                     return (
                                       <div
                                         key={idx}
                                         className={`${base} ${tone}`}
                                         onClick={() => {
+                                          if (isDisabled) return;
+                                          
                                           const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                                           if (!uploadRangeTempStart || (uploadRangeTempStart && uploadRangeTempEnd)) {
                                             setUploadRangeTempStart(day);
@@ -1920,6 +1996,16 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                         <div>
                           <span className="mr-2">Start: {uploadRangeTempStart ? uploadRangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
                           <span>End: {uploadRangeTempEnd ? uploadRangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        </div>
+                        <div className="flex gap-4">
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-green-500 rounded"></div>
+                            <span>ข้อมูลถูกอัปโหลดแล้ว</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                            <span>วันปัจจุบัน</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setUploadRangeTempStart(null); setUploadRangeTempEnd(null); }}>Clear</button>

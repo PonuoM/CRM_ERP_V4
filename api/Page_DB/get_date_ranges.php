@@ -34,9 +34,38 @@ try {
     // Create database connection using the db_connect function
     $conn = db_connect();
     
-    // Query to get all date ranges from page_stats_batch with additional info
-    $stmt = $conn->query("SELECT b.id, b.date_range, b.created_at, COUNT(l.id) as record_count FROM page_stats_batch b LEFT JOIN page_stats_log l ON b.id = l.batch_id GROUP BY b.id ORDER BY b.created_at DESC");
-    $dateRanges = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Check if a specific source is requested
+    $source = isset($_GET['source']) ? $_GET['source'] : 'all';
+    
+    if ($source === 'page_engagement') {
+        // Only get data from page_engagement_batch
+        $stmt = $conn->query("SELECT b.id, b.date_range, b.created_at, COUNT(l.id) as record_count, 'page_engagement' as source FROM page_engagement_batch b LEFT JOIN page_engagement_log l ON b.id = l.batch_id GROUP BY b.id ORDER BY b.created_at DESC");
+        $dateRanges = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($source === 'page_stats') {
+        // Only get data from page_stats_batch
+        $stmt = $conn->query("SELECT b.id, b.date_range, b.created_at, COUNT(l.id) as record_count, 'page_stats' as source FROM page_stats_batch b LEFT JOIN page_stats_log l ON b.id = l.batch_id GROUP BY b.id ORDER BY b.created_at DESC");
+        $dateRanges = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Default: get data from both tables
+        $stmt = $conn->query("SELECT b.id, b.date_range, b.created_at, COUNT(l.id) as record_count, 'page_stats' as source FROM page_stats_batch b LEFT JOIN page_stats_log l ON b.id = l.batch_id GROUP BY b.id ORDER BY b.created_at DESC");
+        $pageStatsRanges = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $stmt = $conn->query("SELECT b.id, b.date_range, b.created_at, COUNT(l.id) as record_count, 'page_engagement' as source FROM page_engagement_batch b LEFT JOIN page_engagement_log l ON b.id = l.batch_id GROUP BY b.id ORDER BY b.created_at DESC");
+        $pageEngagementRanges = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Merge both arrays
+        $dateRanges = array_merge($pageStatsRanges, $pageEngagementRanges);
+        
+        // Sort by created_at desc
+        usort($dateRanges, function($a, $b) {
+            return strtotime($b['created_at']) - strtotime($a['created_at']);
+        });
+    }
+    
+    // Sort by created_at desc
+    usort($dateRanges, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
     
     // Parse date ranges to extract individual dates
     $existingDates = [];

@@ -286,3 +286,52 @@ SET @preparedStatement = (SELECT IF(
 PREPARE addFkIfNotExists FROM @preparedStatement;
 EXECUTE addFkIfNotExists;
 DEALLOCATE PREPARE addFkIfNotExists;
+-- Force drop created_at columns from log tables
+-- This script will drop the created_at columns even if there's data in the tables
+
+-- Disable foreign key checks temporarily
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Drop created_at column from page_engagement_log if it exists
+SET @dbname = DATABASE();
+SET @tablename = 'page_engagement_log';
+
+-- Check if column exists and drop it
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE
+      (table_schema = @dbname)
+      AND (table_name = @tablename)
+      AND (column_name = 'created_at')
+  ) > 0,
+  'ALTER TABLE page_engagement_log DROP COLUMN created_at',
+  'SELECT "Column created_at does not exist in page_engagement_log" as message'
+));
+PREPARE dropColumnIfExists FROM @preparedStatement;
+EXECUTE dropColumnIfExists;
+DEALLOCATE PREPARE dropColumnIfExists;
+
+-- Drop created_at column from page_stats_log if it exists
+SET @tablename = 'page_stats_log';
+
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE
+      (table_schema = @dbname)
+      AND (table_name = @tablename)
+      AND (column_name = 'created_at')
+  ) > 0,
+  'ALTER TABLE page_stats_log DROP COLUMN created_at',
+  'SELECT "Column created_at does not exist in page_stats_log" as message'
+));
+PREPARE dropColumnIfExists FROM @preparedStatement;
+EXECUTE dropColumnIfExists;
+DEALLOCATE PREPARE dropColumnIfExists;
+
+-- Re-enable foreign key checks
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- Show results
+SELECT 'Force drop created_at columns completed' as status;
