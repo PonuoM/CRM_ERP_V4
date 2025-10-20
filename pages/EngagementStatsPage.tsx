@@ -93,6 +93,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   
   // State for access token warning modal
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
+  const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
   
   // State for all pages engagement data
   const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
@@ -178,16 +179,16 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   // Check for access token when component mounts
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !isEnvSidebarOpen && !wasEnvSidebarOpened) {
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
       
-      // Show warning modal immediately if no token is found
+      // Show warning modal immediately if no token is found and env sidebar is not open and wasn't recently opened
       if (!hasAccessToken) {
         setIsAccessTokenWarningOpen(true);
       }
     }
-  }, [currentUser, envVariables]);
+  }, [currentUser, envVariables, isEnvSidebarOpen, wasEnvSidebarOpened]);
 
   // Fetch upload batches from database
   const fetchUploadBatches = async () => {
@@ -1860,7 +1861,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       {/* Floating button for env management - Only for Super Admin and Admin Control */}
       {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
         <button
-          onClick={() => setIsEnvSidebarOpen(true)}
+          onClick={() => {
+            setIsAccessTokenWarningOpen(false);
+            setIsEnvSidebarOpen(true);
+            setWasEnvSidebarOpened(true);
+          }}
           className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
           title="จัดการตัวแปรสภาพแวดล้อม"
         >
@@ -1878,7 +1883,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
               <button
-                onClick={() => setIsEnvSidebarOpen(false)}
+                onClick={() => {
+                  setIsEnvSidebarOpen(false);
+                  // Reset the flag after a delay to prevent modal from showing immediately
+                  setTimeout(() => setWasEnvSidebarOpened(false), 1000);
+                }}
                 className="p-1 rounded-full hover:bg-gray-100"
               >
                 <X className="w-5 h-5" />
