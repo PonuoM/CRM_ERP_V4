@@ -1198,18 +1198,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             )}
             {isSelectOpen && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {pageSearchTerm === '' && (
-                  <div
-                    onMouseDown={() => {
-                      setSelectedPageId('all');
-                      setPageSearchTerm('ทุกเพจ');
-                      setIsSelectOpen(false);
-                    }}
-                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                  >
-                    ทุกเพจ
-                  </div>
-                )}
                 {allPages
                   .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
                   .map((page) => (
