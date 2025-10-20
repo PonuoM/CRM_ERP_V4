@@ -90,6 +90,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   // State for tracking existing dates in database
   const [existingDatesInDatabase, setExistingDatesInDatabase] = useState<Set<string>>(new Set());
+  
+  // State for all pages engagement data
+  const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
+  const [isLoadingAllPagesData, setIsLoadingAllPagesData] = useState<boolean>(false);
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -1005,6 +1009,130 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     }
   };
 
+  // Fetch engagement data for all pages
+  const fetchAllPagesEngagementData = async () => {
+    if (!currentUser) {
+      alert('กรุณาเข้าสู่ระบบ');
+      return;
+    }
+
+    const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
+    
+    if (activePagesList.length === 0) {
+      alert('ไม่พบเพจที่จะดำเนินการ');
+      return;
+    }
+
+    setIsLoadingAllPagesData(true);
+    setAllPagesEngagementData({});
+
+    try {
+      // First, get the access token from env variables
+      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        throw new Error(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+      }
+
+      // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
+      const formatDateForAPI = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      };
+
+      const formattedStartDate = formatDateForAPI(startDate);
+      const formattedEndDate = formatDateForAPI(endDate);
+      const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
+
+      const pagesData: Record<string, any> = {};
+
+      // Loop through all active pages and fetch engagement data
+      for (const page of activePagesList) {
+        const pageId = page.page_id || page.id;
+        
+        try {
+          // API 1: Generate page access token for each page
+          const tokenResponse = await fetchWithRetry(
+            `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
+            continue;
+          }
+          
+          const tokenData = await tokenResponse.json();
+          
+          if (!tokenData.success || !tokenData.page_access_token) {
+            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
+            continue;
+          }
+
+          // API 2: Fetch engagement statistics for each page
+          const engagementResponse = await fetchWithRetry(
+            `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${pageId}&date_range=${encodeURIComponent(dateRange)}`,
+            { method: 'GET' }
+          );
+
+          if (!engagementResponse.ok) {
+            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
+            continue;
+          }
+          
+          const engagementResult = await engagementResponse.json();
+          
+          if (!engagementResult.success || !engagementResult.data) {
+            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name}: ` + (engagementResult.message || 'Unknown error'));
+            continue;
+          }
+
+          // Store the engagement data for this page
+          pagesData[pageId] = {
+            pageId: pageId,
+            pageName: page.name,
+            data: engagementResult.data
+          };
+
+          console.log(`Engagement Data for ${page.name}:`, engagementResult);
+        } catch (error) {
+          console.error(`Error processing page ${page.name}:`, error);
+          // Continue with other pages even if one fails
+        }
+      }
+
+      setAllPagesEngagementData(pagesData);
+      
+      if (Object.keys(pagesData).length === 0) {
+        alert('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+      } else {
+        alert(`โหลดข้อมูลสำเร็จจาก ${Object.keys(pagesData).length} เพจ`);
+      }
+    } catch (error) {
+      console.error('Error fetching all pages engagement data:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert('เกิดข้อผิดพลาด: ' + errorMessage);
+    } finally {
+      setIsLoadingAllPagesData(false);
+    }
+  };
+
   // Toggle page selection for export
   const togglePageSelection = (pageId: string) => {
     setSelectedPagesForExport(prev => {
@@ -1436,6 +1564,20 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
         {activeTab === 'page' && (
           <div className="overflow-auto">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={fetchAllPagesEngagementData}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+                disabled={isLoadingAllPagesData || !currentUser}
+              >
+                {isLoadingAllPagesData ? 'กำลังโหลดข้อมูล...' : 'โหลดข้อมูลทุกเพจ'}
+              </button>
+              {Object.keys(allPagesEngagementData).length > 0 && (
+                <div className="text-sm text-gray-600">
+                  แสดงข้อมูล {Object.keys(allPagesEngagementData).length} เพจ
+                </div>
+              )}
+            </div>
             <table className="min-w-[1200px] w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-600">
@@ -1457,21 +1599,52 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
               </thead>
               <tbody>
                 {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => {
-                  const name = p.name;
-                  const v = (pageAgg as any)[name] || { newInteract: 0, oldInteract: 0, totalInteract: 0, talked: 0, totalOrders: 0, ordersFromNew: 0 };
-                  return (
-                    <tr key={p.page_id || p.id} className="border-t border-gray-100">
-                      <td className="px-3 py-2">{name}</td>
-                      <td className="px-3 py-2 text-right">{v.newInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.oldInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.totalInteract}</td>
-                      <td className="px-3 py-2 text-right">{v.talked}</td>
-                      <td className="px-3 py-2 text-right">{v.totalOrders}</td>
-                      <td className="px-3 py-2 text-right">{v.ordersFromNew}</td>
-                      <td className="px-3 py-2 text-right">{(v.totalInteract>0?(v.totalOrders/v.totalInteract)*100:0).toFixed(2)}%</td>
-                      <td className="px-3 py-2 text-right">{(v.newInteract>0?(v.ordersFromNew/v.newInteract)*100:0).toFixed(2)}%</td>
-                    </tr>
-                  );
+                  const pageId = p.page_id || p.id;
+                  const pageData = allPagesEngagementData[pageId];
+                  
+                  if (pageData && pageData.data) {
+                    const series = pageData.data.series || [];
+                    const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                    const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                    const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+                    const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+                    
+                    const totalEngagement = totalSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalNewCustomerReplied = newCustomerRepliedSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalOrders = orderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalOldOrders = oldOrderCountSeries.data.reduce((sum: number, val: number) => sum + val, 0);
+                    const totalNewOrders = totalOrders - totalOldOrders;
+                    const totalOldCustomerReplied = totalEngagement - totalNewCustomerReplied;
+                    
+                    return (
+                      <tr key={pageId} className="border-t border-gray-100">
+                        <td className="px-3 py-2">{p.name}</td>
+                        <td className="px-3 py-2 text-right">{totalNewCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{totalOldCustomerReplied}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement}</td>
+                        <td className="px-3 py-2 text-right">{totalOrders}</td>
+                        <td className="px-3 py-2 text-right">{totalNewOrders}</td>
+                        <td className="px-3 py-2 text-right">{totalEngagement > 0 ? ((totalOrders / totalEngagement) * 100).toFixed(2) : 0}%</td>
+                        <td className="px-3 py-2 text-right">{totalNewCustomerReplied > 0 ? ((totalNewOrders / totalNewCustomerReplied) * 100).toFixed(2) : 0}%</td>
+                      </tr>
+                    );
+                  } else {
+                    // Show placeholder when no data is available
+                    return (
+                      <tr key={pageId} className="border-t border-gray-100">
+                        <td className="px-3 py-2">{p.name}</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                        <td className="px-3 py-2 text-right text-gray-400">-</td>
+                      </tr>
+                    );
+                  }
                 })}
               </tbody>
             </table>
