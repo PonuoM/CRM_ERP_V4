@@ -67,6 +67,25 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const [selectedPagesForExport, setSelectedPagesForExport] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
+  
+  // Upload modal state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [uploadDateRange, setUploadDateRange] = useState<string>('');
+  const [uploadRangeTempStart, setUploadRangeTempStart] = useState<Date | null>(null);
+  const [uploadRangeTempEnd, setUploadRangeTempEnd] = useState<Date | null>(null);
+  const [uploadVisibleMonth, setUploadVisibleMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [isUploadRangePopoverOpen, setIsUploadRangePopoverOpen] = useState<boolean>(false);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadBatches, setUploadBatches] = useState<Array<{
+    id: number;
+    dateRange: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    recordsCount?: number;
+    createdAt: string;
+  }>>([]);
 
   const customerById = useMemo(() => {
     const map: Record<string, Customer> = {};
@@ -716,6 +735,210 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     }
   };
 
+  // Upload engagement data to database
+  const uploadEngagementData = async () => {
+    if (!currentUser) {
+      alert('กรุณาเข้าสู่ระบบ');
+      return;
+    }
+
+    // Parse date range
+    if (!uploadDateRange) {
+      alert('กรุณาเลือกช่วงวันที่');
+      return;
+    }
+
+    const [sRaw, eRaw] = uploadDateRange.split(' - ');
+    if (!sRaw || !eRaw) {
+      alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
+      return;
+    }
+
+    const s = new Date(sRaw);
+    const e = new Date(eRaw);
+    s.setHours(0, 0, 0, 0);
+    e.setHours(23, 59, 59, 999);
+
+    // Determine which pages to process
+    const pagesToProcess = selectedPageId === 'all'
+      ? allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active))
+      : allPages.filter(p => (p.page_id || p.id) === selectedPageId);
+
+    if (pagesToProcess.length === 0) {
+      alert('ไม่พบเพจที่จะดำเนินการ');
+      return;
+    }
+
+    // Create new batch record
+    const newBatch = {
+      id: Date.now(),
+      dateRange: uploadDateRange,
+      status: 'processing' as const,
+      createdAt: new Date().toISOString()
+    };
+
+    setUploadBatches(prev => [newBatch, ...prev]);
+    setIsUploading(true);
+
+    try {
+      // First, get the access token from env variables
+      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      if (!envResponse.ok) {
+        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      }
+      const envData = await envResponse.json();
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+
+      if (!accessToken) {
+        throw new Error(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+      }
+
+      // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
+      const formatDateForAPI = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      };
+
+      const formattedStartDate = formatDateForAPI(s);
+      const formattedEndDate = formatDateForAPI(e);
+      const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
+
+      // Store all engagement data from all pages
+      const allEngagementData: any[] = [];
+      let totalRecords = 0;
+
+      // Loop through all pages and fetch engagement data
+      for (const page of pagesToProcess) {
+        const pageId = page.page_id || page.id;
+        
+        try {
+          // API 1: Generate page access token for each page
+          const tokenResponse = await fetchWithRetry(
+            `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
+            continue;
+          }
+          
+          const tokenData = await tokenResponse.json();
+          
+          if (!tokenData.success || !tokenData.page_access_token) {
+            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
+            continue;
+          }
+
+          // API 2: Fetch engagement statistics for each page
+          const engagementResponse = await fetchWithRetry(
+            `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${pageId}&date_range=${encodeURIComponent(dateRange)}`,
+            { method: 'GET' }
+          );
+
+          if (!engagementResponse.ok) {
+            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
+            continue;
+          }
+          
+          const engagementResult = await engagementResponse.json();
+          
+          if (!engagementResult.success || !engagementResult.data) {
+            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name}: ` + (engagementResult.message || 'Unknown error'));
+            continue;
+          }
+
+          // Add page information to the engagement data
+          const pageEngagementData = {
+            pageId: pageId,
+            pageName: page.name,
+            data: engagementResult.data
+          };
+
+          allEngagementData.push(pageEngagementData);
+          
+          // Count records from this page
+          if (engagementResult.data.categories) {
+            totalRecords += engagementResult.data.categories.length;
+          }
+
+          console.log(`Engagement Data for ${page.name}:`, engagementResult);
+        } catch (error) {
+          console.error(`Error processing page ${page.name}:`, error);
+          // Continue with other pages even if one fails
+        }
+      }
+
+      if (allEngagementData.length === 0) {
+        throw new Error('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+      }
+
+      // Log all engagement data to console
+      console.log('All Engagement Data:', allEngagementData);
+      
+      // Save data to database
+      const saveResponse = await fetch('api/Page_DB/page_engagement_upload.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dateRange: uploadDateRange,
+          userId: currentUser.id,
+          engagementData: allEngagementData
+        })
+      });
+
+      if (!saveResponse.ok) {
+        throw new Error('ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลได้');
+      }
+
+      const saveResult = await saveResponse.json();
+      
+      if (!saveResult.success) {
+        throw new Error('ไม่สามารถบันทึกข้อมูลลงฐานข้อมูล: ' + (saveResult.error || 'Unknown error'));
+      }
+      
+      // Update batch status to completed with database batch ID
+      setUploadBatches(prev => prev.map(batch =>
+        batch.id === newBatch.id
+          ? {
+              ...batch,
+              status: 'completed',
+              recordsCount: saveResult.recordsCount || totalRecords
+            }
+          : batch
+      ));
+      
+      alert(`อัปโหลดข้อมูลสำเร็จจาก ${allEngagementData.length} เพจ ทั้งหมด ${saveResult.recordsCount || totalRecords} รายการ`);
+    } catch (error) {
+      console.error('Error uploading engagement data:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Update batch status to failed
+      setUploadBatches(prev => prev.map(batch =>
+        batch.id === newBatch.id
+          ? { ...batch, status: 'failed' }
+          : batch
+      ));
+      
+      alert('เกิดข้อผิดพลาด: ' + errorMessage);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Toggle page selection for export
   const togglePageSelection = (pageId: string) => {
     setSelectedPagesForExport(prev => {
@@ -824,6 +1047,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
         >
           <Download className="w-4 h-4"/> ดาวน์โหลด CSV
+        </button>
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+        >
+          <Save className="w-4 h-4"/> อัปโหลดข้อมูล
         </button>
       </div>
 
@@ -1537,6 +1766,248 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   disabled={isExporting || selectedPagesForExport.size === 0 || !exportDateRange}
                 >
                   {isExporting ? 'กำลังส่งออก...' : 'ดาวน์โหลด CSV'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Upload Modal */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">อัปโหลดข้อมูลลง Database</h2>
+              <button
+                onClick={() => setIsUploadModalOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+                disabled={isUploading}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Date Range Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">เลือกช่วงวันที่</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Initialize temp dates from current range or defaults
+                      const [sRaw, eRaw] = (uploadDateRange || '').split(' - ');
+                      const s = sRaw ? new Date(sRaw) : new Date(startDate);
+                      const e = eRaw ? new Date(eRaw) : new Date(endDate);
+                      setUploadRangeTempStart(new Date(s.getFullYear(), s.getMonth(), s.getDate()));
+                      setUploadRangeTempEnd(new Date(e.getFullYear(), e.getMonth(), e.getDate()));
+                      setUploadVisibleMonth(new Date(e.getFullYear(), e.getMonth(), 1));
+                      setIsUploadRangePopoverOpen(!isUploadRangePopoverOpen);
+                    }}
+                    className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white w-full"
+                  >
+                    <Calendar className="w-4 h-4 text-gray-500" />
+                    <span className="text-gray-700">
+                      {(() => {
+                        const [sRaw, eRaw] = (uploadDateRange || '').split(' - ');
+                        const s = sRaw ? new Date(sRaw) : startDate;
+                        const e = eRaw ? new Date(eRaw) : endDate;
+                        return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                      })()}
+                    </span>
+                  </button>
+                  
+                  {/* Date Range Popover */}
+                  {isUploadRangePopoverOpen && (
+                    <div className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]">
+                      <div className="flex items-center justify-between mb-3">
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setUploadVisibleMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                        <div className="text-sm text-gray-600">Select date range</div>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setUploadVisibleMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                      </div>
+
+                      <div className="flex gap-4">
+                        {(() => {
+                          const renderMonth = (monthStart: Date) => {
+                            const firstDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+                            const startWeekDay = firstDay.getDay();
+                            const gridStart = new Date(firstDay);
+                            gridStart.setDate(firstDay.getDate() - startWeekDay);
+                            const days: Date[] = [];
+                            for (let i = 0; i < 42; i++) {
+                              const d = new Date(gridStart);
+                              d.setDate(gridStart.getDate() + i);
+                              days.push(d);
+                            }
+                            const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                            const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                            const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+                            const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                            return (
+                              <div className="w-[320px]">
+                                <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
+                                <div className="grid grid-cols-7 gap-1 text-[12px] text-gray-500 mb-1">
+                                  {weekDays.map(d => <div key={d} className="text-center py-1">{d}</div>)}
+                                </div>
+                                <div className="grid grid-cols-7 gap-1">
+                                  {days.map((d, idx) => {
+                                    const isCurrMonth = d.getMonth() === monthStart.getMonth();
+                                    const selectedStart = uploadRangeTempStart && isSameDay(d, uploadRangeTempStart);
+                                    const selectedEnd = uploadRangeTempEnd && isSameDay(d, uploadRangeTempEnd);
+                                    const between = inBetween(d, uploadRangeTempStart, uploadRangeTempEnd) && !selectedStart && !selectedEnd;
+                                    const base = `text-sm text-center py-1.5 rounded cursor-pointer select-none`;
+                                    const tone = selectedStart || selectedEnd
+                                      ? 'bg-blue-600 text-white'
+                                      : between
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : isCurrMonth
+                                          ? 'text-gray-900 hover:bg-gray-100'
+                                          : 'text-gray-400 hover:bg-gray-100';
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`${base} ${tone}`}
+                                        onClick={() => {
+                                          const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                                          if (!uploadRangeTempStart || (uploadRangeTempStart && uploadRangeTempEnd)) {
+                                            setUploadRangeTempStart(day);
+                                            setUploadRangeTempEnd(null);
+                                            return;
+                                          }
+                                          if (day.getTime() < uploadRangeTempStart.getTime()) {
+                                            setUploadRangeTempEnd(uploadRangeTempStart);
+                                            setUploadRangeTempStart(day);
+                                          } else {
+                                            setUploadRangeTempEnd(day);
+                                          }
+                                        }}
+                                      >
+                                        {d.getDate()}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          };
+                          return (
+                            <>
+                              {renderMonth(new Date(uploadVisibleMonth))}
+                              {renderMonth(new Date(uploadVisibleMonth.getFullYear(), uploadVisibleMonth.getMonth()+1, 1))}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
+                        <div>
+                          <span className="mr-2">Start: {uploadRangeTempStart ? uploadRangeTempStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                          <span>End: {uploadRangeTempEnd ? uploadRangeTempEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1.5 border rounded-md hover:bg-gray-50" onClick={() => { setUploadRangeTempStart(null); setUploadRangeTempEnd(null); }}>Clear</button>
+                          <button
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
+                            disabled={!uploadRangeTempStart && !uploadRangeTempEnd}
+                            onClick={() => {
+                              const s = uploadRangeTempStart ? new Date(uploadRangeTempStart) : new Date(startDate);
+                              const e = uploadRangeTempEnd ? new Date(uploadRangeTempEnd) : (uploadRangeTempStart ? new Date(uploadRangeTempStart) : new Date(endDate));
+                              s.setHours(0,0,0,0);
+                              e.setHours(23,59,59,999);
+                              
+                              // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
+                              const formatDateTime = (date: Date) => {
+                                const y = date.getFullYear();
+                                const m = String(date.getMonth() + 1).padStart(2, '0');
+                                const d = String(date.getDate()).padStart(2, '0');
+                                const h = String(date.getHours()).padStart(2, '0');
+                                const min = String(date.getMinutes()).padStart(2, '0');
+                                return `${y}-${m}-${d}T${h}:${min}`;
+                              };
+                              
+                              setUploadDateRange(`${formatDateTime(s)} - ${formatDateTime(e)}`);
+                              setIsUploadRangePopoverOpen(false);
+                            }}
+                          >Apply</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Batch Information Table */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">ประวัติการอัปโหลด</label>
+                <div className="border rounded-md overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รอบที่</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ช่วงวันที่</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะ</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">จำนวนรายการ</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่สร้าง</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {uploadBatches.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-3 text-center text-sm text-gray-500">
+                            ยังไม่มีประวัติการอัปโหลด
+                          </td>
+                        </tr>
+                      ) : (
+                        uploadBatches.map((batch) => (
+                          <tr key={batch.id}>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                              {batch.id}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                              {batch.dateRange}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                batch.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                batch.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                                batch.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {batch.status === 'completed' ? 'สำเร็จ' :
+                                 batch.status === 'processing' ? 'กำลังดำเนินการ' :
+                                 batch.status === 'failed' ? 'ล้มเหลว' : 'รอดำเนินการ'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                              {batch.recordsCount || '-'}
+                            </td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(batch.createdAt).toLocaleString('th-TH')}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  disabled={isUploading}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={uploadEngagementData}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+                  disabled={isUploading || !uploadDateRange}
+                >
+                  {isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดข้อมูล'}
                 </button>
               </div>
             </div>
