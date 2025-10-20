@@ -150,8 +150,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
       
-      // Show warning modal immediately if no token is found and env sidebar is not open and wasn't recently opened
-      if (!hasAccessToken) {
+      // Only show warning modal if env variables have been loaded and no token is found
+      if (envVariables.length > 0 && !hasAccessToken) {
         setIsAccessTokenWarningOpen(true);
       }
     }
