@@ -91,6 +91,9 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // State for tracking existing dates in database
   const [existingDatesInDatabase, setExistingDatesInDatabase] = useState<Set<string>>(new Set());
   
+  // State for access token warning modal
+  const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
+  
   // State for all pages engagement data
   const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
   const [isLoadingAllPagesData, setIsLoadingAllPagesData] = useState<boolean>(false);
@@ -172,6 +175,19 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       fetchEnvVariables();
     }
   }, [isEnvSidebarOpen]);
+
+  // Check for access token when component mounts
+  useEffect(() => {
+    if (currentUser) {
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
+      
+      // Show warning modal immediately if no token is found
+      if (!hasAccessToken) {
+        setIsAccessTokenWarningOpen(true);
+      }
+    }
+  }, [currentUser, envVariables]);
 
   // Fetch upload batches from database
   const fetchUploadBatches = async () => {
@@ -475,6 +491,15 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       return;
     }
 
+    // Check if access token exists
+    const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+    const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
+    
+    if (!hasAccessToken) {
+      setIsAccessTokenWarningOpen(true);
+      return;
+    }
+
     setIsSearching(true);
     try {
       // First, get the access token from env variables
@@ -483,11 +508,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
       const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
-        alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        setIsAccessTokenWarningOpen(true);
         return;
       }
 
@@ -803,6 +827,15 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       return;
     }
 
+    // Check if access token exists
+    const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+    const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
+    
+    if (!hasAccessToken) {
+      setIsAccessTokenWarningOpen(true);
+      return;
+    }
+
     // Parse date range
     if (!uploadDateRange) {
       alert('กรุณาเลือกช่วงวันที่');
@@ -848,11 +881,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
       const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
-        throw new Error(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        setIsAccessTokenWarningOpen(true);
+        return;
       }
 
       // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
@@ -1026,6 +1059,15 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       return;
     }
 
+    // Check if access token exists
+    const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+    const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
+    
+    if (!hasAccessToken) {
+      setIsAccessTokenWarningOpen(true);
+      return;
+    }
+
     const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
     
     if (activePagesList.length === 0) {
@@ -1043,11 +1085,11 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
       const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
-        throw new Error(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
+        setIsAccessTokenWarningOpen(true);
+        return;
       }
 
       // Use the provided date range or the page tab date range
@@ -1161,8 +1203,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     });
   };
 
+  // Check if user has ACCESS_TOKEN_PANCAKE_
+  const hasAccessToken = currentUser && envVariables.some(envVar =>
+    envVar.key === `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`
+  );
+
   return (
-    <div className="p-6">
+    <>
+      <div className="p-6">
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-lg font-semibold text-gray-800">สถิติการมีส่วนร่วม</h2>
         <DateRangePicker value={range} onApply={setRange} />
@@ -2470,7 +2518,37 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           </div>
         </div>
       )}
-    </div>
+      
+      {/* Access Token Warning Modal */}
+      {isAccessTokenWarningOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">ไม่พบ ACCESS_TOKEN_PANCAKE_</h2>
+              <button
+                onClick={() => setIsAccessTokenWarningOpen(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-center">
+              <div className="text-red-500 text-6xl mb-4">⚠️</div>
+              <p className="text-gray-600 mb-6">
+                กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่ม ACCESS_TOKEN_PANCAKE_{currentUser?.company_id} สำหรับบริษัทของคุณ
+              </p>
+              <button
+                onClick={() => setIsAccessTokenWarningOpen(false)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
+    </>
   );
 };
 
