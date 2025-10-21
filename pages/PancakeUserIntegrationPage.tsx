@@ -239,6 +239,14 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
       
       // Clear any selected internal user to allow new selection
       setSelectedInternalUser(null);
+      
+      // Scroll to the selected user after a short delay to ensure the tab has switched
+      setTimeout(() => {
+        const selectedUserElement = document.querySelector(`[data-page-user-id="${user.page_user_id}"]`);
+        if (selectedUserElement) {
+          selectedUserElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     }
   };
 
@@ -540,6 +548,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                       filteredPageUsers.map(user => (
                         <div
                           key={user.id}
+                          data-page-user-id={user.page_user_id}
                           onClick={() => setSelectedPageUser(user)}
                           className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                             selectedPageUser?.id === user.id
