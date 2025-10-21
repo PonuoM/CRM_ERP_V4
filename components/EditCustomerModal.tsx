@@ -26,7 +26,12 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   };
 
   return (
-    <Modal title={`แก้ไขข้อมูล: ${customer.firstName} ${customer.lastName}`} onClose={onClose}>
+    <Modal 
+      title={`แก้ไขข้อมูล: ${customer.firstName} ${customer.lastName}`} 
+      onClose={onClose}
+      requireConfirmation={true}
+      confirmationMessage="คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป"
+    >
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>

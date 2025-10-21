@@ -267,6 +267,10 @@ export interface LineItem {
   discount: number;
   isFreebie: boolean;
   boxNumber: number;
+  productId?: number; // Optional product ID to track products from promotions
+  promotionId?: number; // NEW: รหัสโปรโมชั่นที่รายการนี้มาจาก
+  parentItemId?: number; // NEW: รหัสรายการแม่ (สำหรับรายการย่อยของโปรโมชั่น)
+  isPromotionParent?: boolean; // NEW: เป็นรายการแม่ของโปรโมชั่นหรือไม่
 }
 
 export interface CodBox {
@@ -301,6 +305,7 @@ export interface Order {
   trackingNumbers: string[];
   boxes?: CodBox[];
   notes?: string;
+  warehouseId?: number;
   salesChannel?: string;
   salesChannelPageId?: number;
   slips?: OrderSlip[];
@@ -339,12 +344,19 @@ export interface AdSpend {
 
 export interface PromotionItem {
   id: number;
-  promotionId: number;
-  productId: number;
+  promotionId?: number;
+  promotion_id?: number; // API field
+  productId?: number; // Frontend field
+  product_id?: number; // API field
   quantity: number;
-  isFreebie: boolean;
-  priceOverride?: number;
+  isFreebie?: boolean; // Frontend field
+  is_freebie?: boolean; // API field
+  priceOverride?: number; // Frontend field
+  price_override?: string; // API field
   product?: Product; // joined product data
+  product_name?: string; // product name from API
+  sku?: string; // product SKU from API
+  product_price?: string; // product price from API
 }
 
 export interface Promotion {
@@ -353,9 +365,11 @@ export interface Promotion {
   name: string;
   description?: string;
   companyId: number;
-  active: boolean;
+  active: boolean | number; // Support both boolean and number from API
   startDate?: string;
   endDate?: string;
+  start_date?: string; // API field
+  end_date?: string; // API field
   items: PromotionItem[];
 }
 

@@ -28,15 +28,15 @@ try {
     $pdo->exec("USE `{$DB_NAME}`");
     echo "✓ Using database '{$DB_NAME}'\n";
     
-    // Read and execute schema
-    $schema = file_get_contents(__DIR__ . '/api/schema.sql');
+    // Read and execute schema (use Database folder)
+    $schema = @file_get_contents(__DIR__ . '/api/Database/schema.sql');
     if ($schema) {
         $pdo->exec($schema);
         echo "✓ Database schema created\n";
     }
     
-    // Read and execute seed data
-    $seed = file_get_contents(__DIR__ . '/api/seed.sql');
+    // Read and execute seed data (if available)
+    $seed = @file_get_contents(__DIR__ . '/api/Database/seed.sql');
     if ($seed) {
         $pdo->exec($seed);
         echo "✓ Sample data inserted\n";

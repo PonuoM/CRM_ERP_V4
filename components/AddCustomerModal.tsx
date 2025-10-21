@@ -105,7 +105,12 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ onSave, onClose, co
 
 
   return (
-    <Modal title="เพิ่มรายชื่อลูกค้าใหม่" onClose={onClose}>
+    <Modal 
+      title="เพิ่มรายชื่อลูกค้าใหม่" 
+      onClose={onClose}
+      requireConfirmation={true}
+      confirmationMessage="คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป"
+    >
       <div className="space-y-6 text-sm">
         
         <FormSection icon={UserIcon} title="ข้อมูลส่วนตัว">

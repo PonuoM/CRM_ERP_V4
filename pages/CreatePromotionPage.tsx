@@ -98,7 +98,13 @@ const CreatePromotionPage: React.FC<CreatePromotionPageProps> = ({
 
     try {
       const promotionData = {
-        ...formData,
+        name: formData.name,
+        sku: formData.sku,
+        description: formData.description,
+        company_id: 1,
+        active: formData.active,
+        start_date: formData.startDate || null,
+        end_date: formData.endDate || null,
         items: promotionItems.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -124,9 +130,13 @@ const CreatePromotionPage: React.FC<CreatePromotionPageProps> = ({
     }
   };
 
-  const getProductName = (productId: number) => {
-    const product = products.find(p => p.id === productId);
-    return product ? product.name : `Product #${productId}`;
+  const getProductName = (item: any) => {
+    // Use product_name from API if available, otherwise fallback to products array
+    if (item.product_name) {
+      return item.product_name;
+    }
+    const product = products.find(p => p.id === item.productId);
+    return product ? product.name : `Product #${item.productId}`;
   };
 
   return (
@@ -340,16 +350,16 @@ const CreatePromotionPage: React.FC<CreatePromotionPageProps> = ({
                     {promotionItems.map(item => (
                       <tr key={item.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {getProductName(item.productId)}
+                          {getProductName(item)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {item.quantity}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {item.priceOverride ? `฿${item.priceOverride}` : '-'}
+                          {(item.priceOverride || item.price_override) ? `฿${item.priceOverride || item.price_override}` : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {item.isFreebie ? (
+                          {(item.isFreebie || item.is_freebie) ? (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                               ของแถม
                             </span>

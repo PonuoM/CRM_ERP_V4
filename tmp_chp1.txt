@@ -1,0 +1,250 @@
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { CallHistory, Customer, User, UserRole } from '@/types';
+import { PhoneIncoming, PhoneOutgoing, Phone, Search, Filter, Calendar, User as UserIcon, Play, Pause, Download } from 'lucide-react';
+
+interface CallHistoryPageProps {
+  currentUser: User;
+  calls: CallHistory[];
+  customers: Customer[];
+  users: User[];
+}
+
+const formatDate = (dateString: string) => {
+  try {
+    // Handle the format "2025-10-09 03:23:08" from the API
+    const date = new Date(dateString);
+    // Add 7 hours to convert from UTC to Asia/Bangkok
+    date.setHours(date.getHours() + 7);
+    return date.toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
+  } catch {
+    return dateString;
+  }
+};
+
+
+// JavaScript version of authenticateOneCall function
+const authenticateOneCall = async () => {
+  // Use proxy to avoid CORS issues
+  const loginUrl = '/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true';
+  
+  // Get credentials from environment variables (in React, these would be from .env file)
+  const username = (import.meta as any).env.VITE_USERNAME_ONECALL || '';
+  const password = (import.meta as any).env.VITE_PASSWORD_ONECALL || '';
+  
+  if (!username || !password) {
+    console.error('Onecall credentials not found:', { username: !!username, password: !!password });
+    return {
+      success: false,
+      error: 'Username or password not found in environment variables. Please check VITE_USERNAME_ONECALL and VITE_PASSWORD_ONECALL in .env.local file.'
+    };
+  }
+  
+  // Remove quotes from username and password if present
+  const cleanUsername = username.replace(/^"|"$/g, '');
+  const cleanPassword = password.replace(/^"|"$/g, '');
+  
+  // Create auth string and encode it (Postman Basic Auth style)
+  const authString = `${cleanUsername}:${cleanPassword}`;
+  const base64Auth = btoa(authString);
+  
+  // Create headers with Authorization header (Postman style)
+  const headers = {
+    'Accept': 'application/json',
+    'Authorization': `Basic ${base64Auth}`
+  };
+  
+  try {
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: headers,
+      // SSL verification is handled by the browser, but for development we might need to handle CORS issues
+    });
+    
+    const httpCode = response.status;
+    const responseText = await response.text();
+    
+    // Try to parse as JSON, if fails, keep as text
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      responseData = responseText;
+    }
+    
+    // Create debug information
+    const debugInfo = {
+      request_url: loginUrl,
+      request_method: 'POST',
+      request_headers: headers,
+      request_body: 'none',
+      request_auth: {
+        username: username,
+        password: password,
+        clean_username: cleanUsername,
+        clean_password: cleanPassword,
+        auth_string: authString,
+        base64_encoded: base64Auth,
+        authorization_header: `Basic ${base64Auth}`,
+        postman_style: 'Using Authorization header instead of CURLOPT_USERPWD'
+      },
+      response_http_code: httpCode,
+      response_headers: response.headers,
+      response_body: responseData
+    };
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP Error: ${httpCode}`,
+        http_code: httpCode,
+        debug_info: debugInfo
+      };
+    }
+    
+    // Extract token from response (adjust based on actual response structure)
+    let token = null;
+    if (responseData && typeof responseData === 'object' && responseData.accesstoken) {
+      token = responseData.accesstoken;
+    }
+    
+    return {
+      success: true,
+      data: responseData,
+      token: token,
+      http_code: httpCode,
+      debug_info: debugInfo
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch',
+      debug_info: {
+        request_url: loginUrl,
+        request_method: 'POST',
+        error: error,
+        note: 'This might be a CORS issue. Check if the Vite proxy is configured correctly.'
+      }
+    };
+  }
+};
+
+// JavaScript version of getRecordingsData function
+const getRecordingsData = async (currentUser?: User) => {
+  // Try to get recordings data with token refresh logic
+  const maxRetries = 2; // Allow one retry after token refresh
+  let retryCount = 0;
+  let authResult = null;
+  let lastError = null;
+  
+  // API Configuration parameters
+  const apiConfig: any = {
+    baseUrl: '/onecall/orktrack/rest/recordings',
+    range: 'custom',
+    sort: '',
+    page: 1,
+    pagesize: 20,
+    maxresults: -1,
+    includetags: true,
+    includemetadata: true,
+    includeprograms: true
+  };
+  
+  // Add party parameter for Telesale and Supervisor users
+  if (currentUser && currentUser.role === UserRole.Telesale && currentUser.phone) {
+    // Format phone number from 0945547598 to +66945547598
+    const formattedPhone = currentUser.phone.startsWith('0')
+      ? '+66' + currentUser.phone.substring(1)
+      : '+66' + currentUser.phone;
+    
+    apiConfig.party = formattedPhone;
+  } else if (currentUser && currentUser.role === UserRole.Supervisor && currentUser.phone) {
+    // Format phone number from 0945547598 to +66945547598
+    const formattedPhone = currentUser.phone.startsWith('0')
+      ? '+66' + currentUser.phone.substring(1)
+      : '+66' + currentUser.phone;
+    
+    apiConfig.party = formattedPhone;
+  }
+  
+  while (retryCount < maxRetries) {
+    // If first attempt or after token refresh, authenticate
+    if (retryCount === 0 || authResult === null) {
+      authResult = await authenticateOneCall();
+      
+      if (!authResult.success) {
+        return {
+          success: false,
+          error: 'Authentication failed: ' + authResult.error,
+          http_code: authResult.http_code,
+          auth_response: authResult.data,
+          debug_info: authResult.debug_info || null
+        };
+      }
+      
+      if (!authResult.token) {
+        return {
+          success: false,
+          error: 'Authentication token not found in response',
+          http_code: authResult.http_code,
+          auth_response: authResult.data,
+          debug_info: authResult.debug_info || null
+        };
+      }
+    }
+    
+    // Calculate startdate as today's date at midnight (00:00:00) minus 7 hours
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+    startDate.setHours(startDate.getHours() - 7); // Subtract 7 hours for timezone adjustment
+    
+    // Format as YYYYMMDD_HHMMSS
+    const year = startDate.getFullYear();
+    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+    const day = String(startDate.getDate()).padStart(2, '0');
+    const hours = String(startDate.getHours()).padStart(2, '0');
+    const minutes = String(startDate.getMinutes()).padStart(2, '0');
+    const seconds = String(startDate.getSeconds()).padStart(2, '0');
+    const startDateFormatted = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+    
+    // Build URL with parameters
+    const params = new URLSearchParams();
+    params.append('range', apiConfig.range);
+    params.append('startdate', startDateFormatted);
+    params.append('sort', apiConfig.sort);
+    params.append('page', apiConfig.page.toString());
+    params.append('pagesize', apiConfig.pagesize.toString());
+    params.append('maxresults', apiConfig.maxresults.toString());
+    params.append('includetags', apiConfig.includetags.toString());
+    params.append('includemetadata', apiConfig.includemetadata.toString());
+    params.append('includeprograms', apiConfig.includeprograms.toString());
+    
+    // Add party parameter if it exists
+    if (apiConfig.party) {
+      params.append('party', apiConfig.party);
+    }
+    
+    const apiUrl = `${apiConfig.baseUrl}?${params.toString()}`;
+    
+    const headers = {
+      'Authorization': authResult.token,
+      'Accept': 'application/json'
+    };
+    
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      const httpCode = response.status;
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${httpCode}`);
+      }
+      
+      const responseText = await response.text();
+      
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (e) {

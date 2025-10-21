@@ -13,7 +13,8 @@
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-apexcharts": "^1.8.0",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "thai-data": "^3.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

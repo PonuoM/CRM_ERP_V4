@@ -1,6 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Order, LineItem, PaymentMethod, PaymentStatus, OrderStatus, Product, Promotion, Page, CodBox, Address, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade, Warehouse, WarehouseStock } from '../types';
-import { selectBestWarehouse } from '../utils/warehouseSelector';
+﻿import React, { useState, useMemo, useEffect } from 'react';
+import { Customer, Order, LineItem, PaymentMethod, PaymentStatus, OrderStatus, Product, Promotion, Page, CodBox, Address, CustomerLifecycleStatus, CustomerBehavioralStatus, CustomerGrade, Warehouse } from '../types';
 
 const emptyAddress: Address = { street: '', subdistrict: '', district: '', province: '', postalCode: '' };
 
@@ -10,7 +9,6 @@ interface CreateOrderPageProps {
   promotions: Promotion[];
   pages?: Page[];
   warehouses?: Warehouse[];
-  warehouseStocks?: WarehouseStock[];
   onSave: (payload: { 
     order: Partial<Omit<Order, 'id' | 'orderDate' | 'companyId' | 'creatorId'>>, 
     newCustomer?: Omit<Customer, 'id' | 'companyId' | 'totalPurchases' | 'totalCalls' | 'tags' | 'assignmentHistory'>,
@@ -22,16 +20,17 @@ interface CreateOrderPageProps {
 
 // Order Summary Component
 const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) => {
-  const subTotal = useMemo(() => {
-    return orderData.items?.reduce((acc, item) => {
-      const itemTotal = (item.quantity || 0) * (item.pricePerUnit || 0) - (item.discount || 0);
-      return acc + (item.isFreebie ? 0 : itemTotal);
-    }, 0) || 0;
-  }, [orderData.items]);
-
-  const totalAmount = useMemo(() => {
-    return subTotal + (orderData.shippingCost || 0) - (orderData.billDiscount || 0);
-  }, [subTotal, orderData.shippingCost, orderData.billDiscount]);
+  const visibleItems = useMemo(() => (orderData.items || []).filter(it => !it.parentItemId), [orderData.items]);
+  const goodsSum = useMemo(() => {
+    return visibleItems.reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)), 0);
+  }, [visibleItems]);
+  const itemsDiscount = useMemo(() => {
+    return visibleItems.reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.discount || 0)), 0);
+  }, [visibleItems]);
+  const subTotal = useMemo(() => goodsSum - itemsDiscount, [goodsSum, itemsDiscount]);
+  const billDiscountPercent = Number(orderData.billDiscount || 0);
+  const billDiscountAmount = (subTotal * billDiscountPercent) / 100;
+  const totalAmount = useMemo(() => subTotal + (orderData.shippingCost || 0) - billDiscountAmount, [subTotal, orderData.shippingCost, billDiscountAmount]);
   
   return (
     <div className="bg-slate-50 border border-gray-300 rounded-lg p-6 sticky top-6">
@@ -39,7 +38,11 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
       <div className="space-y-3 text-sm">
         <div className="flex justify-between text-[#4e7397]">
           <span>ยอดรวมสินค้า</span>
-          <span className="text-[#0e141b] font-medium">฿{subTotal.toFixed(2)}</span>
+          <span className="text-[#0e141b] font-medium">฿{goodsSum.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-[#4e7397]">
+          <span>ส่วนลดรายการสินค้า</span>
+          <span className="text-red-600 font-medium">-฿{itemsDiscount.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-[#4e7397]">
           <span>ค่าขนส่ง</span>
@@ -47,7 +50,7 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
         </div>
         <div className="flex justify-between text-[#4e7397]">
           <span>ส่วนลดท้ายบิล</span>
-          <span className="text-red-600 font-medium">-฿{(orderData.billDiscount || 0).toFixed(2)}</span>
+          <span className="text-red-600 font-medium">-฿{billDiscountAmount.toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
           <span className="text-[#0e141b]">ยอดสุทธิ</span>
@@ -55,11 +58,11 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
         </div>
       </div>
       
-      {orderData.items && orderData.items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="mt-6 pt-6 border-t">
-          <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({orderData.items.length})</h4>
+          <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({visibleItems.length})</h4>
           <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {orderData.items.map((item, idx) => (
+            {visibleItems.map((item, idx) => (
               <div key={item.id} className="text-xs p-2 bg-white rounded border">
                 <div className="font-medium text-[#0e141b]">{item.productName || '(ไม่ระบุ)'}</div>
                 <div className="text-[#4e7397] mt-1">
@@ -80,9 +83,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   customers, 
   products, 
   promotions, 
-  pages = [], 
-  warehouses = [], 
-  warehouseStocks = [], 
+  pages = [],
+  warehouses = [],
   onSave, 
   onCancel, 
   initialData 
@@ -98,16 +100,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     items: [{ id: Date.now(), productName: '', quantity: 1, pricePerUnit: 0, discount: 0, isFreebie: false, boxNumber: 1 }],
     shippingCost: 0,
     billDiscount: 0,
-    paymentMethod: PaymentMethod.Transfer,
     deliveryDate: new Date(Date.now() + 864e5).toISOString().split('T')[0],
     customerId: initialData?.customer?.id,
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
   
-  // State for warehouse and lot selection
-  const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
-  const [availableLots, setAvailableLots] = useState<WarehouseStock[]>([]);
-  const [selectedLot, setSelectedLot] = useState<WarehouseStock | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [numBoxes, setNumBoxes] = useState(1);
   // Product selector modal state
@@ -126,9 +123,34 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [useProfileAddress, setUseProfileAddress] = useState(true);
   const [shippingAddress, setShippingAddress] = useState<Address>(emptyAddress);
   const [saveNewAddress, setSaveNewAddress] = useState(false);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  
 
-  const subTotal = useMemo(() => orderData.items?.reduce((acc, item) => acc + (item.quantity || 0) * (item.pricePerUnit || 0) - (item.discount || 0), 0) || 0, [orderData.items]);
-  const totalAmount = useMemo(() => subTotal + (orderData.shippingCost || 0) - (orderData.billDiscount || 0), [subTotal, orderData.shippingCost, orderData.billDiscount]);
+  // สรุปยอด: สินค้ารวม, ส่วนลดตามรายการ, ส่วนลดท้ายบิลเป็น %
+  const goodsSum = useMemo(() =>
+    (orderData.items || [])
+      .filter(it => !it.parentItemId)
+      .reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)), 0),
+  [orderData.items]);
+  const itemsDiscount = useMemo(() =>
+    (orderData.items || [])
+      .filter(it => !it.parentItemId)
+      .reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.discount || 0)), 0),
+  [orderData.items]);
+  const subTotal = useMemo(() => goodsSum - itemsDiscount, [goodsSum, itemsDiscount]);
+  const billDiscountPercent = useMemo(() => Number(orderData.billDiscount || 0), [orderData.billDiscount]);
+  const billDiscountAmount = useMemo(() => (subTotal * billDiscountPercent) / 100, [subTotal, billDiscountPercent]);
+  const totalAmount = useMemo(() => subTotal + (orderData.shippingCost || 0) - billDiscountAmount, [subTotal, orderData.shippingCost, billDiscountAmount]);
+
+  useEffect(() => {
+    const province = (shippingAddress.province || '').trim();
+    if (!province) { setWarehouseId(null); return; }
+    const matched = (warehouses || []).find(w => {
+      const list = Array.isArray(w.responsibleProvinces) ? w.responsibleProvinces : [];
+      return w.isActive && list.includes(province);
+    });
+    setWarehouseId(matched ? matched.id : null);
+  }, [shippingAddress.province, warehouses]);
   
   const codTotal = useMemo(() => {
     return orderData.boxes?.reduce((sum, box) => sum + (box.codAmount || 0), 0) || 0;
@@ -139,63 +161,52 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return codTotal.toFixed(2) === totalAmount.toFixed(2) && totalAmount > 0;
   }, [orderData.paymentMethod, totalAmount, codTotal]);
 
+  // Search results
+  const searchResults = useMemo(() => {
+    if (!searchTerm || isCreatingNewCustomer) return [];
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return customers.filter(c =>
+      (`${c.firstName} ${c.lastName}`).toLowerCase().includes(lowerSearchTerm) ||
+      c.phone.includes(searchTerm)
+    );
+  }, [searchTerm, customers, isCreatingNewCustomer]);
+
+  // Handler for profile address toggle
+  const handleUseProfileAddressToggle = (checked: boolean) => {
+    setUseProfileAddress(checked);
+    if (checked && selectedCustomer?.address) {
+      setShippingAddress(selectedCustomer.address);
+    } else {
+      setShippingAddress(emptyAddress);
+    }
+  };
+
   useEffect(() => {
     if (initialData?.customer) {
       handleSelectCustomer(initialData.customer);
     }
   }, [initialData]);
   
+  // หมายเหตุ: ทุกวิธีการชำระเงินต้องระบุจำนวนกล่อง (COD เท่านั้นที่ต้องกรอกยอด COD ต่อกล่อง)
   useEffect(() => {
-    if (orderData.paymentMethod === PaymentMethod.COD) {
-      if (!orderData.boxes || orderData.boxes.length !== numBoxes) {
-        const newBoxes: CodBox[] = Array.from({ length: numBoxes }, (_, i) => ({
-          boxNumber: i + 1,
-          codAmount: orderData.boxes?.[i]?.codAmount || 0,
-        }));
-        updateOrderData('boxes', newBoxes);
-      }
-    } else {
-      updateOrderData('boxes', []);
-    }
-  }, [numBoxes, orderData.paymentMethod]);
-  
-  // Auto-select warehouse based on customer province
-  useEffect(() => {
-    if (selectedCustomer && warehouses.length > 0) {
-      const bestWarehouse = selectBestWarehouse(selectedCustomer.province, warehouses);
-      if (bestWarehouse) {
-        const warehouse = warehouses.find(w => w.id === bestWarehouse.warehouseId);
-        setSelectedWarehouse(warehouse || null);
-      }
-    }
-  }, [selectedCustomer, warehouses]);
+    const newBoxes: CodBox[] = Array.from({ length: numBoxes }, (_, i) => ({
+      boxNumber: i + 1,
+      codAmount: orderData.boxes?.[i]?.codAmount || 0,
+    }));
+    updateOrderData('boxes', newBoxes);
+  }, [numBoxes]);
 
-  // Get available lots for selected warehouse and product
+  // ปรับ boxNumber ของแต่ละรายการสินค้าให้อยู่ในช่วง 1..numBoxes เมื่อจำนวนกล่องเปลี่ยน
   useEffect(() => {
-    if (selectedWarehouse && orderData.items && orderData.items.length > 0) {
-      const firstItem = orderData.items[0];
-      if (firstItem.productName) {
-        const product = products.find(p => p.name === firstItem.productName);
-        if (product) {
-          const lots = warehouseStocks.filter(stock => 
-            stock.warehouseId === selectedWarehouse.id && 
-            stock.productId === product.id &&
-            (stock.quantity || 0) > (stock.reservedQuantity || 0)
-          );
-          // Sort by expiry date (FIFO) - earliest expiry first
-          lots.sort((a, b) => {
-            if (!a.expiryDate) return 1;
-            if (!b.expiryDate) return -1;
-            return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
-          });
-          setAvailableLots(lots);
-          if (lots.length > 0) {
-            setSelectedLot(lots[0]);
-          }
-        }
-      }
-    }
-  }, [selectedWarehouse, orderData.items, products, warehouseStocks]);
+    if (!orderData.items) return;
+    const clamped = orderData.items.map(it => ({
+      ...it,
+      boxNumber: Math.min(Math.max(it.boxNumber || 1, 1), numBoxes),
+    }));
+    const changed = JSON.stringify(clamped) !== JSON.stringify(orderData.items);
+    if (changed) updateOrderData('items', clamped);
+  }, [numBoxes, orderData.items]);
+  
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -260,11 +271,17 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
   const handleSave = () => {
     const isAddressIncomplete = Object.values(shippingAddress).some(val => (val as string).trim() === '');
     if (isAddressIncomplete) { alert('กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน'); return; }
-    if(!orderData.items || orderData.items.length === 0 || orderData.items.every(i => !i.productName)) { alert('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ'); return; }
-    if(orderData.paymentMethod === PaymentMethod.COD && !isCodValid) { alert('ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ'); return; }
+    if (!orderData.deliveryDate) { alert('กรุณาเลือกวันที่จัดส่ง'); return; }
+    if (!orderData.items || orderData.items.length === 0 || orderData.items.every(i => !i.productName)) { alert('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ'); return; }
+    if (!orderData.paymentMethod) { alert('กรุณาเลือกวิธีการชำระเงิน'); return; }
+    if (!salesChannel) { alert('กรุณาเลือกช่องทางการสั่งซื้อ'); return; }
+    if (salesChannel !== 'โทร' && !salesChannelPageId) { alert('กรุณาเลือกเพจของช่องทางการสั่งซื้อ'); return; }
+    if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) { alert('ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ'); return; }
 
     const finalOrderData: Partial<Order> = {
       ...orderData,
@@ -274,7 +291,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       orderStatus: OrderStatus.Pending,
       salesChannel: salesChannel,
       // @ts-ignore - backend supports this field; added in schema
-      salesChannelPageId: salesChannel === 'Facebook' ? salesChannelPageId || undefined : undefined,
+      salesChannelPageId: (salesChannel && salesChannel !== 'โทร') ? salesChannelPageId || undefined : undefined,
+      warehouseId: warehouseId || undefined,
     };
 
     const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
@@ -322,6 +340,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
     
     onSave(payload);
+    setShowSuccessMessage(true);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
   }
 
   const handleCodBoxAmountChange = (index: number, amount: number) => {
@@ -360,74 +380,333 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const productsSafe = Array.isArray(products) ? products : [];
   const promotionsSafe = Array.isArray(promotions) ? promotions : [];
 
+  // Utilities สำหรับความปลอดภัยกับข้อมูลจาก API
+  const toNumber = (v: any, fallback = 0): number => {
+    if (v === null || v === undefined) return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const toBool = (v: any): boolean => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if (s === '0' || s === 'false' || s === '') return false;
+      if (s === '1' || s === 'true') return true;
+      const n = Number(s);
+      if (Number.isFinite(n)) return n !== 0;
+      return true;
+    }
+    return false;
+  };
+
+  // คำนวณราคารวมของโปรโมชั่นจากราคา/ชิ้น (price_override) x จำนวน โดยไม่คิดของแถม
+  const calcPromotionTotal = (promo: Promotion) => {
+    const items = Array.isArray(promo?.items) ? promo.items : [];
+    let total = 0;
+    for (const part of items as any[]) {
+      const prod =
+        productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) ||
+        productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
+      const qty = toNumber(part.quantity, 1);
+      const isFree = toBool(part.isFreebie) || toBool(part.is_freebie);
+      // ลำดับการเลือกใช้ราคา: ราคา override ต่อชิ้น -> ราคา product ที่มาจาก API join (product_price) -> ราคาสินค้าที่โหลดในหน้าจอ
+      const price = isFree
+        ? 0
+        : toNumber((part as any).price_override ?? (part as any).priceOverride ?? (part as any).product_price, prod?.price ?? 0);
+      total += price * qty;
+    }
+    return total;
+  };
+
+  // ราคาชุดทั้งหมด (รวมทุกชิ้น ไม่หักของแถม)
+  const calcPromotionSetPrice = (promo: Promotion) => {
+    const items = Array.isArray(promo?.items) ? promo.items : [];
+    let sum = 0;
+    for (const part of items as any[]) {
+      const prod =
+        productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) ||
+        productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
+      const qty = toNumber(part.quantity, 1);
+      const isFree = toBool((part as any).isFreebie) || toBool((part as any).is_freebie);
+      if (isFree) {
+        // ของแถม ไม่นับราคาในราคารวมของชุด
+        continue;
+      }
+      const override = toNumber((part as any).price_override ?? (part as any).priceOverride, NaN);
+      const joinedPrice = toNumber((part as any).product_price, NaN);
+      const basePrice = toNumber(prod?.price, 0);
+
+      // ตรวจสอบ price_override:
+      // - ถ้า override >= basePrice (หรือไม่มี basePriceชัดเจน) และมีจำนวน > 1
+      //   ให้ตรวจสอบว่าเป็น "ราคารวมของกลุ่มนี้" (ไม่คูณ qty)
+      // - มิฉะนั้น ใช้เป็น "ราคาต่อชิ้น" แล้วคูณด้วย qty
+      if (Number.isFinite(override)) {
+        const comparator = basePrice > 0 ? basePrice : (Number.isFinite(joinedPrice) ? joinedPrice : 0);
+        if (qty > 1 && comparator > 0 && override >= comparator) {
+          sum += override; // ราคาทั้งกลุ่ม
+        } else {
+          sum += override * qty; // ราคาต่อชิ้น
+        }
+      } else {
+        // ไม่มี override -> ใช้ราคาสินค้า (joinedPrice หรือ basePrice) x qty
+        const unit = Number.isFinite(joinedPrice) ? joinedPrice : basePrice;
+        sum += unit * qty;
+      }
+    }
+    return sum;
+  };
+
+  // ถ้ามีแถวว่าง ให้แทนที่แถวว่างแรกด้วยรายการใหม่ มิฉะนั้นให้ต่อท้าย
+  const replaceEmptyRowOrAppend = (newItem: LineItem) => {
+    const items = orderData.items || [];
+    const emptyIndex = items.findIndex(it => !it.productName || String(it.productName).trim() === '');
+    if (emptyIndex !== -1) {
+      const existingId = items[emptyIndex].id;
+      const merged = { ...newItem, id: existingId };
+      const next = items.map((it, i) => (i === emptyIndex ? merged : it));
+      updateOrderData('items', next);
+      setLockedItemIds(prev => (prev.includes(existingId) ? prev : [...prev, existingId]));
+    } else {
+      updateOrderData('items', [...items, newItem]);
+      setLockedItemIds(prev => (prev.includes(newItem.id) ? prev : [...prev, newItem.id]));
+    }
+  };
+
+  // ใช้ฟังก์ชันด้านบนเพื่อเพิ่มโปรโมชั่นเข้ารายการ ด้วยราคาที่ถูกต้อง
+  const addPromotionByIdFixed = (promoId: number | string) => {
+    const promo = promotionsSafe.find(p => String(p.id) === String(promoId));
+    if (!promo) return;
+    
+    // Create separate line items for each product in the promotion
+    const promotionItems = promo.items || [];
+    const promotionName = promo.name || 'โปรโมชั่น';
+    
+    // Track all new items to add
+    const newItemsToAdd: LineItem[] = [];
+    const newLockedIds: number[] = [];
+    
+    // Create parent item (promotion header)
+    const parentId = Date.now() + Math.floor(Math.random() * 1000);
+    const parentItem: LineItem = {
+      id: parentId,
+      productName: `📦 ${promotionName}`,
+      quantity: 1, // 1 set of promotion
+      pricePerUnit: 0, // Will be calculated from child items
+      discount: 0,
+      isFreebie: false,
+      boxNumber: 1,
+      productId: undefined, // No specific product for parent
+      promotionId: promo.id,
+      parentItemId: undefined, // Parent has no parent
+      isPromotionParent: true
+    };
+    
+    // รวมราคาชุดจากชิ้นย่อยที่ต้องจ่าย แล้วค่อยตั้งราคาให้ parent
+    // so totals won't double-count. We'll also replace an empty row with this parent.
+    let totalSetPrice = 0;
+    
+    for (const part of promotionItems) {
+      // part may contain productId and joined product info
+      const prod = productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) || productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
+      if (!prod) continue;
+      
+      const qty = Number(part.quantity || 1);
+      const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
+      
+      // IMPORTANT: Always use price_override for promotion items if available
+      // If price_override is null or 0 and item is not a freebie, use the regular product price
+      const itemPrice = isFreeFlag ? 0 : (
+        part.price_override !== null && part.price_override !== undefined ? Number(part.price_override) : prod.price
+      );
+      
+      // Create a separate line item for each product in the promotion
+      const newId = Date.now() + Math.floor(Math.random() * 1000);
+      const productLineItem: LineItem = {
+        id: newId,
+        productName: `${prod.name}${isFreeFlag ? ' (ของแถม)' : ''}`,
+        quantity: qty,
+        pricePerUnit: itemPrice,
+        discount: 0,
+        isFreebie: isFreeFlag,
+        boxNumber: 1,
+        productId: prod.id,
+        promotionId: promo.id,
+        parentItemId: parentId, // Link to parent
+        isPromotionParent: false
+      };
+      
+      newItemsToAdd.push(productLineItem);
+      newLockedIds.push(newId);
+      if (!isFreeFlag) { totalSetPrice += itemPrice * qty; }
+      
+      // Totals are taken from child items; parent stays 0
+    }
+    
+    // ตั้งราคารวมของชุดไว้ที่ parent
+    parentItem.pricePerUnit = calcPromotionSetPrice(promo);
+    const existing = orderData.items || [];
+    const emptyIndex = existing.findIndex(it => !it.productName || String(it.productName).trim() === '');
+    let next: LineItem[];
+    if (emptyIndex !== -1) {
+      next = existing.slice();
+      // preserve the existing id for stability when replacing the empty row
+      const existingId = next[emptyIndex].id;
+      next[emptyIndex] = { ...parentItem, id: existingId };
+      newLockedIds.push(existingId);
+    } else {
+      next = [...existing, parentItem];
+      newLockedIds.push(parentId);
+    }
+    next = [...next, ...newItemsToAdd];
+    
+    updateOrderData('items', next);
+    setLockedItemIds(prev => [...prev, ...newLockedIds, ...newItemsToAdd.map(i => i.id)]);
+    closeProductSelector();
+  };
+
   const addProductById = (productId: number) => {
     const p = productsSafe.find(pr => pr.id === productId);
     if (!p) return;
     const newId = Date.now() + Math.floor(Math.random() * 1000);
     const newItem: LineItem = { id: newId, productName: p.name, quantity: 1, pricePerUnit: p.price, discount: 0, isFreebie: false, boxNumber: 1 };
-    updateOrderData('items', [...(orderData.items || []), newItem]);
-    setLockedItemIds(prev => [...prev, newId]);
+    replaceEmptyRowOrAppend(newItem);
     closeProductSelector();
   };
 
   const addPromotionById = (promoId: number | string) => {
     const promo = promotionsSafe.find(p => String(p.id) === String(promoId));
     if (!promo) return;
-    const itemsToAdd: LineItem[] = [];
-    for (const part of (promo.items || [])) {
+    
+    // Create separate line items for each product in the promotion
+    const promotionItems = promo.items || [];
+    const promotionName = promo.name || 'โปรโมชั่น';
+    
+    // Track all new items to add
+    const newItemsToAdd: LineItem[] = [];
+    const newLockedIds: number[] = [];
+    
+    // Create parent item (promotion header)
+    const parentId = Date.now() + Math.floor(Math.random() * 1000);
+    const parentItem: LineItem = {
+      id: parentId,
+      productName: `📦 ${promotionName}`,
+      quantity: 1, // 1 set of promotion
+      pricePerUnit: 0, // Will be calculated from child items
+      discount: 0,
+      isFreebie: false,
+      boxNumber: 1,
+      productId: undefined, // No specific product for parent
+      promotionId: promo.id,
+      parentItemId: undefined, // Parent has no parent
+      isPromotionParent: true
+    };
+    
+    newItemsToAdd.push(parentItem);
+    newLockedIds.push(parentId);
+    
+    // Calculate total price for parent item
+    let totalPromotionPrice = 0;
+    
+    for (const part of promotionItems) {
       // part may contain productId and joined product info
       const prod = productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) || productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
       if (!prod) continue;
+      
       const qty = Number(part.quantity || 1);
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
-      for (let i = 0; i < qty; i++) {
-        const isFree = isFreeFlag; // promotion_items marks freebies per item; adjust if freeIndexes exist in future
-        const newId = Date.now() + Math.floor(Math.random() * 1000) + i;
-        itemsToAdd.push({ id: newId, productName: prod.name, quantity: 1, pricePerUnit: isFree ? 0 : prod.price, discount: 0, isFreebie: isFree, boxNumber: 1 });
-        if (!isFree) setLockedItemIds(prev => [...prev, newId]);
+      
+      // IMPORTANT: Always use price_override for promotion items if available
+      // If price_override is null or 0 and item is not a freebie, use the regular product price
+      const itemPrice = isFreeFlag ? 0 : (
+        part.price_override !== null && part.price_override !== undefined ? Number(part.price_override) : prod.price
+      );
+      
+      // Create a separate line item for each product in the promotion
+      const newId = Date.now() + Math.floor(Math.random() * 1000);
+      const productLineItem: LineItem = {
+        id: newId,
+        productName: `${prod.name}${isFreeFlag ? ' (ของแถม)' : ''}`,
+        quantity: qty,
+        pricePerUnit: itemPrice,
+        discount: 0,
+        isFreebie: isFreeFlag,
+        boxNumber: 1,
+        productId: prod.id,
+        promotionId: promo.id,
+        parentItemId: parentId, // Link to parent
+        isPromotionParent: false
+      };
+      
+      newItemsToAdd.push(productLineItem);
+      newLockedIds.push(newId);
+      
+      // Add to total price (only non-freebie items)
+      if (!isFreeFlag) {
+        totalPromotionPrice += itemPrice * qty;
       }
     }
-    updateOrderData('items', [...(orderData.items || []), ...itemsToAdd]);
+    
+    // Update parent item with total price
+    parentItem.pricePerUnit = totalPromotionPrice;
+    
+    // Add all new items to the order
+    updateOrderData('items', [...(orderData.items || []), ...newItemsToAdd]);
+    setLockedItemIds(prev => [...prev, ...newLockedIds]);
     closeProductSelector();
   };
 
   const commonInputClass = "w-full p-2.5 border border-gray-300 rounded-md bg-white text-[#0e141b] focus:ring-1 focus:ring-blue-500 focus:border-blue-500";
   const commonLabelClass = "block text-sm font-medium text-[#0e141b] mb-1.5";
+  const onFocusSelectAll = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const el = e.target as HTMLInputElement;
+    if (typeof el.select === 'function') el.select();
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-[1400px] mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[#0e141b] mb-2">สร้างคำสั่งซื้อใหม่</h1>
-          <p className="text-[#4e7397]">กรอกข้อมูลลูกค้า สินค้า และการชำระเงินในหน้าเดียว</p>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[#0e141b]">สร้างคำสั่งซื้อ</h1>
+            <p className="text-[#4e7397]">กรอกข้อมูลลูกค้า สินค้า และการชำระเงินในหน้าเดียว</p>
+          </div>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
+            ยกเลิก
+          </button>
         </div>
+      </div>
 
-        {/* Main Content: 2 columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Form */}
-          <div className="lg:col-span-2 space-y-6">
-            
+      {/* Main Content */}
+      <div className="max-w-[1400px] mx-auto p-6">
+        
+        
+        <div className="space-y-6">
+          {/* Left Column: Customer Information & Shipping Address */}
+          <div className="space-y-6">
+             
             {/* Section 1: Customer Information */}
+            {
             <div className="bg-white rounded-lg border border-gray-300 p-6">
               <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">ข้อมูลลูกค้า</h2>
               
               <div className="space-y-4">
                 <div>
                   <label className={commonLabelClass}>ค้นหาลูกค้า (ชื่อ / เบอร์โทร)</label>
-                  <input 
-                    type="text" 
-                    value={searchTerm} 
-                    onChange={e => { setSearchTerm(e.target.value); setSelectedCustomer(null); setIsCreatingNewCustomer(false); }} 
-                    placeholder="พิมพ์เพื่อค้นหา..." 
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => { setSearchTerm(e.target.value); setSelectedCustomer(null); setIsCreatingNewCustomer(false); }}
+                    placeholder="พิมพ์เพื่อค้นหา..."
                     className={commonInputClass}
                   />
                   {searchResults.length > 0 && !selectedCustomer && (
                     <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
                       {searchResults.map(c => (
-                        <li 
-                          key={c.id} 
-                          onClick={() => handleSelectCustomer(c)} 
+                        <li
+                          key={c.id}
+                          onClick={() => handleSelectCustomer(c)}
                           className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
                         >
                           {`${c.firstName} ${c.lastName}`} - {c.phone}
@@ -436,8 +715,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </ul>
                   )}
                   {!selectedCustomer && searchTerm && searchResults.length === 0 && !isCreatingNewCustomer && (
-                    <button 
-                      onClick={startCreatingNewCustomer} 
+                    <button
+                      onClick={startCreatingNewCustomer}
                       className="mt-2 text-sm text-blue-600 font-medium hover:underline"
                     >
                       ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
@@ -493,12 +772,39 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           <option value="TikTok">TikTok</option>
                           <option value="โทร">โทร</option>
                         </select>
-                        {salesChannel === 'Facebook' && (
+                        {salesChannel && salesChannel !== 'โทร' && (
                           <select value={salesChannelPageId ?? ''} onChange={e => setSalesChannelPageId(e.target.value ? Number(e.target.value) : null)} className={commonInputClass}>
                             <option value="">เลือกเพจ</option>
-                            {pages.map(pg => (
-                              <option key={pg.id} value={pg.id}>{pg.name}</option>
-                            ))}
+                            {(() => {
+                              // Map sales channel to platform values (case insensitive)
+                              const platformMap: { [key: string]: string[] } = {
+                                'Facebook': ['facebook', 'Facebook'],
+                                'Line': ['line', 'Line'],
+                                'TikTok': ['tiktok', 'tiktok_business_messaging', 'TikTok']
+                              };
+                              const validPlatforms = platformMap[salesChannel] || [];
+                              
+                              // Debug: Log the filtering process
+                              const filteredPages = pages.filter(pg => {
+                                // Convert both to lowercase for case-insensitive comparison
+                                const pagePlatformLower = (pg as any).platform?.toLowerCase() || '';
+                                const isPlatformMatch = validPlatforms.some(platform => platform.toLowerCase() === pagePlatformLower);
+                                // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
+                                const v: any = (pg as any).active;
+                                const isActive = (typeof v === 'boolean') ? v : (typeof v === 'number') ? v !== 0 : (typeof v === 'string') ? (v.trim() !== '' && v !== '0' && v.toLowerCase() !== 'false') : Boolean(v);
+                                return isPlatformMatch && isActive;
+                              });
+                              
+                              // Debug: Log the results
+                              console.log('Sales Channel:', salesChannel);
+                              console.log('Valid Platforms:', validPlatforms);
+                              console.log('All Pages:', pages);
+                              console.log('Filtered Pages:', filteredPages);
+                              
+                              return filteredPages.map(pg => (
+                                <option key={pg.id} value={pg.id}>{pg.name}</option>
+                              ));
+                            })()}
                           </select>
                         )}
                       </div>
@@ -507,6 +813,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 )}
               </div>
             </div>
+            }
 
             {/* Section 2: Shipping Address */}
             {(selectedCustomer || isCreatingNewCustomer) && (
@@ -515,8 +822,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 
                 <div className="space-y-4">
                   <div className="flex items-center">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="use-profile-address"
                       checked={useProfileAddress}
                       onChange={(e) => handleUseProfileAddressToggle(!useProfileAddress)}
@@ -526,72 +833,6 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <label htmlFor="use-profile-address" className="ml-2 text-sm text-[#0e141b]">ใช้ที่อยู่เดียวกับข้อมูลลูกค้า</label>
                   </div>
                   
-                  {/* Warehouse and Lot Information */}
-                  <div className="p-4 border border-gray-300 rounded-md bg-slate-50">
-                    <h3 className="font-medium text-[#0e141b] mb-3">ข้อมูลคลังสินค้าและ Lot</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm text-[#4e7397] mb-1">คลังสินค้าที่เลือก:</label>
-                        <div className="p-2 bg-white border rounded">
-                          {selectedWarehouse ? (
-                            <div>
-                              <span className="font-medium">{selectedWarehouse.name}</span>
-                              <span className="text-xs text-gray-500 ml-2">({selectedWarehouse.province})</span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-500">ไม่ได้เลือกคลังสินค้า</span>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm text-[#4e7397] mb-1">Lot ที่เลือก (FIFO):</label>
-                        <div className="p-2 bg-white border rounded">
-                          {selectedLot ? (
-                            <div>
-                              <span className="font-medium">{selectedLot.lotNumber}</span>
-                              <span className="text-xs text-gray-500 ml-2">
-                                (คงเหลือ: {selectedLot.availableQuantity || (selectedLot.quantity - (selectedLot.reservedQuantity || 0))})
-                              </span>
-                              {selectedLot.expiryDate && (
-                                <span className="text-xs text-orange-600 ml-2">
-                                  (หมดอายุ: {selectedLot.expiryDate})
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-500">ไม่มี Lot ที่สามารถใช้งาน</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {availableLots.length > 1 && (
-                      <div className="mt-2">
-                        <label className="text-sm text-[#4e7397] mb-1">Lots ที่มี (เรียง FIFO):</label>
-                        <div className="space-y-1">
-                          {availableLots.map((lot, index) => (
-                            <div 
-                              key={index} 
-                              className={`p-2 border rounded cursor-pointer ${
-                                selectedLot?.lotNumber === lot.lotNumber ? 'bg-blue-50 border-blue-300' : 'bg-white'
-                              }`}
-                              onClick={() => setSelectedLot(lot)}
-                            >
-                              <span className="text-sm font-medium">{lot.lotNumber}</span>
-                              <span className="text-xs text-gray-500 ml-2">
-                                (คงเหลือ: {lot.availableQuantity || (lot.quantity - (lot.reservedQuantity || 0))})
-                              </span>
-                              {lot.expiryDate && (
-                                <span className="text-xs text-orange-600 ml-2">
-                                  (หมดอายุ: {lot.expiryDate})
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                   
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
@@ -625,87 +866,148 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className={commonLabelClass}>วันที่จัดส่ง</label>
-                      <input type="date" value={orderData.deliveryDate} onChange={e => updateOrderData('deliveryDate', e.target.value)} className={commonInputClass} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className={commonLabelClass}>วันที่จัดส่ง</label>
+                        <input type="date" value={orderData.deliveryDate} onChange={e => updateOrderData('deliveryDate', e.target.value)} className={commonInputClass} />
+                      </div>
+                      <div>
+                        <label className={commonLabelClass}>หมายเหตุ</label>
+                        <input type="text" value={orderData.notes || ''} onChange={e => updateOrderData('notes', e.target.value)} className={commonInputClass} />
+                      </div>
                     </div>
-                    <div>
-                      <label className={commonLabelClass}>หมายเหตุ</label>
-                      <input type="text" value={orderData.notes || ''} onChange={e => updateOrderData('notes', e.target.value)} className={commonInputClass} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                      <div>
+                        <label className={commonLabelClass}>คลังจัดส่ง (อัตโนมัติจากจังหวัด)</label>
+                        <input type="text" value={(() => { const w = (warehouses || []).find(x => x.id === warehouseId); return w ? w.name : '-'; })()} readOnly className={commonInputClass + ' bg-slate-100'} />
+                      </div>
                     </div>
-                  </div>
                 </div>
               </div>
             )}
+          </div>
 
+          {/* Middle Column: Products, Payment Method and Order Summary */}
+          <div className="space-y-6">
             {/* Section 3: Products */}
             {(selectedCustomer || isCreatingNewCustomer) && (
               <div className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">รายการสินค้า</h2>
                 
+                {/* Product Selection Tabs */}
+                <div className="mb-4 border-b border-gray-200">
+                  <ul className="flex -mb-px text-sm font-medium text-center">
+                    <li className="mr-2">
+                      <button
+                        onClick={() => setSelectorTab('products')}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
+                          selectorTab === 'products'
+                            ? 'text-blue-600 border-blue-600'
+                            : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        สินค้าปกติ
+                      </button>
+                    </li>
+                    <li className="mr-2">
+                      <button
+                        onClick={() => setSelectorTab('promotions')}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
+                          selectorTab === 'promotions'
+                            ? 'text-blue-600 border-blue-600'
+                            : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        โปรโมชั่น/เซ็ตสินค้า
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+                
                 <div className="space-y-3">
-                  {orderData.items?.map((item, index) => (
+                  {(orderData.items || []).filter(it => !it.parentItemId).map((item, index) => (
                     <div key={item.id} className="grid grid-cols-12 gap-2 items-start p-3 border border-gray-200 rounded-md bg-slate-50">
                       <div className="col-span-4">
                         <label className="text-xs text-[#4e7397] mb-1 block">ชื่อสินค้า</label>
                         <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="ชื่อสินค้า" 
-                            value={item.productName} 
-                            onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, productName: e.target.value} : it))} 
+                          <input
+                            type="text"
+                            placeholder="ชื่อสินค้า"
+                            value={item.productName}
+                            onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, productName: e.target.value} : it))}
                             className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                            disabled={lockedItemIds.includes(item.id)}
+                            disabled={item.isPromotionParent}
                           />
                           {/* button to open product selector */}
-                          <button onClick={() => openProductSelector('products')} className="px-2 py-1 bg-white border rounded text-sm">เลือก</button>
+                          <button onClick={() => openProductSelector(selectorTab)} className="px-2 py-1 bg-white border rounded text-sm">เลือก</button>
                         </div>
                       </div>
                       <div className="col-span-2">
                         <label className="text-xs text-[#4e7397] mb-1 block">จำนวน</label>
-                        <input 
-                          type="number" 
-                          placeholder="จำนวน" 
-                          value={item.quantity} 
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, quantity: Number(e.target.value)} : it))} 
+                        <input
+                          type="number"
+                          placeholder="จำนวน"
+                          value={item.quantity}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, quantity: Number(e.target.value)} : it))}
+                          onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
+                          disabled={false}
                         />
                       </div>
                       <div className="col-span-2">
                         <label className="text-xs text-[#4e7397] mb-1 block">ราคา</label>
-                        <input 
-                          type="number" 
-                          placeholder="ราคา" 
-                          value={item.pricePerUnit} 
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, pricePerUnit: Number(e.target.value)} : it))} 
+                        <input
+                          type="number"
+                          placeholder="ราคา"
+                          value={item.pricePerUnit}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, pricePerUnit: Number(e.target.value)} : it))}
+                          onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                          disabled={lockedItemIds.includes(item.id)}
+                          disabled={item.isPromotionParent}
                         />
                       </div>
                       <div className="col-span-2">
                         <label className="text-xs text-[#4e7397] mb-1 block">ส่วนลด</label>
-                        <input 
-                          type="number" 
-                          placeholder="ส่วนลด" 
-                          value={item.discount} 
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, discount: Number(e.target.value)} : it))} 
+                        <input
+                          type="number"
+                          placeholder="ส่วนลด"
+                          value={item.discount}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, discount: Number(e.target.value)} : it))}
+                          onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                         />
                       </div>
+                      <div className="col-span-1">
+                        <label className="text-xs text-[#4e7397] mb-1 block">กล่อง</label>
+                        <select
+                          value={item.boxNumber || 1}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, boxNumber: Math.max(1, Math.min(Number(e.target.value), numBoxes)) } : it))}
+                          onFocus={onFocusSelectAll}
+                          className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
+                        >
+                          {Array.from({ length: numBoxes }, (_, i) => i + 1).map(n => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="col-span-1 flex flex-col items-center justify-end h-full pb-2">
                         <label className="text-xs text-[#4e7397] mb-1 block">แถม</label>
-                        <input 
-                          type="checkbox" 
-                          title="ของแถม" 
-                          checked={item.isFreebie} 
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, isFreebie: e.target.checked} : it))} 
+                        <input
+                          type="checkbox"
+                          title="ของแถม"
+                          checked={item.isFreebie}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, isFreebie: e.target.checked} : it))}
                           className="h-4 w-4"
                         />
                       </div>
                       <div className="col-span-1 flex items-end justify-center h-full pb-2">
-                        <button 
-                          onClick={() => updateOrderData('items', orderData.items?.filter((_, i) => i !== index))} 
+                        <button
+                          onClick={() => {
+                            const current = orderData.items || [];
+                            const id = item.id;
+                            const next = current.filter(it => it.id !== id && it.parentItemId !== id);
+                            updateOrderData('items', next);
+                          }}
                           className="text-red-500 hover:text-red-700 text-sm font-medium"
                         >
                           ลบ
@@ -714,15 +1016,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
                   ))}
                   
-                  <button 
-                    onClick={() => updateOrderData('items', [...(orderData.items || []), { id: Date.now(), productName: '', quantity: 1, pricePerUnit: 0, discount: 0, isFreebie: false, boxNumber: 1 }])} 
+                  <button
+                    onClick={() => updateOrderData('items', [...(orderData.items || []), { id: Date.now(), productName: '', quantity: 1, pricePerUnit: 0, discount: 0, isFreebie: false, boxNumber: 1 }])}
                     className="text-sm text-blue-600 font-medium hover:underline"
                   >
                     + เพิ่มรายการสินค้า
                   </button>
         <div className="mt-3">
-          <button onClick={() => openProductSelector('products')} className="px-3 py-2 bg-white border rounded-md mr-2">เลือกสินค้า</button>
-          <button onClick={() => openProductSelector('promotions')} className="px-3 py-2 bg-white border rounded-md">เลือกโปรโมชั่น</button>
+          <button onClick={() => openProductSelector(selectorTab)} className="px-3 py-2 bg-blue-600 text-white rounded-md mr-2">
+            {selectorTab === 'products' ? 'เลือกสินค้า' : 'เลือกโปรโมชั่น'}
+          </button>
         </div>
         {/* Product / Promotion Selector Modal */}
         {productSelectorOpen && (
@@ -735,18 +1038,24 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <button onClick={closeProductSelector} className="px-2 py-1 border rounded">ปิด</button>
                   </div>
                   <ul className="space-y-2 text-sm">
-                    <li className={`p-2 rounded ${!leftFilter && selectorTab === 'products' ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setSelectorTab('products'); setLeftFilter(null); setSelectorSearchTerm(''); }}>ทั้งหมด</li>
-                    <li className={`p-2 rounded ${selectorTab === 'promotions' && leftFilter === -1 ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setSelectorTab('promotions'); setLeftFilter(-1); setSelectorSearchTerm(''); }}>รายการโปรโมชั่น</li>
-                    {promotionsSafe.map(p => (
-                      <li key={p.id} className={`p-2 rounded ${leftFilter === p.id ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setSelectorTab('promotions'); setLeftFilter(p.id); setSelectorSearchTerm(''); }}>{p.name}</li>
-                    ))}
+                    {selectorTab === 'products' && (
+                      <li className={`p-2 rounded ${!leftFilter ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(null); setSelectorSearchTerm(''); }}>ทั้งหมด</li>
+                    )}
+                    {selectorTab === 'promotions' && (
+                      <>
+                        <li className={`p-2 rounded ${leftFilter === -1 ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(-1); setSelectorSearchTerm(''); }}>รายการโปรโมชั่น</li>
+                        {promotionsSafe.map(p => (
+                          <li key={p.id} className={`p-2 rounded ${leftFilter === p.id ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(p.id); setSelectorSearchTerm(''); }}>{p.name}</li>
+                        ))}
+                      </>
+                    )}
                   </ul>
                 </div>
                 <div className="flex-1 flex flex-col min-w-0">
                   <div className="mb-3">
                     <input
                       type="text"
-                      placeholder="ใส่ SKU ID, ชื่อ"
+                      placeholder={`ค้นหา ${selectorTab === 'products' ? 'SKU, ชื่อสินค้า' : 'ชื่อโปรโมชั่น'}`}
                       value={selectorSearchTerm}
                       onChange={e => setSelectorSearchTerm(e.target.value)}
                       className="w-full p-2 border rounded"
@@ -784,11 +1093,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             <th className="p-2">ชื่อโปรโมชั่น</th>
                             <th className="p-2">รายการ</th>
                             <th className="p-2">ราคาขาย</th>
+                            <th className="p-2">สถานะ</th>
                             <th className="p-2">เลือก</th>
                           </tr>
                         </thead>
                         <tbody>
                           {promotionsSafe.filter(pm => {
+                            // Filter only active promotions
+                            if (!pm.active) return false;
                             if (leftFilter && leftFilter !== -1) return String(pm.id) === String(leftFilter);
                             if (!selectorSearchTerm) return true;
                             return `${pm.name}`.toLowerCase().includes(selectorSearchTerm.toLowerCase());
@@ -797,10 +1109,24 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               <td className="p-2 align-top">{pm.name}</td>
                               <td className="p-2 align-top">{(pm.items || []).map((it: any) => {
                                 const prodLabel = it.product_name ?? it.product?.name ?? it.sku ?? it.product_sku ?? '';
-                                return `${it.quantity} x ${prodLabel}`;
+                                const priceText = it.is_freebie ? 'ฟรี' : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)}`;
+                                return `${it.quantity} x ${prodLabel} (${priceText})`;
                               }).join(', ')}</td>
-                              <td className="p-2 align-top">{(pm.items || []).reduce((acc: number, it: any) => acc + (Number(it.product_price ?? it.price_override ?? 0) * Number(it.quantity || 1)), 0).toFixed(2)}</td>
-                              <td className="p-2 align-top"><button onClick={() => addPromotionById(pm.id)} className="text-blue-600">เลือก</button></td>
+                              <td className="p-2 align-top">{calcPromotionSetPrice(pm).toFixed(2)}</td>
+                              <td className="p-2 align-top">
+                                <span className={`px-2 py-1 text-xs rounded-full ${pm.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {pm.active ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                              <td className="p-2 align-top">
+                                <button
+                                  onClick={() => addPromotionByIdFixed(pm.id)}
+                                  className={`px-3 py-1 rounded text-white ${pm.active ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                                  disabled={!pm.active}
+                                >
+                                  เลือก
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -812,15 +1138,15 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             </div>
           </div>
         )}
-                  
+                   
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
                       <label className={commonLabelClass}>ค่าขนส่ง</label>
-                      <input type="number" value={orderData.shippingCost} onChange={e => updateOrderData('shippingCost', Number(e.target.value))} className={commonInputClass} />
+                      <input type="number" value={orderData.shippingCost} onChange={e => updateOrderData('shippingCost', Number(e.target.value))} onFocus={onFocusSelectAll} className={commonInputClass} />
                     </div>
                     <div>
-                      <label className={commonLabelClass}>ส่วนลดท้ายบิล</label>
-                      <input type="number" value={orderData.billDiscount} onChange={e => updateOrderData('billDiscount', Number(e.target.value))} className={commonInputClass} />
+                      <label className={commonLabelClass}>ส่วนลดท้ายบิล (%)</label>
+                      <input type="number" value={orderData.billDiscount} onChange={e => updateOrderData('billDiscount', Number(e.target.value))} onFocus={onFocusSelectAll} className={commonInputClass} />
                     </div>
                   </div>
                 </div>
@@ -835,7 +1161,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 <div className="space-y-4">
                   <div>
                     <label className={commonLabelClass}>เลือกวิธีการชำระเงิน</label>
-                    <select value={orderData.paymentMethod} onChange={e => updateOrderData('paymentMethod', e.target.value as PaymentMethod)} className={commonInputClass}>
+                    <select value={orderData.paymentMethod ?? ''} onChange={e => updateOrderData('paymentMethod', (e.target.value ? (e.target.value as PaymentMethod) : undefined))} className={commonInputClass}>
+                      <option value="">เลือกวิธีการชำระเงิน</option>
                       <option value={PaymentMethod.Transfer}>โอนเงิน</option>
                       <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
                       <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
@@ -857,14 +1184,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
                       <div>
                         <label className={commonLabelClass}>จำนวนกล่อง</label>
-                        <input type="number" min="1" value={numBoxes} onChange={e => setNumBoxes(Math.max(1, Number(e.target.value)))} className={commonInputClass} />
+                      <input type="number" min="1" value={numBoxes} onChange={e => setNumBoxes(Math.max(1, Number(e.target.value)))} onFocus={onFocusSelectAll} className={commonInputClass} />
                       </div>
                       <button onClick={divideCodEqually} className="text-sm text-blue-600 font-medium hover:underline">แบ่งยอดเท่าๆ กัน</button>
                       <div className="space-y-2">
                         {orderData.boxes?.map((box, index) => (
                           <div key={index} className="flex items-center gap-4">
                             <label className="font-medium text-[#0e141b] w-24">กล่อง #{box.boxNumber}:</label>
-                            <input type="number" placeholder="ยอด COD" value={box.codAmount} onChange={e => handleCodBoxAmountChange(index, Number(e.target.value))} className={commonInputClass} />
+                            <input type="number" placeholder="ยอด COD" value={box.codAmount} onChange={e => handleCodBoxAmountChange(index, Number(e.target.value))} onFocus={onFocusSelectAll} className={commonInputClass} />
                           </div>
                         ))}
                       </div>
@@ -874,31 +1201,88 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Right Column: Order Summary (Sticky) */}
-          <div className="lg:col-span-1">
-            <OrderSummary orderData={{...orderData, totalAmount}} />
+            {/* Order Summary */}
+            {
+            <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
+              <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">สรุปคำสั่งซื้อ</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between text-[#4e7397]">
+                  <span>ยอดรวมสินค้า</span>
+                  <span className="text-[#0e141b] font-medium">฿{subTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#4e7397]">
+                  <span>ส่วนลดรายการสินค้า</span>
+                  <span className="text-red-600 font-medium">-฿{itemsDiscount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#4e7397]">
+                  <span>ค่าขนส่ง</span>
+                  <span className="text-[#0e141b] font-medium">฿{(orderData.shippingCost || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#4e7397]">
+                  <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
+                  <span className="text-red-600 font-medium">-฿{billDiscountAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
+                  <span className="text-[#0e141b]">ยอดสุทธิ</span>
+                  <span className="text-green-600">฿{totalAmount.toFixed(2)}</span>
+                </div>
+              </div>
+              
+              {orderData.items && orderData.items.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({(orderData.items || []).filter(it => !it.parentItemId).length})</h4>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {(orderData.items || []).filter(it => !it.parentItemId).map((item, idx) => (
+                      <div key={item.id} className="text-xs p-2 bg-white rounded border">
+                        <div className="font-medium text-[#0e141b]">{item.productName || '(ไม่ระบุ)'}</div>
+                        <div className="text-[#4e7397] mt-1">
+                          {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
+                          {item.discount > 0 && <span> - ฿{item.discount}</span>}
+                          {item.isFreebie && <span className="ml-2 text-green-600">(ของแถม)</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            }
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onCancel} className="px-6 py-2.5 bg-white border border-gray-300 text-[#0e141b] rounded-lg hover:bg-slate-50 font-medium">
-            ยกเลิก
-          </button>
-          <button 
-            onClick={handleSave} 
-            disabled={!isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)} 
+                {/* Footer Actions */}
+        <div className="mt-6 flex justify-end gap-3 pb-6">
+          <button
+            onClick={handleSave}
+            disabled={!isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)}
             className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             บันทึกคำสั่งซื้อ
           </button>
         </div>
+
+        
       </div>
+      
+      {/* Success Message Popup */}
+      {showSuccessMessage && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center">
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          บันทึกคำสั่งซื้อสำเร็จแล้ว
+        </div>
+      )}
     </div>
   );
 };
 
 export default CreateOrderPage;
+
+
+
+
+
+
 

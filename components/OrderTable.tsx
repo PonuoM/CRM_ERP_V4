@@ -167,10 +167,10 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                   </td>
                   <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers.join(', ') || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {order.orderStatus !== OrderStatus.Pending ? (
-                      <button onClick={() => openModal('manageOrder', order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>
-                    ) : (
-                      <span className="text-gray-400 text-sm">รอ Export</span>
+                    {/* Always allow managing (e.g., upload slip) */}
+                    <button onClick={() => openModal('manageOrder', order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>
+                    {order.orderStatus === OrderStatus.Pending && (
+                      <span className="text-gray-400 text-sm ml-2">รอ Export</span>
                     )}
                     {(user?.role === UserRole.Telesale || user?.role === UserRole.Supervisor) &&
                       order.orderStatus === OrderStatus.Pending && onCancelOrder && (

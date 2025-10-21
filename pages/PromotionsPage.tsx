@@ -41,21 +41,64 @@ const PromotionsPage: React.FC = () => {
     }
   };
 
+  // Helper function to check if promotion is expired
+  const isPromotionExpired = (promotion: Promotion) => {
+    const endDate = promotion.end_date || promotion.endDate;
+    if (!endDate || endDate === '0000-00-00 00:00:00' || endDate === '0000-00-00') return false;
+    
+    // Parse the end date and compare with current date
+    const endDateObj = new Date(endDate);
+    const currentDate = new Date();
+    
+    // Set time to end of day for end date to allow full day usage
+    endDateObj.setHours(23, 59, 59, 999);
+    
+    console.log(`Checking expiration for promotion ${promotion.id}:`, {
+      endDate: endDate,
+      endDateObj: endDateObj,
+      currentDate: currentDate,
+      isExpired: endDateObj < currentDate
+    });
+    
+    return endDateObj < currentDate;
+  };
+
+  // Helper function to check if promotion is truly active (not expired and active flag is true)
+  const isPromotionTrulyActive = (promotion: Promotion) => {
+    const expired = isPromotionExpired(promotion);
+    const active = promotion.active;
+    const result = active && !expired;
+    
+    console.log(`Promotion ${promotion.id} (${promotion.name}):`, {
+      active: active,
+      endDate: promotion.end_date || promotion.endDate,
+      expired: expired,
+      result: result
+    });
+    
+    return result;
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'active':
+        const activePromotions = promotions.filter(p => isPromotionTrulyActive(p));
+        console.log('Active promotions:', activePromotions.map(p => ({ id: p.id, name: p.name, active: p.active })));
         return (
           <ActivePromotionsPage
-            promotions={promotions.filter(p => p.active)}
+            promotions={activePromotions}
             products={products}
             onRefresh={refreshPromotions}
           />
         );
       case 'history':
+        const historyPromotions = promotions.filter(p => !isPromotionTrulyActive(p));
+        console.log('History promotions:', historyPromotions.map(p => ({ id: p.id, name: p.name, active: p.active })));
         return (
           <PromotionHistoryPage
-            promotions={promotions.filter(p => !p.active)}
+            promotions={historyPromotions}
             products={products}
+            onRefresh={refreshPromotions}
           />
         );
       case 'create':

@@ -9,28 +9,33 @@ interface UserManagementPageProps {
   allCompanies: Company[];
 }
 
-const UserManagementPage: React.FC<UserManagementPageProps> = ({ users, openModal, currentUser, allCompanies }) => {
-  const [roleFilter, setRoleFilter] = useState<string>('');
-  const [companyFilter, setCompanyFilter] = useState<string>('');
+const UserManagementPage: React.FC<UserManagementPageProps> = ({
+  users,
+  openModal,
+  currentUser,
+  allCompanies,
+}) => {
+  const [roleFilter, setRoleFilter] = useState<string>("");
+  const [companyFilter, setCompanyFilter] = useState<string>("");
 
   const handleDelete = (user: User) => {
-    openModal('confirmDelete', {
+    openModal("confirmDelete", {
       id: user.id,
       name: `${user.firstName} ${user.lastName}`,
-      type: 'user',
+      type: "user",
     });
   };
 
   const isSuperAdmin = currentUser.role === UserRole.SuperAdmin;
 
   const filteredUsers = useMemo(() => {
-    return users.filter(user => {
+    return users.filter((user) => {
       const roleMatch = !roleFilter || user.role === roleFilter;
       const companyMatch = !isSuperAdmin || !companyFilter || user.companyId === parseInt(companyFilter);
       return roleMatch && companyMatch;
     });
   }, [users, roleFilter, companyFilter, isSuperAdmin]);
-  
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -39,10 +44,10 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ users, openModa
           <p className="text-gray-600">จัดการข้อมูลผู้ใช้งานในระบบ</p>
         </div>
         <button
-          onClick={() => openModal('addUser')}
+          onClick={() => openModal("addUser")}
           className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm"
         >
-          <PlusCircle size={16} className="mr-2"/>
+          <PlusCircle size={16} className="mr-2" />
           เพิ่มผู้ใช้ใหม่
         </button>
       </div>
@@ -71,7 +76,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ users, openModa
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              style={{ colorScheme: 'light' }}
+              style={{ colorScheme: "light" }}
             >
               <option value="">ทุกบริษัท</option>
               {allCompanies.map(company => (
@@ -81,7 +86,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ users, openModa
           </div>
         )}
       </div>
-      
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-sm text-left text-gray-500">
           <thead className="text-xs text-gray-700 uppercase bg-gray-50">
@@ -100,15 +105,27 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ users, openModa
             {filteredUsers.map((user) => (
               <tr key={user.id} className="bg-white border-b hover:bg-gray-50">
                 <td className="px-6 py-4 font-mono text-xs">{user.id}</td>
-                <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
+                <td className="px-6 py-4 font-medium text-gray-900">
+                  {user.username}
+                </td>
                 <td className="px-6 py-4 font-medium text-gray-900">{`${user.firstName} ${user.lastName}`}</td>
-                <td className="px-6 py-4">{user.email || '-'}</td>
-                <td className="px-6 py-4">{user.phone || '-'}</td>
+                <td className="px-6 py-4">{user.email || "-"}</td>
+                <td className="px-6 py-4">{user.phone || "-"}</td>
                 <td className="px-6 py-4">{user.role}</td>
-                <td className="px-6 py-4">{user.teamId || '-'}</td>
+                <td className="px-6 py-4">{user.teamId || "-"}</td>
                 <td className="px-6 py-4 flex items-center justify-end space-x-2">
-                  <button onClick={() => openModal('editUser', user)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"><Edit size={16} /></button>
-                  <button onClick={() => handleDelete(user)} className="p-2 text-red-600 hover:bg-red-100 rounded-full"><Trash2 size={16} /></button>
+                  <button
+                    onClick={() => openModal("editUser", user)}
+                    className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(user)}
+                    className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </td>
               </tr>
             ))}

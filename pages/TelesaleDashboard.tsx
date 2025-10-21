@@ -11,6 +11,7 @@ interface TelesaleDashboardProps {
   onViewCustomer: (customer: Customer) => void;
   openModal: (type: ModalType, data: any) => void;
   systemTags: Tag[];
+  setActivePage?: (page: string) => void;
 }
 
 type SubMenu = 'do' | 'all';
@@ -163,7 +164,7 @@ const getDoReason = (customer: Customer, appointments: Appointment[] = [], activ
 };
 
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
-  const { user, customers, appointments, activities, onViewCustomer, openModal, systemTags } = props;
+  const { user, customers, appointments, activities, onViewCustomer, openModal, systemTags, setActivePage } = props;
   
   // Create a unique key for this user's filter state
   const filterStorageKey = `telesale_filters_${user.id}`;
@@ -473,7 +474,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-800">จัดการลูกค้า</h2>
-        <button onClick={() => openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
+        <button onClick={() => setActivePage ? setActivePage('สร้างคำสั่งซื้อ') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
             <PlusCircle className="w-4 h-4 mr-2" />
             สร้างคำสั่งซื้อ
         </button>

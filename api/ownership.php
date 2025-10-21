@@ -102,27 +102,27 @@ function handleSale(PDO $pdo, string $customerId): void {
             $newExpiry = clone $currentExpiry;
             $newExpiry->add(new DateInterval('P' . $daysToAdd . 'D'));
             
-            $updateStmt = $pdo->prepare('
-                UPDATE customers 
-                SET ownership_expires = ?, has_sold_before = 1, last_sale_date = ?, 
+            $updateStmt = $pdo->prepare("
+                UPDATE customers
+                SET ownership_expires = ?, has_sold_before = 1, last_sale_date = ?,
                     follow_up_count = 0, lifecycle_status = 'Old3Months', followup_bonus_remaining = 1
                 WHERE id = ?
-            ');
+            ");
             $updateStmt->execute([
                 $newExpiry->format('Y-m-d H:i:s'),
                 $now->format('Y-m-d H:i:s'),
-                'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹€à¸à¹ˆà¸² 3 à¹€à¸”à¸·à¸­à¸™',
+                'ลูกค้าเก่า 3 เดือน',
                 $customerId
             ]);
         } else {
-            $updateStmt = $pdo->prepare('
-                UPDATE customers 
+            $updateStmt = $pdo->prepare("
+                UPDATE customers
                 SET has_sold_before = 1, last_sale_date = ?, follow_up_count = 0, lifecycle_status = 'Old3Months', followup_bonus_remaining = 1
                 WHERE id = ?
-            ');
+            ");
             $updateStmt->execute([
                 $now->format('Y-m-d H:i:s'),
-                'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹€à¸à¹ˆà¸² 3 à¹€à¸”à¸·à¸­à¸™',
+                'ลูกค้าเก่า 3 เดือน',
                 $customerId
             ]);
         }
@@ -253,11 +253,11 @@ function handleFollowUp(PDO $pdo, string $customerId, array $input): void {
         $newExpiry = clone $currentExpiry;
         $newExpiry->add(new DateInterval('P90D'));
 
-        $updateStmt = $pdo->prepare('
-            UPDATE customers 
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
             SET ownership_expires = ?, follow_up_count = follow_up_count + 1, last_follow_up_date = ?
             WHERE id = ?
-        ');
+        ");
         $updateStmt->execute([
             $newExpiry->format('Y-m-d H:i:s'),
             $now->format('Y-m-d H:i:s'),
@@ -265,11 +265,11 @@ function handleFollowUp(PDO $pdo, string $customerId, array $input): void {
         ]);
     } else {
         // No day extension, just track follow-up
-        $updateStmt = $pdo->prepare('
-            UPDATE customers 
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
             SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?
             WHERE id = ?
-        ');
+        ");
         $updateStmt->execute([
             $now->format('Y-m-d H:i:s'),
             $customerId
@@ -284,15 +284,15 @@ function handleRedistribute(PDO $pdo, string $customerId): void {
     $newExpiry = clone $now;
     $newExpiry->add(new DateInterval('P30D')); // 30 days
     
-    $updateStmt = $pdo->prepare('
-        UPDATE customers 
-        SET ownership_expires = ?, lifecycle_status = 'DailyDistribution', follow_up_count = 0, 
+    $updateStmt = $pdo->prepare("
+        UPDATE customers
+        SET ownership_expires = ?, lifecycle_status = 'DailyDistribution', follow_up_count = 0,
             last_follow_up_date = NULL, is_in_waiting_basket = 0, waiting_basket_start_date = NULL, followup_bonus_remaining = 1
         WHERE id = ?
-    ');
+    ");
     $updateStmt->execute([
         $newExpiry->format('Y-m-d H:i:s'),
-        'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹à¸ˆà¸à¸£à¸²à¸¢à¸§à¸±à¸™',
+        'ลูกค้าแจกรายวัน',
         $customerId
     ]);
     
@@ -312,33 +312,33 @@ function handleRetrieve(PDO $pdo, string $customerId): void {
     $now = new DateTime();
     
     if ($customer['has_sold_before']) {
-        // à¸–à¹‰à¸²à¹€à¸„à¸¢à¸‚à¸²à¸¢à¹„à¸”à¹‰à¹à¸¥à¹‰à¸§ à¸•à¹‰à¸­à¸‡à¸žà¸±à¸à¸Ÿà¸·à¹‰à¸™ 30 à¸§à¸±à¸™à¹ƒà¸™à¸•à¸£à¸°à¸à¸£à¹‰à¸²à¸£à¸­
-        $updateStmt = $pdo->prepare('
-            UPDATE customers 
+        // ถ้าเคยขายได้แล้ว ต้องพักฟื้น 30 วันในตะกร้ารอ
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
             SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, lifecycle_status = 'FollowUp'
             WHERE id = ?
-        ');
+        ");
         $updateStmt->execute([
             $now->format('Y-m-d H:i:s'),
-            'à¸¥à¸¹à¸à¸„à¹‰à¸²à¸•à¸´à¸”à¸•à¸²à¸¡',
+            'ลูกค้าติดตาม',
             $customerId
         ]);
         
         json_response(['success' => true, 'message' => 'Customer moved to waiting basket for 30 days']);
     } else {
-        // à¸–à¹‰à¸²à¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸„à¸¢à¸‚à¸²à¸¢à¹„à¸”à¹‰ à¸¡à¸²à¸•à¸£à¸°à¸à¸£à¹‰à¸²à¹à¸ˆà¸à¸—à¸±à¸™à¸—à¸µ
+        // ถ้ายังไม่เคยขายได้ มาตะกร้าแจกทันที
         $newExpiry = clone $now;
         $newExpiry->add(new DateInterval('P30D')); // 30 days
         
-        $updateStmt = $pdo->prepare('
-            UPDATE customers 
-            SET ownership_expires = ?, lifecycle_status = 'DailyDistribution', follow_up_count = 0, 
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
+            SET ownership_expires = ?, lifecycle_status = 'DailyDistribution', follow_up_count = 0,
                 last_follow_up_date = NULL, is_in_waiting_basket = 0, waiting_basket_start_date = NULL, followup_bonus_remaining = 1
             WHERE id = ?
-        ');
+        ");
         $updateStmt->execute([
             $newExpiry->format('Y-m-d H:i:s'),
-            'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹à¸ˆà¸à¸£à¸²à¸¢à¸§à¸±à¸™',
+            'ลูกค้าแจกรายวัน',
             $customerId
         ]);
         
@@ -366,20 +366,20 @@ function checkAndUpdateCustomerStatus(PDO $pdo, array $customer): array {
     
     // Check if should move to waiting basket
     if ($expiry <= $now && !$customer['is_in_waiting_basket']) {
-        $updateStmt = $pdo->prepare('
-            UPDATE customers 
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
             SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, lifecycle_status = 'FollowUp'
             WHERE id = ?
-        ');
+        ");
         $updateStmt->execute([
             $now->format('Y-m-d H:i:s'),
-            'à¸¥à¸¹à¸à¸„à¹‰à¸²à¸•à¸´à¸”à¸•à¸²à¸¡',
+            'ลูกค้าติดตาม',
             $customer['id']
         ]);
         
         $customer['is_in_waiting_basket'] = 1;
         $customer['waiting_basket_start_date'] = $now->format('Y-m-d H:i:s');
-        $customer['lifecycle_status'] = 'à¸¥à¸¹à¸à¸„à¹‰à¸²à¸•à¸´à¸”à¸•à¸²à¸¡';
+        $customer['lifecycle_status'] = 'ลูกค้าติดตาม';
     }
     
     // Check if should move from waiting basket to distribution
@@ -391,22 +391,22 @@ function checkAndUpdateCustomerStatus(PDO $pdo, array $customer): array {
             $newExpiry = clone $now;
             $newExpiry->add(new DateInterval('P30D'));
             
-            $updateStmt = $pdo->prepare('
-                UPDATE customers 
-                SET is_in_waiting_basket = 0, waiting_basket_start_date = NULL, 
+            $updateStmt = $pdo->prepare("
+                UPDATE customers
+                SET is_in_waiting_basket = 0, waiting_basket_start_date = NULL,
                     ownership_expires = ?, lifecycle_status = ?, follow_up_count = 0, followup_bonus_remaining = 1
                 WHERE id = ?
-            ');
+            ");
             $updateStmt->execute([
                 $newExpiry->format('Y-m-d H:i:s'),
-                'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹à¸ˆà¸à¸£à¸²à¸¢à¸§à¸±à¸™',
+                'ลูกค้าแจกรายวัน',
                 $customer['id']
             ]);
             
             $customer['is_in_waiting_basket'] = 0;
             $customer['waiting_basket_start_date'] = null;
             $customer['ownership_expires'] = $newExpiry->format('Y-m-d H:i:s');
-            $customer['lifecycle_status'] = 'à¸¥à¸¹à¸à¸„à¹‰à¸²à¹à¸ˆà¸à¸£à¸²à¸¢à¸§à¸±à¸™';
+            $customer['lifecycle_status'] = 'ลูกค้าแจกรายวัน';
             $customer['follow_up_count'] = 0;
         }
     }

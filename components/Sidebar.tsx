@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { User as UserType, UserRole } from '../types';
+﻿import React, { useState } from "react";
+import { User as UserType, UserRole } from "../types";
 import {
   LayoutDashboard,
   Users,
@@ -19,7 +19,7 @@ import {
   Home,
   ChevronDown,
   Phone,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface SidebarProps {
   user: UserType;
@@ -33,18 +33,28 @@ interface SidebarProps {
 
 type NavItem = { icon: React.ElementType; label: string; children?: NavItem[] };
 
-const HOME_GROUP = 'Home';
-const SALES_OVERVIEW = 'Sales Overview';
-const CALLS_OVERVIEW = 'Calls Overview';
-const DATA_MGMT = 'Data Management';
-const INVENTORY_MGMT = 'Inventory Management';
-const REPORTS_MGMT = 'Reports Management';
-const PAGE_STATS = 'สถิติเพจ';
-const CALL_MGMT = 'จัดการการโทร';
-const PROMO_MGMT = 'โปรโมชั่น';
+const HOME_GROUP = "Home";
+const SALES_OVERVIEW = "Sales Overview";
+const CALLS_OVERVIEW = "Calls Overview";
+const DATA_MGMT = "Data Management";
+const INVENTORY_MGMT = "Inventory Management";
+const REPORTS_MGMT = "Reports Management";
+const PAGE_STATS = "สถิติเพจ";
+const CALL_MGMT = "จัดการการโทร";
+const PROMO_MGMT = "โปรโมชั่น";
 
-const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCollapsed, setIsCollapsed, onLogout, permissions }) => {
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [HOME_GROUP]: true });
+const Sidebar: React.FC<SidebarProps> = ({
+  user,
+  activePage,
+  setActivePage,
+  isCollapsed,
+  setIsCollapsed,
+  onLogout,
+  permissions,
+}) => {
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    [HOME_GROUP]: true,
+  });
 
   const canView = (key: string) => {
     const perm = permissions?.[key];
@@ -52,50 +62,55 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
     return true;
   };
 
-  const t = (s: string): string => {
-    switch (s) {
-      case 'Home': return 'หน้าหลัก';
-      case 'Data Management': return 'จัดการข้อมูล';
-      case 'Inventory Management': return 'จัดการสินค้าและคลัง';
-      case 'Reports Management': return 'จัดการรายงาน';
-      case 'Dashboard': return 'แดชบอร์ด';
-      case 'Sales Overview': return 'ภาพรวมการขาย';
-      case 'Calls Overview': return 'ภาพรวมการโทร';
-      case 'Call Management': return 'จัดการการโทร';
-      case 'Promotions': return 'โปรโมชั่น';
-      case 'Marketing': return 'การตลาด';
-      case 'Users': return 'ผู้ใช้งาน';
-      case 'Permissions': return 'สิทธิ์การใช้งาน';
-      case 'Products': return 'สินค้า';
-      case 'Teams': return 'ทีม';
-      case 'Team': return 'ทีม';
-      case 'Pages': return 'เพจ';
-      case 'Tags': return 'แท็ก';
-      case 'Orders': return 'คำสั่งซื้อ';
-      case 'Customers': return 'ลูกค้า';
-      case 'Manage Customers': return 'ข้อมูลลูกค้า';
-      case 'Manage Orders': return 'จัดการคำสั่งซื้อ';
-      case 'Debt': return 'ติดตามหนี้';
-      case 'Reports': return 'รายงาน';
-      case 'Bulk Tracking': return 'บันทึกเลขพัสดุ';
-      case 'Export History': return 'ประวัติการส่งออก';
-      case 'Import Export': return 'นำเข้าและส่งออกข้อมูล';
-      case 'Share': return 'แจกรายชื่อ';
-      case 'Settings': return 'การตั้งค่า';
-      case 'Search': return 'ค้นหา';
-      case 'Data': return 'ข้อมูล';
-      case 'Call History': return 'ประวัติการโทร';
-      case 'Companies': return 'บริษัท';
-      case 'Warehouses': return 'คลังสินค้า';
-      case 'Warehouse Stock': return 'สต็อกคลังสินค้า';
-      case 'Lot Tracking': return 'ติดตาม Lot';
-      default: return s;
-    }
+  // Thai translations (UTF-8)
+  const TH: Record<string, string> = {
+    Home: "หน้าหลัก",
+    "Data Management": "จัดการข้อมูล",
+    "Inventory Management": "จัดการสินค้าคงคลัง",
+    "Reports Management": "จัดการรายงาน",
+    Dashboard: "แดชบอร์ด",
+    "Sales Overview": "ภาพรวมการขาย",
+    "Calls Overview": "ภาพรวมการโทร",
+    "Call Management": "จัดการการโทร",
+    Promotions: "โปรโมชั่น",
+    Marketing: "การตลาด",
+    Users: "ผู้ใช้",
+    Permissions: "สิทธิ์การใช้งาน",
+    Products: "สินค้า",
+    Teams: "ทีม",
+    Team: "ทีม",
+    Pages: "เพจ",
+    Tags: "แท็ก",
+    Orders: "คำสั่งซื้อ",
+    Customers: "ลูกค้า",
+    "Manage Customers": "จัดการลูกค้า",
+    "Manage Orders": "จัดการคำสั่งซื้อ",
+    Debt: "ติดตามหนี้",
+    Reports: "รายงาน",
+    "Bulk Tracking": "อัปเดตเลขพัสดุจำนวนมาก",
+    "Export History": "ประวัติการส่งออก",
+    "Import Export": "นำเข้า/ส่งออก",
+    Share: "แชร์",
+    Settings: "ตั้งค่า",
+    Search: "ค้นหา",
+    Data: "ข้อมูล",
+    "Call History": "ประวัติการโทร",
+    Companies: "บริษัท",
+    Warehouses: "คลังสินค้า",
+    "Warehouse Stock": "สต๊อกคลัง",
+    "Lot Tracking": "ติดตามล็อต",
+    "Warehouse Allocation": "จัดสรรคลัง",
   };
 
+  const t = (s: string): string => TH[s] ?? s;
+
   const homeChildren: NavItem[] = [
-    ...(canView('home.dashboard') ? [{ icon: LayoutDashboard, label: 'แดชบอร์ด' }] as NavItem[] : []),
-    ...(canView('home.sales_overview') ? [{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[] : []),
+    ...(canView("home.dashboard")
+      ? ([{ icon: LayoutDashboard, label: "แดชบอร์ด" }] as NavItem[])
+      : []),
+    ...(canView("home.sales_overview")
+      ? ([{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[])
+      : []),
   ];
   const homeGroup: NavItem = {
     icon: Home,
@@ -105,9 +120,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
 
   // Call Management group (dropdown)
   const callChildren: NavItem[] = [
-    ...(canView('calls.overview') ? [{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[] : []),
-    ...(canView('calls.details') ? [{ icon: Phone, label: 'Call Details' }] as NavItem[] : []),
-    ...(canView('calls.dtac') ? [{ icon: Phone, label: 'Dtac Onecall' }] as NavItem[] : []),
+    ...(canView("calls.overview")
+      ? ([{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[])
+      : []),
+    ...(canView("calls.details")
+      ? ([{ icon: Phone, label: "Call Details" }] as NavItem[])
+      : []),
+    ...(canView("calls.dtac")
+      ? ([{ icon: Phone, label: "Dtac Onecall" }] as NavItem[])
+      : []),
   ];
   const callGroup: NavItem = {
     icon: Phone,
@@ -117,9 +138,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
 
   // Promotions Management group
   const promoChildren: NavItem[] = [
-    ...(canView('promo.active') ? [{ icon: BarChart2, label: 'โปรโมชั่นที่กำลังใช้งาน' }] as NavItem[] : []),
-    ...(canView('promo.history') ? [{ icon: FileText, label: 'ประวัติโปรโมชั่น' }] as NavItem[] : []),
-    ...(canView('promo.create') ? [{ icon: FileUp, label: 'สร้างโปรโมชั่นใหม่' }] as NavItem[] : []),
+    ...(canView("promo.active")
+      ? ([{ icon: BarChart2, label: "โปรโมชั่นที่กำลังใช้งาน" }] as NavItem[])
+      : []),
+    ...(canView("promo.history")
+      ? ([{ icon: FileText, label: "ประวัติโปรโมชั่น" }] as NavItem[])
+      : []),
+    ...(canView("promo.create")
+      ? ([{ icon: FileUp, label: "สร้างโปรโมชั่นใหม่" }] as NavItem[])
+      : []),
   ];
   const promoGroup: NavItem = {
     icon: BarChart2,
@@ -128,12 +155,24 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   };
 
   const dataChildren: NavItem[] = [
-    ...(canView('data.users') ? [{ icon: Users, label: 'Users' }] as NavItem[] : []),
-    ...(canView('data.permissions') ? [{ icon: Settings, label: 'Permissions' }] as NavItem[] : []),
-    ...(canView('data.teams') ? [{ icon: Briefcase, label: 'Teams' }] as NavItem[] : []),
-    ...(canView('data.pages') ? [{ icon: Share2, label: 'Pages' }] as NavItem[] : []),
-    ...(canView('data.tags') ? [{ icon: FileText, label: 'Tags' }] as NavItem[] : []),
-    ...(canView('data.companies') ? [{ icon: Briefcase, label: 'Companies' }] as NavItem[] : []),
+    ...(canView("data.users")
+      ? ([{ icon: Users, label: "Users" }] as NavItem[])
+      : []),
+    ...(canView("data.permissions")
+      ? ([{ icon: Settings, label: "Permissions" }] as NavItem[])
+      : []),
+    ...(canView("data.teams")
+      ? ([{ icon: Briefcase, label: "Teams" }] as NavItem[])
+      : []),
+    ...(canView("data.pages")
+      ? ([{ icon: Share2, label: "Pages" }] as NavItem[])
+      : []),
+    ...(canView("data.tags")
+      ? ([{ icon: FileText, label: "Tags" }] as NavItem[])
+      : []),
+    ...(canView("data.companies")
+      ? ([{ icon: Briefcase, label: "Companies" }] as NavItem[])
+      : []),
   ];
   const dataGroup: NavItem = {
     icon: Database,
@@ -142,11 +181,24 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   };
 
   const inventoryChildren: NavItem[] = [
-    ...(canView('inventory.products') ? [{ icon: Package, label: 'Products' }] as NavItem[] : []),
-    ...(canView('inventory.warehouses') ? [{ icon: Database, label: 'Warehouses' }] as NavItem[] : []),
-    ...(canView('inventory.stock') ? [{ icon: Database, label: 'Warehouse Stock' }] as NavItem[] : []),
-    ...(canView('inventory.lot') ? [{ icon: FileText, label: 'Lot Tracking' }] as NavItem[] : []),
-    ...(canView('inventory.promotions') ? [{ icon: BarChart2, label: 'โปรโมชั่นที่กำลังใช้งาน' }] as NavItem[] : []),
+    ...(canView("inventory.products")
+      ? ([{ icon: Package, label: "Products" }] as NavItem[])
+      : []),
+    ...(canView("inventory.warehouses")
+      ? ([{ icon: Database, label: "Warehouses" }] as NavItem[])
+      : []),
+    ...(canView("inventory.stock")
+      ? ([{ icon: Database, label: "Warehouse Stock" }] as NavItem[])
+      : []),
+    ...(canView("inventory.lot")
+      ? ([{ icon: FileText, label: "Lot Tracking" }] as NavItem[])
+      : []),
+    ...(canView("inventory.allocations")
+      ? ([{ icon: FileText, label: "Warehouse Allocation" }] as NavItem[])
+      : []),
+    ...(canView("inventory.promotions")
+      ? ([{ icon: BarChart2, label: "โปรโมชั่นที่กำลังใช้งาน" }] as NavItem[])
+      : []),
   ];
   const inventoryGroup: NavItem = {
     icon: Package,
@@ -155,9 +207,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   };
 
   const reportsChildren: NavItem[] = [
-    ...(canView('reports.export_history') ? [{ icon: FileUp, label: 'Export History' }] as NavItem[] : []),
-    ...(canView('reports.import_export') ? [{ icon: FileUp, label: 'Import Export' }] as NavItem[] : []),
-    ...(canView('reports.reports') ? [{ icon: BarChart2, label: 'Reports' }] as NavItem[] : []),
+    ...(canView("reports.export_history")
+      ? ([{ icon: FileUp, label: "Export History" }] as NavItem[])
+      : []),
+    ...(canView("reports.import_export")
+      ? ([{ icon: FileUp, label: "Import Export" }] as NavItem[])
+      : []),
+    ...(canView("reports.reports")
+      ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
+      : []),
   ];
   const reportsGroup: NavItem = {
     icon: BarChart2,
@@ -168,77 +226,106 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   // Customers group (dropdown)
   const customersGroup: NavItem = {
     icon: Users,
-    label: 'จัดการลูกค้า',
+    label: "จัดการลูกค้า",
     children: [
-      { icon: Users, label: 'Manage Customers' },
-      { icon: Users, label: 'ตระกร้าลูกค้า' },
-      { icon: Share2, label: 'แจกรายชื่อ' },
+      { icon: Users, label: "Manage Customers" },
+      { icon: Users, label: "ตระกร้าลูกค้า" },
+      { icon: Share2, label: "แจกรายชื่อ" },
     ],
   };
   // Fixed customers submenu with clear labels that route correctly
   const customersGroupFixed = {
     icon: Users,
-    label: (customersGroup && (customersGroup as any).label) || 'Customers',
+    label: (customersGroup && (customersGroup as any).label) || "Customers",
     children: [
-      { icon: Users, label: 'Customers' },
-      { icon: Users, label: 'Customer Pools' },
-      { icon: Share2, label: 'Share' },
+      { icon: Users, label: "Customers" },
+      { icon: Users, label: "Customer Pools" },
+      { icon: Share2, label: "Share" },
     ],
   } as NavItem;
 
   const getNavItems = (): NavItem[] => {
     switch (user.role) {
       case UserRole.Marketing:
-        return [homeGroup, { icon: BarChart2, label: 'Marketing' }];
+        return [homeGroup, { icon: BarChart2, label: "Marketing" }];
       case UserRole.SuperAdmin:
         return [
           homeGroup,
           dataGroup,
           inventoryGroup,
           reportsGroup,
-          { icon: BarChart2, label: PAGE_STATS, children: [ { icon: FileText, label: 'หน้าเพจ' }, { icon: FileText, label: 'สถิติการมีส่วนร่วม' } ] },
+          
+          {
+            icon: BarChart2,
+            label: PAGE_STATS,
+            children: [
+              { icon: FileText, label: "หน้าเพจ" },
+              { icon: FileText, label: "สถิติการมีส่วนร่วม" },
+            ],
+          },
           customersGroupFixed,
           callGroup,
-          { icon: Settings, label: 'Settings' },
+          { icon: Settings, label: "Settings" },
         ];
       case UserRole.AdminControl:
         return [
           homeGroup,
           reportsGroup,
-          { icon: Share2, label: 'Share' },
-          { icon: Settings, label: 'Settings' },
+          { icon: Share2, label: "Share" },
+          { icon: Settings, label: "Settings" },
           callGroup,
         ];
       case UserRole.Admin:
         return [
           homeGroup,
-          ...(canView('nav.orders') ? [{ icon: ShoppingCart, label: 'Orders' }] as NavItem[] : []),
-          ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
+          ...(canView("nav.orders")
+            ? ([{ icon: ShoppingCart, label: "Orders" }] as NavItem[])
+            : []),
+          ...(canView("nav.search")
+            ? ([{ icon: Search, label: "Search" }] as NavItem[])
+            : []),
           callGroup,
         ];
       case UserRole.Telesale:
       case UserRole.Supervisor:
         const telesaleItems: NavItem[] = [
           homeGroup,
-          ...(canView('nav.customers') ? [{ icon: Users, label: 'Customers' }] as NavItem[] : []),
-          ...(canView('nav.orders') ? [{ icon: ShoppingCart, label: 'Orders' }] as NavItem[] : []),
-          ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
+          ...(canView("nav.customers")
+            ? ([{ icon: Users, label: "Customers" }] as NavItem[])
+            : []),
+          ...(canView("nav.orders")
+            ? ([{ icon: ShoppingCart, label: "Orders" }] as NavItem[])
+            : []),
+          ...(canView("nav.search")
+            ? ([{ icon: Search, label: "Search" }] as NavItem[])
+            : []),
           callGroup,
         ];
-        
+
         if (user.role === UserRole.Supervisor) {
-          telesaleItems.push({ icon: Briefcase, label: 'Team' });
+          telesaleItems.push({ icon: Briefcase, label: "Team" });
         }
-        
+
         return telesaleItems;
       case UserRole.Backoffice:
         return [
           homeGroup,
-          ...(canView('nav.manage_orders') ? [{ icon: ShoppingCart, label: 'Manage Orders' }] as NavItem[] : []),
-          ...(canView('nav.debt') ? [{ icon: FileText, label: 'Debt' }] as NavItem[] : []),
-          ...(canView('nav.search') ? [{ icon: Search, label: 'Search' }] as NavItem[] : []),
-          ...(canView('nav.reports') ? [{ icon: BarChart2, label: 'Reports' }] as NavItem[] : []),
-          ...(canView('nav.bulk_tracking') ? [{ icon: FileUp, label: 'Bulk Tracking' }] as NavItem[] : []),
+          ...(canView("nav.manage_orders")
+            ? ([{ icon: ShoppingCart, label: "Manage Orders" }] as NavItem[])
+            : []),
+          ...(canView("nav.debt")
+            ? ([{ icon: FileText, label: "Debt" }] as NavItem[])
+            : []),
+          ...(canView("nav.search")
+            ? ([{ icon: Search, label: "Search" }] as NavItem[])
+            : []),
+          ...(canView("nav.reports")
+            ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
+            : []),
+          ...(canView("nav.bulk_tracking")
+            ? ([{ icon: FileUp, label: "Bulk Tracking" }] as NavItem[])
+            : []),
+          inventoryGroup,
           callGroup,
         ];
       default:
@@ -247,13 +334,23 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
   };
 
   const navItems = getNavItems();
+  // Ensure 'Pancake User Mapping' appears under the single 'PAGE_STATS' group only
+  try {
+    const statsGroup = navItems.find((it) => it.label === PAGE_STATS && Array.isArray((it as any).children)) as any;
+    if (statsGroup && Array.isArray(statsGroup.children)) {
+      const exists = statsGroup.children.some((c: any) => c && c.label === "Pancake User Mapping");
+      if (!exists) {
+        statsGroup.children.push({ icon: Users, label: "Pancake User Mapping" });
+      }
+    }
+  } catch {}
 
   const renderNavItem = (item: NavItem) => {
     const isGroup = Array.isArray(item.children);
     const isOpen = !!openGroups[item.label];
     // Check if this group is active (either the group itself or any of its children)
-    const isActive = isGroup 
-      ? item.children?.some(c => c.label === activePage)
+    const isActive = isGroup
+      ? item.children?.some((c) => c.label === activePage)
       : activePage === item.label;
 
     if (isGroup) {
@@ -265,41 +362,51 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
               const newOpenState: Record<string, boolean> = {};
               newOpenState[item.label] = !openGroups[item.label];
               setOpenGroups(newOpenState);
-              
+
               // Don't set active page to this main menu - only highlight it visually
               // setActivePage(item.label);
             }}
             className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${
-              isCollapsed ? 'px-3' : 'px-4'
-            } ${isActive ? 'bg-[#2E7D32] text-white shadow' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
-            title={isCollapsed ? t(item.label) : ''}
+              isCollapsed ? "px-3" : "px-4"
+            } ${isActive ? "bg-[#2E7D32] text-white shadow" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
+            title={isCollapsed ? t(item.label) : ""}
           >
-            <item.icon className={`w-5 h-5 flex-shrink-0 ${!isCollapsed ? 'mr-3' : ''}`} />
+            <item.icon
+              className={`w-5 h-5 flex-shrink-0 ${!isCollapsed ? "mr-3" : ""}`}
+            />
             {!isCollapsed && (
               <>
                 <span className="truncate flex-1">{t(item.label)}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ease-in-out ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-300 ease-in-out ${isOpen ? "rotate-180" : ""}`}
+                />
               </>
             )}
           </button>
           {!isCollapsed && (
-            <div 
+            <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isOpen ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'
+                isOpen ? "max-h-96 opacity-100 mt-1" : "max-h-0 opacity-0"
               }`}
             >
               <div className="ml-2 space-y-1">
-                {item.children!.map(child => (
+                {item.children!.map((child) => (
                   <button
                     key={child.label}
                     onClick={() => setActivePage(child.label)}
                     className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start transition-colors ${
-                      activePage === child.label ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    } ${isCollapsed ? 'px-3' : 'pl-10 pr-3'}`}
-                    title={isCollapsed ? t(child.label) : ''}
+                      activePage === child.label
+                        ? "bg-green-50 text-green-700"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    } ${isCollapsed ? "px-3" : "pl-10 pr-3"}`}
+                    title={isCollapsed ? t(child.label) : ""}
                   >
-                    <child.icon className={`w-4 h-4 flex-shrink-0 ${!isCollapsed ? 'mr-2' : ''}`} />
-                    {!isCollapsed && <span className="truncate">{t(child.label)}</span>}
+                    <child.icon
+                      className={`w-4 h-4 flex-shrink-0 ${!isCollapsed ? "mr-2" : ""}`}
+                    />
+                    {!isCollapsed && (
+                      <span className="truncate">{t(child.label)}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -314,34 +421,46 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
         key={item.label}
         onClick={() => setActivePage(item.label)}
         className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start
-              ${isCollapsed ? 'px-3' : 'px-4'}
-              ${activePage === item.label ? 'bg-[#2E7D32] text-white shadow' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
-        title={isCollapsed ? t(item.label) : ''}
+              ${isCollapsed ? "px-3" : "px-4"}
+              ${activePage === item.label ? "bg-[#2E7D32] text-white shadow" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
+        title={isCollapsed ? t(item.label) : ""}
       >
-        <item.icon className={`w-5 h-5 flex-shrink-0 ${!isCollapsed ? 'mr-3' : ''}`} />
+        <item.icon
+          className={`w-5 h-5 flex-shrink-0 ${!isCollapsed ? "mr-3" : ""}`}
+        />
         {!isCollapsed && <span className="truncate">{t(item.label)}</span>}
       </button>
     );
   };
 
   return (
-    <div className={`bg-[#FFFFFF] text-gray-700 flex flex-col transition-all duration-300 ease-in-out border-r border-gray-200 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+    <div
+      className={`bg-[#FFFFFF] text-gray-700 flex flex-col transition-all duration-300 ease-in-out border-r border-gray-200 ${isCollapsed ? "w-20" : "w-64"}`}
+    >
       <div className="flex items-center justify-between h-16 border-b border-gray-200 flex-shrink-0 px-4">
-        <h1 className={`text-2xl font-bold text-[#2E7D32] transition-opacity duration-300 ${isCollapsed ? '' : 'tracking-wider'}`}>{isCollapsed ? 'E' : 'ERP'}</h1>
+        <h1
+          className={`text-2xl font-bold text-[#2E7D32] transition-opacity duration-300 ${isCollapsed ? "" : "tracking-wider"}`}
+        >
+          {isCollapsed ? "E" : "ERP"}
+        </h1>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <Menu className="w-5 h-5" />
         </button>
       </div>
-      <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-6 mb-2">{isCollapsed ? '' : 'เมนู'}</div>
+      <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-6 mb-2">
+        {isCollapsed ? "" : "เมนู"}
+      </div>
       <nav className="flex-1 px-4 py-2 space-y-1">
         {navItems.map(renderNavItem)}
       </nav>
       <div className="px-4 py-4 border-t border-gray-200 mt-auto">
-        <div className={`flex items-center mb-4 ${isCollapsed ? 'justify-center' : ''}`}>
+        <div
+          className={`flex items-center mb-4 ${isCollapsed ? "justify-center" : ""}`}
+        >
           {!isCollapsed && (
             <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600 mr-3">
               {user.firstName.charAt(0)}
@@ -358,8 +477,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user, activePage, setActivePage, isCo
           onClick={onLogout}
           className="w-full flex items-center p-2.5 text-sm font-medium rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 text-left"
         >
-          <LogOut className={`w-5 h-5 flex-shrink-0 ${isCollapsed ? '' : 'mr-3'}`} />
-          {!isCollapsed && 'ออกจากระบบ'}
+          <LogOut
+            className={`w-5 h-5 flex-shrink-0 ${isCollapsed ? "" : "mr-3"}`}
+          />
+          {!isCollapsed && "ออกจากระบบ"}
         </button>
       </div>
     </div>

@@ -36,17 +36,59 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Helper function to format date for input field
+  const formatDateForInput = (dateString?: string) => {
+    if (!dateString || dateString === '0000-00-00 00:00:00' || dateString === '0000-00-00' || dateString === null) {
+      return '';
+    }
+    
+    try {
+      // Handle both 'T' separator and space separator
+      const datePart = dateString.includes('T') ? dateString.split('T')[0] : dateString.split(' ')[0];
+      
+      // Validate the date format (YYYY-MM-DD)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        console.warn('Invalid date format:', dateString);
+        return '';
+      }
+      
+      console.log('Formatting date:', dateString, '->', datePart);
+      return datePart;
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return '';
+    }
+  };
+
   useEffect(() => {
     if (promotion) {
-      setFormData({
+      console.log('Promotion data in modal:', promotion);
+      console.log('Start date:', promotion.start_date || promotion.startDate);
+      console.log('End date:', promotion.end_date || promotion.endDate);
+      
+      const startDateFormatted = formatDateForInput(promotion.start_date || promotion.startDate);
+      const endDateFormatted = formatDateForInput(promotion.end_date || promotion.endDate);
+      
+      console.log('Start date formatted:', startDateFormatted);
+      console.log('End date formatted:', endDateFormatted);
+      
+      const formDataToSet = {
         name: promotion.name || '',
         sku: promotion.sku || '',
         description: promotion.description || '',
-        startDate: promotion.startDate ? promotion.startDate.split('T')[0] : '',
-        endDate: promotion.endDate ? promotion.endDate.split('T')[0] : '',
-        active: promotion.active
-      });
+        startDate: startDateFormatted,
+        endDate: endDateFormatted,
+        active: typeof promotion.active === 'boolean' ? promotion.active : promotion.active === 1
+      };
+      
+      console.log('Form data to set:', formDataToSet);
+      setFormData(formDataToSet);
       setPromotionItems([...promotion.items]);
+      
+      // Debug: Check formData after setting
+      setTimeout(() => {
+        console.log('FormData after setting:', formData);
+      }, 100);
     } else {
       // Reset form for new promotion
       setFormData({
@@ -60,6 +102,11 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
       setPromotionItems([]);
     }
   }, [promotion]);
+
+  // Debug: Log formData changes
+  useEffect(() => {
+    console.log('FormData state changed:', formData);
+  }, [formData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -127,21 +174,72 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
     setError('');
 
     try {
+      // Ensure dates are properly formatted
+      const formatDateForAPI = (dateString: string) => {
+        if (!dateString || dateString.trim() === '') return null;
+        // Ensure the date is in YYYY-MM-DD format
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return null;
+        return dateString; // Already in correct format from input[type="date"]
+      };
+
       const promotionData = {
-        ...formData,
-        items: promotionItems.map(item => ({
-          id: item.id > 10000 ? undefined : item.id, // Only include real IDs
+        name: formData.name,
+        sku: formData.sku,
+        description: formData.description,
+        company_id: 1,
+        active: formData.active,
+        start_date: formatDateForAPI(formData.startDate),
+        end_date: formatDateForAPI(formData.endDate),
+        items: promotionItems.map(item => {
+          // Get product_id from either productId or product_id field
+          const productId = item.productId || item.product_id;
+          
+          // Validate product_id exists in products array
+          const productExists = products.find(p => p.id === productId);
+          if (!productExists) {
+            console.error('Product not found:', productId, 'Available products:', products.map(p => ({ id: p.id, name: p.name })));
+            throw new Error(`สินค้า ID ${productId} ไม่พบในระบบ`);
+          }
+          
+          return {
+            id: item.id > 10000 ? undefined : item.id, // Only include real IDs
+            product_id: productId,
+            quantity: item.quantity,
+            is_freebie: item.isFreebie || item.is_freebie || false,
+            price_override: item.priceOverride || item.price_override || null
+          };
+        })
+      };
+
+      console.log('Sending promotion data:', promotionData);
+      console.log('Form data:', formData);
+      console.log('Original promotion active:', promotion?.active);
+      console.log('Form data active:', formData.active);
+      console.log('Promotion items:', promotionItems);
+      console.log('Available products:', products);
+      
+      // Debug: Check each promotion item structure
+      promotionItems.forEach((item, index) => {
+        console.log(`Promotion item ${index}:`, {
+          id: item.id,
           productId: item.productId,
+          product_id: item.product_id,
           quantity: item.quantity,
           isFreebie: item.isFreebie,
-          priceOverride: item.priceOverride
-        }))
-      };
+          is_freebie: item.is_freebie,
+          priceOverride: item.priceOverride,
+          price_override: item.price_override,
+          fullItem: item
+        });
+      });
 
       const url = promotion ? `promotions/${promotion.id}` : 'promotions';
       const method = promotion ? 'PUT' : 'POST';
 
-      await apiFetch(url, {
+      console.log('API URL:', url, 'Method:', method);
+
+      const response = await apiFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -149,22 +247,46 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
         body: JSON.stringify(promotionData)
       });
 
+      console.log('API Response:', response);
+
       onClose();
-    } catch (err) {
-      setError(`เกิดข้อผิดพลาดในการ${promotion ? 'อัปเดต' : 'สร้าง'}โปรโมชั่น กรุณาลองใหม่อีกครั้ง`);
+    } catch (err: any) {
       console.error('Error saving promotion:', err);
+      console.error('Error details:', err.data, err.status);
+      
+      let errorMessage = `เกิดข้อผิดพลาดในการ${promotion ? 'อัปเดต' : 'สร้าง'}โปรโมชั่น กรุณาลองใหม่อีกครั้ง`;
+      
+      if (err.data && err.data.message) {
+        errorMessage = err.data.message;
+      } else if (err.data && err.data.error) {
+        errorMessage = `ข้อผิดพลาด: ${err.data.error}`;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const getProductName = (productId: number) => {
-    const product = products.find(p => p.id === productId);
-    return product ? product.name : `Product #${productId}`;
+  const getProductName = (item: any) => {
+    // Use product_name from API if available, otherwise fallback to products array
+    if (item.product_name) {
+      return item.product_name;
+    }
+    const product = products.find(p => p.id === item.productId);
+    return product ? product.name : `Product #${item.productId}`;
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={promotion ? 'แก้ไขโปรโมชั่น' : 'สร้างโปรโมชั่นใหม่'}>
+    <Modal 
+      isOpen={isOpen} 
+      onClose={onClose} 
+      title={promotion ? 'แก้ไขโปรโมชั่น' : 'สร้างโปรโมชั่นใหม่'}
+      requireConfirmation={true}
+      confirmationMessage="คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป"
+    >
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
@@ -353,16 +475,16 @@ const PromotionModal: React.FC<PromotionModalProps> = ({
                   {promotionItems.map(item => (
                     <tr key={item.id}>
                       <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
-                        {getProductName(item.productId)}
+                        {getProductName(item)}
                       </td>
                       <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
                         {item.quantity}
                       </td>
                       <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-500">
-                        {item.priceOverride ? `฿${item.priceOverride}` : '-'}
+                        {(item.priceOverride || item.price_override) ? `฿${item.priceOverride || item.price_override}` : '-'}
                       </td>
                       <td className="px-2 py-1 whitespace-nowrap">
-                        {item.isFreebie ? (
+                        {(item.isFreebie || item.is_freebie) ? (
                           <span className="px-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                             ฟรี
                           </span>

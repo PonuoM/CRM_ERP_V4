@@ -1,0 +1,12 @@
+# Enforce UTF-8 and 2-space TSX formatting repo-wide
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{ts,tsx,js,jsx,css,scss,html,php}]
+indent_style = space
+indent_size = 2

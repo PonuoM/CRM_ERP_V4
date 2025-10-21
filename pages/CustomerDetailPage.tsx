@@ -18,6 +18,7 @@ interface CustomerDetailPageProps {
   onRemoveTag: (customerId: string, tagId: number) => void;
   onCreateUserTag: (tagName: string) => Tag | null;
   onCompleteAppointment?: (appointmentId: number) => void;
+  setActivePage?: (page: string) => void;
 }
 
 type ActiveTab = 'calls' | 'appointments' | 'orders';
@@ -30,7 +31,7 @@ const InfoItem: React.FC<{ label: string; value?: string | number; children?: Re
 );
 
 const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
-    const { customer, orders, callHistory, appointments, activities, user, systemTags, onClose, openModal, onAddTag, onRemoveTag, onCreateUserTag } = props;
+    const { customer, orders, callHistory, appointments, activities, user, systemTags, onClose, openModal, onAddTag, onRemoveTag, onCreateUserTag, setActivePage } = props;
     const [activeTab, setActiveTab] = useState<ActiveTab>('calls');
     const [newTagName, setNewTagName] = useState('');
 
@@ -162,7 +163,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 <div className="flex items-center space-x-2">
                     <button onClick={() => openModal('logCall', customer)} className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-green-200"><Phone size={16} className="mr-2"/>บันทึกการโทร</button>
                     <button onClick={() => openModal('addAppointment', customer)} className="bg-cyan-100 text-cyan-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-cyan-200"><Calendar size={16} className="mr-2"/>นัดหมาย</button>
-                    <button onClick={() => openModal('createOrder', { customer })} className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"><ShoppingCart size={16} className="mr-2"/>สร้างคำสั่งซื้อ</button>
+                    <button onClick={() => setActivePage ? setActivePage('สร้างคำสั่งซื้อ') : openModal('createOrder', { customer })} className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"><ShoppingCart size={16} className="mr-2"/>สร้างคำสั่งซื้อ</button>
                     <button onClick={() => openModal('editCustomer', customer)} className="bg-slate-700 text-white py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-slate-800"><Edit size={16} className="mr-2"/>แก้ไข</button>
                 </div>
             </header>
