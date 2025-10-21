@@ -1805,6 +1805,101 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   แสดงข้อมูล {Object.keys(allPagesEngagementData).length} เพจ
                 </div>
               )}
+              
+              {/* Download CSV Button - Only show after data is loaded */}
+              {Object.keys(allPagesEngagementData).length > 0 && (
+                <button
+                  onClick={() => {
+                    // Process data for CSV export
+                    const csvData: any[] = [];
+                    
+                    // Collect data from all pages
+                    Object.values(allPagesEngagementData).forEach((pageData: any) => {
+                      if (pageData && pageData.data) {
+                        const series = pageData.data.series || [];
+                        const categories = pageData.data.categories || [];
+                        
+                        // Find the series we need
+                        const inboxSeries = series.find((s: any) => s.name === 'inbox') || { data: [] };
+                        const commentSeries = series.find((s: any) => s.name === 'comment') || { data: [] };
+                        const totalSeries = series.find((s: any) => s.name === 'total') || { data: [] };
+                        const newCustomerRepliedSeries = series.find((s: any) => s.name === 'new_customer_replied') || { data: [] };
+                        const orderCountSeries = series.find((s: any) => s.name === 'order_count') || { data: [] };
+                        const oldOrderCountSeries = series.find((s: any) => s.name === 'old_order_count') || { data: [] };
+                        
+                        // Create rows for each date
+                        categories.forEach((date: string, index: number) => {
+                          const inbox = inboxSeries.data[index] || 0;
+                          const comment = commentSeries.data[index] || 0;
+                          const total = totalSeries.data[index] || 0;
+                          const newCustomerReplied = newCustomerRepliedSeries.data[index] || 0;
+                          const orderCount = orderCountSeries.data[index] || 0;
+                          const oldOrderCount = oldOrderCountSeries.data[index] || 0;
+                          
+                          const oldCustomerReplied = total - newCustomerReplied;
+                          const newOrderCount = orderCount - oldOrderCount;
+                          
+                          csvData.push({
+                            page_id: pageData.pageId,
+                            page_name: pageData.pageName,
+                            date: date,
+                            newCustomerReplied: newCustomerReplied,
+                            oldCustomerReplied: oldCustomerReplied,
+                            total: total,
+                            orderCount: orderCount,
+                            newOrderCount: newOrderCount
+                          });
+                        });
+                      }
+                    });
+                    
+                    // Sort data by date
+                    csvData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                    
+                    // Generate CSV
+                    const headers = [
+                      'Page ID', 'เพจ', 'เวลา', 'ลูกค้าใหม่', 'ลูกค้าเก่า', 'รวม', 'ได้คุย', 'ยอดออเดอร์', 'ออเดอร์ลูกค้าใหม่', '% สั่งซื้อ/ติดต่อ', '% สั่งซื้อ/ลูกค้าใหม่'
+                    ];
+                    
+                    const rows = csvData.map(item => {
+                      return [
+                        item.page_id,
+                        item.page_name,
+                        item.date,
+                        item.newCustomerReplied,
+                        item.oldCustomerReplied,
+                        item.total,
+                        item.total,
+                        item.orderCount,
+                        item.newOrderCount,
+                        item.total > 0 ? ((item.orderCount / item.total) * 100).toFixed(2) + '%' : '-',
+                        item.newCustomerReplied > 0 ? ((item.newOrderCount / item.newCustomerReplied) * 100).toFixed(2) + '%' : '-'
+                      ];
+                    });
+                    
+                    // Add BOM for UTF-8 to ensure proper Thai character display in Excel
+                    const BOM = '\uFEFF';
+                    const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
+                    const csvWithBOM = BOM + csvContent;
+                    
+                    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    // Generate filename with date range
+                    const s = new Date(pageTabDateRange.start);
+                    const e = new Date(pageTabDateRange.end);
+                    a.download = `all-pages-engagement-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                >
+                  <Download className="w-4 h-4 inline mr-1" />
+                  ดาวน์โหลด CSV
+                </button>
+              )}
             </div>
             
             {/* Table - Only show after data is loaded */}
