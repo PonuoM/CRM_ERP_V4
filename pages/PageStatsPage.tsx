@@ -106,6 +106,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // State for access token warning modal
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
+  const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
 
   // Get current user from localStorage
   useEffect(() => {
@@ -119,6 +120,21 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             key: `ACCESS_TOKEN_PANCAKE_${session.company_id}`,
             value: ''
           });
+          
+          // Check if database upload is enabled
+          const checkDbSetting = async () => {
+            try {
+              const envResponse = await fetch('api/Page_DB/env_manager.php');
+              if (envResponse.ok) {
+                const envData = await envResponse.json();
+                const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
+                setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
+              }
+            } catch (error) {
+              console.error('Error checking database setting:', error);
+            }
+          };
+          checkDbSetting();
         }
       }
     } catch (error) {
@@ -1591,15 +1607,17 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             >
               <Download className="w-4 h-4"/> ดาวน์โหลด CSV
             </button>
-            <button
-              onClick={() => {
-                setIsDatabaseModalOpen(true);
-                fetchExistingDateRanges();
-              }}
-              className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
-            >
-              <Save className="w-4 h-4"/> อัปเดต Database
-            </button>
+            {isStoreDbEnabled && (
+              <button
+                onClick={() => {
+                  setIsDatabaseModalOpen(true);
+                  fetchExistingDateRanges();
+                }}
+                className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+              >
+                <Save className="w-4 h-4"/> อัปเดต Database
+              </button>
+            )}
             <button
               onClick={fetchPageStats}
               className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
@@ -2139,6 +2157,37 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       </div>
                     );
                   })()}
+                </div>
+                
+                {/* Database Upload Setting */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="text-md font-medium mb-3">การตั้งค่าฐานข้อมูล</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="storeDbEnabled"
+                        checked={isStoreDbEnabled}
+                        onChange={(e) => {
+                          const isEnabled = e.target.checked;
+                          setIsStoreDbEnabled(isEnabled);
+                          
+                          // Save the setting to database
+                          saveEnvVariable({
+                            key: 'page_store_db',
+                            value: isEnabled ? '1' : '0'
+                          });
+                        }}
+                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="storeDbEnabled" className="text-sm text-gray-700">
+                        เปิดใช้งานฟังก์ชันอัปโหลดข้อมูลลงฐานข้อมูล
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      เมื่อปิดใช้งาน ปุ่ม "อัปเดต Database" จะไม่แสดง
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

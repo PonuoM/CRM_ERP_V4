@@ -94,6 +94,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // State for access token warning modal
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
+  const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
   
   // State for all pages engagement data
   const [allPagesEngagementData, setAllPagesEngagementData] = useState<Record<string, any>>({});
@@ -156,6 +157,21 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     fetchPages();
     fetchExistingDateRanges();
     fetchUploadBatches();
+    
+    // Check page_store_db setting on page load
+    const checkDbSetting = async () => {
+      try {
+        const envResponse = await fetch('api/Page_DB/env_manager.php');
+        if (envResponse.ok) {
+          const envData = await envResponse.json();
+          const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
+          setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
+        }
+      } catch (error) {
+        console.error('Error checking database setting:', error);
+      }
+    };
+    checkDbSetting();
   }, []);
 
   // Fetch env variables
@@ -166,6 +182,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         if (response.ok) {
           const data = await response.json();
           setEnvVariables(Array.isArray(data) ? data : []);
+          
+          // Check for page_store_db setting
+          const storeDbSetting = data.find((env: any) => env.key === 'page_store_db');
+          if (storeDbSetting) {
+            setIsStoreDbEnabled(storeDbSetting.value === '1');
+          }
         }
       } catch (error) {
         console.error('Error fetching env variables:', error);
@@ -1294,12 +1316,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         >
           <Download className="w-4 h-4"/> ดาวน์โหลด CSV
         </button>
-        <button
-          onClick={() => setIsUploadModalOpen(true)}
-          className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
-        >
-          <Save className="w-4 h-4"/> อัปโหลดข้อมูล
-        </button>
+        {isStoreDbEnabled && (
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
+          >
+            <Save className="w-4 h-4"/> อัปโหลดข้อมูล
+          </button>
+        )}
       </div>
 
       {/* Top gauges */}
@@ -1973,6 +1997,37 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                       </div>
                     );
                   })()}
+                </div>
+              </div>
+              
+              {/* Database Upload Setting */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-md font-medium mb-3">การตั้งค่าฐานข้อมูล</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="storeDbEnabled"
+                      checked={isStoreDbEnabled}
+                      onChange={(e) => {
+                        const isEnabled = e.target.checked;
+                        setIsStoreDbEnabled(isEnabled);
+                        
+                        // Save the setting to database
+                        saveEnvVariable({
+                          key: 'page_store_db',
+                          value: isEnabled ? '1' : '0'
+                        });
+                      }}
+                      className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="storeDbEnabled" className="text-sm text-gray-700">
+                      เปิดใช้งานฟังก์ชันอัปโหลดข้อมูลลงฐานข้อมูล
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    เมื่อปิดใช้งาน ปุ่ม "อัปโหลดข้อมูล" จะไม่แสดง
+                  </p>
                 </div>
               </div>
             </div>
