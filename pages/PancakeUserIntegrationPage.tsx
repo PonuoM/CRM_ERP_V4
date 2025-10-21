@@ -52,7 +52,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
   const [pagesWithUsers, setPagesWithUsers] = useState<PageWithUsers[]>([]);
   const [userMappings, setUserMappings] = useState<UserPancakeMapping[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const [pageUserSearchTerm, setPageUserSearchTerm] = useState('');
   const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUserFromDB | null>(null);
   const [selectedPageUser, setSelectedPageUser] = useState<PageUserFromDB | null>(null);
   const [loading, setLoading] = useState(false);
@@ -254,14 +255,14 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const getPageUser = (id: number) => pageUsers.find(u => u.id === id);
 
   const filteredInternalUsers = internalUsers.filter(user =>
-    user.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+    user.first_name.toLowerCase().includes(internalSearchTerm.toLowerCase()) ||
+    user.last_name.toLowerCase().includes(internalSearchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(internalSearchTerm.toLowerCase())
   );
 
   const filteredPageUsers = pageUsers.filter(user =>
-    user.page_user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.page_user_id.toLowerCase().includes(searchTerm.toLowerCase())
+    user.page_user_name.toLowerCase().includes(pageUserSearchTerm.toLowerCase()) ||
+    user.page_user_id.toLowerCase().includes(pageUserSearchTerm.toLowerCase())
   );
 
   return (
@@ -468,8 +469,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <input
                       type="text"
                       placeholder="ค้นหาผู้ใช้ Admin Page..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      value={internalSearchTerm}
+                      onChange={(e) => setInternalSearchTerm(e.target.value)}
                       disabled={loadingUsers}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100"
                     />
@@ -526,8 +527,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <input
                       type="text"
                       placeholder="ค้นหาผู้ใช้เพจ..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      value={pageUserSearchTerm}
+                      onChange={(e) => setPageUserSearchTerm(e.target.value)}
                       disabled={loadingPageUsers}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100"
                     />
