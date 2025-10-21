@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Page, User } from '@/types';
 import Modal from '@/components/Modal';
 import { createPage, updatePage, listPages } from '@/services/api';
+import PageIconFront from '@/components/PageIconFront';
 
 
 // Function to sync pages from pages.fm API to database
@@ -281,7 +282,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
           <tbody>
             {filtered.map(p => (
               <tr key={p.id} className="border-t">
-                <td className="py-2 px-3">{p.name}</td>
+                <td className="py-2 px-3 flex items-center gap-2">
+                  <PageIconFront platform={p.platform || 'unknown'} />
+                  {p.name}
+                </td>
                 <td className="py-2 px-3">{p.url ? (<a href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{p.url}</a>) : (<span className="text-gray-400">-</span>)}</td>
                 <td className="py-2 px-3">
                   <span className={p.active ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
@@ -318,7 +322,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                 <tbody>
                   {hiddenPages.map(p => (
                     <tr key={p.id} className="border-t opacity-60">
-                      <td className="py-2 px-3">{p.name}</td>
+                      <td className="py-2 px-3 flex items-center gap-2">
+                        <PageIconFront platform={p.platform || 'facebook'} />
+                        {p.name}
+                      </td>
                       <td className="py-2 px-3">{p.url ? (<a href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{p.url}</a>) : (<span className="text-gray-400">-</span>)}</td>
                       <td className="py-2 px-3">
                         <span className={p.active ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
