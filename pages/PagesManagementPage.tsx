@@ -128,24 +128,85 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
           
           console.log(`Page users synced successfully. Deleted: ${pageUsersResult.deleted}, Inserted: ${pageUsersResult.inserted}, Updated: ${pageUsersResult.updated}, Skipped: ${pageUsersResult.skipped}, Errors: ${pageUsersResult.errors}`);
           
-          return {
-            success: true,
-            count: pagesToSync.length,
-            inserted: result.inserted,
-            updated: result.updated,
-            skipped: result.skipped,
-            errors: result.errors,
-            pages: pagesToSync,
-            errorDetails: result.errorDetails,
-            pageUsers: {
-              deleted: pageUsersResult.deleted,
-              inserted: pageUsersResult.inserted,
-              updated: pageUsersResult.updated,
-              skipped: pageUsersResult.skipped,
-              errors: pageUsersResult.errors,
-              errorDetails: pageUsersResult.errorDetails
+          // Now sync page list user relationships
+          try {
+            console.log('Starting to sync page list user relationships...');
+            const pageListUserResponse = await fetch('api/Page_DB/sync_page_list_user.php', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                pages: pagesToSync,
+                companyId: currentUser.companyId || 1
+              })
+            });
+            
+            console.log('Page list user sync response status:', pageListUserResponse.status);
+            
+            if (!pageListUserResponse.ok) {
+              const errorText = await pageListUserResponse.text();
+              console.error('Page list user sync response error:', errorText);
+              throw new Error(`HTTP error! status: ${pageListUserResponse.status}, response: ${errorText}`);
             }
-          };
+            
+            const pageListUserResult = await pageListUserResponse.json();
+            console.log('Page list user sync response result:', pageListUserResult);
+            
+            if (!pageListUserResult.ok) {
+              throw new Error(pageListUserResult.error || 'Page list user sync failed');
+            }
+            
+            console.log(`Page list user relationships synced successfully. Deleted: ${pageListUserResult.deleted}, Inserted: ${pageListUserResult.inserted}, Skipped: ${pageListUserResult.skipped}, Errors: ${pageListUserResult.errors}`);
+            
+            return {
+              success: true,
+              count: pagesToSync.length,
+              inserted: result.inserted,
+              updated: result.updated,
+              skipped: result.skipped,
+              errors: result.errors,
+              pages: pagesToSync,
+              errorDetails: result.errorDetails,
+              pageUsers: {
+                deleted: pageUsersResult.deleted,
+                inserted: pageUsersResult.inserted,
+                updated: pageUsersResult.updated,
+                skipped: pageUsersResult.skipped,
+                errors: pageUsersResult.errors,
+                errorDetails: pageUsersResult.errorDetails
+              },
+              pageListUser: {
+                deleted: pageListUserResult.deleted,
+                inserted: pageListUserResult.inserted,
+                skipped: pageListUserResult.skipped,
+                errors: pageListUserResult.errors,
+                total_relationships: pageListUserResult.total_relationships
+              }
+            };
+          } catch (pageListUserError) {
+            console.error('Error syncing page list user relationships:', pageListUserError);
+            // Still return success for pages sync, but include error info for page list user
+            return {
+              success: true,
+              count: pagesToSync.length,
+              inserted: result.inserted,
+              updated: result.updated,
+              skipped: result.skipped,
+              errors: result.errors,
+              pages: pagesToSync,
+              errorDetails: result.errorDetails,
+              pageUsers: {
+                deleted: pageUsersResult.deleted,
+                inserted: pageUsersResult.inserted,
+                updated: pageUsersResult.updated,
+                skipped: pageUsersResult.skipped,
+                errors: pageUsersResult.errors,
+                errorDetails: pageUsersResult.errorDetails
+              },
+              pageListUserError: 'Page list user sync failed'
+            };
+          }
         } catch (pageUsersError) {
           console.error('Error syncing page users with database:', pageUsersError);
           // Still return success for pages sync, but include error info for page users
@@ -289,6 +350,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                       message += `\nผู้ใช้เพจ: ลบ ${result.pageUsers.deleted}, เพิ่ม ${result.pageUsers.inserted}, อัปเดต ${result.pageUsers.updated}, ข้าม ${result.pageUsers.skipped}, ข้อผิดพลาด ${result.pageUsers.errors}`;
                     } else if (result.pageUsersError) {
                       message += `\nคำเตือน: ${result.pageUsersError}`;
+                    }
+                    
+                    // Add page list user sync info if available
+                    if (result.pageListUser) {
+                      message += `\nความสัมพันธ์เพจ-ผู้ใช้: ลบ ${result.pageListUser.deleted}, เพิ่ม ${result.pageListUser.inserted}, ข้าม ${result.pageListUser.skipped}, ข้อผิดพลาด ${result.pageListUser.errors} (ทั้งหมด ${result.pageListUser.total_relationships} ความสัมพันธ์)`;
+                    } else if (result.pageListUserError) {
+                      message += `\nคำเตือน: ${result.pageListUserError}`;
                     }
                     
                     alert(message);
