@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, UserCheck, UserX, RefreshCw, Link, Unlink, Check, X, AlertCircle, ExternalLink, Users, Database } from 'lucide-react';
 import { listAdminPageUsers, AdminPageUser, listUserPancakeMappings, createUserPancakeMapping, UserPancakeMapping } from '../services/api';
+import PageIconFront from '@/components/PageIconFront';
 
 interface AdminPageUserFromDB {
   id: number;
@@ -31,10 +32,25 @@ interface PancakeUser {
   last_active?: string;
 }
 
-const PancakeUserIntegrationPage: React.FC = () => {
+interface PageWithUsers {
+  page_id: string;
+  page_name: string;
+  platform: string;
+  active: boolean;
+  url: string;
+  users: Array<{
+    page_user_id: string;
+    page_user_name: string;
+    internal_user_id: number | null;
+    is_connected: boolean;
+  }>;
+}
+
+const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'mappings' | 'search'>('mappings');
   const [internalUsers, setInternalUsers] = useState<AdminPageUserFromDB[]>([]);
   const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
+  const [pagesWithUsers, setPagesWithUsers] = useState<PageWithUsers[]>([]);
   const [userMappings, setUserMappings] = useState<UserPancakeMapping[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUserFromDB | null>(null);
@@ -42,12 +58,15 @@ const PancakeUserIntegrationPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingPageUsers, setLoadingPageUsers] = useState(false);
+  const [loadingPagesWithUsers, setLoadingPagesWithUsers] = useState(false);
+  const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // ดึงข้อมูล Admin Page users จาก API
   useEffect(() => {
     loadAdminPageUsers();
     loadPageUsers();
+    loadPagesWithUsers();
     loadUserMappings();
   }, []);
 
@@ -84,6 +103,32 @@ const PancakeUserIntegrationPage: React.FC = () => {
       setPageUsers([]);
     } finally {
       setLoadingPageUsers(false);
+    }
+  };
+
+  const loadPagesWithUsers = async () => {
+    setLoadingPagesWithUsers(true);
+    try {
+      const response = await fetch('api/get_pages_with_users.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          companyId: currentUser?.companyId || 1
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const pagesData: PageWithUsers[] = await response.json();
+      setPagesWithUsers(pagesData);
+    } catch (error) {
+      console.error('Failed to load pages with users:', error);
+      showMessage('error', 'ไม่สามารถโหลดข้อมูลเพจและผู้ใช้ได้ กรุณาตรวจสอบ API connection');
+      setPagesWithUsers([]);
+    } finally {
+      setLoadingPagesWithUsers(false);
     }
   };
 
@@ -164,6 +209,18 @@ const PancakeUserIntegrationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const togglePageExpansion = (pageId: string) => {
+    setExpandedPages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(pageId)) {
+        newSet.delete(pageId);
+      } else {
+        newSet.add(pageId);
+      }
+      return newSet;
+    });
   };
 
   const getInternalUser = (id: number) => internalUsers.find(u => u.id === id);
@@ -252,58 +309,105 @@ const PancakeUserIntegrationPage: React.FC = () => {
           {activeTab === 'mappings' && (
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">รายการการเชื่อมต่อทั้งหมด</h2>
+                <h2 className="text-lg font-semibold text-gray-900">รายการเพจและผู้ใช้</h2>
                 <div className="text-sm text-gray-600">
-                  พบ {userMappings.length} การเชื่อมต่อ
+                  พบ {pagesWithUsers.length} เพจ
                 </div>
               </div>
 
               <div className="space-y-3">
-                {userMappings.map(mapping => {
-                  const internalUser = getInternalUser(mapping.id_user);
-
-                  if (!internalUser) return null;
-
-                  return (
-                    <div key={mapping.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-100 rounded-lg">
-                            <UserCheck className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900">
-                              {internalUser.first_name} {internalUser.last_name}
-                            </div>
-                            <div className="text-sm text-gray-600">{internalUser.email}</div>
-                            <div className="text-xs text-gray-500">
-                              {internalUser.role}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-right text-sm text-gray-500">
-                          เชื่อมต่อเมื่อ {mapping.created_at?.split('T')[0]}
-                        </div>
-                        <button
-                          onClick={() => handleUnmapUsers(mapping.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="ยกเลิกการเชื่อมต่อ"
-                        >
-                          <Unlink className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {userMappings.length === 0 && (
+                {loadingPagesWithUsers ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
+                    <span className="text-gray-600">กำลังโหลดข้อมูลเพจและผู้ใช้...</span>
+                  </div>
+                ) : pagesWithUsers.length === 0 ? (
                   <div className="text-center py-12">
                     <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">ยังไม่มีการเชื่อมต่อผู้ใช้</p>
-                    <p className="text-sm text-gray-500 mt-2">ไปที่หน้า "ค้นหาและเชื่อมต่อ" เพื่อเริ่มสร้างการเชื่อมต่อ</p>
+                    <p className="text-gray-600">ไม่พบข้อมูลเพจ</p>
+                    <p className="text-sm text-gray-500 mt-2">กรุณาอัปเดตข้อมูลเพจจากหน้า Pages Management</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pagesWithUsers.map(page => (
+                      <div key={page.page_id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                        <div
+                          className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => togglePageExpansion(page.page_id)}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <PageIconFront platform={page.platform || 'unknown'} />
+                              <div>
+                                <div className="font-medium text-gray-900">
+                                  {page.page_name}
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  {page.active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-600">
+                                {page.users.length}
+                              </span>
+                              {expandedPages.has(page.page_id) ? (
+                                <X className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <Check className="w-4 h-4 text-gray-500" />
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <div className="text-sm text-gray-600">
+                              ผู้ใช้ทั้งหมด
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {page.users.filter(u => u.is_connected).length} เชื่อมต่อแล้ว
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {expandedPages.has(page.page_id) && (
+                          <div className="p-4 bg-white border-t border-gray-200">
+                            <h4 className="font-medium text-gray-900 mb-3">ผู้ใช้ในเพจ:</h4>
+                            {page.users.length === 0 ? (
+                              <p className="text-sm text-gray-500">ไม่มีผู้ใช้ในเพจนี้</p>
+                            ) : (
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {page.users.map(user => (
+                                  <div key={user.page_user_id} className="flex items-center justify-between p-2 border border-gray-100 rounded">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${user.is_connected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                      <div>
+                                        <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'}`}>
+                                          {user.page_user_name}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          ID: {user.page_user_id}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      {user.is_connected ? (
+                                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                                          เชื่อมต่อ
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
+                                          ไม่เชื่อมต่อ
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
