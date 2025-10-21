@@ -2,6 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { Search, UserCheck, UserX, RefreshCw, Link, Unlink, Check, X, AlertCircle, ExternalLink, Users, Database } from 'lucide-react';
 import { listAdminPageUsers, AdminPageUser, listUserPancakeMappings, createUserPancakeMapping, UserPancakeMapping } from '../services/api';
 
+interface AdminPageUserFromDB {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  role: string;
+}
+
+interface PageUserFromDB {
+  id: number;
+  user_id: number | null;
+  page_user_id: string;
+  page_user_name: string;
+  page_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface PancakeUser {
   id: string;
   name: string;
@@ -14,43 +33,57 @@ interface PancakeUser {
 
 const PancakeUserIntegrationPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'mappings' | 'search'>('mappings');
-  const [internalUsers, setInternalUsers] = useState<AdminPageUser[]>([]);
-  const [pancakeUsers, setPancakeUsers] = useState<PancakeUser[]>([]);
+  const [internalUsers, setInternalUsers] = useState<AdminPageUserFromDB[]>([]);
+  const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
   const [userMappings, setUserMappings] = useState<UserPancakeMapping[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUser | null>(null);
-  const [selectedPancakeUser, setSelectedPancakeUser] = useState<PancakeUser | null>(null);
+  const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUserFromDB | null>(null);
+  const [selectedPageUser, setSelectedPageUser] = useState<PageUserFromDB | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingPageUsers, setLoadingPageUsers] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // ดึงข้อมูล Admin Page users จาก API
   useEffect(() => {
     loadAdminPageUsers();
+    loadPageUsers();
     loadUserMappings();
-    loadMockPancakeUsers();
   }, []);
 
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
     try {
-      const adminUsers = await listAdminPageUsers();
-      const mappedUsers: AdminPageUser[] = adminUsers.map((user) => ({
-        id: user.id,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email || '',
-        role: user.role,
-        department: 'Admin Page',
-        phone: user.phone || '',
-      }));
-      setInternalUsers(mappedUsers);
+      const response = await fetch('api/get_admin_page_users.php');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const adminUsers: AdminPageUserFromDB[] = await response.json();
+      setInternalUsers(adminUsers);
     } catch (error) {
       console.error('Failed to load Admin Page users:', error);
       showMessage('error', 'ไม่สามารถโหลดข้อมูลผู้ใช้ Admin Page ได้ กรุณาตรวจสอบ API connection');
       setInternalUsers([]);
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const loadPageUsers = async () => {
+    setLoadingPageUsers(true);
+    try {
+      const response = await fetch('api/get_page_users.php');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const pageUsersData: PageUserFromDB[] = await response.json();
+      setPageUsers(pageUsersData);
+    } catch (error) {
+      console.error('Failed to load page users:', error);
+      showMessage('error', 'ไม่สามารถโหลดข้อมูลผู้ใช้เพจได้ กรุณาตรวจสอบ API connection');
+      setPageUsers([]);
+    } finally {
+      setLoadingPageUsers(false);
     }
   };
 
@@ -64,15 +97,6 @@ const PancakeUserIntegrationPage: React.FC = () => {
     }
   };
 
-  const loadMockPancakeUsers = () => {
-    setPancakeUsers([
-      { id: 'pancake_001', name: 'สมชาย ใจดี', email: 'somchai@pancake.com', phone: '0812345678', avatar: '', created_at: '2024-01-15', last_active: '2024-12-20' },
-      { id: 'pancake_002', name: 'TIK TOK SHOP', email: 'TIKTOK@Gmail.com', phone: '', avatar: '', created_at: '2024-10-02', last_active: null },
-      { id: 'pancake_003', name: 'วิชัย มีสุข', email: 'wichai@pancake.com', phone: '0834567890', avatar: '', created_at: '2024-02-01', last_active: '2024-12-18' },
-      { id: 'pancake_004', name: 'นฤมล สุขใจ', email: 'narumol@pancake.com', phone: '0845678901', avatar: '', created_at: '2024-02-10', last_active: '2024-12-17' },
-      { id: 'pancake_005', name: 'ประเสริฐ รุ่งเรือง', email: 'prasert@pancake.com', phone: '0856789012', avatar: '', created_at: '2024-03-01', last_active: '2024-12-16' },
-    ]);
-  };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -80,21 +104,43 @@ const PancakeUserIntegrationPage: React.FC = () => {
   };
 
   const handleMapUsers = async () => {
-    if (!selectedInternalUser || !selectedPancakeUser) {
+    if (!selectedInternalUser || !selectedPageUser) {
       showMessage('error', 'กรุณาเลือกผู้ใช้ทั้งสองระบบ');
       return;
     }
 
     setLoading(true);
     try {
-      await createUserPancakeMapping(selectedInternalUser.id, selectedPancakeUser.id);
+      // Update the page_user record with the internal user ID
+      const response = await fetch('api/update_page_user_connection.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pageUserId: selectedPageUser.id,
+          internalUserId: selectedInternalUser.id
+        })
+      });
 
-      // โหลดข้อมูลใหม่
-      await loadUserMappings();
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
+      }
 
-      setSelectedInternalUser(null);
-      setSelectedPancakeUser(null);
+      const result = await response.json();
+      
+      if (!result.ok) {
+        throw new Error(result.error || 'Failed to update user connection');
+      }
+
       showMessage('success', 'เชื่อมต่อผู้ใช้สำเร็จแล้ว');
+      
+      // Reload page users to reflect the changes
+      await loadPageUsers();
+      
+      setSelectedInternalUser(null);
+      setSelectedPageUser(null);
     } catch (error) {
       console.error('Failed to create mapping:', error);
       showMessage('error', 'ไม่สามารถเชื่อมต่อผู้ใช้ได้ กรุณาลองใหม่');
@@ -121,21 +167,17 @@ const PancakeUserIntegrationPage: React.FC = () => {
   };
 
   const getInternalUser = (id: number) => internalUsers.find(u => u.id === id);
-  const getPancakeUser = (id: string) => pancakeUsers.find(u => u.id === id);
-  const getUnmappedPancakeUsers = () => {
-    const mappedIds = userMappings.map(m => m.id_panake);
-    return pancakeUsers.filter(u => !mappedIds.includes(u.id));
-  };
+  const getPageUser = (id: number) => pageUsers.find(u => u.id === id);
 
   const filteredInternalUsers = internalUsers.filter(user =>
-    user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredPancakeUsers = getUnmappedPancakeUsers().filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPageUsers = pageUsers.filter(user =>
+    user.page_user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.page_user_id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -219,9 +261,8 @@ const PancakeUserIntegrationPage: React.FC = () => {
               <div className="space-y-3">
                 {userMappings.map(mapping => {
                   const internalUser = getInternalUser(mapping.id_user);
-                  const pancakeUser = getPancakeUser(mapping.id_panake);
 
-                  if (!internalUser || !pancakeUser) return null;
+                  if (!internalUser) return null;
 
                   return (
                     <div key={mapping.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
@@ -232,28 +273,11 @@ const PancakeUserIntegrationPage: React.FC = () => {
                           </div>
                           <div>
                             <div className="font-medium text-gray-900">
-                              {internalUser.firstName} {internalUser.lastName}
+                              {internalUser.first_name} {internalUser.last_name}
                             </div>
                             <div className="text-sm text-gray-600">{internalUser.email}</div>
                             <div className="text-xs text-gray-500">
-                              {internalUser.role} • {internalUser.department}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-gray-400">
-                          <Link className="w-4 h-4" />
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-orange-100 rounded-lg">
-                            <Users className="w-4 h-4 text-orange-600" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900">{pancakeUser.name}</div>
-                            <div className="text-sm text-gray-600">{pancakeUser.email}</div>
-                            <div className="text-xs text-gray-500">
-                              ID: {pancakeUser.id} • สร้างเมื่อ {pancakeUser.created_at}
+                              {internalUser.role}
                             </div>
                           </div>
                         </div>
@@ -337,11 +361,11 @@ const PancakeUserIntegrationPage: React.FC = () => {
                           }`}
                         >
                           <div className="font-medium text-gray-900">
-                            {user.firstName} {user.lastName}
+                            {user.first_name} {user.last_name}
                           </div>
                           <div className="text-sm text-gray-600">{user.email}</div>
                           <div className="text-xs text-gray-500">
-                            {user.role} • {user.department}
+                            {user.role}
                           </div>
                         </div>
                       ))
@@ -349,43 +373,61 @@ const PancakeUserIntegrationPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Pancake Users */}
+                {/* Page Users */}
                 <div>
                   <h3 className="font-medium text-gray-900 mb-3">
-                    ผู้ใช้จาก Pancake (ยังไม่เชื่อมต่อ)
+                    ผู้ใช้เพจทั้งหมด
                     <span className="ml-2 text-xs text-gray-500">
-                      ({getUnmappedPancakeUsers().length} คน)
+                      ({pageUsers.length} คน)
                     </span>
                   </h3>
                   <div className="relative mb-4">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
                       type="text"
-                      placeholder="ค้นหาผู้ใช้ Pancake..."
+                      placeholder="ค้นหาผู้ใช้เพจ..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      disabled={loadingPageUsers}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100"
                     />
                   </div>
 
                   <div className="max-h-96 overflow-y-auto space-y-2">
-                    {filteredPancakeUsers.map(user => (
-                      <div
-                        key={user.id}
-                        onClick={() => setSelectedPancakeUser(user)}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                          selectedPancakeUser?.id === user.id
-                            ? 'border-orange-500 bg-orange-50'
-                            : 'border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-900">{user.name}</div>
-                        <div className="text-sm text-gray-600">{user.email}</div>
-                        <div className="text-xs text-gray-500">
-                          ID: {user.id} • สร้างเมื่อ {user.created_at}
-                        </div>
+                    {loadingPageUsers ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
+                        <span className="text-gray-600">กำลังโหลดข้อมูล...</span>
                       </div>
-                    ))}
+                    ) : filteredPageUsers.length === 0 ? (
+                      <div className="text-center py-8">
+                        <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">ไม่พบข้อมูลผู้ใช้เพจ</p>
+                      </div>
+                    ) : (
+                      filteredPageUsers.map(user => (
+                        <div
+                          key={user.id}
+                          onClick={() => setSelectedPageUser(user)}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            selectedPageUser?.id === user.id
+                              ? 'border-orange-500 bg-orange-50'
+                              : 'border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className={`font-medium ${user.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
+                            {user.page_user_name}
+                            {user.user_id === null && (
+                              <span className="ml-2 text-xs text-red-500">(ยังไม่มีการเชื่อมต่อ)</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600">จำนวนเพจ: {user.page_count}</div>
+                          <div className="text-xs text-gray-500">
+                            ID: {user.page_user_id} • อัปเดตเมื่อ {user.updated_at?.split('T')[0]}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -393,11 +435,11 @@ const PancakeUserIntegrationPage: React.FC = () => {
               {/* Action Buttons */}
               <div className="mt-6 flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  {loadingUsers ? (
+                  {loadingUsers || loadingPageUsers ? (
                     <span className="text-blue-600">
-                      กำลังโหลดข้อมูลผู้ใช้ Admin Page...
+                      กำลังโหลดข้อมูล...
                     </span>
-                  ) : selectedInternalUser && selectedPancakeUser ? (
+                  ) : selectedInternalUser && selectedPageUser ? (
                     <span className="text-green-600">✓ เลือกผู้ใช้ครบแล้ว</span>
                   ) : (
                     <span>กรุณาเลือกผู้ใช้ทั้งสองระบบ</span>
@@ -406,7 +448,7 @@ const PancakeUserIntegrationPage: React.FC = () => {
 
                 <button
                   onClick={handleMapUsers}
-                  disabled={!selectedInternalUser || !selectedPancakeUser || loading}
+                  disabled={!selectedInternalUser || !selectedPageUser || loading}
                   className="flex items-center gap-2 px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
                   {loading ? (
@@ -419,20 +461,22 @@ const PancakeUserIntegrationPage: React.FC = () => {
               </div>
 
               {/* Preview Selected Users */}
-              {selectedInternalUser && selectedPancakeUser && (
+              {selectedInternalUser && selectedPageUser && (
                 <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
                   <h4 className="font-medium text-gray-900 mb-3">ตัวอย่างการเชื่อมต่อ:</h4>
                   <div className="flex items-center gap-4">
                     <div>
                       <div className="text-sm text-gray-600">ผู้ใช้ภายใน:</div>
                       <div className="font-medium">
-                        {selectedInternalUser.firstName} {selectedInternalUser.lastName}
+                        {selectedInternalUser.first_name} {selectedInternalUser.last_name}
                       </div>
                     </div>
                     <div className="text-orange-500">→</div>
                     <div>
-                      <div className="text-sm text-gray-600">ผู้ใช้ Pancake:</div>
-                      <div className="font-medium">{selectedPancakeUser.name}</div>
+                      <div className="text-sm text-gray-600">ผู้ใช้เพจ:</div>
+                      <div className={`font-medium ${selectedPageUser.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
+                        {selectedPageUser.page_user_name}
+                      </div>
                     </div>
                   </div>
                 </div>
