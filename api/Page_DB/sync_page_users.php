@@ -71,9 +71,17 @@ try {
         foreach ($users as $userIndex => $user) {
             $userId = $user['user_id'] ?? null; // Using user_id as the user identifier
             $userName = $user['name'] ?? '';
+            $userStatus = $user['status'] ?? '';
             
             if (!$userId || !$userName) {
                 error_log("Skipping user $userIndex for page $pageId: missing user_id or name");
+                $skippedCount++;
+                continue;
+            }
+            
+            // Skip users with status = "removed"
+            if ($userStatus === 'removed') {
+                error_log("Skipping user $userIndex for page $pageId: user status is 'removed'");
                 $skippedCount++;
                 continue;
             }
