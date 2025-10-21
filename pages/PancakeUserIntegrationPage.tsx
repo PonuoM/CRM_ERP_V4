@@ -181,8 +181,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
 
       showMessage('success', 'เชื่อมต่อผู้ใช้สำเร็จแล้ว');
       
-      // Reload page users to reflect the changes
-      await loadPageUsers();
+      // Reload all data to reflect the changes
+      await Promise.all([
+        loadPageUsers(),
+        loadPagesWithUsers()
+      ]);
       
       setSelectedInternalUser(null);
       setSelectedPageUser(null);
