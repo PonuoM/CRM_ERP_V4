@@ -2093,8 +2093,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   {/* Date Range Popover */}
                   {isExportRangePopoverOpen && (
                     <div className="absolute z-50 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{
-                      bottom: '100%', // Position above the input
-                      marginBottom: '5px'
+                      Top: '100%', // Position above the input
+                      marginTop: '5px'
                     }}>
                       <div className="flex items-center justify-between mb-3">
                         <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
