@@ -117,3 +117,4 @@ INSERT IGNORE INTO `env` (`key`, `value`) VALUES
 ('app_version', '1.0.0'),
 ('timezone', 'Asia/Bangkok'),
 ('date_format', 'Y-m-d H:i:s');
+('page_store_db', '0');
