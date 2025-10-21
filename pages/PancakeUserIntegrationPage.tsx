@@ -223,6 +223,22 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
     });
   };
 
+  const handleUserClick = (user: any) => {
+    // Find the corresponding page user in the pageUsers array
+    const correspondingPageUser = pageUsers.find(pu => pu.page_user_id === user.page_user_id);
+    
+    if (correspondingPageUser) {
+      // Select the page user
+      setSelectedPageUser(correspondingPageUser);
+      
+      // Switch to the search tab
+      setActiveTab('search');
+      
+      // Clear any selected internal user to allow new selection
+      setSelectedInternalUser(null);
+    }
+  };
+
   const getInternalUser = (id: number) => internalUsers.find(u => u.id === id);
   const getPageUser = (id: number) => pageUsers.find(u => u.id === id);
 
@@ -377,11 +393,15 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                             ) : (
                               <div className="space-y-2 max-h-48 overflow-y-auto">
                                 {page.users.map(user => (
-                                  <div key={user.page_user_id} className="flex items-center justify-between p-2 border border-gray-100 rounded">
+                                  <div
+                                    key={user.page_user_id}
+                                    className={`flex items-center justify-between p-2 border border-gray-100 rounded ${!user.is_connected ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                                    onClick={() => !user.is_connected && handleUserClick(user)}
+                                  >
                                     <div className="flex items-center gap-2">
                                       <div className={`w-2 h-2 rounded-full ${user.is_connected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                                       <div>
-                                        <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'}`}>
+                                        <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'} ${!user.is_connected ? 'hover:text-blue-600' : ''}`}>
                                           {user.page_user_name}
                                         </div>
                                         <div className="text-xs text-gray-500">
@@ -398,6 +418,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                                         <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
                                           ไม่เชื่อมต่อ
                                         </span>
+                                      )}
+                                      {!user.is_connected && (
+                                        <div className="text-xs text-blue-600">
+                                          คลิกเพื่อเชื่อมต่อ
+                                        </div>
                                       )}
                                     </div>
                                   </div>
