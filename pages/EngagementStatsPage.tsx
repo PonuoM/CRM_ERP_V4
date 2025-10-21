@@ -166,6 +166,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           const envData = await envResponse.json();
           const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
           setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
+          // Also set envVariables to ensure hasAccessToken check works
+          setEnvVariables(Array.isArray(envData) ? envData : []);
         }
       } catch (error) {
         console.error('Error checking database setting:', error);
