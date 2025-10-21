@@ -96,7 +96,71 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
         }
         
         console.log(`Pages synced with database successfully. Total: ${result.synced}, Inserted: ${result.inserted}, Updated: ${result.updated}, Skipped: ${result.skipped}, Errors: ${result.errors}`);
-        return { success: true, count: pagesToSync.length, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors, pages: pagesToSync, errorDetails: result.errorDetails };
+        
+        // Now sync page users to the page_user table
+        try {
+          console.log('Starting to sync page users...');
+          const pageUsersResponse = await fetch('api/Page_DB/sync_page_users.php', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              pages: pagesToSync,
+              companyId: currentUser.companyId || 1
+            })
+          });
+          
+          console.log('Page users sync response status:', pageUsersResponse.status);
+          
+          if (!pageUsersResponse.ok) {
+            const errorText = await pageUsersResponse.text();
+            console.error('Page users sync response error:', errorText);
+            throw new Error(`HTTP error! status: ${pageUsersResponse.status}, response: ${errorText}`);
+          }
+          
+          const pageUsersResult = await pageUsersResponse.json();
+          console.log('Page users sync response result:', pageUsersResult);
+          
+          if (!pageUsersResult.ok) {
+            throw new Error(pageUsersResult.error || 'Page users sync failed');
+          }
+          
+          console.log(`Page users synced successfully. Deleted: ${pageUsersResult.deleted}, Inserted: ${pageUsersResult.inserted}, Updated: ${pageUsersResult.updated}, Skipped: ${pageUsersResult.skipped}, Errors: ${pageUsersResult.errors}`);
+          
+          return {
+            success: true,
+            count: pagesToSync.length,
+            inserted: result.inserted,
+            updated: result.updated,
+            skipped: result.skipped,
+            errors: result.errors,
+            pages: pagesToSync,
+            errorDetails: result.errorDetails,
+            pageUsers: {
+              deleted: pageUsersResult.deleted,
+              inserted: pageUsersResult.inserted,
+              updated: pageUsersResult.updated,
+              skipped: pageUsersResult.skipped,
+              errors: pageUsersResult.errors,
+              errorDetails: pageUsersResult.errorDetails
+            }
+          };
+        } catch (pageUsersError) {
+          console.error('Error syncing page users with database:', pageUsersError);
+          // Still return success for pages sync, but include error info for page users
+          return {
+            success: true,
+            count: pagesToSync.length,
+            inserted: result.inserted,
+            updated: result.updated,
+            skipped: result.skipped,
+            errors: result.errors,
+            pages: pagesToSync,
+            errorDetails: result.errorDetails,
+            pageUsersError: 'Page users sync failed'
+          };
+        }
       } catch (syncError) {
         console.error('Error syncing pages with database:', syncError);
         return { success: false, error: 'Database sync failed' };
@@ -218,7 +282,16 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                   const result = await syncPagesWithDatabase(currentUser);
                   setSyncResult(result);
                   if (result.success) {
-                    alert(`อัปเดตข้อมูลสำเร็จ: ${result.count} เพจ (เพิ่ม ${result.inserted}, อัปเดต ${result.updated}, ข้าม ${result.skipped}, ข้อผิดพลาด ${result.errors})`);
+                    let message = `อัปเดตข้อมูลสำเร็จ: ${result.count} เพจ (เพิ่ม ${result.inserted}, อัปเดต ${result.updated}, ข้าม ${result.skipped}, ข้อผิดพลาด ${result.errors})`;
+                    
+                    // Add page users sync info if available
+                    if (result.pageUsers) {
+                      message += `\nผู้ใช้เพจ: ลบ ${result.pageUsers.deleted}, เพิ่ม ${result.pageUsers.inserted}, อัปเดต ${result.pageUsers.updated}, ข้าม ${result.pageUsers.skipped}, ข้อผิดพลาด ${result.pageUsers.errors}`;
+                    } else if (result.pageUsersError) {
+                      message += `\nคำเตือน: ${result.pageUsersError}`;
+                    }
+                    
+                    alert(message);
                     // Refresh pages data after sync
                     fetchPages();
                   } else {
