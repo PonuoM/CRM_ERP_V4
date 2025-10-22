@@ -54,6 +54,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const [userMappings, setUserMappings] = useState<UserPancakeMapping[]>([]);
   const [internalSearchTerm, setInternalSearchTerm] = useState('');
   const [pageUserSearchTerm, setPageUserSearchTerm] = useState('');
+  const [pageUserFilter, setPageUserFilter] = useState<'all' | 'connected' | 'unconnected'>('all');
   const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUserFromDB | null>(null);
   const [selectedPageUser, setSelectedPageUser] = useState<PageUserFromDB | null>(null);
   const [loading, setLoading] = useState(false);
@@ -260,10 +261,19 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
     user.email.toLowerCase().includes(internalSearchTerm.toLowerCase())
   );
 
-  const filteredPageUsers = pageUsers.filter(user =>
-    user.page_user_name.toLowerCase().includes(pageUserSearchTerm.toLowerCase()) ||
-    user.page_user_id.toLowerCase().includes(pageUserSearchTerm.toLowerCase())
-  );
+  const filteredPageUsers = pageUsers.filter(user => {
+    // Apply search filter
+    const matchesSearch = pageUserSearchTerm === '' ||
+      user.page_user_name.toLowerCase().includes(pageUserSearchTerm.toLowerCase()) ||
+      user.page_user_id.toLowerCase().includes(pageUserSearchTerm.toLowerCase());
+    
+    // Apply connection status filter
+    const matchesFilter = pageUserFilter === 'all' ||
+      (pageUserFilter === 'connected' && user.user_id !== null) ||
+      (pageUserFilter === 'unconnected' && user.user_id === null);
+    
+    return matchesSearch && matchesFilter;
+  });
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -533,8 +543,45 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100"
                     />
                   </div>
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={() => setPageUserFilter('all')}
+                      className={`px-3 py-1.5 text-sm rounded-md ${
+                        pageUserFilter === 'all'
+                          ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                      }`}
+                    >
+                      ทั้งหมด
+                    </button>
+                    <button
+                      onClick={() => setPageUserFilter('connected')}
+                      className={`px-3 py-1.5 text-sm rounded-md ${
+                        pageUserFilter === 'connected'
+                          ? 'bg-green-100 text-green-700 border border-green-300'
+                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                      }`}
+                    >
+                      เชื่อมต่อแล้ว
+                    </button>
+                    <button
+                      onClick={() => setPageUserFilter('unconnected')}
+                      className={`px-3 py-1.5 text-sm rounded-md ${
+                        pageUserFilter === 'unconnected'
+                          ? 'bg-red-100 text-red-700 border border-red-300'
+                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                      }`}
+                    >
+                      ยังไม่เชื่อมต่อ
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-2">
+                    {pageUserFilter === 'all' && `แสดงทั้งหมด ${pageUsers.length} รายการ`}
+                    {pageUserFilter === 'connected' && `แสดงเฉพาะที่เชื่อมต่อแล้ว ${pageUsers.filter(u => u.user_id !== null).length} รายการ`}
+                    {pageUserFilter === 'unconnected' && `แสดงเฉพาะที่ยังไม่เชื่อมต่อ ${pageUsers.filter(u => u.user_id === null).length} รายการ`}
+                  </div>
 
-                  <div className="max-h-96 overflow-y-auto space-y-2">
+                  <div className="max-h-80 overflow-y-auto space-y-2">
                     {loadingPageUsers ? (
                       <div className="flex items-center justify-center py-8">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
