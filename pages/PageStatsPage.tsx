@@ -1206,26 +1206,6 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         return;
       }
 
-      // Generate page access token
-      const tokenResponse = await fetchWithRetry(
-        `https://pages.fm/api/v1/pages/${selectedPage}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }
-      );
-
-      if (!tokenResponse.ok) {
-        throw new Error('ไม่สามารถสร้าง page access token ได้');
-      }
-      const tokenData = await tokenResponse.json();
-      
-      if (!tokenData.success || !tokenData.page_access_token) {
-        throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
-      }
-
       // Calculate timestamps using local timezone
       const now = new Date();
       const today = new Date();
@@ -1304,47 +1284,162 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       // Fetch page statistics with select_fields parameter
       const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
       
-      // Fetch current period data
-      const statsResponse = await fetchWithRetry(
-        `https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${since}&until=${until}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
-        { method: 'GET' }
-      );
-
-      if (!statsResponse.ok) {
-        throw new Error('ไม่สามารถดึงข้อมูลสถิติได้');
-      }
-      const statsData = await statsResponse.json();
+      let allStatsData: any[] = [];
+      let allPrevStatsData: any[] = [];
       
-      if (statsData.success && statsData.data) {
+      if (selectedPage === 'ALL') {
+        // Fetch data for all pages
+        const pagesToFetch = pages.filter(page => page.page_id || page.id.toString());
+        
+        for (const page of pagesToFetch) {
+          const pageId = page.page_id || page.id.toString();
+          try {
+            // Generate page access token for each page
+            const tokenResponse = await fetchWithRetry(
+              `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              }
+            );
+
+            if (!tokenResponse.ok) {
+              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
+              continue;
+            }
+            
+            const tokenData = await tokenResponse.json();
+            
+            if (!tokenData.success || !tokenData.page_access_token) {
+              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
+              continue;
+            }
+
+            // Fetch current period data
+            const statsResponse = await fetchWithRetry(
+              `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/pages?since=${since}&until=${until}&page_access_token=${tokenData.page_access_token}&page_id=${pageId}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
+              { method: 'GET' }
+            );
+
+            if (statsResponse.ok) {
+              const statsData = await statsResponse.json();
+              if (statsData.success && statsData.data) {
+                // Add page info to each record
+                statsData.data.forEach((record: any) => {
+                  record.page_id = pageId;
+                  record.page_name = page.name;
+                });
+                allStatsData.push(...statsData.data);
+              }
+            }
+
+            // Fetch previous period data for comparison
+            try {
+              const prevStatsResponse = await fetchWithRetry(
+                `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${pageId}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
+                { method: 'GET' }
+              );
+              
+              if (prevStatsResponse.ok) {
+                const prevStatsData = await prevStatsResponse.json();
+                if (prevStatsData.success && prevStatsData.data) {
+                  // Add page info to each record
+                  prevStatsData.data.forEach((record: any) => {
+                    record.page_id = pageId;
+                    record.page_name = page.name;
+                  });
+                  allPrevStatsData.push(...prevStatsData.data);
+                }
+              }
+            } catch (error) {
+              console.error(`Error fetching previous period stats for page ${pageId}:`, error);
+            }
+          } catch (error) {
+            console.error(`Error fetching data for page ${pageId}:`, error);
+          }
+        }
+        
         // Sort data from newest to oldest
-        const sortedData = [...statsData.data].sort((a, b) =>
+        const sortedData = allStatsData.sort((a, b) =>
           new Date(b.hour).getTime() - new Date(a.hour).getTime()
         );
+        const prevSortedData = allPrevStatsData.sort((a, b) =>
+          new Date(b.hour).getTime() - new Date(a.hour).getTime()
+        );
+        
         setPageStatsData(sortedData);
+        setPrevPageStatsData(prevSortedData);
         setUsePageStats(true);
         
-        // Fetch previous period data for comparison
-        try {
-          const prevStatsResponse = await fetchWithRetry(
-            `https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
-            { method: 'GET' }
-          );
-          
-          if (prevStatsResponse.ok) {
-            const prevStatsData = await prevStatsResponse.json();
-            if (prevStatsData.success && prevStatsData.data) {
-              const prevSortedData = [...prevStatsData.data].sort((a, b) =>
-                new Date(b.hour).getTime() - new Date(a.hour).getTime()
-              );
-              setPrevPageStatsData(prevSortedData);
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching previous period stats:', error);
-          // Don't throw an error here, we can continue without previous period data
+        if (allStatsData.length === 0) {
+          alert('ไม่สามารถดึงข้อมูลสถิติจากเพจใดๆ ได้');
         }
       } else {
-        throw new Error('ไม่สามารถดึงข้อมูลสถิติได้: ' + (statsData.message || 'Unknown error'));
+        // Fetch data for single page (original logic)
+        // Generate page access token
+        const tokenResponse = await fetchWithRetry(
+          `https://pages.fm/api/v1/pages/${selectedPage}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        );
+
+        if (!tokenResponse.ok) {
+          throw new Error('ไม่สามารถสร้าง page access token ได้');
+        }
+        const tokenData = await tokenResponse.json();
+        
+        if (!tokenData.success || !tokenData.page_access_token) {
+          throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
+        }
+
+        // Fetch current period data
+        const statsResponse = await fetchWithRetry(
+          `https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${since}&until=${until}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
+          { method: 'GET' }
+        );
+
+        if (!statsResponse.ok) {
+          throw new Error('ไม่สามารถดึงข้อมูลสถิติได้');
+        }
+        const statsData = await statsResponse.json();
+        
+        if (statsData.success && statsData.data) {
+          // Sort data from newest to oldest
+          const sortedData = [...statsData.data].sort((a, b) =>
+            new Date(b.hour).getTime() - new Date(a.hour).getTime()
+          );
+          setPageStatsData(sortedData);
+          setUsePageStats(true);
+          
+          // Fetch previous period data for comparison
+          try {
+            const prevStatsResponse = await fetchWithRetry(
+              `https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
+              { method: 'GET' }
+            );
+            
+            if (prevStatsResponse.ok) {
+              const prevStatsData = await prevStatsResponse.json();
+              if (prevStatsData.success && prevStatsData.data) {
+                const prevSortedData = [...prevStatsData.data].sort((a, b) =>
+                  new Date(b.hour).getTime() - new Date(a.hour).getTime()
+                );
+                setPrevPageStatsData(prevSortedData);
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching previous period stats:', error);
+            // Don't throw an error here, we can continue without previous period data
+          }
+        } else {
+          throw new Error('ไม่สามารถดึงข้อมูลสถิติได้: ' + (statsData.message || 'Unknown error'));
+        }
       }
     } catch (error) {
       console.error('Error fetching page stats:', error);
@@ -1565,8 +1660,26 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               )}
               {isSelectOpen && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto min-w-[400px]">
+                  {/* "ทั้งหมด" (All) option */}
+                  <div
+                    onMouseDown={() => {
+                      setSelectedPage('ALL');
+                      setPageSearchTerm('ทั้งหมด');
+                      setNewEnvVar({
+                        ...newEnvVar,
+                        key: `ACCESS_TOKEN_PANCAKE_${currentUser?.company_id || ''}`
+                      });
+                      setIsSelectOpen(false);
+                    }}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center gap-2 font-semibold text-blue-600"
+                  >
+                    <div className="w-4 h-4 rounded bg-blue-100 flex items-center justify-center">
+                      <span className="text-xs">✓</span>
+                    </div>
+                    ทั้งหมด
+                  </div>
                   {pages
-                    .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
+                    .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด')
                     .map((page) => (
                       <div
                         key={page.id}
@@ -1586,7 +1699,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       </div>
                     ))
                   }
-                  {pages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).length === 0 && (
+                  {pages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด').length === 0 && (
                     <div className="px-3 py-2 text-gray-500 text-sm">
                       ไม่พบเพจที่ตรงกัน
                     </div>
@@ -1731,7 +1844,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-4">
             <h3 className="text-md font-semibold text-gray-700">
-              รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
+              รายละเอียดสถิติ {usePageStats && selectedPage ? `(เพจ: ${selectedPage === 'ALL' ? 'ทั้งหมด' : pages.find(p => (p.page_id || p.id.toString()) === selectedPage)?.name})` : ''}
             </h3>
             {usePageStats && (
               <div className="flex items-center gap-2">
@@ -1828,8 +1941,53 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       new Date(b.date).getTime() - new Date(a.date).getTime()
                     );
                   } else {
-                    // Use hourly data
-                    displayData = pageStatsData;
+                    // Use hourly data - if ALL pages selected, aggregate by hour
+                    if (selectedPage === 'ALL') {
+                      const hourlyMap = new Map();
+                      
+                      pageStatsData.forEach(item => {
+                        const date = new Date(item.hour);
+                        const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                        
+                        if (!hourlyMap.has(hourKey)) {
+                          hourlyMap.set(hourKey, {
+                            hour: item.hour,
+                            new_customer_count: 0,
+                            uniq_phone_number_count: 0,
+                            phone_number_count: 0,
+                            customer_comment_count: 0,
+                            customer_inbox_count: 0,
+                            page_comment_count: 0,
+                            page_inbox_count: 0,
+                            new_inbox_count: 0,
+                            inbox_interactive_count: 0,
+                            today_uniq_website_referral: 0,
+                            today_website_guest_referral: 0,
+                            order_count: 0
+                          });
+                        }
+                        
+                        const hourData = hourlyMap.get(hourKey);
+                        hourData.new_customer_count += item.new_customer_count;
+                        hourData.uniq_phone_number_count += item.uniq_phone_number_count;
+                        hourData.phone_number_count += item.phone_number_count;
+                        hourData.customer_comment_count += item.customer_comment_count;
+                        hourData.customer_inbox_count += item.customer_inbox_count;
+                        hourData.page_comment_count += item.page_comment_count;
+                        hourData.page_inbox_count += item.page_inbox_count;
+                        hourData.new_inbox_count += item.new_inbox_count;
+                        hourData.inbox_interactive_count += item.inbox_interactive_count;
+                        hourData.today_uniq_website_referral += item.today_uniq_website_referral;
+                        hourData.today_website_guest_referral += item.today_website_guest_referral;
+                        hourData.order_count += item.order_count || 0;
+                      });
+                      
+                      displayData = Array.from(hourlyMap.values()).sort((a, b) =>
+                        new Date(b.hour).getTime() - new Date(a.hour).getTime()
+                      );
+                    } else {
+                      displayData = pageStatsData;
+                    }
                   }
                   
                   return displayData.map((item, index) => {
@@ -1967,21 +2125,77 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         totalOrders: dailyData.reduce((sum, item) => sum + (item.order_count || 0), 0)
                       };
                     } else {
-                      // Use hourly data
-                      totalsData = {
-                        totalNewCustomers: pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0),
-                        totalPhones: pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
-                        totalNewPhones: pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0),
-                        totalComments: pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0),
-                        totalChats: pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
-                        totalPageComments: pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0),
-                        totalPageChats: pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0),
-                        totalNewChats: pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0),
-                        totalChatsFromOldCustomers: pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
-                        totalWebLoggedIn: pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
-                        totalWebGuest: pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
-                        totalOrders: pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)
-                      };
+                      // Use hourly data - if ALL pages selected, use aggregated hourly data
+                      if (selectedPage === 'ALL') {
+                        const hourlyMap = new Map();
+                        
+                        pageStatsData.forEach(item => {
+                          const date = new Date(item.hour);
+                          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                          
+                          if (!hourlyMap.has(hourKey)) {
+                            hourlyMap.set(hourKey, {
+                              new_customer_count: 0,
+                              uniq_phone_number_count: 0,
+                              phone_number_count: 0,
+                              customer_comment_count: 0,
+                              customer_inbox_count: 0,
+                              page_comment_count: 0,
+                              page_inbox_count: 0,
+                              new_inbox_count: 0,
+                              inbox_interactive_count: 0,
+                              today_uniq_website_referral: 0,
+                              today_website_guest_referral: 0,
+                              order_count: 0
+                            });
+                          }
+                          
+                          const hourData = hourlyMap.get(hourKey);
+                          hourData.new_customer_count += item.new_customer_count;
+                          hourData.uniq_phone_number_count += item.uniq_phone_number_count;
+                          hourData.phone_number_count += item.phone_number_count;
+                          hourData.customer_comment_count += item.customer_comment_count;
+                          hourData.customer_inbox_count += item.customer_inbox_count;
+                          hourData.page_comment_count += item.page_comment_count;
+                          hourData.page_inbox_count += item.page_inbox_count;
+                          hourData.new_inbox_count += item.new_inbox_count;
+                          hourData.inbox_interactive_count += item.inbox_interactive_count;
+                          hourData.today_uniq_website_referral += item.today_uniq_website_referral;
+                          hourData.today_website_guest_referral += item.today_website_guest_referral;
+                          hourData.order_count += item.order_count || 0;
+                        });
+                        
+                        const hourlyData = Array.from(hourlyMap.values());
+                        totalsData = {
+                          totalNewCustomers: hourlyData.reduce((sum, item) => sum + item.new_customer_count, 0),
+                          totalPhones: hourlyData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+                          totalNewPhones: hourlyData.reduce((sum, item) => sum + item.phone_number_count, 0),
+                          totalComments: hourlyData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+                          totalChats: hourlyData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+                          totalPageComments: hourlyData.reduce((sum, item) => sum + item.page_comment_count, 0),
+                          totalPageChats: hourlyData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+                          totalNewChats: hourlyData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+                          totalChatsFromOldCustomers: hourlyData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+                          totalWebLoggedIn: hourlyData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+                          totalWebGuest: hourlyData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+                          totalOrders: hourlyData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+                        };
+                      } else {
+                        totalsData = {
+                          totalNewCustomers: pageStatsData.reduce((sum, item) => sum + item.new_customer_count, 0),
+                          totalPhones: pageStatsData.reduce((sum, item) => sum + item.uniq_phone_number_count, 0),
+                          totalNewPhones: pageStatsData.reduce((sum, item) => sum + item.phone_number_count, 0),
+                          totalComments: pageStatsData.reduce((sum, item) => sum + item.customer_comment_count, 0),
+                          totalChats: pageStatsData.reduce((sum, item) => sum + item.customer_inbox_count, 0),
+                          totalPageComments: pageStatsData.reduce((sum, item) => sum + item.page_comment_count, 0),
+                          totalPageChats: pageStatsData.reduce((sum, item) => sum + item.page_inbox_count, 0),
+                          totalNewChats: pageStatsData.reduce((sum, item) => sum + item.new_inbox_count, 0),
+                          totalChatsFromOldCustomers: pageStatsData.reduce((sum, item) => sum + item.inbox_interactive_count, 0),
+                          totalWebLoggedIn: pageStatsData.reduce((sum, item) => sum + item.today_uniq_website_referral, 0),
+                          totalWebGuest: pageStatsData.reduce((sum, item) => sum + item.today_website_guest_referral, 0),
+                          totalOrders: pageStatsData.reduce((sum, item) => sum + (item.order_count || 0), 0)
+                        };
+                      }
                     }
                     
                     return (
