@@ -512,7 +512,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   // Fetch engagement data from Pages.fm API
   const fetchEngagementData = async () => {
-    if (!selectedPageId || selectedPageId === 'all' || !currentUser) {
+    if (!selectedPageId || !currentUser) {
       alert('กรุณาเลือกเพจ');
       return;
     }
@@ -541,26 +541,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         return;
       }
 
-      // Generate page access token
-      const tokenResponse = await fetchWithRetry(
-        `https://pages.fm/api/v1/pages/${selectedPageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }
-      );
-
-      if (!tokenResponse.ok) {
-        throw new Error('ไม่สามารถสร้าง page access token ได้');
-      }
-      const tokenData = await tokenResponse.json();
-      
-      if (!tokenData.success || !tokenData.page_access_token) {
-        throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
-      }
-
       // Format date range for API (DD/MM/YYYY HH:mm:ss - DD/MM/YYYY HH:mm:ss)
       const formatDateForAPI = (date: Date) => {
         const day = String(date.getDate()).padStart(2, '0');
@@ -576,22 +556,181 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const formattedEndDate = formatDateForAPI(endDate);
       const dateRange = `${formattedStartDate} - ${formattedEndDate}`;
 
-      // Fetch engagement statistics
-      const engagementResponse = await fetchWithRetry(
-        `https://pages.fm/api/public_api/v1/pages/${selectedPageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${selectedPageId}&date_range=${encodeURIComponent(dateRange)}`,
-        { method: 'GET' }
-      );
-
-      if (!engagementResponse.ok) {
-        throw new Error('ไม่สามารถดึงข้อมูล engagement ได้');
-      }
-      const engagementResult = await engagementResponse.json();
+      let engagementResult: any = null;
+      let allUsersEngagementData: any[] = [];
       
-      if (engagementResult.success && engagementResult.data) {
+      if (selectedPageId === 'all') {
+        // Fetch data from all pages
+        const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
+        const allEngagementData: any[] = [];
+        
+        for (const page of activePagesList) {
+          const pageId = page.page_id || page.id;
+          
+          try {
+            // Generate page access token for each page
+            const tokenResponse = await fetchWithRetry(
+              `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              }
+            );
+
+            if (!tokenResponse.ok) {
+              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
+              continue;
+            }
+            
+            const tokenData = await tokenResponse.json();
+            
+            if (!tokenData.success || !tokenData.page_access_token) {
+              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
+              continue;
+            }
+
+            // Fetch engagement statistics for each page
+            const engagementResponse = await fetchWithRetry(
+              `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${pageId}&date_range=${encodeURIComponent(dateRange)}`,
+              { method: 'GET' }
+            );
+
+            if (!engagementResponse.ok) {
+              console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
+              continue;
+            }
+            
+            const pageEngagementResult = await engagementResponse.json();
+            
+            if (pageEngagementResult.success && pageEngagementResult.data) {
+              // Add page information to the data
+              const pageData = {
+                ...pageEngagementResult,
+                pageId: pageId,
+                pageName: page.name
+              };
+              allEngagementData.push(pageData);
+              
+              // Collect user engagement data if available
+              if (pageEngagementResult.users_engagements) {
+                pageEngagementResult.users_engagements.forEach((userEngagement: any) => {
+                  // Add page information to each user engagement record
+                  allUsersEngagementData.push({
+                    ...userEngagement,
+                    pageId: pageId,
+                    pageName: page.name
+                  });
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error processing page ${page.name}:`, error);
+            // Continue with other pages even if one fails
+          }
+        }
+        
+        if (allEngagementData.length === 0) {
+          throw new Error('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+        }
+        
+        // Aggregate data from all pages
+        const aggregatedData = {
+          success: true,
+          data: {
+            categories: allEngagementData[0].data.categories || [],
+            series: []
+          }
+        };
+        
+        // Get all series names from the first page
+        const seriesNames = allEngagementData[0].data.series.map((s: any) => s.name);
+        
+        // Aggregate data for each series
+        seriesNames.forEach((seriesName: string) => {
+          const aggregatedSeriesData = allEngagementData.map(pageData => {
+            const series = pageData.data.series.find((s: any) => s.name === seriesName);
+            return series ? series.data : [];
+          });
+          
+          // Sum the data across all pages
+          const summedData = aggregatedSeriesData[0].map((_: any, index: number) => {
+            return aggregatedSeriesData.reduce((sum, seriesData) => sum + (seriesData[index] || 0), 0);
+          });
+          
+          aggregatedData.data.series.push({
+            name: seriesName,
+            data: summedData
+          });
+        });
+        
+        // Aggregate user engagement data by user name
+        const aggregatedUsersData: Record<string, any> = {};
+        allUsersEngagementData.forEach(userEngagement => {
+          const userName = userEngagement.name;
+          if (!aggregatedUsersData[userName]) {
+            aggregatedUsersData[userName] = {
+              user_id: userEngagement.user_id,
+              name: userName,
+              total_engagement: 0,
+              new_customer_replied_count: 0,
+              order_count: 0,
+              old_order_count: 0
+            };
+          }
+          
+          const user = aggregatedUsersData[userName];
+          user.total_engagement += userEngagement.total_engagement || 0;
+          user.new_customer_replied_count += userEngagement.new_customer_replied_count || 0;
+          user.order_count += userEngagement.order_count || 0;
+          user.old_order_count += userEngagement.old_order_count || 0;
+        });
+        
+        // Convert aggregated users data to array
+        engagementResult = {
+          ...aggregatedData,
+          users_engagements: Object.values(aggregatedUsersData)
+        };
+      } else {
+        // Fetch data for a single page (original logic)
+        // Generate page access token
+        const tokenResponse = await fetchWithRetry(
+          `https://pages.fm/api/v1/pages/${selectedPageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        );
+
+        if (!tokenResponse.ok) {
+          throw new Error('ไม่สามารถสร้าง page access token ได้');
+        }
+        const tokenData = await tokenResponse.json();
+        
+        if (!tokenData.success || !tokenData.page_access_token) {
+          throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
+        }
+
+        // Fetch engagement statistics
+        const engagementResponse = await fetchWithRetry(
+          `https://pages.fm/api/public_api/v1/pages/${selectedPageId}/statistics/customer_engagements?page_access_token=${tokenData.page_access_token}&page_id=${selectedPageId}&date_range=${encodeURIComponent(dateRange)}`,
+          { method: 'GET' }
+        );
+
+        if (!engagementResponse.ok) {
+          throw new Error('ไม่สามารถดึงข้อมูล engagement ได้');
+        }
+        engagementResult = await engagementResponse.json();
+      }
+      
+      if (engagementResult && engagementResult.success && engagementResult.data) {
         setEngagementData(engagementResult);
         setUseEngagementData(true);
       } else {
-        throw new Error('ไม่สามารถดึงข้อมูล engagement ได้: ' + (engagementResult.message || 'Unknown error'));
+        throw new Error('ไม่สามารถดึงข้อมูล engagement ได้: ' + (engagementResult?.message || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error fetching engagement data:', error);
@@ -1272,8 +1411,26 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             )}
             {isSelectOpen && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {/* "ทั้งหมด" (All) option */}
+                <div
+                  onMouseDown={() => {
+                    setSelectedPageId('all');
+                    setPageSearchTerm('ทั้งหมด');
+                    setIsSelectOpen(false);
+                    // Clear any error when a page is selected
+                    if (pageSelectError) {
+                      setPageSelectError('');
+                    }
+                  }}
+                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center gap-2 font-semibold text-blue-600"
+                >
+                  <div className="w-4 h-4 rounded bg-blue-100 flex items-center justify-center">
+                    <span className="text-xs">✓</span>
+                  </div>
+                  ทั้งหมด
+                </div>
                 {allPages
-                  .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()))
+                  .filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด')
                   .map((page) => (
                     <div
                       key={page.page_id || page.id}
@@ -1293,7 +1450,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     </div>
                   ))
                 }
-                {allPages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).length === 0 && (
+                {allPages.filter(page => pageSearchTerm === '' || page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) || pageSearchTerm === 'ทั้งหมด').length === 0 && (
                   <div className="px-3 py-2 text-gray-500 text-sm">
                     ไม่พบเพจที่ตรงกัน
                   </div>
@@ -1310,7 +1467,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         <button
           onClick={fetchEngagementData}
           className="border rounded-md px-3 py-1.5 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
-          disabled={isSearching || selectedPageId === 'all'}
+          disabled={isSearching}
         >
           <Search className="w-4 h-4"/> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
         </button>
