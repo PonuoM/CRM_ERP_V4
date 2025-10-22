@@ -43,6 +43,7 @@ interface PageWithUsers {
     page_user_name: string;
     internal_user_id: number | null;
     is_connected: boolean;
+    status: string;
   }>;
 }
 
@@ -423,8 +424,26 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                                     <div className="flex items-center gap-2">
                                       <div className={`w-2 h-2 rounded-full ${user.is_connected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                                       <div>
-                                        <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'} ${!user.is_connected ? 'hover:text-blue-600' : ''}`}>
-                                          {user.page_user_name}
+                                        <div className="flex items-center gap-2">
+                                          <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'} ${!user.is_connected ? 'hover:text-blue-600' : ''}`}>
+                                            {user.page_user_name}
+                                          </div>
+                                          {/* Status Badge */}
+                                          {user.status === 'active' && (
+                                            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                                              active
+                                            </span>
+                                          )}
+                                          {user.status === 'removed' && (
+                                            <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                                              removed
+                                            </span>
+                                          )}
+                                          {user.status !== 'active' && user.status !== 'removed' && (
+                                            <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
+                                              {user.status}
+                                            </span>
+                                          )}
                                         </div>
                                         <div className="text-xs text-gray-500">
                                           ID: {user.page_user_id}

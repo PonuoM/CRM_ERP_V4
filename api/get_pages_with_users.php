@@ -91,7 +91,8 @@ try {
             pu.page_user_id,
             pu.page_user_name,
             pu.user_id as internal_user_id,
-            CASE WHEN pu.user_id IS NOT NULL THEN 1 ELSE 0 END as is_connected
+            CASE WHEN pu.user_id IS NOT NULL THEN 1 ELSE 0 END as is_connected,
+            COALESCE(plu.status, "unknown") as status
         FROM pages p
         LEFT JOIN page_list_user plu ON p.page_id COLLATE utf8mb4_unicode_ci = plu.page_id COLLATE utf8mb4_unicode_ci
         LEFT JOIN page_user pu ON plu.page_user_id COLLATE utf8mb4_unicode_ci = pu.page_user_id COLLATE utf8mb4_unicode_ci
@@ -126,7 +127,8 @@ try {
                 'page_user_id' => $row['page_user_id'],
                 'page_user_name' => $row['page_user_name'],
                 'internal_user_id' => $row['internal_user_id'],
-                'is_connected' => (bool)$row['is_connected']
+                'is_connected' => (bool)$row['is_connected'],
+                'status' => $row['status']
             ];
         }
     }
