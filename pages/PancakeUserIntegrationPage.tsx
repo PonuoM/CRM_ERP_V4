@@ -64,6 +64,15 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const [loadingPagesWithUsers, setLoadingPagesWithUsers] = useState(false);
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Filter states for connections tab
+  const [connectionFilters, setConnectionFilters] = useState({
+    active: true,
+    removed: true,
+    other: true,
+    connected: true,
+    unconnected: true
+  });
 
   // ดึงข้อมูล Admin Page users จาก API
   useEffect(() => {
@@ -276,6 +285,39 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
     return matchesSearch && matchesFilter;
   });
 
+  // Filter pages with users based on status filters
+  const filteredPagesWithUsers = pagesWithUsers.map(page => ({
+    ...page,
+    users: page.users.filter(user => {
+      // Status filter
+      let matchesStatus = false;
+      if (user.status === 'active' && connectionFilters.active) {
+        matchesStatus = true;
+      } else if (user.status === 'removed' && connectionFilters.removed) {
+        matchesStatus = true;
+      } else if (user.status !== 'active' && user.status !== 'removed' && connectionFilters.other) {
+        matchesStatus = true;
+      }
+      
+      // Connection filter
+      let matchesConnection = false;
+      if (user.is_connected && connectionFilters.connected) {
+        matchesConnection = true;
+      } else if (!user.is_connected && connectionFilters.unconnected) {
+        matchesConnection = true;
+      }
+      
+      return matchesStatus && matchesConnection;
+    })
+  })).filter(page => page.users.length > 0); // Only show pages that have users after filtering
+
+  const handleConnectionStatusFilterChange = (status: keyof typeof connectionFilters) => {
+    setConnectionFilters(prev => ({
+      ...prev,
+      [status]: !prev[status]
+    }));
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -350,7 +392,62 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">รายการเพจและผู้ใช้</h2>
                 <div className="text-sm text-gray-600">
-                  พบ {pagesWithUsers.length} เพจ
+                  พบ {filteredPagesWithUsers.length} เพจ (จากทั้งหมด {pagesWithUsers.length} เพจ)
+                </div>
+              </div>
+              
+              <div className="mb-6 space-y-3">
+                <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm font-medium text-gray-700">กรองตามสถานะผู้ใช้:</span>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connectionFilters.active}
+                      onChange={() => handleConnectionStatusFilterChange('active')}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700">Active</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connectionFilters.removed}
+                      onChange={() => handleConnectionStatusFilterChange('removed')}
+                      className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                    />
+                    <span className="text-sm text-gray-700">Removed</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connectionFilters.other}
+                      onChange={() => handleConnectionStatusFilterChange('other')}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">อื่นๆ</span>
+                  </label>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <span className="text-sm font-medium text-gray-700">กรองตามการเชื่อมต่อ:</span>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connectionFilters.connected}
+                      onChange={() => handleConnectionStatusFilterChange('connected')}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700">เชื่อมต่อแล้ว</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connectionFilters.unconnected}
+                      onChange={() => handleConnectionStatusFilterChange('unconnected')}
+                      className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500"
+                    />
+                    <span className="text-sm text-gray-700">ยังไม่เชื่อมต่อ</span>
+                  </label>
                 </div>
               </div>
 
@@ -360,7 +457,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
                     <span className="text-gray-600">กำลังโหลดข้อมูลเพจและผู้ใช้...</span>
                   </div>
-                ) : pagesWithUsers.length === 0 ? (
+                ) : filteredPagesWithUsers.length === 0 ? (
                   <div className="text-center py-12">
                     <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600">ไม่พบข้อมูลเพจ</p>
@@ -368,7 +465,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {pagesWithUsers.map(page => (
+                    {filteredPagesWithUsers.map(page => (
                       <div key={page.page_id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         <div
                           className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
@@ -400,7 +497,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                           
                           <div className="flex justify-between items-center">
                             <div className="text-sm text-gray-600">
-                              ผู้ใช้ทั้งหมด
+                              ผู้ใช้ที่ตรงตามฟิลเตอร์
                             </div>
                             <div className="text-xs text-gray-500">
                               {page.users.filter(u => u.is_connected).length} เชื่อมต่อแล้ว
