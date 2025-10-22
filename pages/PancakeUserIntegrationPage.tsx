@@ -546,29 +546,39 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                         <p className="text-gray-600">ไม่พบข้อมูลผู้ใช้เพจ</p>
                       </div>
                     ) : (
-                      filteredPageUsers.map(user => (
-                        <div
-                          key={user.id}
-                          data-page-user-id={user.page_user_id}
-                          onClick={() => setSelectedPageUser(user)}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedPageUser?.id === user.id
-                              ? 'border-orange-500 bg-orange-50'
-                              : 'border-gray-200 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className={`font-medium ${user.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
-                            {user.page_user_name}
-                            {user.user_id === null && (
-                              <span className="ml-2 text-xs text-red-500">(ยังไม่มีการเชื่อมต่อ)</span>
+                      filteredPageUsers.map(user => {
+                        // Get the internal user if this page user is connected
+                        const internalUser = user.user_id ? getInternalUser(user.user_id) : null;
+                        
+                        return (
+                          <div
+                            key={user.id}
+                            data-page-user-id={user.page_user_id}
+                            onClick={() => setSelectedPageUser(user)}
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                              selectedPageUser?.id === user.id
+                                ? 'border-orange-500 bg-orange-50'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className={`font-medium ${user.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
+                              {user.page_user_name}
+                              {user.user_id === null && (
+                                <span className="ml-2 text-xs text-red-500">(ยังไม่มีการเชื่อมต่อ)</span>
+                              )}
+                            </div>
+                            {internalUser && (
+                              <div className="text-sm text-green-600">
+                                เชื่อมต่อกับ: {internalUser.first_name} {internalUser.last_name}
+                              </div>
                             )}
+                            <div className="text-sm text-gray-600">จำนวนเพจ: {user.page_count}</div>
+                            <div className="text-xs text-gray-500">
+                              ID: {user.page_user_id} • อัปเดตเมื่อ {user.updated_at?.split('T')[0]}
+                            </div>
                           </div>
-                          <div className="text-sm text-gray-600">จำนวนเพจ: {user.page_count}</div>
-                          <div className="text-xs text-gray-500">
-                            ID: {user.page_user_id} • อัปเดตเมื่อ {user.updated_at?.split('T')[0]}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -618,6 +628,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                       <div className="text-sm text-gray-600">ผู้ใช้เพจ:</div>
                       <div className={`font-medium ${selectedPageUser.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
                         {selectedPageUser.page_user_name}
+                        {selectedPageUser.user_id && (
+                          <span className="ml-2 text-sm text-green-600">
+                            (เชื่อมต่อกับ: {getInternalUser(selectedPageUser.user_id)?.first_name} {getInternalUser(selectedPageUser.user_id)?.last_name})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
