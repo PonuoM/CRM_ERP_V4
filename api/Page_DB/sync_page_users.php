@@ -79,12 +79,8 @@ try {
                 continue;
             }
             
-            // Skip users with status = "removed"
-            if ($userStatus === 'removed') {
-                error_log("Skipping user $userIndex for page $pageId: user status is 'removed'");
-                $skippedCount++;
-                continue;
-            }
+            // Note: Now importing all users regardless of status
+            // Previously skipped users with status = "removed" but now including all
             
             // Store user info with page count
             $userKey = $userId;

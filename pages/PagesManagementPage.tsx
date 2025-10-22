@@ -179,6 +179,7 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
               pageListUser: {
                 inserted: pageListUserResult.inserted,
                 updated: pageListUserResult.updated,
+                removed: pageListUserResult.removed,
                 skipped: pageListUserResult.skipped,
                 errors: pageListUserResult.errors,
                 total_relationships: pageListUserResult.total_relationships
@@ -354,7 +355,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({ pages = [], c
                     
                     // Add page list user sync info if available
                     if (result.pageListUser) {
-                      message += `\nความสัมพันธ์เพจ-ผู้ใช้: เพิ่ม ${result.pageListUser.inserted}, อัปเดต ${result.pageListUser.updated}, ข้าม ${result.pageListUser.skipped}, ข้อผิดพลาด ${result.pageListUser.errors} (ทั้งหมด ${result.pageListUser.total_relationships} ความสัมพันธ์)`;
+                      message += `\nความสัมพันธ์เพจ-ผู้ใช้: เพิ่ม ${result.pageListUser.inserted}, อัปเดต ${result.pageListUser.updated}, นำออก ${result.pageListUser.removed}, ข้าม ${result.pageListUser.skipped}, ข้อผิดพลาด ${result.pageListUser.errors} (ทั้งหมด ${result.pageListUser.total_relationships} ความสัมพันธ์)`;
                     } else if (result.pageListUserError) {
                       message += `\nคำเตือน: ${result.pageListUserError}`;
                     }

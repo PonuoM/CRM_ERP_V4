@@ -46,9 +46,10 @@ try {
     $updatedCount = 0;
     $skippedCount = 0;
     $errorCount = 0;
+    $removedCount = 0;
     
-    // Collect all page-user relationships
-    $pageUserRelationships = [];
+    // Collect all page-user relationships from API response
+    $apiPageUserRelationships = [];
     
     // Process each page and its users
     foreach ($pages as $pageIndex => $page) {
@@ -74,58 +75,61 @@ try {
                 continue;
             }
            
-            // Skip users with status = "removed"
-            if ($userStatus === 'removed') {
-                error_log("Skipping user $userIndex for page $pageId: user status is 'removed'");
-                $skippedCount++;
-                continue;
-            }
-           
             // Create unique key for this page-user relationship
             $relationshipKey = $pageId . '_' . $userId;
            
             // Only add this relationship once
-            if (!isset($pageUserRelationships[$relationshipKey])) {
-                $pageUserRelationships[$relationshipKey] = [
+            if (!isset($apiPageUserRelationships[$relationshipKey])) {
+                $apiPageUserRelationships[$relationshipKey] = [
                     'page_id' => $pageId,
                     'page_user_id' => $userId,
                     'page_name' => $pageName,
-                    'user_name' => $userName
+                    'user_name' => $userName,
+                    'status' => $userStatus
                 ];
             }
         }
     }
     
-    // Process each page-user relationship
-    foreach ($pageUserRelationships as $relationship) {
+    // Get all existing records from database
+    $existingRecordsSQL = "SELECT page_id, page_user_id FROM page_list_user";
+    $existingRecordsStmt = $pdo->prepare($existingRecordsSQL);
+    $existingRecordsStmt->execute();
+    $existingRecords = $existingRecordsStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Create a map of existing records for quick lookup
+    $existingRecordsMap = [];
+    foreach ($existingRecords as $record) {
+        $key = $record['page_id'] . '_' . $record['page_user_id'];
+        $existingRecordsMap[$key] = $record;
+    }
+    
+    // Process each page-user relationship from API
+    foreach ($apiPageUserRelationships as $relationshipKey => $relationship) {
         try {
-            // Check if the record already exists
-            $checkSQL = "SELECT id FROM page_list_user WHERE page_id = ? AND page_user_id = ?";
-            $checkStmt = $pdo->prepare($checkSQL);
-            $checkStmt->execute([$relationship['page_id'], $relationship['page_user_id']]);
-            $existingRecord = $checkStmt->fetch(PDO::FETCH_ASSOC);
+            $existsInDB = isset($existingRecordsMap[$relationshipKey]);
             
-            if ($existingRecord) {
-                // Record exists, update only the updated_at field
-                $updateSQL = "UPDATE page_list_user SET updated_at = CURRENT_TIMESTAMP WHERE page_id = ? AND page_user_id = ?";
+            if ($existsInDB) {
+                // Record exists in database, update it
+                $updateSQL = "UPDATE page_list_user SET status = ?, still_in_list = 1, updated_at = CURRENT_TIMESTAMP WHERE page_id = ? AND page_user_id = ?";
                 $updateStmt = $pdo->prepare($updateSQL);
-                $result = $updateStmt->execute([$relationship['page_id'], $relationship['page_user_id']]);
+                $result = $updateStmt->execute([$relationship['status'], $relationship['page_id'], $relationship['page_user_id']]);
                
                 if ($result && $updateStmt->rowCount() > 0) {
                     $updatedCount++;
-                    error_log("Successfully updated page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}");
+                    error_log("Successfully updated page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}, status={$relationship['status']}");
                 } else {
                     error_log("No changes needed for page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}");
                 }
             } else {
                 // Record doesn't exist, insert a new one
-                $insertSQL = "INSERT INTO page_list_user (page_id, page_user_id) VALUES (?, ?)";
+                $insertSQL = "INSERT INTO page_list_user (page_id, page_user_id, status, still_in_list) VALUES (?, ?, ?, 1)";
                 $stmt = $pdo->prepare($insertSQL);
-                $result = $stmt->execute([$relationship['page_id'], $relationship['page_user_id']]);
+                $result = $stmt->execute([$relationship['page_id'], $relationship['page_user_id'], $relationship['status']]);
                
                 if ($result && $stmt->rowCount() > 0) {
                     $insertedCount++;
-                    error_log("Successfully inserted page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}");
+                    error_log("Successfully inserted page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}, status={$relationship['status']}");
                 } else {
                     error_log("Failed to insert page-user relationship: page_id={$relationship['page_id']}, page_user_id={$relationship['page_user_id']}");
                     $errorCount++;
@@ -137,15 +141,35 @@ try {
         }
     }
     
+    // Mark records that exist in database but not in API response as still_in_list = 0
+    foreach ($existingRecordsMap as $existingKey => $existingRecord) {
+        if (!isset($apiPageUserRelationships[$existingKey])) {
+            try {
+                $updateSQL = "UPDATE page_list_user SET still_in_list = 0, updated_at = CURRENT_TIMESTAMP WHERE page_id = ? AND page_user_id = ?";
+                $updateStmt = $pdo->prepare($updateSQL);
+                $result = $updateStmt->execute([$existingRecord['page_id'], $existingRecord['page_user_id']]);
+               
+                if ($result && $updateStmt->rowCount() > 0) {
+                    $removedCount++;
+                    error_log("Marked page-user relationship as removed: page_id={$existingRecord['page_id']}, page_user_id={$existingRecord['page_user_id']}");
+                }
+            } catch (Exception $e) {
+                error_log("Error marking page-user relationship as removed: " . $e->getMessage());
+                $errorCount++;
+            }
+        }
+    }
+    
     $pdo->commit();
     
     echo json_encode([
         'ok' => true,
         'inserted' => $insertedCount,
         'updated' => $updatedCount,
+        'removed' => $removedCount,
         'skipped' => $skippedCount,
         'errors' => $errorCount,
-        'total_relationships' => count($pageUserRelationships)
+        'total_relationships' => count($apiPageUserRelationships)
     ]);
     
 } catch (Throwable $e) {
