@@ -79,15 +79,15 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
   );
 };
 
-const CreateOrderPage: React.FC<CreateOrderPageProps> = ({ 
-  customers, 
-  products, 
-  promotions, 
+const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
+  customers,
+  products,
+  promotions,
   pages = [],
   warehouses = [],
-  onSave, 
-  onCancel, 
-  initialData 
+  onSave,
+  onCancel,
+  initialData
 }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialData?.customer || null);
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
@@ -95,6 +95,25 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [newCustomerLastName, setNewCustomerLastName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState('');
+  
+  // Address data state
+  const [geographies, setGeographies] = useState<any[]>([]);
+  const [provinces, setProvinces] = useState<any[]>([]);
+  const [districts, setDistricts] = useState<any[]>([]);
+  const [subDistricts, setSubDistricts] = useState<any[]>([]);
+  const [selectedGeography, setSelectedGeography] = useState<number | null>(null);
+  const [selectedProvince, setSelectedProvince] = useState<number | null>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
+  const [selectedSubDistrict, setSelectedSubDistrict] = useState<number | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+  
+  // Search state for address dropdowns
+  const [provinceSearchTerm, setProvinceSearchTerm] = useState('');
+  const [districtSearchTerm, setDistrictSearchTerm] = useState('');
+  const [subDistrictSearchTerm, setSubDistrictSearchTerm] = useState('');
+  const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
+  const [showDistrictDropdown, setShowDistrictDropdown] = useState(false);
+  const [showSubDistrictDropdown, setShowSubDistrictDropdown] = useState(false);
 
   const [orderData, setOrderData] = useState<Partial<Order>>({
     items: [{ id: Date.now(), productName: '', quantity: 1, pricePerUnit: 0, discount: 0, isFreebie: false, boxNumber: 1 }],
@@ -152,6 +171,142 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setWarehouseId(matched ? matched.id : null);
   }, [shippingAddress.province, warehouses]);
   
+  // Load address data on component mount
+  useEffect(() => {
+    loadAddressData();
+  }, []);
+  
+  // Function to load address data from API
+  const loadAddressData = async () => {
+    setAddressLoading(true);
+    try {
+      // Load geographies
+      const geoResponse = await fetch('/api/Address_DB/get_address_data.php?endpoint=geographies');
+      if (geoResponse.ok) {
+        const geoData = await geoResponse.json();
+        if (geoData.success) setGeographies(geoData.data || []);
+      }
+      
+      // Load all provinces
+      const provResponse = await fetch('/api/Address_DB/get_address_data.php?endpoint=provinces');
+      if (provResponse.ok) {
+        const provData = await provResponse.json();
+        if (provData.success) setProvinces(provData.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading address data:', error);
+    } finally {
+      setAddressLoading(false);
+    }
+  };
+  
+  // Load districts when province is selected
+  useEffect(() => {
+    if (selectedProvince) {
+      fetch(`/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) setDistricts(data.data || []);
+        })
+        .catch(error => console.error('Error loading districts:', error));
+    } else {
+      setDistricts([]);
+      setSubDistricts([]);
+      setSelectedDistrict(null);
+      setSelectedSubDistrict(null);
+    }
+  }, [selectedProvince]);
+  
+  // Load sub-districts when district is selected
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetch(`/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) setSubDistricts(data.data || []);
+        })
+        .catch(error => console.error('Error loading sub-districts:', error));
+    } else {
+      setSubDistricts([]);
+      setSelectedSubDistrict(null);
+    }
+  }, [selectedDistrict]);
+  
+  // Update shipping address when sub-district is selected
+  useEffect(() => {
+    if (selectedSubDistrict) {
+      const subDistrict = subDistricts.find(sd => sd.id === selectedSubDistrict);
+      const district = districts.find(d => d.id === subDistrict?.district_id);
+      const province = provinces.find(p => p.id === district?.province_id);
+      
+      setShippingAddress(prev => ({
+        ...prev,
+        subdistrict: subDistrict?.name_th || '',
+        district: district?.name_th || '',
+        province: province?.name_th || '',
+        postalCode: subDistrict?.zip_code || ''
+      }));
+    }
+  }, [selectedSubDistrict, subDistricts, districts, provinces]);
+  
+  // Initialize address selections from existing address
+  useEffect(() => {
+    if (!useProfileAddress && shippingAddress.province) {
+      // Find province by name
+      const province = provinces.find(p => p.name_th === shippingAddress.province);
+      if (province) {
+        setSelectedProvince(province.id);
+        setSelectedGeography(province.geography_id);
+      }
+    }
+  }, [shippingAddress.province, provinces, useProfileAddress]);
+  
+  // Initialize district when districts are loaded
+  useEffect(() => {
+    if (!useProfileAddress && shippingAddress.district && selectedProvince && districts.length > 0) {
+      const district = districts.find(d => d.name_th === shippingAddress.district);
+      if (district) {
+        setSelectedDistrict(district.id);
+      }
+    }
+  }, [shippingAddress.district, selectedProvince, districts, useProfileAddress]);
+  
+  // Initialize sub-district when sub-districts are loaded
+  useEffect(() => {
+    if (!useProfileAddress && shippingAddress.subdistrict && selectedDistrict && subDistricts.length > 0) {
+      const subDistrict = subDistricts.find(sd => sd.name_th === shippingAddress.subdistrict);
+      if (subDistrict) {
+        setSelectedSubDistrict(subDistrict.id);
+      }
+    }
+  }, [shippingAddress.subdistrict, selectedDistrict, subDistricts, useProfileAddress]);
+  
+  // Filtered lists for search
+  const filteredProvinces = useMemo(() => {
+    if (!provinceSearchTerm) return provinces;
+    return provinces.filter(p =>
+      p.name_th.toLowerCase().includes(provinceSearchTerm.toLowerCase()) ||
+      p.name_en.toLowerCase().includes(provinceSearchTerm.toLowerCase())
+    );
+  }, [provinces, provinceSearchTerm]);
+  
+  const filteredDistricts = useMemo(() => {
+    if (!districtSearchTerm) return districts;
+    return districts.filter(d =>
+      d.name_th.toLowerCase().includes(districtSearchTerm.toLowerCase()) ||
+      d.name_en.toLowerCase().includes(districtSearchTerm.toLowerCase())
+    );
+  }, [districts, districtSearchTerm]);
+  
+  const filteredSubDistricts = useMemo(() => {
+    if (!subDistrictSearchTerm) return subDistricts;
+    return subDistricts.filter(sd =>
+      sd.name_th.toLowerCase().includes(subDistrictSearchTerm.toLowerCase()) ||
+      sd.name_en.toLowerCase().includes(subDistrictSearchTerm.toLowerCase()) ||
+      sd.zip_code.includes(subDistrictSearchTerm)
+    );
+  }, [subDistricts, subDistrictSearchTerm]);
+  
   const codTotal = useMemo(() => {
     return orderData.boxes?.reduce((sum, box) => sum + (box.codAmount || 0), 0) || 0;
   }, [orderData.boxes]);
@@ -176,8 +331,30 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setUseProfileAddress(checked);
     if (checked && selectedCustomer?.address) {
       setShippingAddress(selectedCustomer.address);
+      // Reset custom address selections when using profile address
+      setSelectedProvince(null);
+      setSelectedDistrict(null);
+      setSelectedSubDistrict(null);
+      // Reset search terms and close dropdowns
+      setProvinceSearchTerm('');
+      setDistrictSearchTerm('');
+      setSubDistrictSearchTerm('');
+      setShowProvinceDropdown(false);
+      setShowDistrictDropdown(false);
+      setShowSubDistrictDropdown(false);
     } else {
       setShippingAddress(emptyAddress);
+      // Reset address selections when switching to custom address
+      setSelectedProvince(null);
+      setSelectedDistrict(null);
+      setSelectedSubDistrict(null);
+      // Reset search terms and close dropdowns
+      setProvinceSearchTerm('');
+      setDistrictSearchTerm('');
+      setSubDistrictSearchTerm('');
+      setShowProvinceDropdown(false);
+      setShowDistrictDropdown(false);
+      setShowSubDistrictDropdown(false);
     }
   };
 
@@ -195,6 +372,29 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }));
     updateOrderData('boxes', newBoxes);
   }, [numBoxes]);
+  
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      
+      // Check if click is outside any of the dropdown containers
+      if (!target.closest('.province-dropdown-container')) {
+        setShowProvinceDropdown(false);
+      }
+      if (!target.closest('.district-dropdown-container')) {
+        setShowDistrictDropdown(false);
+      }
+      if (!target.closest('.subdistrict-dropdown-container')) {
+        setShowSubDistrictDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // ปรับ boxNumber ของแต่ละรายการสินค้าให้อยู่ในช่วง 1..numBoxes เมื่อจำนวนกล่องเปลี่ยน
   useEffect(() => {
@@ -215,6 +415,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setSearchTerm(`${customer.firstName} ${customer.lastName}`);
     setFacebookName(customer.facebookName || '');
     setLineId(customer.lineId || '');
+    // Reset address selections
+    setSelectedProvince(null);
+    setSelectedDistrict(null);
+    setSelectedSubDistrict(null);
+    // Reset search terms and close dropdowns
+    setProvinceSearchTerm('');
+    setDistrictSearchTerm('');
+    setSubDistrictSearchTerm('');
+    setShowProvinceDropdown(false);
+    setShowDistrictDropdown(false);
+    setShowSubDistrictDropdown(false);
+    
     if (customer.address) {
       setUseProfileAddress(true);
       setShippingAddress(customer.address);
@@ -228,6 +440,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setIsCreatingNewCustomer(true);
     setSelectedCustomer(null);
     setOrderData(prev => ({...prev, customerId: undefined}));
+    
+    // Reset address selections
+    setSelectedProvince(null);
+    setSelectedDistrict(null);
+    setSelectedSubDistrict(null);
+    // Reset search terms and close dropdowns
+    setProvinceSearchTerm('');
+    setDistrictSearchTerm('');
+    setSubDistrictSearchTerm('');
+    setShowProvinceDropdown(false);
+    setShowDistrictDropdown(false);
+    setShowSubDistrictDropdown(false);
     
     if (/^0[0-9]{9}$/.test(searchTerm)) {
       setNewCustomerPhone(searchTerm);
@@ -834,28 +1058,135 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
                   
                   <div className="space-y-3">
+                    <div>
+                      <label className={commonLabelClass}>บ้านเลขที่, ถนน</label>
+                      <input type="text" name="street" value={shippingAddress.street} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className={commonLabelClass}>บ้านเลขที่, ถนน</label>
-                        <input type="text" name="street" value={shippingAddress.street} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
+                      <div className="relative province-dropdown-container">
+                        <label className={commonLabelClass}>จังหวัด</label>
+                        <input
+                          type="text"
+                          value={selectedProvince ? provinces.find(p => p.id === selectedProvince)?.name_th || '' : provinceSearchTerm}
+                          onChange={(e) => {
+                            setProvinceSearchTerm(e.target.value);
+                            setShowProvinceDropdown(true);
+                          }}
+                          onFocus={() => setShowProvinceDropdown(true)}
+                          disabled={useProfileAddress || addressLoading}
+                          className={commonInputClass}
+                          placeholder="ค้นหาหรือเลือกจังหวัด"
+                        />
+                        {showProvinceDropdown && !useProfileAddress && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {filteredProvinces.length > 0 ? (
+                              filteredProvinces.map(province => (
+                                <div
+                                  key={province.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedProvince(province.id);
+                                    setProvinceSearchTerm('');
+                                    setShowProvinceDropdown(false);
+                                    setSelectedDistrict(null);
+                                    setSelectedSubDistrict(null);
+                                  }}
+                                >
+                                  {province.name_th}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-gray-500">ไม่พบจังหวัดที่ค้นหา</div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <label className={commonLabelClass}>ตำบล/แขวง</label>
-                        <input type="text" name="subdistrict" value={shippingAddress.subdistrict} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
+                      <div className="relative district-dropdown-container">
+                        <label className={commonLabelClass}>อำเภอ/เขต</label>
+                        <input
+                          type="text"
+                          value={selectedDistrict ? districts.find(d => d.id === selectedDistrict)?.name_th || '' : districtSearchTerm}
+                          onChange={(e) => {
+                            setDistrictSearchTerm(e.target.value);
+                            setShowDistrictDropdown(true);
+                          }}
+                          onFocus={() => setShowDistrictDropdown(true)}
+                          disabled={useProfileAddress || !selectedProvince || addressLoading}
+                          className={commonInputClass}
+                          placeholder="ค้นหาหรือเลือกอำเภอ/เขต"
+                        />
+                        {showDistrictDropdown && !useProfileAddress && selectedProvince && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {filteredDistricts.length > 0 ? (
+                              filteredDistricts.map(district => (
+                                <div
+                                  key={district.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedDistrict(district.id);
+                                    setDistrictSearchTerm('');
+                                    setShowDistrictDropdown(false);
+                                    setSelectedSubDistrict(null);
+                                  }}
+                                >
+                                  {district.name_th}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-gray-500">ไม่พบอำเภอ/เขตที่ค้นหา</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className={commonLabelClass}>อำเภอ/เขต</label>
-                        <input type="text" name="district" value={shippingAddress.district} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
-                      </div>
-                      <div>
-                        <label className={commonLabelClass}>จังหวัด</label>
-                        <input type="text" name="province" value={shippingAddress.province} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="relative subdistrict-dropdown-container">
+                        <label className={commonLabelClass}>ตำบล/แขวง</label>
+                        <input
+                          type="text"
+                          value={selectedSubDistrict ? subDistricts.find(sd => sd.id === selectedSubDistrict)?.name_th || '' : subDistrictSearchTerm}
+                          onChange={(e) => {
+                            setSubDistrictSearchTerm(e.target.value);
+                            setShowSubDistrictDropdown(true);
+                          }}
+                          onFocus={() => setShowSubDistrictDropdown(true)}
+                          disabled={useProfileAddress || !selectedDistrict || addressLoading}
+                          className={commonInputClass}
+                          placeholder="ค้นหาหรือเลือกตำบล/แขวง"
+                        />
+                        {showSubDistrictDropdown && !useProfileAddress && selectedDistrict && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {filteredSubDistricts.length > 0 ? (
+                              filteredSubDistricts.map(subDistrict => (
+                                <div
+                                  key={subDistrict.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedSubDistrict(subDistrict.id);
+                                    setSubDistrictSearchTerm('');
+                                    setShowSubDistrictDropdown(false);
+                                  }}
+                                >
+                                  {subDistrict.name_th} ({subDistrict.zip_code})
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-gray-500">ไม่พบตำบล/แขวงที่ค้นหา</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className={commonLabelClass}>รหัสไปรษณีย์</label>
-                        <input type="text" name="postalCode" value={shippingAddress.postalCode} onChange={handleShippingAddressChange} disabled={useProfileAddress} className={commonInputClass} />
+                        <input
+                          type="text"
+                          name="postalCode"
+                          value={shippingAddress.postalCode}
+                          onChange={handleShippingAddressChange}
+                          disabled={useProfileAddress || !!selectedSubDistrict}
+                          className={commonInputClass}
+                          placeholder="รหัสไปรษณีย์จะถูกกรอกอัตโนมัติ"
+                        />
                       </div>
                     </div>
                     {!useProfileAddress && selectedCustomer && (
