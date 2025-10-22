@@ -1,0 +1,173 @@
+<?php
+/**
+ * API endpoint to query Thai address data
+ * Provides various endpoints to retrieve address information
+ */
+
+// Include database configuration
+require_once '../config.php';
+
+// Set headers for JSON response
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Handle preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// Get the requested endpoint
+$endpoint = $_GET['endpoint'] ?? '';
+$id = $_GET['id'] ?? '';
+$search = $_GET['search'] ?? '';
+$limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
+$offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+
+try {
+    // Connect to database
+    $pdo = db_connect();
+    
+    $response = ['success' => true, 'data' => []];
+    
+    switch ($endpoint) {
+        case 'geographies':
+            // Get all geographies or a specific one
+            if ($id) {
+                $stmt = $pdo->prepare("SELECT * FROM address_geographies WHERE id = ?");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetch();
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM address_geographies ORDER BY id LIMIT ? OFFSET ?");
+                $stmt->execute([$limit, $offset]);
+                $response['data'] = $stmt->fetchAll();
+            }
+            break;
+            
+        case 'provinces':
+            // Get provinces by geography or all provinces
+            if ($id) {
+                $stmt = $pdo->prepare("SELECT * FROM address_provinces WHERE geography_id = ? ORDER BY name_th");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetchAll();
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM address_provinces ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt->execute([$limit, $offset]);
+                $response['data'] = $stmt->fetchAll();
+            }
+            break;
+            
+        case 'districts':
+            // Get districts by province or all districts
+            if ($id) {
+                $stmt = $pdo->prepare("SELECT * FROM address_districts WHERE province_id = ? ORDER BY name_th");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetchAll();
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM address_districts ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt->execute([$limit, $offset]);
+                $response['data'] = $stmt->fetchAll();
+            }
+            break;
+            
+        case 'sub_districts':
+            // Get sub-districts by district or all sub-districts
+            if ($id) {
+                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts WHERE district_id = ? ORDER BY name_th");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetchAll();
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM address_sub_districts ORDER BY name_th LIMIT ? OFFSET ?");
+                $stmt->execute([$limit, $offset]);
+                $response['data'] = $stmt->fetchAll();
+            }
+            break;
+            
+        case 'search':
+            // Search by zip code
+            if ($search) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        sd.id, sd.name_th AS sub_district, sd.zip_code,
+                        d.name_th AS district, d.id AS district_id,
+                        p.name_th AS province, p.id AS province_id,
+                        g.name_th AS geography, g.id AS geography_id
+                    FROM address_sub_districts sd
+                    JOIN address_districts d ON sd.district_id = d.id
+                    JOIN address_provinces p ON d.province_id = p.id
+                    JOIN address_geographies g ON p.geography_id = g.id
+                    WHERE sd.zip_code = ?
+                    ORDER BY sd.name_th
+                ");
+                $stmt->execute([$search]);
+                $response['data'] = $stmt->fetchAll();
+            } else {
+                $response['success'] = false;
+                $response['message'] = 'Search parameter is required';
+            }
+            break;
+            
+        case 'complete_address':
+            // Get complete address hierarchy for a sub-district
+            if ($id) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        sd.id, sd.name_th AS sub_district_name, sd.name_en AS sub_district_name_en, sd.zip_code,
+                        d.id AS district_id, d.name_th AS district_name, d.name_en AS district_name_en,
+                        p.id AS province_id, p.name_th AS province_name, p.name_en AS province_name_en,
+                        g.id AS geography_id, g.name AS geography_name
+                    FROM address_sub_districts sd
+                    JOIN address_districts d ON sd.district_id = d.id
+                    JOIN address_provinces p ON d.province_id = p.id
+                    JOIN address_geographies g ON p.geography_id = g.id
+                    WHERE sd.id = ?
+                ");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetch();
+            } else {
+                $response['success'] = false;
+                $response['message'] = 'Sub-district ID is required';
+            }
+            break;
+            
+        case 'stats':
+            // Get statistics about the address data
+            $stats = [];
+            
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_geographies");
+            $stats['geographies'] = $stmt->fetch()['count'];
+            
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_provinces");
+            $stats['provinces'] = $stmt->fetch()['count'];
+            
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_districts");
+            $stats['districts'] = $stmt->fetch()['count'];
+            
+            $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_sub_districts");
+            $stats['sub_districts'] = $stmt->fetch()['count'];
+            
+            $response['data'] = $stats;
+            break;
+            
+        default:
+            $response['success'] = false;
+            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats';
+            break;
+    }
+    
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    
+} catch (PDOException $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Database error: ' . $e->getMessage()
+    ]);
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error: ' . $e->getMessage()
+    ]);
+}
+?>
