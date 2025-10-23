@@ -249,6 +249,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [selectedAddressOption, setSelectedAddressOption] =
     useState<string>("profile"); // Default to profile address
   const [updateProfileAddress, setUpdateProfileAddress] = useState(false); // For the new checkbox
+  const [loadingCustomerData, setLoadingCustomerData] = useState(false); // Loading state for fetching fresh customer data
 
   // สรุปยอด: สินค้ารวม, ส่วนลดตามรายการ, ส่วนลดท้ายบิลเป็น %
   const goodsSum = useMemo(
@@ -761,13 +762,89 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     if (changed) updateOrderData("items", clamped);
   }, [numBoxes, orderData.items]);
 
-  const handleSelectCustomer = (customer: Customer) => {
-    setSelectedCustomer(customer);
+  // Helper function to map API response (snake_case) to frontend format (camelCase)
+  const mapCustomerData = (apiData: any): Customer => {
+    return {
+      ...apiData,
+      firstName: apiData.first_name,
+      lastName: apiData.last_name,
+      phone: apiData.phone,
+      email: apiData.email,
+      province: apiData.province,
+      companyId: apiData.company_id,
+      assignedTo: apiData.assigned_to,
+      dateAssigned: apiData.date_assigned,
+      dateRegistered: apiData.date_registered,
+      followUpDate: apiData.follow_up_date,
+      ownershipExpires: apiData.ownership_expires,
+      lifecycleStatus: apiData.lifecycle_status,
+      behavioralStatus: apiData.behavioral_status,
+      grade: apiData.grade,
+      totalPurchases: parseFloat(apiData.total_purchases),
+      totalCalls: parseInt(apiData.total_calls),
+      facebookName: apiData.facebook_name,
+      lineId: apiData.line_id,
+      street: apiData.street,
+      subdistrict: apiData.subdistrict,
+      district: apiData.district,
+      postalCode: apiData.postal_code,
+      hasSoldBefore: Boolean(apiData.has_sold_before),
+      followUpCount: apiData.follow_up_count,
+      lastFollowUpDate: apiData.last_follow_up_date,
+      lastSaleDate: apiData.last_sale_date,
+      isInWaitingBasket: Boolean(apiData.is_in_waiting_basket),
+      waitingBasketStartDate: apiData.waiting_basket_start_date,
+      followupBonusRemaining: apiData.followup_bonus_remaining,
+      address: {
+        street: apiData.street,
+        subdistrict: apiData.subdistrict,
+        district: apiData.district,
+        province: apiData.province,
+        postalCode: apiData.postal_code,
+      },
+    };
+  };
+
+  // Helper function to set customer data consistently
+  const setCustomerData = (customerData: Customer) => {
+    setSelectedCustomer(customerData);
+    setOrderData((prev) => ({ ...prev, customerId: customerData.id }));
+    setSearchTerm(`${customerData.firstName} ${customerData.lastName}`);
+    setFacebookName(customerData.facebookName || "");
+    setLineId(customerData.lineId || "");
+  };
+
+  const handleSelectCustomer = async (customer: Customer) => {
+    setLoadingCustomerData(true);
+    try {
+      // Fetch fresh customer data from database
+      const response = await fetch(
+        `/api/index.php/customers/${encodeURIComponent(customer.id)}`,
+      );
+
+      if (response.ok) {
+        const freshCustomerData = await response.json();
+        if (freshCustomerData && !freshCustomerData.error) {
+          // Map snake_case fields from API to camelCase for frontend
+          const mappedCustomerData = mapCustomerData(freshCustomerData);
+          setCustomerData(mappedCustomerData);
+        } else {
+          // Fallback to original customer data if fetch fails
+          setCustomerData(customer);
+        }
+      } else {
+        // Fallback to original customer data if API call fails
+        setCustomerData(customer);
+      }
+    } catch (error) {
+      console.error("Error fetching fresh customer data:", error);
+      // Fallback to original customer data if fetch fails
+      setCustomerData(customer);
+    } finally {
+      setLoadingCustomerData(false);
+    }
+
     setIsCreatingNewCustomer(false);
-    setOrderData((prev) => ({ ...prev, customerId: customer.id }));
-    setSearchTerm(`${customer.firstName} ${customer.lastName}`);
-    setFacebookName(customer.facebookName || "");
-    setLineId(customer.lineId || "");
     // Reset address selections
     setSelectedProvince(null);
     setSelectedDistrict(null);
@@ -1008,6 +1085,34 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         if (result.success) {
           console.log("Customer address updated successfully:", result.data);
+
+          // Update the selectedCustomer state with the latest data from database
+          if (result.data && selectedCustomer) {
+            const updatedCustomer = {
+              ...selectedCustomer,
+              address: {
+                street:
+                  result.data.street || selectedCustomer.address?.street || "",
+                subdistrict:
+                  result.data.subdistrict ||
+                  selectedCustomer.address?.subdistrict ||
+                  "",
+                district:
+                  result.data.district ||
+                  selectedCustomer.address?.district ||
+                  "",
+                province:
+                  result.data.province ||
+                  selectedCustomer.address?.province ||
+                  "",
+                postalCode:
+                  result.data.postal_code ||
+                  selectedCustomer.address?.postalCode ||
+                  "",
+              },
+            };
+            setSelectedCustomer(updatedCustomer);
+          }
         } else {
           console.error("Failed to update customer address:", result.message);
           alert("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
@@ -1045,6 +1150,17 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             "Customer social media updated successfully:",
             result.data,
           );
+
+          // Update the selectedCustomer state with the latest social media data from database
+          if (result.data && selectedCustomer) {
+            const updatedCustomer = {
+              ...selectedCustomer,
+              facebookName:
+                result.data.facebook_name || selectedCustomer.facebookName,
+              lineId: result.data.line_id || selectedCustomer.lineId,
+            };
+            setSelectedCustomer(updatedCustomer);
+          }
         } else {
           console.error(
             "Failed to update customer social media:",
@@ -1539,20 +1655,47 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       }}
                       placeholder="พิมพ์เพื่อค้นหา..."
                       className={commonInputClass}
+                      disabled={loadingCustomerData}
                     />
-                    {searchResults.length > 0 && !selectedCustomer && (
-                      <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
-                        {searchResults.map((c) => (
-                          <li
-                            key={c.id}
-                            onClick={() => handleSelectCustomer(c)}
-                            className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
-                          >
-                            {`${c.firstName} ${c.lastName}`} - {c.phone}
-                          </li>
-                        ))}
-                      </ul>
+                    {loadingCustomerData && (
+                      <div className="mt-2 text-sm text-blue-600 flex items-center">
+                        <svg
+                          className="animate-spin h-4 w-4 mr-2"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="none"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        กำลังโหลดข้อมูลลูกค้า...
+                      </div>
                     )}
+                    {searchResults.length > 0 &&
+                      !selectedCustomer &&
+                      !loadingCustomerData && (
+                        <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
+                          {searchResults.map((c) => (
+                            <li
+                              key={c.id}
+                              onClick={() => handleSelectCustomer(c)}
+                              className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
+                            >
+                              {`${c.firstName} ${c.lastName}`} - {c.phone}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     {!selectedCustomer &&
                       searchTerm &&
                       searchResults.length === 0 &&
@@ -1784,11 +1927,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           </div>
                           {selectedCustomer?.address && (
                             <div className="text-sm text-gray-600 mt-1">
-                              {selectedCustomer.address.street}{" "}
-                              {selectedCustomer.address.subdistrict}{" "}
-                              {selectedCustomer.address.district}{" "}
-                              {selectedCustomer.address.province}{" "}
-                              {selectedCustomer.address.postalCode}
+                              {selectedCustomer.address.street || ""}{" "}
+                              {selectedCustomer.address.subdistrict || ""}{" "}
+                              {selectedCustomer.address.district || ""}{" "}
+                              {selectedCustomer.address.province || ""}{" "}
+                              {selectedCustomer.address.postalCode || ""}
                             </div>
                           )}
                         </div>
