@@ -2341,7 +2341,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           }}
                           onFocus={() => setShowProvinceDropdown(true)}
                           disabled={addressLoading}
-                          className={commonInputClass}
+                          className={
+                            commonInputClass +
+                            (addressLoading ? " bg-slate-100" : "")
+                          }
                           placeholder="ค้นหาหรือเลือกจังหวัด"
                         />
                         {showProvinceDropdown && (
@@ -2386,7 +2389,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           }}
                           onFocus={() => setShowDistrictDropdown(true)}
                           disabled={!selectedProvince || addressLoading}
-                          className={commonInputClass}
+                          className={
+                            commonInputClass +
+                            (!selectedProvince || addressLoading
+                              ? " bg-slate-100"
+                              : "")
+                          }
                           placeholder="ค้นหาหรือเลือกอำเภอ/เขต"
                         />
                         {showDistrictDropdown && selectedProvince && (
@@ -2433,7 +2441,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           }}
                           onFocus={() => setShowSubDistrictDropdown(true)}
                           disabled={!selectedDistrict || addressLoading}
-                          className={commonInputClass}
+                          className={
+                            commonInputClass +
+                            (!selectedDistrict || addressLoading
+                              ? " bg-slate-100"
+                              : "")
+                          }
                           placeholder="ค้นหาหรือเลือกตำบล/แขวง"
                         />
                         {showSubDistrictDropdown && selectedDistrict && (
@@ -2475,10 +2488,15 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           name="postalCode"
                           value={shippingAddress.postalCode}
                           onChange={handleShippingAddressChange}
-                          disabled={!!selectedSubDistrict}
-                          readOnly={!!selectedSubDistrict}
-                          className={commonInputClass}
-                          placeholder="รหัสไปรษณีย์จะถูกกรอกอัตโนมัติ"
+                          disabled={!selectedSubDistrict || addressLoading}
+                          readOnly={!selectedSubDistrict || addressLoading}
+                          className={
+                            commonInputClass +
+                            (!selectedSubDistrict || addressLoading
+                              ? " bg-slate-100"
+                              : "")
+                          }
+                          placeholder="กรุณาเลือกตำบล/แขวงเพื่อกรอกรหัสไปรษณีย์"
                         />
                       </div>
                     </div>
