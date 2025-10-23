@@ -243,6 +243,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [shippingAddress, setShippingAddress] = useState<Address>(emptyAddress);
   const [saveNewAddress, setSaveNewAddress] = useState(false);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [profileAddressModified, setProfileAddressModified] = useState(false);
 
   // Address options for the dropdown
   const [addressOptions, setAddressOptions] = useState<any[]>([]);
@@ -624,6 +625,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       // Use profile address
       setUseProfileAddress(true);
       setShippingAddress(selectedCustomer.address);
+      setProfileAddressModified(false); // Reset modification flag when switching to profile
 
       // Find and set the IDs for the profile address
       if (selectedCustomer.address.province && provinces.length > 0) {
@@ -743,6 +745,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setUseProfileAddress(false);
       setShippingAddress(emptyAddress);
       setUpdateProfileAddress(false); // Reset checkbox state
+      setProfileAddressModified(false); // Reset modification flag
       // Reset address selections when switching to custom address
       setSelectedProvince(null);
       setSelectedDistrict(null);
@@ -757,6 +760,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     } else {
       // Use existing customer address
       setUseProfileAddress(false);
+      setProfileAddressModified(false); // Reset modification flag
       const address = addressOptions.find((a) => a.id === parseInt(option));
       if (address) {
         setShippingAddress({
@@ -1124,6 +1128,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       ...prev,
       [e.target.name]: e.target.value,
     }));
+
+    // Set modification flag if profile address is selected
+    if (selectedAddressOption === "profile") {
+      setProfileAddressModified(true);
+    }
   };
 
   const handleNewCustomerPhoneChange = (
@@ -1261,9 +1270,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             zip_code: shippingAddress.postalCode,
           };
         }
-      } else if (selectedAddressOption === "profile" && !useProfileAddress) {
-        // Update profile address in customers table via new API
-        // This will be handled after the order is saved
+      } else if (selectedAddressOption === "profile") {
+        // Always update profile address when selected, even if not modified
+        // This allows editing the primary address directly
         (payload as any).updateCustomerAddress = true;
       }
     }
@@ -2274,7 +2283,6 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         name="street"
                         value={shippingAddress.street}
                         onChange={handleShippingAddressChange}
-                        disabled={useProfileAddress}
                         className={commonInputClass}
                       />
                     </div>
@@ -2294,11 +2302,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             setShowProvinceDropdown(true);
                           }}
                           onFocus={() => setShowProvinceDropdown(true)}
-                          disabled={useProfileAddress || addressLoading}
+                          disabled={addressLoading}
                           className={commonInputClass}
                           placeholder="ค้นหาหรือเลือกจังหวัด"
                         />
-                        {showProvinceDropdown && !useProfileAddress && (
+                        {showProvinceDropdown && (
                           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                             {filteredProvinces.length > 0 ? (
                               filteredProvinces.map((province) => (
@@ -2339,40 +2347,34 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             setShowDistrictDropdown(true);
                           }}
                           onFocus={() => setShowDistrictDropdown(true)}
-                          disabled={
-                            useProfileAddress ||
-                            !selectedProvince ||
-                            addressLoading
-                          }
+                          disabled={!selectedProvince || addressLoading}
                           className={commonInputClass}
                           placeholder="ค้นหาหรือเลือกอำเภอ/เขต"
                         />
-                        {showDistrictDropdown &&
-                          !useProfileAddress &&
-                          selectedProvince && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                              {filteredDistricts.length > 0 ? (
-                                filteredDistricts.map((district) => (
-                                  <div
-                                    key={district.id}
-                                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                                    onClick={() => {
-                                      setSelectedDistrict(district.id);
-                                      setDistrictSearchTerm("");
-                                      setShowDistrictDropdown(false);
-                                      setSelectedSubDistrict(null);
-                                    }}
-                                  >
-                                    {district.name_th}
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="px-3 py-2 text-gray-500">
-                                  ไม่พบอำเภอ/เขตที่ค้นหา
+                        {showDistrictDropdown && selectedProvince && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {filteredDistricts.length > 0 ? (
+                              filteredDistricts.map((district) => (
+                                <div
+                                  key={district.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedDistrict(district.id);
+                                    setDistrictSearchTerm("");
+                                    setShowDistrictDropdown(false);
+                                    setSelectedSubDistrict(null);
+                                  }}
+                                >
+                                  {district.name_th}
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-gray-500">
+                                ไม่พบอำเภอ/เขตที่ค้นหา
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2392,48 +2394,41 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             setShowSubDistrictDropdown(true);
                           }}
                           onFocus={() => setShowSubDistrictDropdown(true)}
-                          disabled={
-                            useProfileAddress ||
-                            !selectedDistrict ||
-                            addressLoading
-                          }
+                          disabled={!selectedDistrict || addressLoading}
                           className={commonInputClass}
                           placeholder="ค้นหาหรือเลือกตำบล/แขวง"
                         />
-                        {showSubDistrictDropdown &&
-                          !useProfileAddress &&
-                          selectedDistrict && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                              {filteredSubDistricts.length > 0 ? (
-                                filteredSubDistricts.map((subDistrict) => (
-                                  <div
-                                    key={subDistrict.id}
-                                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                                    onClick={() => {
-                                      console.log(
-                                        "🖱️ Subdistrict clicked:",
-                                        subDistrict.name_th,
-                                        "ID:",
-                                        subDistrict.id,
-                                        "ZIP:",
-                                        subDistrict.zip_code,
-                                      );
-                                      setSelectedSubDistrict(subDistrict.id);
-                                      setSubDistrictSearchTerm("");
-                                      setShowSubDistrictDropdown(false);
-                                    }}
-                                  >
-                                    {subDistrict.name_th} (
-                                    {subDistrict.zip_code})
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="px-3 py-2 text-gray-500">
-                                  ไม่พบตำบล/แขวงที่ค้นหา
+                        {showSubDistrictDropdown && selectedDistrict && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                            {filteredSubDistricts.length > 0 ? (
+                              filteredSubDistricts.map((subDistrict) => (
+                                <div
+                                  key={subDistrict.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => {
+                                    console.log(
+                                      "🖱️ Subdistrict clicked:",
+                                      subDistrict.name_th,
+                                      "ID:",
+                                      subDistrict.id,
+                                      "ZIP:",
+                                      subDistrict.zip_code,
+                                    );
+                                    setSelectedSubDistrict(subDistrict.id);
+                                    setSubDistrictSearchTerm("");
+                                    setShowSubDistrictDropdown(false);
+                                  }}
+                                >
+                                  {subDistrict.name_th} ({subDistrict.zip_code})
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-gray-500">
+                                ไม่พบตำบล/แขวงที่ค้นหา
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className={commonLabelClass}>รหัสไปรษณีย์</label>
@@ -2442,7 +2437,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           name="postalCode"
                           value={shippingAddress.postalCode}
                           onChange={handleShippingAddressChange}
-                          disabled={useProfileAddress || !!selectedSubDistrict}
+                          disabled={!!selectedSubDistrict}
                           readOnly={!!selectedSubDistrict}
                           className={commonInputClass}
                           placeholder="รหัสไปรษณีย์จะถูกกรอกอัตโนมัติ"
