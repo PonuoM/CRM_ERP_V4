@@ -824,6 +824,107 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
+  // Handler for setting an address as primary
+  const handleSetPrimaryAddress = async (addressId: number) => {
+    if (
+      !window.confirm("คุณแน่ใจหรือไม่ว่าต้องการตั้งที่อยู่นี้เป็นที่อยู่หลัก?")
+    ) {
+      return;
+    }
+
+    try {
+      // Get the address to be set as primary
+      const newPrimaryAddress = addressOptions.find((a) => a.id === addressId);
+      if (!newPrimaryAddress) {
+        alert("ไม่พบข้อมูลที่อยู่ที่เลือก");
+        return;
+      }
+
+      // Get the current customer address (if exists)
+      const currentCustomerAddress = selectedCustomer?.address;
+
+      // Prepare the payload for the API call
+      const payload = {
+        customerId: selectedCustomer?.id,
+        newPrimaryAddressId: addressId,
+        oldPrimaryAddress: currentCustomerAddress
+          ? {
+              address: currentCustomerAddress.street || "",
+              sub_district: currentCustomerAddress.subdistrict || "",
+              district: currentCustomerAddress.district || "",
+              province: currentCustomerAddress.province || "",
+              zip_code: currentCustomerAddress.postalCode || "",
+            }
+          : null,
+      };
+
+      const response = await fetch(
+        "/api/Address_DB/get_address_data.php?endpoint=set_primary_address",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Update the customer's address in the local state
+        if (selectedCustomer) {
+          setSelectedCustomer({
+            ...selectedCustomer,
+            address: {
+              street: newPrimaryAddress.address,
+              subdistrict: newPrimaryAddress.sub_district,
+              district: newPrimaryAddress.district,
+              province: newPrimaryAddress.province,
+              postalCode: newPrimaryAddress.zip_code,
+            },
+          });
+        }
+
+        // Update the address options to reflect the changes
+        if (currentCustomerAddress) {
+          // Add the old primary address to the address options
+          setAddressOptions((prev) => [
+            ...prev,
+            {
+              id: result.oldAddressId || Date.now(), // Use returned ID or generate temp one
+              address: currentCustomerAddress.street || "",
+              sub_district: currentCustomerAddress.subdistrict || "",
+              district: currentCustomerAddress.district || "",
+              province: currentCustomerAddress.province || "",
+              zip_code: currentCustomerAddress.postalCode || "",
+            },
+          ]);
+        }
+
+        // Remove the newly set primary address from the address options
+        setAddressOptions((prev) =>
+          prev.filter((addr) => addr.id !== addressId),
+        );
+
+        // Switch to profile address option since it's now the primary
+        setSelectedAddressOption("profile");
+        handleAddressOptionChange("profile");
+
+        // Show success message
+        alert("ตั้งค่าที่อยู่หลักเรียบร้อยแล้ว");
+      } else {
+        alert(
+          "ไม่สามารถตั้งค่าที่อยู่หลักได้: " +
+            (result.message || "เกิดข้อผิดพลาด"),
+        );
+      }
+    } catch (error) {
+      console.error("Error setting primary address:", error);
+      alert("เกิดข้อผิดพลาดในการตั้งค่าที่อยู่หลัก");
+    }
+  };
+
   useEffect(() => {
     if (initialData?.customer) {
       handleSelectCustomer(initialData.customer);
@@ -2033,8 +2134,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           className="mr-3"
                         />
                         <div className="flex-1">
-                          <div className="font-medium">
-                            ที่อยู่เดียวกับข้อมูลลูกค้า
+                          <div className="flex items-center">
+                            <div className="font-medium">
+                              ที่อยู่เดียวกับข้อมูลลูกค้า
+                            </div>
+                            <div className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full flex items-center">
+                              <svg
+                                className="w-3 h-3 mr-1"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                              ที่อยู่หลัก
+                            </div>
                           </div>
                           {selectedCustomer?.address && (
                             <div className="text-sm text-gray-600 mt-1">
@@ -2050,58 +2163,83 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
 
                     {/* Customer Addresses */}
-                    {addressOptions.map((address) => (
-                      <div key={address.id} className="mb-3">
-                        <label className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                          <input
-                            type="radio"
-                            name="addressOption"
-                            value={address.id}
-                            checked={
-                              selectedAddressOption === address.id.toString()
-                            }
-                            onChange={(e) =>
-                              handleAddressOptionChange(e.target.value)
-                            }
-                            disabled={isCreatingNewCustomer}
-                            className="mr-3"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm">
-                              {address.address} {address.sub_district}{" "}
-                              {address.district} {address.province}{" "}
-                              {address.zip_code}
+                    {addressOptions.length > 0 ? (
+                      addressOptions.map((address) => (
+                        <div key={address.id} className="mb-3">
+                          <label className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                            <input
+                              type="radio"
+                              name="addressOption"
+                              value={address.id}
+                              checked={
+                                selectedAddressOption === address.id.toString()
+                              }
+                              onChange={(e) =>
+                                handleAddressOptionChange(e.target.value)
+                              }
+                              disabled={isCreatingNewCustomer}
+                              className="mr-3"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center">
+                                <div className="text-sm flex-1">
+                                  {address.address} {address.sub_district}{" "}
+                                  {address.district} {address.province}{" "}
+                                  {address.zip_code}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteAddress(address.id);
-                            }}
-                            disabled={isCreatingNewCustomer}
-                            className="ml-3 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="ลบที่อยู่"
-                          >
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
-                        </label>
+                            <div className="flex items-center space-x-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleSetPrimaryAddress(address.id);
+                                }}
+                                disabled={isCreatingNewCustomer}
+                                className="px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-sm font-medium"
+                                title="ตั้งค่าเป็นที่อยู่หลัก"
+                              >
+                                ตั้งเป็นที่อยู่หลัก
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeleteAddress(address.id);
+                                }}
+                                disabled={isCreatingNewCustomer}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="ลบที่อยู่"
+                              >
+                                <svg
+                                  className="w-5 h-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </label>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                        <div className="text-sm text-gray-500 text-center">
+                          ไม่มีที่อยู่เพิ่มเติม
+                        </div>
                       </div>
-                    ))}
+                    )}
 
                     {/* New Address Option */}
                     <div className="mb-3">

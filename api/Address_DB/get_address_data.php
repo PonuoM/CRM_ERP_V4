@@ -174,6 +174,80 @@ try {
             }
             break;
 
+        case 'set_primary_address':
+            // Set an address as primary by swapping with customer's current address
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!$data || !isset($data['customerId']) || !isset($data['newPrimaryAddressId'])) {
+                $response['success'] = false;
+                $response['message'] = 'Customer ID and new primary address ID are required';
+                break;
+            }
+
+            try {
+                $pdo->beginTransaction();
+
+                // Get the new primary address
+                $stmt = $pdo->prepare("SELECT * FROM customer_address WHERE id = ? AND customer_id = ?");
+                $stmt->execute([$data['newPrimaryAddressId'], $data['customerId']]);
+                $newPrimaryAddress = $stmt->fetch();
+
+                if (!$newPrimaryAddress) {
+                    $response['success'] = false;
+                    $response['message'] = 'Address not found or does not belong to this customer';
+                    $pdo->rollBack();
+                    break;
+                }
+
+                // Get current customer address
+                $stmt = $pdo->prepare("SELECT street, province, district, subdistrict, postal_code FROM customers WHERE id = ?");
+                $stmt->execute([$data['customerId']]);
+                $currentCustomerAddress = $stmt->fetch();
+
+                $oldAddressId = null;
+
+                // If customer has a current address, add it to customer_address table
+                if ($currentCustomerAddress && $currentCustomerAddress['street']) {
+                    $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                    $stmt->execute([
+                        $data['customerId'],
+                        $currentCustomerAddress['street'],
+                        $currentCustomerAddress['province'],
+                        $currentCustomerAddress['district'],
+                        $currentCustomerAddress['subdistrict'],
+                        $currentCustomerAddress['postal_code']
+                    ]);
+                    $oldAddressId = $pdo->lastInsertId();
+                }
+
+                // Update customer's primary address with the new one
+                $stmt = $pdo->prepare("UPDATE customers SET street = ?, province = ?, district = ?, subdistrict = ?, postal_code = ? WHERE id = ?");
+                $stmt->execute([
+                    $newPrimaryAddress['address'],
+                    $newPrimaryAddress['province'],
+                    $newPrimaryAddress['district'],
+                    $newPrimaryAddress['sub_district'],
+                    $newPrimaryAddress['zip_code'],
+                    $data['customerId']
+                ]);
+
+                // Delete the new primary address from customer_address table since it's now in customers table
+                $stmt = $pdo->prepare("DELETE FROM customer_address WHERE id = ?");
+                $stmt->execute([$data['newPrimaryAddressId']]);
+
+                $pdo->commit();
+
+                $response['success'] = true;
+                $response['message'] = 'Primary address updated successfully';
+                $response['oldAddressId'] = $oldAddressId;
+
+            } catch (PDOException $e) {
+                $pdo->rollBack();
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
         case 'delete_customer_address':
             // Delete a customer address
             $data = json_decode(file_get_contents('php://input'), true);
@@ -222,7 +296,7 @@ try {
 
         default:
             $response['success'] = false;
-            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats, customer_addresses, save_customer_address, delete_customer_address';
+            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats, customer_addresses, save_customer_address, delete_customer_address, set_primary_address';
             break;
     }
 
