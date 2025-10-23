@@ -53,6 +53,8 @@ interface CreateOrderPageProps {
       sub_district: string;
       zip_code: string;
     };
+    updateCustomerAddress?: boolean;
+    updateCustomerSocials?: boolean;
   }) => void;
   onCancel: () => void;
   initialData?: { customer: Customer };
@@ -855,7 +857,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const isAddressIncomplete = Object.values(shippingAddress).some(
       (val) => (val as string).trim() === "",
     );
@@ -949,25 +951,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         lineId !== (selectedCustomer?.lineId || "");
 
       if (hasSocialsChanged) {
-        const customerUpdate: Partial<
-          Pick<Customer, "facebookName" | "lineId">
-        > = {};
-        if (hasSocialsChanged) {
-          customerUpdate.facebookName = facebookName;
-          customerUpdate.lineId = lineId;
-        }
-        (payload as any).customerUpdate = customerUpdate;
+        // Social media changes will be handled via the new API endpoint
+        (payload as any).updateCustomerSocials = true;
       }
 
       // Handle address saving
       if (selectedAddressOption === "new") {
         if (updateProfileAddress) {
-          // Update profile address in customers table
-          const customerUpdate: Partial<
-            Pick<Customer, "address" | "facebookName" | "lineId">
-          > = (payload as any).customerUpdate || {};
-          customerUpdate.address = shippingAddress;
-          (payload as any).customerUpdate = customerUpdate;
+          // Update profile address in customers table via new API
+          // This will be handled after the order is saved
+          (payload as any).updateCustomerAddress = true;
         } else {
           // Save new address to customer_address table
           (payload as any).newCustomerAddress = {
@@ -980,16 +973,90 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           };
         }
       } else if (selectedAddressOption === "profile" && !useProfileAddress) {
-        // Update profile address in customers table
-        const customerUpdate: Partial<
-          Pick<Customer, "address" | "facebookName" | "lineId">
-        > = (payload as any).customerUpdate || {};
-        customerUpdate.address = shippingAddress;
-        (payload as any).customerUpdate = customerUpdate;
+        // Update profile address in customers table via new API
+        // This will be handled after the order is saved
+        (payload as any).updateCustomerAddress = true;
       }
     }
 
     onSave(payload);
+
+    // Handle customer address update if checkbox is checked
+    if ((payload as any).updateCustomerAddress && selectedCustomer) {
+      try {
+        const updateData = {
+          customer_id: selectedCustomer.id,
+          street: shippingAddress.street,
+          subdistrict: shippingAddress.subdistrict,
+          district: shippingAddress.district,
+          province: shippingAddress.province,
+          postal_code: shippingAddress.postalCode,
+        };
+
+        const response = await fetch(
+          "/api/Address_DB/update_customer_address.php",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(updateData),
+          },
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          console.log("Customer address updated successfully:", result.data);
+        } else {
+          console.error("Failed to update customer address:", result.message);
+          alert("ไม่สามารถอัพเดตที่อยู่หลักได้: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error updating customer address:", error);
+        alert("เกิดข้อผิดพลาดในการอัพเดตที่อยู่หลัก");
+      }
+    }
+
+    // Handle customer social media update if changed
+    if ((payload as any).updateCustomerSocials && selectedCustomer) {
+      try {
+        const updateData = {
+          customer_id: selectedCustomer.id,
+          facebook_name: facebookName,
+          line_id: lineId,
+        };
+
+        const response = await fetch(
+          "/api/Address_DB/update_customer_address.php",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(updateData),
+          },
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          console.log(
+            "Customer social media updated successfully:",
+            result.data,
+          );
+        } else {
+          console.error(
+            "Failed to update customer social media:",
+            result.message,
+          );
+          alert("ไม่สามารถอัพเดตข้อมูลโซเชียลมีเดียได้: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error updating customer social media:", error);
+        alert("เกิดข้อผิดพลาดในการอัพเดตข้อมูลโซเชียลมีเดีย");
+      }
+    }
 
     // If we need to save a new customer address (not updating the profile), make a separate API call
     if (
