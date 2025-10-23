@@ -2360,6 +2360,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     setShowProvinceDropdown(false);
                                     setSelectedDistrict(null);
                                     setSelectedSubDistrict(null);
+                                    setShippingAddress((prev) => ({
+                                      ...prev,
+                                      district: "",
+                                      subdistrict: "",
+                                      postalCode: "",
+                                    }));
                                   }}
                                 >
                                   {province.name_th}
