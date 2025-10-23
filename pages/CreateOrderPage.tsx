@@ -377,24 +377,111 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   }, [selectedDistrict]);
 
-  // Update shipping address when sub-district is selected
+  // Update shipping address when sub-district is selected or when subdistricts data is loaded
   useEffect(() => {
-    if (selectedSubDistrict) {
+    if (selectedSubDistrict && subDistricts.length > 0) {
       const subDistrict = subDistricts.find(
         (sd) => sd.id === selectedSubDistrict,
       );
-      const district = districts.find((d) => d.id === subDistrict?.district_id);
-      const province = provinces.find((p) => p.id === district?.province_id);
+      console.log(
+        "🔍 Subdistrict mapping - selectedSubDistrict:",
+        selectedSubDistrict,
+      );
+      console.log("🔍 Subdistrict mapping - found subDistrict:", subDistrict);
 
-      setShippingAddress((prev) => ({
-        ...prev,
-        subdistrict: subDistrict?.name_th || "",
-        district: district?.name_th || "",
-        province: province?.name_th || "",
-        postalCode: subDistrict?.zip_code || "",
-      }));
+      if (subDistrict) {
+        const district = districts.find(
+          (d) => d.id === subDistrict.district_id,
+        );
+        const province = provinces.find((p) => p.id === district?.province_id);
+
+        console.log("🔍 Subdistrict mapping - district:", district);
+        console.log("🔍 Subdistrict mapping - province:", province);
+        console.log("🔍 Subdistrict mapping - zip_code:", subDistrict.zip_code);
+
+        setShippingAddress((prev) => ({
+          ...prev,
+          subdistrict: subDistrict.name_th || "",
+          district: district?.name_th || "",
+          province: province?.name_th || "",
+          postalCode: subDistrict.zip_code || prev.postalCode || "",
+        }));
+      } else {
+        console.warn("⚠️ Subdistrict not found in subDistricts array");
+      }
     }
   }, [selectedSubDistrict, subDistricts, districts, provinces]);
+
+  // Additional effect to handle shipping address update when subdistricts data changes
+  useEffect(() => {
+    if (selectedSubDistrict && subDistricts.length > 0) {
+      const subDistrict = subDistricts.find(
+        (sd) => sd.id === selectedSubDistrict,
+      );
+
+      console.log("🔄 Subdistricts data changed - updating address");
+      console.log("🔄 Selected subDistrict ID:", selectedSubDistrict);
+      console.log("🔄 Found subDistrict:", subDistrict);
+
+      if (subDistrict) {
+        const district = districts.find(
+          (d) => d.id === subDistrict.district_id,
+        );
+        const province = provinces.find((p) => p.id === district?.province_id);
+
+        console.log(
+          "🔄 Updating shipping address with zip code:",
+          subDistrict.zip_code,
+        );
+
+        setShippingAddress((prev) => ({
+          ...prev,
+          subdistrict: subDistrict.name_th || "",
+          district: district?.name_th || "",
+          province: province?.name_th || "",
+          postalCode: subDistrict.zip_code || prev.postalCode || "",
+        }));
+      } else {
+        console.warn(
+          "⚠️ Could not find subDistrict with ID:",
+          selectedSubDistrict,
+        );
+        console.warn(
+          "⚠️ Available subDistricts:",
+          subDistricts.map((sd) => ({ id: sd.id, name: sd.name_th })),
+        );
+      }
+    }
+  }, [subDistricts]);
+
+  // Effect to ensure shipping address is updated when all address components are available
+  useEffect(() => {
+    if (selectedSubDistrict && selectedDistrict && selectedProvince) {
+      const subDistrict = subDistricts.find(
+        (sd) => sd.id === selectedSubDistrict,
+      );
+      const district = districts.find((d) => d.id === selectedDistrict);
+      const province = provinces.find((p) => p.id === selectedProvince);
+
+      if (subDistrict && district && province) {
+        console.log("🔄 Final address update - all components available");
+        setShippingAddress((prev) => ({
+          ...prev,
+          subdistrict: subDistrict.name_th || "",
+          district: district.name_th || "",
+          province: province.name_th || "",
+          postalCode: subDistrict.zip_code || prev.postalCode || "",
+        }));
+      }
+    }
+  }, [
+    selectedSubDistrict,
+    selectedDistrict,
+    selectedProvince,
+    subDistricts,
+    districts,
+    provinces,
+  ]);
 
   // Initialize address selections from existing address
   useEffect(() => {
@@ -582,8 +669,32 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   sd.name_th ===
                                   selectedCustomer.address.subdistrict,
                               );
+                              console.log(
+                                "👤 Customer address - looking for subdistrict:",
+                                selectedCustomer.address.subdistrict,
+                              );
+                              console.log(
+                                "👤 Customer address - found subDistrict:",
+                                subDistrict,
+                              );
+
                               if (subDistrict) {
+                                console.log(
+                                  "👤 Setting selectedSubDistrict to:",
+                                  subDistrict.id,
+                                );
                                 setSelectedSubDistrict(subDistrict.id);
+                              } else {
+                                console.warn(
+                                  "⚠️ Could not find subdistrict for customer address",
+                                );
+                                console.warn(
+                                  "⚠️ Available subdistricts:",
+                                  (data.data || []).map((sd) => ({
+                                    id: sd.id,
+                                    name: sd.name_th,
+                                  })),
+                                );
                               }
                             }
                           }
@@ -2161,6 +2272,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     key={subDistrict.id}
                                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                                     onClick={() => {
+                                      console.log(
+                                        "🖱️ Subdistrict clicked:",
+                                        subDistrict.name_th,
+                                        "ID:",
+                                        subDistrict.id,
+                                        "ZIP:",
+                                        subDistrict.zip_code,
+                                      );
                                       setSelectedSubDistrict(subDistrict.id);
                                       setSubDistrictSearchTerm("");
                                       setShowSubDistrictDropdown(false);
@@ -2186,6 +2305,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           value={shippingAddress.postalCode}
                           onChange={handleShippingAddressChange}
                           disabled={useProfileAddress || !!selectedSubDistrict}
+                          readOnly={!!selectedSubDistrict}
                           className={commonInputClass}
                           placeholder="รหัสไปรษณีย์จะถูกกรอกอัตโนมัติ"
                         />
