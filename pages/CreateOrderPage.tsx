@@ -300,12 +300,50 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setWarehouseId(null);
       return;
     }
-    const matched = (warehouses || []).find((w) => {
+
+    console.log("🏪 Looking for warehouse for province:", province);
+    console.log("🏪 Available warehouses:", warehouses);
+
+    // First try to find a warehouse that specifically handles this province
+    let matched = (warehouses || []).find((w) => {
       const list = Array.isArray(w.responsibleProvinces)
         ? w.responsibleProvinces
         : [];
-      return w.isActive && list.includes(province);
+      const isMatch = w.isActive && list.includes(province);
+      if (isMatch) {
+        console.log(
+          "🏪 Found specific warehouse:",
+          w.name,
+          "responsible for:",
+          list,
+        );
+      }
+      return isMatch;
     });
+
+    // If no specific warehouse found, fall back to "everywhere" warehouse
+    if (!matched) {
+      console.log(
+        "🏪 No specific warehouse found, looking for 'everywhere' warehouse",
+      );
+      matched = (warehouses || []).find((w) => {
+        const list = Array.isArray(w.responsibleProvinces)
+          ? w.responsibleProvinces
+          : [];
+        const isMatch = w.isActive && list.includes("everywhere");
+        if (isMatch) {
+          console.log("🏪 Found 'everywhere' warehouse:", w.name);
+        }
+        return isMatch;
+      });
+    }
+
+    if (matched) {
+      console.log("🏪 Selected warehouse:", matched.name, "ID:", matched.id);
+    } else {
+      console.log("🏪 No warehouse found for province:", province);
+    }
+
     setWarehouseId(matched ? matched.id : null);
   }, [shippingAddress.province, warehouses]);
 
