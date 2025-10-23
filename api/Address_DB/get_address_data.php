@@ -29,9 +29,9 @@ $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
 try {
     // Connect to database
     $pdo = db_connect();
-    
+
     $response = ['success' => true, 'data' => []];
-    
+
     switch ($endpoint) {
         case 'geographies':
             // Get all geographies or a specific one
@@ -45,7 +45,7 @@ try {
                 $response['data'] = $stmt->fetchAll();
             }
             break;
-            
+
         case 'provinces':
             // Get provinces by geography or all provinces
             if ($id) {
@@ -58,7 +58,7 @@ try {
                 $response['data'] = $stmt->fetchAll();
             }
             break;
-            
+
         case 'districts':
             // Get districts by province or all districts
             if ($id) {
@@ -71,7 +71,7 @@ try {
                 $response['data'] = $stmt->fetchAll();
             }
             break;
-            
+
         case 'sub_districts':
             // Get sub-districts by district or all sub-districts
             if ($id) {
@@ -84,12 +84,12 @@ try {
                 $response['data'] = $stmt->fetchAll();
             }
             break;
-            
+
         case 'search':
             // Search by zip code
             if ($search) {
                 $stmt = $pdo->prepare("
-                    SELECT 
+                    SELECT
                         sd.id, sd.name_th AS sub_district, sd.zip_code,
                         d.name_th AS district, d.id AS district_id,
                         p.name_th AS province, p.id AS province_id,
@@ -108,12 +108,12 @@ try {
                 $response['message'] = 'Search parameter is required';
             }
             break;
-            
+
         case 'complete_address':
             // Get complete address hierarchy for a sub-district
             if ($id) {
                 $stmt = $pdo->prepare("
-                    SELECT 
+                    SELECT
                         sd.id, sd.name_th AS sub_district_name, sd.name_en AS sub_district_name_en, sd.zip_code,
                         d.id AS district_id, d.name_th AS district_name, d.name_en AS district_name_en,
                         p.id AS province_id, p.name_th AS province_name, p.name_en AS province_name_en,
@@ -131,7 +131,7 @@ try {
                 $response['message'] = 'Sub-district ID is required';
             }
             break;
-            
+
         case 'customer_addresses':
             // Get addresses for a specific customer
             if ($id) {
@@ -143,17 +143,17 @@ try {
                 $response['message'] = 'Customer ID is required';
             }
             break;
-          
+
         case 'save_customer_address':
             // Save a new customer address
             $data = json_decode(file_get_contents('php://input'), true);
-            
+
             if (!$data || !isset($data['customer_id']) || !isset($data['address'])) {
                 $response['success'] = false;
                 $response['message'] = 'Missing required fields';
                 break;
             }
-            
+
             try {
                 $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
                 $stmt->execute([
@@ -164,7 +164,7 @@ try {
                     $data['sub_district'] ?? '',
                     $data['zip_code'] ?? ''
                 ]);
-                
+
                 $response['success'] = true;
                 $response['message'] = 'Customer address saved successfully';
                 $response['id'] = $pdo->lastInsertId();
@@ -173,34 +173,61 @@ try {
                 $response['message'] = 'Database error: ' . $e->getMessage();
             }
             break;
-          
+
+        case 'delete_customer_address':
+            // Delete a customer address
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!$data || !isset($data['id'])) {
+                $response['success'] = false;
+                $response['message'] = 'Address ID is required';
+                break;
+            }
+
+            try {
+                $stmt = $pdo->prepare("DELETE FROM customer_address WHERE id = ?");
+                $stmt->execute([$data['id']]);
+
+                if ($stmt->rowCount() > 0) {
+                    $response['success'] = true;
+                    $response['message'] = 'Customer address deleted successfully';
+                } else {
+                    $response['success'] = false;
+                    $response['message'] = 'Address not found or already deleted';
+                }
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+
         case 'stats':
             // Get statistics about the address data
             $stats = [];
-            
+
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_geographies");
             $stats['geographies'] = $stmt->fetch()['count'];
-            
+
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_provinces");
             $stats['provinces'] = $stmt->fetch()['count'];
-            
+
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_districts");
             $stats['districts'] = $stmt->fetch()['count'];
-            
+
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM address_sub_districts");
             $stats['sub_districts'] = $stmt->fetch()['count'];
-            
+
             $response['data'] = $stats;
             break;
-            
+
         default:
             $response['success'] = false;
-            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats';
+            $response['message'] = 'Invalid endpoint. Available endpoints: geographies, provinces, districts, sub_districts, search, complete_address, stats, customer_addresses, save_customer_address, delete_customer_address';
             break;
     }
-    
+
     echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    
+
 } catch (PDOException $e) {
     echo json_encode([
         'success' => false,
