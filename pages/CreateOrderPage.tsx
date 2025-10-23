@@ -9,10 +9,18 @@ interface CreateOrderPageProps {
   promotions: Promotion[];
   pages?: Page[];
   warehouses?: Warehouse[];
-  onSave: (payload: { 
-    order: Partial<Omit<Order, 'id' | 'orderDate' | 'companyId' | 'creatorId'>>, 
+  onSave: (payload: {
+    order: Partial<Omit<Order, 'id' | 'orderDate' | 'companyId' | 'creatorId'>>,
     newCustomer?: Omit<Customer, 'id' | 'companyId' | 'totalPurchases' | 'totalCalls' | 'tags' | 'assignmentHistory'>,
-    customerUpdate?: Partial<Pick<Customer, 'address' | 'facebookName' | 'lineId'>> 
+    customerUpdate?: Partial<Pick<Customer, 'address' | 'facebookName' | 'lineId'>>,
+    newCustomerAddress?: {
+      customer_id: string | number;
+      address: string;
+      province: string;
+      district: string;
+      sub_district: string;
+      zip_code: string;
+    }
   }) => void;
   onCancel: () => void;
   initialData?: { customer: Customer };
@@ -31,7 +39,7 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
   const billDiscountPercent = Number(orderData.billDiscount || 0);
   const billDiscountAmount = (subTotal * billDiscountPercent) / 100;
   const totalAmount = useMemo(() => subTotal + (orderData.shippingCost || 0) - billDiscountAmount, [subTotal, orderData.shippingCost, billDiscountAmount]);
-  
+
   return (
     <div className="bg-slate-50 border border-gray-300 rounded-lg p-6 sticky top-6">
       <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">สรุปคำสั่งซื้อ</h3>
@@ -57,7 +65,7 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({ orderData }) =>
           <span className="text-green-600">฿{totalAmount.toFixed(2)}</span>
         </div>
       </div>
-      
+
       {visibleItems.length > 0 && (
         <div className="mt-6 pt-6 border-t">
           <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({visibleItems.length})</h4>
@@ -95,7 +103,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [newCustomerLastName, setNewCustomerLastName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState('');
-  
+
   // Address data state
   const [geographies, setGeographies] = useState<any[]>([]);
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -106,7 +114,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
   const [selectedSubDistrict, setSelectedSubDistrict] = useState<number | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
-  
+
   // Search state for address dropdowns
   const [provinceSearchTerm, setProvinceSearchTerm] = useState('');
   const [districtSearchTerm, setDistrictSearchTerm] = useState('');
@@ -123,7 +131,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     customerId: initialData?.customer?.id,
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [numBoxes, setNumBoxes] = useState(1);
   // Product selector modal state
@@ -133,7 +141,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [leftFilter, setLeftFilter] = useState<number | null>(null);
   // track item ids with locked price (selected from product list)
   const [lockedItemIds, setLockedItemIds] = useState<number[]>([]);
-  
+
   const [facebookName, setFacebookName] = useState("");
   const [lineId, setLineId] = useState("");
   const [salesChannel, setSalesChannel] = useState("");
@@ -143,19 +151,24 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [shippingAddress, setShippingAddress] = useState<Address>(emptyAddress);
   const [saveNewAddress, setSaveNewAddress] = useState(false);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
-  
+
+  // Address options for the dropdown
+  const [addressOptions, setAddressOptions] = useState<any[]>([]);
+  const [selectedAddressOption, setSelectedAddressOption] = useState<string>('profile'); // Default to profile address
+  const [updateProfileAddress, setUpdateProfileAddress] = useState(false); // For the new checkbox
+
 
   // สรุปยอด: สินค้ารวม, ส่วนลดตามรายการ, ส่วนลดท้ายบิลเป็น %
   const goodsSum = useMemo(() =>
     (orderData.items || [])
       .filter(it => !it.parentItemId)
       .reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)), 0),
-  [orderData.items]);
+    [orderData.items]);
   const itemsDiscount = useMemo(() =>
     (orderData.items || [])
       .filter(it => !it.parentItemId)
       .reduce((acc, item) => acc + (item.isFreebie ? 0 : (item.discount || 0)), 0),
-  [orderData.items]);
+    [orderData.items]);
   const subTotal = useMemo(() => goodsSum - itemsDiscount, [goodsSum, itemsDiscount]);
   const billDiscountPercent = useMemo(() => Number(orderData.billDiscount || 0), [orderData.billDiscount]);
   const billDiscountAmount = useMemo(() => (subTotal * billDiscountPercent) / 100, [subTotal, billDiscountPercent]);
@@ -170,12 +183,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     });
     setWarehouseId(matched ? matched.id : null);
   }, [shippingAddress.province, warehouses]);
-  
+
   // Load address data on component mount
   useEffect(() => {
     loadAddressData();
   }, []);
-  
+
   // Function to load address data from API
   const loadAddressData = async () => {
     setAddressLoading(true);
@@ -186,7 +199,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         const geoData = await geoResponse.json();
         if (geoData.success) setGeographies(geoData.data || []);
       }
-      
+
       // Load all provinces
       const provResponse = await fetch('/api/Address_DB/get_address_data.php?endpoint=provinces');
       if (provResponse.ok) {
@@ -199,7 +212,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setAddressLoading(false);
     }
   };
-  
+
   // Load districts when province is selected
   useEffect(() => {
     if (selectedProvince) {
@@ -216,7 +229,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setSelectedSubDistrict(null);
     }
   }, [selectedProvince]);
-  
+
   // Load sub-districts when district is selected
   useEffect(() => {
     if (selectedDistrict) {
@@ -231,14 +244,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setSelectedSubDistrict(null);
     }
   }, [selectedDistrict]);
-  
+
   // Update shipping address when sub-district is selected
   useEffect(() => {
     if (selectedSubDistrict) {
       const subDistrict = subDistricts.find(sd => sd.id === selectedSubDistrict);
       const district = districts.find(d => d.id === subDistrict?.district_id);
       const province = provinces.find(p => p.id === district?.province_id);
-      
+
       setShippingAddress(prev => ({
         ...prev,
         subdistrict: subDistrict?.name_th || '',
@@ -248,10 +261,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }));
     }
   }, [selectedSubDistrict, subDistricts, districts, provinces]);
-  
+
   // Initialize address selections from existing address
   useEffect(() => {
-    if (!useProfileAddress && shippingAddress.province) {
+    if (shippingAddress.province && provinces.length > 0) {
       // Find province by name
       const province = provinces.find(p => p.name_th === shippingAddress.province);
       if (province) {
@@ -260,27 +273,48 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
     }
   }, [shippingAddress.province, provinces, useProfileAddress]);
-  
+
   // Initialize district when districts are loaded
   useEffect(() => {
-    if (!useProfileAddress && shippingAddress.district && selectedProvince && districts.length > 0) {
+    if (shippingAddress.district && selectedProvince && districts.length > 0) {
       const district = districts.find(d => d.name_th === shippingAddress.district);
       if (district) {
         setSelectedDistrict(district.id);
       }
     }
   }, [shippingAddress.district, selectedProvince, districts, useProfileAddress]);
-  
+
   // Initialize sub-district when sub-districts are loaded
   useEffect(() => {
-    if (!useProfileAddress && shippingAddress.subdistrict && selectedDistrict && subDistricts.length > 0) {
+    if (shippingAddress.subdistrict && selectedDistrict && subDistricts.length > 0) {
       const subDistrict = subDistricts.find(sd => sd.name_th === shippingAddress.subdistrict);
       if (subDistrict) {
         setSelectedSubDistrict(subDistrict.id);
       }
     }
   }, [shippingAddress.subdistrict, selectedDistrict, subDistricts, useProfileAddress]);
-  
+
+  // Load customer addresses when a customer is selected
+  useEffect(() => {
+    if (selectedCustomer) {
+      console.log('Loading addresses for customer ID:', selectedCustomer.id);
+      // Load customer addresses from the database
+      fetch(`/api/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${selectedCustomer.id}`)
+        .then(response => response.json())
+        .then(data => {
+          console.log('Customer addresses loaded:', data);
+          if (data.success) {
+            setAddressOptions(data.data || []);
+          } else {
+            console.error('Failed to load customer addresses:', data.message);
+          }
+        })
+        .catch(error => console.error('Error loading customer addresses:', error));
+    } else {
+      setAddressOptions([]);
+    }
+  }, [selectedCustomer]);
+
   // Filtered lists for search
   const filteredProvinces = useMemo(() => {
     if (!provinceSearchTerm) return provinces;
@@ -289,7 +323,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       p.name_en.toLowerCase().includes(provinceSearchTerm.toLowerCase())
     );
   }, [provinces, provinceSearchTerm]);
-  
+
   const filteredDistricts = useMemo(() => {
     if (!districtSearchTerm) return districts;
     return districts.filter(d =>
@@ -297,7 +331,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       d.name_en.toLowerCase().includes(districtSearchTerm.toLowerCase())
     );
   }, [districts, districtSearchTerm]);
-  
+
   const filteredSubDistricts = useMemo(() => {
     if (!subDistrictSearchTerm) return subDistricts;
     return subDistricts.filter(sd =>
@@ -306,13 +340,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       sd.zip_code.includes(subDistrictSearchTerm)
     );
   }, [subDistricts, subDistrictSearchTerm]);
-  
+
   const codTotal = useMemo(() => {
     return orderData.boxes?.reduce((sum, box) => sum + (box.codAmount || 0), 0) || 0;
   }, [orderData.boxes]);
 
   const isCodValid = useMemo(() => {
-    if(orderData.paymentMethod !== PaymentMethod.COD) return true;
+    if (orderData.paymentMethod !== PaymentMethod.COD) return true;
     return codTotal.toFixed(2) === totalAmount.toFixed(2) && totalAmount > 0;
   }, [orderData.paymentMethod, totalAmount, codTotal]);
 
@@ -326,15 +360,75 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     );
   }, [searchTerm, customers, isCreatingNewCustomer]);
 
-  // Handler for profile address toggle
-  const handleUseProfileAddressToggle = (checked: boolean) => {
-    setUseProfileAddress(checked);
-    if (checked && selectedCustomer?.address) {
+  // Handler for address option selection
+  const handleAddressOptionChange = (option: string) => {
+    setSelectedAddressOption(option);
+
+    if (option === 'profile' && selectedCustomer?.address) {
+      // Use profile address
+      setUseProfileAddress(true);
       setShippingAddress(selectedCustomer.address);
-      // Reset custom address selections when using profile address
-      setSelectedProvince(null);
-      setSelectedDistrict(null);
-      setSelectedSubDistrict(null);
+
+      // Find and set the IDs for the profile address
+      if (selectedCustomer.address.province && provinces.length > 0) {
+
+        const province = provinces.find(p => p.name_th === selectedCustomer.address.province);
+        if (province) {
+          setSelectedProvince(province.id);
+          setSelectedGeography(province.geography_id);
+
+          // Load districts for this province if not already loaded
+          if (districts.length === 0 || districts[0].province_id !== province.id) {
+            fetch(`/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`)
+              .then(response => response.json())
+              .then(data => {
+                if (data.success) {
+                  setDistricts(data.data || []);
+                  // Find and set district ID
+                  if (selectedCustomer.address.district) {
+                    const district = (data.data || []).find(d => d.name_th === selectedCustomer.address.district);
+                    if (district) {
+                      setSelectedDistrict(district.id);
+
+                      // Load sub-districts for this district
+                      fetch(`/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`)
+                        .then(response => response.json())
+                        .then(data => {
+                          if (data.success) {
+                            setSubDistricts(data.data || []);
+                            // Find and set sub-district ID
+                            if (selectedCustomer.address.subdistrict) {
+                              const subDistrict = (data.data || []).find(sd => sd.name_th === selectedCustomer.address.subdistrict);
+                              if (subDistrict) {
+                                setSelectedSubDistrict(subDistrict.id);
+                              }
+                            }
+                          }
+                        })
+                        .catch(error => console.error('Error loading sub-districts:', error));
+                    }
+                  }
+                }
+              })
+              .catch(error => console.error('Error loading districts:', error));
+          } else {
+            // Districts already loaded, find district ID
+            const district = districts.find(d => d.name_th === selectedCustomer.address.district);
+            if (district) {
+              setSelectedDistrict(district.id);
+
+              // Find sub-district ID
+              if (selectedCustomer.address.subdistrict) {
+                const subDistrict = subDistricts.find(sd => sd.name_th === selectedCustomer.address.subdistrict);
+                if (subDistrict) {
+                  setSelectedSubDistrict(subDistrict.id);
+                }
+              }
+            }
+          }
+        }
+      }
+
       // Reset search terms and close dropdowns
       setProvinceSearchTerm('');
       setDistrictSearchTerm('');
@@ -342,8 +436,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setShowProvinceDropdown(false);
       setShowDistrictDropdown(false);
       setShowSubDistrictDropdown(false);
-    } else {
+    } else if (option === 'new') {
+      // Create new address
+      setUseProfileAddress(false);
       setShippingAddress(emptyAddress);
+      setUpdateProfileAddress(false); // Reset checkbox state
       // Reset address selections when switching to custom address
       setSelectedProvince(null);
       setSelectedDistrict(null);
@@ -355,6 +452,30 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setShowProvinceDropdown(false);
       setShowDistrictDropdown(false);
       setShowSubDistrictDropdown(false);
+    } else {
+      // Use existing customer address
+      setUseProfileAddress(false);
+      const address = addressOptions.find(a => a.id === parseInt(option));
+      if (address) {
+        setShippingAddress({
+          street: address.address || '',
+          subdistrict: address.sub_district || '',
+          district: address.district || '',
+          province: address.province || '',
+          postalCode: address.zip_code || ''
+        });
+        // Reset address selections
+        setSelectedProvince(null);
+        setSelectedDistrict(null);
+        setSelectedSubDistrict(null);
+        // Reset search terms and close dropdowns
+        setProvinceSearchTerm('');
+        setDistrictSearchTerm('');
+        setSubDistrictSearchTerm('');
+        setShowProvinceDropdown(false);
+        setShowDistrictDropdown(false);
+        setShowSubDistrictDropdown(false);
+      }
     }
   };
 
@@ -363,7 +484,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       handleSelectCustomer(initialData.customer);
     }
   }, [initialData]);
-  
+
   // หมายเหตุ: ทุกวิธีการชำระเงินต้องระบุจำนวนกล่อง (COD เท่านั้นที่ต้องกรอกยอด COD ต่อกล่อง)
   useEffect(() => {
     const newBoxes: CodBox[] = Array.from({ length: numBoxes }, (_, i) => ({
@@ -372,12 +493,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }));
     updateOrderData('boxes', newBoxes);
   }, [numBoxes]);
-  
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
-      
+
       // Check if click is outside any of the dropdown containers
       if (!target.closest('.province-dropdown-container')) {
         setShowProvinceDropdown(false);
@@ -389,7 +510,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         setShowSubDistrictDropdown(false);
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -406,7 +527,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     const changed = JSON.stringify(clamped) !== JSON.stringify(orderData.items);
     if (changed) updateOrderData('items', clamped);
   }, [numBoxes, orderData.items]);
-  
+
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -426,7 +547,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setShowProvinceDropdown(false);
     setShowDistrictDropdown(false);
     setShowSubDistrictDropdown(false);
-    
+
     if (customer.address) {
       setUseProfileAddress(true);
       setShippingAddress(customer.address);
@@ -439,8 +560,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const startCreatingNewCustomer = () => {
     setIsCreatingNewCustomer(true);
     setSelectedCustomer(null);
-    setOrderData(prev => ({...prev, customerId: undefined}));
-    
+    setOrderData(prev => ({ ...prev, customerId: undefined }));
+
     // Reset address selections
     setSelectedProvince(null);
     setSelectedDistrict(null);
@@ -452,7 +573,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setShowProvinceDropdown(false);
     setShowDistrictDropdown(false);
     setShowSubDistrictDropdown(false);
-    
+
     if (/^0[0-9]{9}$/.test(searchTerm)) {
       setNewCustomerPhone(searchTerm);
       setNewCustomerFirstName('');
@@ -470,15 +591,15 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setShippingAddress(emptyAddress);
     setUseProfileAddress(false);
   }
-  
+
   const updateOrderData = (field: keyof Order, value: any) => {
     setOrderData(prev => ({ ...prev, [field]: value }));
   };
-  
+
   const handleShippingAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setShippingAddress(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
-  
+
   const handleNewCustomerPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^0-9]/g, '');
     if (value.length > 10) return;
@@ -520,13 +641,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     };
 
     const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
-    
+
     if (isCreatingNewCustomer) {
       if (!newCustomerFirstName.trim() || !newCustomerPhone.trim()) {
         alert('กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่');
         return;
       }
-      if(newCustomerPhoneError) {
+      if (newCustomerPhoneError) {
         alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
         return;
       }
@@ -547,23 +668,73 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         grade: CustomerGrade.D,
       };
     } else {
-      if(!selectedCustomer) { alert('กรุณาเลือกลูกค้า'); return; }
+      if (!selectedCustomer) { alert('กรุณาเลือกลูกค้า'); return; }
       const hasSocialsChanged = facebookName !== (selectedCustomer?.facebookName || '') || lineId !== (selectedCustomer?.lineId || '');
 
-      if ((!useProfileAddress && saveNewAddress) || hasSocialsChanged) {
-        const customerUpdate: Partial<Pick<Customer, 'address' | 'facebookName' | 'lineId'>> = {};
-        if (!useProfileAddress && saveNewAddress) {
-          customerUpdate.address = shippingAddress;
-        }
+      if (hasSocialsChanged) {
+        const customerUpdate: Partial<Pick<Customer, 'facebookName' | 'lineId'>> = {};
         if (hasSocialsChanged) {
           customerUpdate.facebookName = facebookName;
           customerUpdate.lineId = lineId;
         }
         (payload as any).customerUpdate = customerUpdate;
       }
+
+      // Handle address saving
+      if (selectedAddressOption === 'new') {
+        if (updateProfileAddress) {
+          // Update profile address in customers table
+          const customerUpdate: Partial<Pick<Customer, 'address' | 'facebookName' | 'lineId'>> = (payload as any).customerUpdate || {};
+          customerUpdate.address = shippingAddress;
+          (payload as any).customerUpdate = customerUpdate;
+        } else {
+          // Save new address to customer_address table
+          (payload as any).newCustomerAddress = {
+            customer_id: selectedCustomer.id,
+            address: shippingAddress.street,
+            province: shippingAddress.province,
+            district: shippingAddress.district,
+            sub_district: shippingAddress.subdistrict,
+            zip_code: shippingAddress.postalCode
+          };
+        }
+      } else if (selectedAddressOption === 'profile' && !useProfileAddress) {
+        // Update profile address in customers table
+        const customerUpdate: Partial<Pick<Customer, 'address' | 'facebookName' | 'lineId'>> = (payload as any).customerUpdate || {};
+        customerUpdate.address = shippingAddress;
+        (payload as any).customerUpdate = customerUpdate;
+      } 
     }
-    
+
     onSave(payload);
+
+    // If we need to save a new customer address (not updating the profile), make a separate API call
+    if (selectedAddressOption === 'new' && !updateProfileAddress && (payload as any).newCustomerAddress) {
+      console.log('Selected customer ID:', selectedCustomer?.id);
+      console.log('Saving new customer address:', (payload as any).newCustomerAddress);
+      fetch('/api/Address_DB/get_address_data.php?endpoint=save_customer_address', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify((payload as any).newCustomerAddress)
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Customer address save response:', data);
+        if (!data.success) {
+          console.error('Error saving customer address:', data.message);
+          alert('เกิดข้อผิดพลาดในการบันทึกที่อยู่: ' + data.message);
+        } else {
+          console.log('Customer address saved successfully with ID:', data.id);
+        }
+      })
+      .catch(error => {
+        console.error('Error saving customer address:', error);
+        alert('เกิดข้อผิดพลาดในการบันทึกที่อยู่: ' + error.message);
+      });
+    }
+
     setShowSuccessMessage(true);
     setTimeout(() => setShowSuccessMessage(false), 3000);
   }
@@ -583,13 +754,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }));
 
     let distributedAmount = 0;
-    for(let i = 0; i < numBoxes -1; i++) {
+    for (let i = 0; i < numBoxes - 1; i++) {
       const roundedAmount = Math.floor(amountPerBox * 100) / 100;
       newBoxes[i].codAmount = roundedAmount;
       distributedAmount += roundedAmount;
     }
     newBoxes[numBoxes - 1].codAmount = parseFloat((totalAmount - distributedAmount).toFixed(2));
-    
+
     updateOrderData('boxes', newBoxes);
   };
 
@@ -701,15 +872,15 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const addPromotionByIdFixed = (promoId: number | string) => {
     const promo = promotionsSafe.find(p => String(p.id) === String(promoId));
     if (!promo) return;
-    
+
     // Create separate line items for each product in the promotion
     const promotionItems = promo.items || [];
     const promotionName = promo.name || 'โปรโมชั่น';
-    
+
     // Track all new items to add
     const newItemsToAdd: LineItem[] = [];
     const newLockedIds: number[] = [];
-    
+
     // Create parent item (promotion header)
     const parentId = Date.now() + Math.floor(Math.random() * 1000);
     const parentItem: LineItem = {
@@ -725,25 +896,25 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       parentItemId: undefined, // Parent has no parent
       isPromotionParent: true
     };
-    
+
     // รวมราคาชุดจากชิ้นย่อยที่ต้องจ่าย แล้วค่อยตั้งราคาให้ parent
     // so totals won't double-count. We'll also replace an empty row with this parent.
     let totalSetPrice = 0;
-    
+
     for (const part of promotionItems) {
       // part may contain productId and joined product info
       const prod = productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) || productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
       if (!prod) continue;
-      
+
       const qty = Number(part.quantity || 1);
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
-      
+
       // IMPORTANT: Always use price_override for promotion items if available
       // If price_override is null or 0 and item is not a freebie, use the regular product price
       const itemPrice = isFreeFlag ? 0 : (
         part.price_override !== null && part.price_override !== undefined ? Number(part.price_override) : prod.price
       );
-      
+
       // Create a separate line item for each product in the promotion
       const newId = Date.now() + Math.floor(Math.random() * 1000);
       const productLineItem: LineItem = {
@@ -759,14 +930,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         parentItemId: parentId, // Link to parent
         isPromotionParent: false
       };
-      
+
       newItemsToAdd.push(productLineItem);
       newLockedIds.push(newId);
       if (!isFreeFlag) { totalSetPrice += itemPrice * qty; }
-      
+
       // Totals are taken from child items; parent stays 0
     }
-    
+
     // ตั้งราคารวมของชุดไว้ที่ parent
     parentItem.pricePerUnit = calcPromotionSetPrice(promo);
     const existing = orderData.items || [];
@@ -783,7 +954,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       newLockedIds.push(parentId);
     }
     next = [...next, ...newItemsToAdd];
-    
+
     updateOrderData('items', next);
     setLockedItemIds(prev => [...prev, ...newLockedIds, ...newItemsToAdd.map(i => i.id)]);
     closeProductSelector();
@@ -801,15 +972,15 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const addPromotionById = (promoId: number | string) => {
     const promo = promotionsSafe.find(p => String(p.id) === String(promoId));
     if (!promo) return;
-    
+
     // Create separate line items for each product in the promotion
     const promotionItems = promo.items || [];
     const promotionName = promo.name || 'โปรโมชั่น';
-    
+
     // Track all new items to add
     const newItemsToAdd: LineItem[] = [];
     const newLockedIds: number[] = [];
-    
+
     // Create parent item (promotion header)
     const parentId = Date.now() + Math.floor(Math.random() * 1000);
     const parentItem: LineItem = {
@@ -825,27 +996,27 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       parentItemId: undefined, // Parent has no parent
       isPromotionParent: true
     };
-    
+
     newItemsToAdd.push(parentItem);
     newLockedIds.push(parentId);
-    
+
     // Calculate total price for parent item
     let totalPromotionPrice = 0;
-    
+
     for (const part of promotionItems) {
       // part may contain productId and joined product info
       const prod = productsSafe.find(pr => pr.id === (part.productId ?? part.product_id)) || productsSafe.find(pr => pr.sku === (part.product?.sku || part.sku || part.product_sku));
       if (!prod) continue;
-      
+
       const qty = Number(part.quantity || 1);
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
-      
+
       // IMPORTANT: Always use price_override for promotion items if available
       // If price_override is null or 0 and item is not a freebie, use the regular product price
       const itemPrice = isFreeFlag ? 0 : (
         part.price_override !== null && part.price_override !== undefined ? Number(part.price_override) : prod.price
       );
-      
+
       // Create a separate line item for each product in the promotion
       const newId = Date.now() + Math.floor(Math.random() * 1000);
       const productLineItem: LineItem = {
@@ -861,19 +1032,19 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         parentItemId: parentId, // Link to parent
         isPromotionParent: false
       };
-      
+
       newItemsToAdd.push(productLineItem);
       newLockedIds.push(newId);
-      
+
       // Add to total price (only non-freebie items)
       if (!isFreeFlag) {
         totalPromotionPrice += itemPrice * qty;
       }
     }
-    
+
     // Update parent item with total price
     parentItem.pricePerUnit = totalPromotionPrice;
-    
+
     // Add all new items to the order
     updateOrderData('items', [...(orderData.items || []), ...newItemsToAdd]);
     setLockedItemIds(prev => [...prev, ...newLockedIds]);
@@ -904,159 +1075,165 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       {/* Main Content */}
       <div className="max-w-[1400px] mx-auto p-6">
-        
-        
+
+
         <div className="space-y-6">
           {/* Left Column: Customer Information & Shipping Address */}
           <div className="space-y-6">
-             
+
             {/* Section 1: Customer Information */}
             {
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">ข้อมูลลูกค้า</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className={commonLabelClass}>ค้นหาลูกค้า (ชื่อ / เบอร์โทร)</label>
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={e => { setSearchTerm(e.target.value); setSelectedCustomer(null); setIsCreatingNewCustomer(false); }}
-                    placeholder="พิมพ์เพื่อค้นหา..."
-                    className={commonInputClass}
-                  />
-                  {searchResults.length > 0 && !selectedCustomer && (
-                    <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
-                      {searchResults.map(c => (
-                        <li
-                          key={c.id}
-                          onClick={() => handleSelectCustomer(c)}
-                          className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
-                        >
-                          {`${c.firstName} ${c.lastName}`} - {c.phone}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {!selectedCustomer && searchTerm && searchResults.length === 0 && !isCreatingNewCustomer && (
-                    <button
-                      onClick={startCreatingNewCustomer}
-                      className="mt-2 text-sm text-blue-600 font-medium hover:underline"
-                    >
-                      ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
-                    </button>
-                  )}
-                </div>
-                
-                {(selectedCustomer || isCreatingNewCustomer) && (
-                  <>
-                    <div className="p-4 border border-gray-300 rounded-md bg-slate-50">
-                      {isCreatingNewCustomer ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className={commonLabelClass}>ชื่อ <span className="text-red-500">*</span></label>
-                            <input type="text" value={newCustomerFirstName} onChange={e => setNewCustomerFirstName(e.target.value)} className={commonInputClass} />
+              <div className="bg-white rounded-lg border border-gray-300 p-6">
+                <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">ข้อมูลลูกค้า</h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className={commonLabelClass}>ค้นหาลูกค้า (ชื่อ / เบอร์โทร)</label>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={e => { setSearchTerm(e.target.value); setSelectedCustomer(null); setIsCreatingNewCustomer(false); }}
+                      placeholder="พิมพ์เพื่อค้นหา..."
+                      className={commonInputClass}
+                    />
+                    {searchResults.length > 0 && !selectedCustomer && (
+                      <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
+                        {searchResults.map(c => (
+                          <li
+                            key={c.id}
+                            onClick={() => handleSelectCustomer(c)}
+                            className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
+                          >
+                            {`${c.firstName} ${c.lastName}`} - {c.phone}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!selectedCustomer && searchTerm && searchResults.length === 0 && !isCreatingNewCustomer && (
+                      <button
+                        onClick={startCreatingNewCustomer}
+                        className="mt-2 text-sm text-blue-600 font-medium hover:underline"
+                      >
+                        ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
+                      </button>
+                    )}
+                  </div>
+
+                  {(selectedCustomer || isCreatingNewCustomer) && (
+                    <>
+                      <div className="p-4 border border-gray-300 rounded-md bg-slate-50">
+                        {isCreatingNewCustomer ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className={commonLabelClass}>ชื่อ <span className="text-red-500">*</span></label>
+                              <input type="text" value={newCustomerFirstName} onChange={e => setNewCustomerFirstName(e.target.value)} className={commonInputClass} />
+                            </div>
+                            <div>
+                              <label className={commonLabelClass}>นามสกุล</label>
+                              <input type="text" value={newCustomerLastName} onChange={e => setNewCustomerLastName(e.target.value)} className={commonInputClass} />
+                            </div>
+                            <div className="col-span-2">
+                              <label className={commonLabelClass}>เบอร์โทรศัพท์ <span className="text-red-500">*</span></label>
+                              <input type="text" value={newCustomerPhone} onChange={handleNewCustomerPhoneChange} className={commonInputClass} />
+                              {newCustomerPhoneError && <p className="text-xs text-red-500 mt-1">{newCustomerPhoneError}</p>}
+                            </div>
                           </div>
-                          <div>
-                            <label className={commonLabelClass}>นามสกุล</label>
-                            <input type="text" value={newCustomerLastName} onChange={e => setNewCustomerLastName(e.target.value)} className={commonInputClass} />
+                        ) : (
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <p><strong className="font-medium text-[#0e141b]">ชื่อ:</strong> <span className="text-[#4e7397]">{`${selectedCustomer?.firstName} ${selectedCustomer?.lastName}`}</span></p>
+                            <p><strong className="font-medium text-[#0e141b]">เบอร์โทร:</strong> <span className="text-[#4e7397]">{selectedCustomer?.phone}</span></p>
                           </div>
-                          <div className="col-span-2">
-                            <label className={commonLabelClass}>เบอร์โทรศัพท์ <span className="text-red-500">*</span></label>
-                            <input type="text" value={newCustomerPhone} onChange={handleNewCustomerPhoneChange} className={commonInputClass} />
-                            {newCustomerPhoneError && <p className="text-xs text-red-500 mt-1">{newCustomerPhoneError}</p>}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <p><strong className="font-medium text-[#0e141b]">ชื่อ:</strong> <span className="text-[#4e7397]">{`${selectedCustomer?.firstName} ${selectedCustomer?.lastName}`}</span></p>
-                          <p><strong className="font-medium text-[#0e141b]">เบอร์โทร:</strong> <span className="text-[#4e7397]">{selectedCustomer?.phone}</span></p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className={commonLabelClass}>ชื่อใน Facebook</label>
-                        <input type="text" value={facebookName} onChange={e => setFacebookName(e.target.value)} className={commonInputClass} />
-                      </div>
-                      <div>
-                        <label className={commonLabelClass}>LINE ID</label>
-                        <input type="text" value={lineId} onChange={e => setLineId(e.target.value)} className={commonInputClass} />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className={commonLabelClass}>ช่องทางการขาย</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <select value={salesChannel} onChange={e => { setSalesChannel(e.target.value); if (e.target.value !== 'Facebook') setSalesChannelPageId(null); }} className={commonInputClass}>
-                          <option value="">เลือกช่องทางการขาย</option>
-                          <option value="Facebook">Facebook</option>
-                          <option value="Line">Line</option>
-                          <option value="TikTok">TikTok</option>
-                          <option value="โทร">โทร</option>
-                        </select>
-                        {salesChannel && salesChannel !== 'โทร' && (
-                          <select value={salesChannelPageId ?? ''} onChange={e => setSalesChannelPageId(e.target.value ? Number(e.target.value) : null)} className={commonInputClass}>
-                            <option value="">เลือกเพจ</option>
-                            {(() => {
-                              // Map sales channel to platform values (case insensitive)
-                              const platformMap: { [key: string]: string[] } = {
-                                'Facebook': ['facebook', 'Facebook'],
-                                'Line': ['line', 'Line'],
-                                'TikTok': ['tiktok', 'tiktok_business_messaging', 'TikTok']
-                              };
-                              const validPlatforms = platformMap[salesChannel] || [];
-                              
-                              // Debug: Log the filtering process
-                              const filteredPages = pages.filter(pg => {
-                                // Convert both to lowercase for case-insensitive comparison
-                                const pagePlatformLower = (pg as any).platform?.toLowerCase() || '';
-                                const isPlatformMatch = validPlatforms.some(platform => platform.toLowerCase() === pagePlatformLower);
-                                // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
-                                const v: any = (pg as any).active;
-                                const isActive = (typeof v === 'boolean') ? v : (typeof v === 'number') ? v !== 0 : (typeof v === 'string') ? (v.trim() !== '' && v !== '0' && v.toLowerCase() !== 'false') : Boolean(v);
-                                return isPlatformMatch && isActive;
-                              });
-                              
-                              // Debug: Log the results
-                              console.log('Sales Channel:', salesChannel);
-                              console.log('Valid Platforms:', validPlatforms);
-                              console.log('All Pages:', pages);
-                              console.log('Filtered Pages:', filteredPages);
-                              
-                              return filteredPages.map(pg => (
-                                <option key={pg.id} value={pg.id}>{pg.name}</option>
-                              ));
-                            })()}
-                          </select>
                         )}
                       </div>
-                    </div>
-                  </>
-                )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className={commonLabelClass}>ชื่อใน Facebook</label>
+                          <input type="text" value={facebookName} onChange={e => setFacebookName(e.target.value)} className={commonInputClass} />
+                        </div>
+                        <div>
+                          <label className={commonLabelClass}>LINE ID</label>
+                          <input type="text" value={lineId} onChange={e => setLineId(e.target.value)} className={commonInputClass} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={commonLabelClass}>ช่องทางการขาย</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <select value={salesChannel} onChange={e => { setSalesChannel(e.target.value); if (e.target.value !== 'Facebook') setSalesChannelPageId(null); }} className={commonInputClass}>
+                            <option value="">เลือกช่องทางการขาย</option>
+                            <option value="Facebook">Facebook</option>
+                            <option value="Line">Line</option>
+                            <option value="TikTok">TikTok</option>
+                            <option value="โทร">โทร</option>
+                          </select>
+                          {salesChannel && salesChannel !== 'โทร' && (
+                            <select value={salesChannelPageId ?? ''} onChange={e => setSalesChannelPageId(e.target.value ? Number(e.target.value) : null)} className={commonInputClass}>
+                              <option value="">เลือกเพจ</option>
+                              {(() => {
+                                // Map sales channel to platform values (case insensitive)
+                                const platformMap: { [key: string]: string[] } = {
+                                  'Facebook': ['facebook', 'Facebook'],
+                                  'Line': ['line', 'Line'],
+                                  'TikTok': ['tiktok', 'tiktok_business_messaging', 'TikTok']
+                                };
+                                const validPlatforms = platformMap[salesChannel] || [];
+
+                                // Debug: Log the filtering process
+                                const filteredPages = pages.filter(pg => {
+                                  // Convert both to lowercase for case-insensitive comparison
+                                  const pagePlatformLower = (pg as any).platform?.toLowerCase() || '';
+                                  const isPlatformMatch = validPlatforms.some(platform => platform.toLowerCase() === pagePlatformLower);
+                                  // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
+                                  const v: any = (pg as any).active;
+                                  const isActive = (typeof v === 'boolean') ? v : (typeof v === 'number') ? v !== 0 : (typeof v === 'string') ? (v.trim() !== '' && v !== '0' && v.toLowerCase() !== 'false') : Boolean(v);
+                                  return isPlatformMatch && isActive;
+                                });
+
+                                // Debug: Log the results
+                                console.log('Sales Channel:', salesChannel);
+                                console.log('Valid Platforms:', validPlatforms);
+                                console.log('All Pages:', pages);
+                                console.log('Filtered Pages:', filteredPages);
+
+                                return filteredPages.map(pg => (
+                                  <option key={pg.id} value={pg.id}>{pg.name}</option>
+                                ));
+                              })()}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
             }
 
             {/* Section 2: Shipping Address */}
             {(selectedCustomer || isCreatingNewCustomer) && (
               <div className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">ที่อยู่จัดส่ง</h2>
-                
+
                 <div className="space-y-4">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="use-profile-address"
-                      checked={useProfileAddress}
-                      onChange={(e) => handleUseProfileAddressToggle(!useProfileAddress)}
-                      disabled={!selectedCustomer?.address || isCreatingNewCustomer}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <label htmlFor="use-profile-address" className="ml-2 text-sm text-[#0e141b]">ใช้ที่อยู่เดียวกับข้อมูลลูกค้า</label>
+                  <div>
+                    <label className={commonLabelClass}>ที่อยู่จัดส่ง</label>
+                    <select
+                      value={selectedAddressOption}
+                      onChange={(e) => handleAddressOptionChange(e.target.value)}
+                      disabled={isCreatingNewCustomer}
+                      className={commonInputClass}
+                    >
+                      <option value="profile">ที่อยู่เดียวกับข้อมูลลูกค้า</option>
+                      {addressOptions.map(address => (
+                        <option key={address.id} value={address.id}>
+                          {address.address} {address.sub_district} {address.district} {address.province} {address.zip_code}
+                        </option>
+                      ))}
+                      <option value="new">+ เพิ่มที่อยู่ใหม่</option>
+                    </select>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div>
                       <label className={commonLabelClass}>บ้านเลขที่, ถนน</label>
@@ -1189,30 +1366,38 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         />
                       </div>
                     </div>
-                    {!useProfileAddress && selectedCustomer && (
+                    {selectedAddressOption === 'new' && (
                       <div className="flex items-center pt-2">
-                        <input type="checkbox" id="save-new-address" checked={saveNewAddress} onChange={e => setSaveNewAddress(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                        <label htmlFor="save-new-address" className="ml-2 text-sm text-[#0e141b]">บันทึกที่อยู่ใหม่นี้เป็นที่อยู่หลัก</label>
+                        <input
+                          type="checkbox"
+                          id="update-profile-address"
+                          checked={updateProfileAddress}
+                          onChange={e => setUpdateProfileAddress(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label htmlFor="update-profile-address" className="ml-2 text-sm text-[#0e141b]">
+                          อัพเดตเป็นที่อยู่หลัก
+                        </label>
                       </div>
                     )}
                   </div>
-                  
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className={commonLabelClass}>วันที่จัดส่ง</label>
-                        <input type="date" value={orderData.deliveryDate} onChange={e => updateOrderData('deliveryDate', e.target.value)} className={commonInputClass} />
-                      </div>
-                      <div>
-                        <label className={commonLabelClass}>หมายเหตุ</label>
-                        <input type="text" value={orderData.notes || ''} onChange={e => updateOrderData('notes', e.target.value)} className={commonInputClass} />
-                      </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={commonLabelClass}>วันที่จัดส่ง</label>
+                      <input type="date" value={orderData.deliveryDate} onChange={e => updateOrderData('deliveryDate', e.target.value)} className={commonInputClass} />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      <div>
-                        <label className={commonLabelClass}>คลังจัดส่ง (อัตโนมัติจากจังหวัด)</label>
-                        <input type="text" value={(() => { const w = (warehouses || []).find(x => x.id === warehouseId); return w ? w.name : '-'; })()} readOnly className={commonInputClass + ' bg-slate-100'} />
-                      </div>
+                    <div>
+                      <label className={commonLabelClass}>หมายเหตุ</label>
+                      <input type="text" value={orderData.notes || ''} onChange={e => updateOrderData('notes', e.target.value)} className={commonInputClass} />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    <div>
+                      <label className={commonLabelClass}>คลังจัดส่ง (อัตโนมัติจากจังหวัด)</label>
+                      <input type="text" value={(() => { const w = (warehouses || []).find(x => x.id === warehouseId); return w ? w.name : '-'; })()} readOnly className={commonInputClass + ' bg-slate-100'} />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1224,18 +1409,17 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             {(selectedCustomer || isCreatingNewCustomer) && (
               <div className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">รายการสินค้า</h2>
-                
+
                 {/* Product Selection Tabs */}
                 <div className="mb-4 border-b border-gray-200">
                   <ul className="flex -mb-px text-sm font-medium text-center">
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab('products')}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          selectorTab === 'products'
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === 'products'
                             ? 'text-blue-600 border-blue-600'
                             : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
-                        }`}
+                          }`}
                       >
                         สินค้าปกติ
                       </button>
@@ -1243,18 +1427,17 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab('promotions')}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          selectorTab === 'promotions'
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === 'promotions'
                             ? 'text-blue-600 border-blue-600'
                             : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
-                        }`}
+                          }`}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
                       </button>
                     </li>
                   </ul>
                 </div>
-                
+
                 <div className="space-y-3">
                   {(orderData.items || []).filter(it => !it.parentItemId).map((item, index) => (
                     <div key={item.id} className="grid grid-cols-12 gap-2 items-start p-3 border border-gray-200 rounded-md bg-slate-50">
@@ -1265,7 +1448,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             type="text"
                             placeholder="ชื่อสินค้า"
                             value={item.productName}
-                            onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, productName: e.target.value} : it))}
+                            onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, productName: e.target.value } : it))}
                             className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                             disabled={item.isPromotionParent}
                           />
@@ -1279,7 +1462,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           type="number"
                           placeholder="จำนวน"
                           value={item.quantity}
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, quantity: Number(e.target.value)} : it))}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, quantity: Number(e.target.value) } : it))}
                           onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                           disabled={false}
@@ -1291,7 +1474,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           type="number"
                           placeholder="ราคา"
                           value={item.pricePerUnit}
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, pricePerUnit: Number(e.target.value)} : it))}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, pricePerUnit: Number(e.target.value) } : it))}
                           onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                           disabled={item.isPromotionParent}
@@ -1303,7 +1486,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           type="number"
                           placeholder="ส่วนลด"
                           value={item.discount}
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, discount: Number(e.target.value)} : it))}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, discount: Number(e.target.value) } : it))}
                           onFocus={onFocusSelectAll}
                           className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                         />
@@ -1327,7 +1510,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           type="checkbox"
                           title="ของแถม"
                           checked={item.isFreebie}
-                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? {...it, isFreebie: e.target.checked} : it))}
+                          onChange={e => updateOrderData('items', orderData.items?.map((it, i) => i === index ? { ...it, isFreebie: e.target.checked } : it))}
                           className="h-4 w-4"
                         />
                       </div>
@@ -1346,130 +1529,130 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
                     </div>
                   ))}
-                  
+
                   <button
                     onClick={() => updateOrderData('items', [...(orderData.items || []), { id: Date.now(), productName: '', quantity: 1, pricePerUnit: 0, discount: 0, isFreebie: false, boxNumber: 1 }])}
                     className="text-sm text-blue-600 font-medium hover:underline"
                   >
                     + เพิ่มรายการสินค้า
                   </button>
-        <div className="mt-3">
-          <button onClick={() => openProductSelector(selectorTab)} className="px-3 py-2 bg-blue-600 text-white rounded-md mr-2">
-            {selectorTab === 'products' ? 'เลือกสินค้า' : 'เลือกโปรโมชั่น'}
-          </button>
-        </div>
-        {/* Product / Promotion Selector Modal */}
-        {productSelectorOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-            <div className="bg-white rounded-lg w-full max-w-[1200px] p-4 shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
-              <div className="flex gap-4 h-[70vh]">
-                <div className="w-64 border-r pr-4 overflow-auto">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="font-semibold">ประเภท</h3>
-                    <button onClick={closeProductSelector} className="px-2 py-1 border rounded">ปิด</button>
+                  <div className="mt-3">
+                    <button onClick={() => openProductSelector(selectorTab)} className="px-3 py-2 bg-blue-600 text-white rounded-md mr-2">
+                      {selectorTab === 'products' ? 'เลือกสินค้า' : 'เลือกโปรโมชั่น'}
+                    </button>
                   </div>
-                  <ul className="space-y-2 text-sm">
-                    {selectorTab === 'products' && (
-                      <li className={`p-2 rounded ${!leftFilter ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(null); setSelectorSearchTerm(''); }}>ทั้งหมด</li>
-                    )}
-                    {selectorTab === 'promotions' && (
-                      <>
-                        <li className={`p-2 rounded ${leftFilter === -1 ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(-1); setSelectorSearchTerm(''); }}>รายการโปรโมชั่น</li>
-                        {promotionsSafe.map(p => (
-                          <li key={p.id} className={`p-2 rounded ${leftFilter === p.id ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(p.id); setSelectorSearchTerm(''); }}>{p.name}</li>
-                        ))}
-                      </>
-                    )}
-                  </ul>
-                </div>
-                <div className="flex-1 flex flex-col min-w-0">
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      placeholder={`ค้นหา ${selectorTab === 'products' ? 'SKU, ชื่อสินค้า' : 'ชื่อโปรโมชั่น'}`}
-                      value={selectorSearchTerm}
-                      onChange={e => setSelectorSearchTerm(e.target.value)}
-                      className="w-full p-2 border rounded"
-                    />
-                  </div>
+                  {/* Product / Promotion Selector Modal */}
+                  {productSelectorOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                      <div className="bg-white rounded-lg w-full max-w-[1200px] p-4 shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
+                        <div className="flex gap-4 h-[70vh]">
+                          <div className="w-64 border-r pr-4 overflow-auto">
+                            <div className="mb-4 flex items-center justify-between">
+                              <h3 className="font-semibold">ประเภท</h3>
+                              <button onClick={closeProductSelector} className="px-2 py-1 border rounded">ปิด</button>
+                            </div>
+                            <ul className="space-y-2 text-sm">
+                              {selectorTab === 'products' && (
+                                <li className={`p-2 rounded ${!leftFilter ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(null); setSelectorSearchTerm(''); }}>ทั้งหมด</li>
+                              )}
+                              {selectorTab === 'promotions' && (
+                                <>
+                                  <li className={`p-2 rounded ${leftFilter === -1 ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(-1); setSelectorSearchTerm(''); }}>รายการโปรโมชั่น</li>
+                                  {promotionsSafe.map(p => (
+                                    <li key={p.id} className={`p-2 rounded ${leftFilter === p.id ? 'bg-slate-100' : ''} cursor-pointer`} onClick={() => { setLeftFilter(p.id); setSelectorSearchTerm(''); }}>{p.name}</li>
+                                  ))}
+                                </>
+                              )}
+                            </ul>
+                          </div>
+                          <div className="flex-1 flex flex-col min-w-0">
+                            <div className="mb-3">
+                              <input
+                                type="text"
+                                placeholder={`ค้นหา ${selectorTab === 'products' ? 'SKU, ชื่อสินค้า' : 'ชื่อโปรโมชั่น'}`}
+                                value={selectorSearchTerm}
+                                onChange={e => setSelectorSearchTerm(e.target.value)}
+                                className="w-full p-2 border rounded"
+                              />
+                            </div>
 
-                  <div className="flex-1 overflow-auto">
-                    {selectorTab === 'products' && (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-[#4e7397] border-b">
-                            <th className="p-2">SKU</th>
-                            <th className="p-2">สินค้า</th>
-                            <th className="p-2">ราคาขาย</th>
-                            <th className="p-2">เลือก</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {products.filter(pr => !selectorSearchTerm || `${pr.sku} ${pr.name}`.toLowerCase().includes(selectorSearchTerm.toLowerCase())).map(p => (
-                            <tr key={p.id} className="border-b">
-                              <td className="p-2 align-top">{p.sku}</td>
-                              <td className="p-2 align-top">{p.name}</td>
-                              <td className="p-2 align-top">{p.price.toFixed(2)}</td>
-                              <td className="p-2 align-top"><button onClick={() => addProductById(p.id)} className="text-blue-600">เลือก</button></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                            <div className="flex-1 overflow-auto">
+                              {selectorTab === 'products' && (
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-[#4e7397] border-b">
+                                      <th className="p-2">SKU</th>
+                                      <th className="p-2">สินค้า</th>
+                                      <th className="p-2">ราคาขาย</th>
+                                      <th className="p-2">เลือก</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {products.filter(pr => !selectorSearchTerm || `${pr.sku} ${pr.name}`.toLowerCase().includes(selectorSearchTerm.toLowerCase())).map(p => (
+                                      <tr key={p.id} className="border-b">
+                                        <td className="p-2 align-top">{p.sku}</td>
+                                        <td className="p-2 align-top">{p.name}</td>
+                                        <td className="p-2 align-top">{p.price.toFixed(2)}</td>
+                                        <td className="p-2 align-top"><button onClick={() => addProductById(p.id)} className="text-blue-600">เลือก</button></td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
 
-                    {selectorTab === 'promotions' && (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-[#4e7397] border-b">
-                            <th className="p-2">ชื่อโปรโมชั่น</th>
-                            <th className="p-2">รายการ</th>
-                            <th className="p-2">ราคาขาย</th>
-                            <th className="p-2">สถานะ</th>
-                            <th className="p-2">เลือก</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {promotionsSafe.filter(pm => {
-                            // Filter only active promotions
-                            if (!pm.active) return false;
-                            if (leftFilter && leftFilter !== -1) return String(pm.id) === String(leftFilter);
-                            if (!selectorSearchTerm) return true;
-                            return `${pm.name}`.toLowerCase().includes(selectorSearchTerm.toLowerCase());
-                          }).map(pm => (
-                            <tr key={pm.id} className="border-b">
-                              <td className="p-2 align-top">{pm.name}</td>
-                              <td className="p-2 align-top">{(pm.items || []).map((it: any) => {
-                                const prodLabel = it.product_name ?? it.product?.name ?? it.sku ?? it.product_sku ?? '';
-                                const priceText = it.is_freebie ? 'ฟรี' : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)}`;
-                                return `${it.quantity} x ${prodLabel} (${priceText})`;
-                              }).join(', ')}</td>
-                              <td className="p-2 align-top">{calcPromotionSetPrice(pm).toFixed(2)}</td>
-                              <td className="p-2 align-top">
-                                <span className={`px-2 py-1 text-xs rounded-full ${pm.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                  {pm.active ? 'Active' : 'Inactive'}
-                                </span>
-                              </td>
-                              <td className="p-2 align-top">
-                                <button
-                                  onClick={() => addPromotionByIdFixed(pm.id)}
-                                  className={`px-3 py-1 rounded text-white ${pm.active ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
-                                  disabled={!pm.active}
-                                >
-                                  เลือก
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-                   
+                              {selectorTab === 'promotions' && (
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-[#4e7397] border-b">
+                                      <th className="p-2">ชื่อโปรโมชั่น</th>
+                                      <th className="p-2">รายการ</th>
+                                      <th className="p-2">ราคาขาย</th>
+                                      <th className="p-2">สถานะ</th>
+                                      <th className="p-2">เลือก</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {promotionsSafe.filter(pm => {
+                                      // Filter only active promotions
+                                      if (!pm.active) return false;
+                                      if (leftFilter && leftFilter !== -1) return String(pm.id) === String(leftFilter);
+                                      if (!selectorSearchTerm) return true;
+                                      return `${pm.name}`.toLowerCase().includes(selectorSearchTerm.toLowerCase());
+                                    }).map(pm => (
+                                      <tr key={pm.id} className="border-b">
+                                        <td className="p-2 align-top">{pm.name}</td>
+                                        <td className="p-2 align-top">{(pm.items || []).map((it: any) => {
+                                          const prodLabel = it.product_name ?? it.product?.name ?? it.sku ?? it.product_sku ?? '';
+                                          const priceText = it.is_freebie ? 'ฟรี' : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)}`;
+                                          return `${it.quantity} x ${prodLabel} (${priceText})`;
+                                        }).join(', ')}</td>
+                                        <td className="p-2 align-top">{calcPromotionSetPrice(pm).toFixed(2)}</td>
+                                        <td className="p-2 align-top">
+                                          <span className={`px-2 py-1 text-xs rounded-full ${pm.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                            {pm.active ? 'Active' : 'Inactive'}
+                                          </span>
+                                        </td>
+                                        <td className="p-2 align-top">
+                                          <button
+                                            onClick={() => addPromotionByIdFixed(pm.id)}
+                                            className={`px-3 py-1 rounded text-white ${pm.active ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                                            disabled={!pm.active}
+                                          >
+                                            เลือก
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
                       <label className={commonLabelClass}>ค่าขนส่ง</label>
@@ -1488,7 +1671,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             {(selectedCustomer || isCreatingNewCustomer) && (
               <div className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">วิธีการชำระเงิน</h2>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className={commonLabelClass}>เลือกวิธีการชำระเงิน</label>
@@ -1505,7 +1688,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       หากยังไม่แนบสลิป ระบบจะย้ายออเดอร์ไปที่แท็บ "รอสลิป" เพื่ออัปโหลดภายหลัง
                     </div>
                   )}
-                  
+
                   {orderData.paymentMethod === PaymentMethod.COD && (
                     <div className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50">
                       <h4 className="font-semibold text-[#0e141b]">รายละเอียดการเก็บเงินปลายทาง</h4>
@@ -1515,7 +1698,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
                       <div>
                         <label className={commonLabelClass}>จำนวนกล่อง</label>
-                      <input type="number" min="1" value={numBoxes} onChange={e => setNumBoxes(Math.max(1, Number(e.target.value)))} onFocus={onFocusSelectAll} className={commonInputClass} />
+                        <input type="number" min="1" value={numBoxes} onChange={e => setNumBoxes(Math.max(1, Number(e.target.value)))} onFocus={onFocusSelectAll} className={commonInputClass} />
                       </div>
                       <button onClick={divideCodEqually} className="text-sm text-blue-600 font-medium hover:underline">แบ่งยอดเท่าๆ กัน</button>
                       <div className="space-y-2">
@@ -1535,54 +1718,54 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
             {/* Order Summary */}
             {
-            <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
-              <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">สรุปคำสั่งซื้อ</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between text-[#4e7397]">
-                  <span>ยอดรวมสินค้า</span>
-                  <span className="text-[#0e141b] font-medium">฿{subTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-[#4e7397]">
-                  <span>ส่วนลดรายการสินค้า</span>
-                  <span className="text-red-600 font-medium">-฿{itemsDiscount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-[#4e7397]">
-                  <span>ค่าขนส่ง</span>
-                  <span className="text-[#0e141b] font-medium">฿{(orderData.shippingCost || 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-[#4e7397]">
-                  <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
-                  <span className="text-red-600 font-medium">-฿{billDiscountAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
-                  <span className="text-[#0e141b]">ยอดสุทธิ</span>
-                  <span className="text-green-600">฿{totalAmount.toFixed(2)}</span>
-                </div>
-              </div>
-              
-              {orderData.items && orderData.items.length > 0 && (
-                <div className="mt-6 pt-6 border-t">
-                  <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({(orderData.items || []).filter(it => !it.parentItemId).length})</h4>
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {(orderData.items || []).filter(it => !it.parentItemId).map((item, idx) => (
-                      <div key={item.id} className="text-xs p-2 bg-white rounded border">
-                        <div className="font-medium text-[#0e141b]">{item.productName || '(ไม่ระบุ)'}</div>
-                        <div className="text-[#4e7397] mt-1">
-                          {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
-                          {item.discount > 0 && <span> - ฿{item.discount}</span>}
-                          {item.isFreebie && <span className="ml-2 text-green-600">(ของแถม)</span>}
-                        </div>
-                      </div>
-                    ))}
+              <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
+                <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">สรุปคำสั่งซื้อ</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ยอดรวมสินค้า</span>
+                    <span className="text-[#0e141b] font-medium">฿{subTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ส่วนลดรายการสินค้า</span>
+                    <span className="text-red-600 font-medium">-฿{itemsDiscount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ค่าขนส่ง</span>
+                    <span className="text-[#0e141b] font-medium">฿{(orderData.shippingCost || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
+                    <span className="text-red-600 font-medium">-฿{billDiscountAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
+                    <span className="text-[#0e141b]">ยอดสุทธิ</span>
+                    <span className="text-green-600">฿{totalAmount.toFixed(2)}</span>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {orderData.items && orderData.items.length > 0 && (
+                  <div className="mt-6 pt-6 border-t">
+                    <h4 className="font-medium text-sm mb-3 text-[#0e141b]">รายการสินค้า ({(orderData.items || []).filter(it => !it.parentItemId).length})</h4>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {(orderData.items || []).filter(it => !it.parentItemId).map((item, idx) => (
+                        <div key={item.id} className="text-xs p-2 bg-white rounded border">
+                          <div className="font-medium text-[#0e141b]">{item.productName || '(ไม่ระบุ)'}</div>
+                          <div className="text-[#4e7397] mt-1">
+                            {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
+                            {item.discount > 0 && <span> - ฿{item.discount}</span>}
+                            {item.isFreebie && <span className="ml-2 text-green-600">(ของแถม)</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             }
           </div>
         </div>
 
-                {/* Footer Actions */}
+        {/* Footer Actions */}
         <div className="mt-6 flex justify-end gap-3 pb-6">
           <button
             onClick={handleSave}
@@ -1593,9 +1776,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           </button>
         </div>
 
-        
+
       </div>
-      
+
       {/* Success Message Popup */}
       {showSuccessMessage && (
         <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center">

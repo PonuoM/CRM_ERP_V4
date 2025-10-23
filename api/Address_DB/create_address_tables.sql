@@ -545,7 +545,7 @@ DEALLOCATE PREPARE addIndexIfNotExists;
 -- to avoid data type compatibility issues
 CREATE TABLE IF NOT EXISTS `customer_address` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `customer_id` int(11) NOT NULL,
+  `customer_id` varchar(255) NOT NULL,
   `address` varchar(255) DEFAULT NULL,
   `province` varchar(100) DEFAULT NULL,
   `district` varchar(100) DEFAULT NULL,

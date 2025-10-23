@@ -132,6 +132,48 @@ try {
             }
             break;
             
+        case 'customer_addresses':
+            // Get addresses for a specific customer
+            if ($id) {
+                $stmt = $pdo->prepare("SELECT * FROM customer_address WHERE customer_id = ? ORDER BY created_at DESC");
+                $stmt->execute([$id]);
+                $response['data'] = $stmt->fetchAll();
+            } else {
+                $response['success'] = false;
+                $response['message'] = 'Customer ID is required';
+            }
+            break;
+          
+        case 'save_customer_address':
+            // Save a new customer address
+            $data = json_decode(file_get_contents('php://input'), true);
+            
+            if (!$data || !isset($data['customer_id']) || !isset($data['address'])) {
+                $response['success'] = false;
+                $response['message'] = 'Missing required fields';
+                break;
+            }
+            
+            try {
+                $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                $stmt->execute([
+                    $data['customer_id'],
+                    $data['address'],
+                    $data['province'] ?? '',
+                    $data['district'] ?? '',
+                    $data['sub_district'] ?? '',
+                    $data['zip_code'] ?? ''
+                ]);
+                
+                $response['success'] = true;
+                $response['message'] = 'Customer address saved successfully';
+                $response['id'] = $pdo->lastInsertId();
+            } catch (PDOException $e) {
+                $response['success'] = false;
+                $response['message'] = 'Database error: ' . $e->getMessage();
+            }
+            break;
+          
         case 'stats':
             // Get statistics about the address data
             $stats = [];
