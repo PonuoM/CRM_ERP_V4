@@ -64,6 +64,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
   const [userManagementLoading, setUserManagementLoading] = useState(false);
 
+  // States for marketing user page management
+  const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
+  const [marketingPageUsers, setMarketingPageUsers] = useState<any[]>([]);
+  const [selectedPageForUser, setSelectedPageForUser] = useState<number | null>(
+    null,
+  );
+
   // New page form
   const [newPage, setNewPage] = useState<{
     name: string;
@@ -265,6 +272,92 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       loadUserManagementData();
     }
   }, [currentUser.companyId]);
+
+  // Load marketing page users
+  useEffect(() => {
+    loadMarketingPageUsers();
+  }, []);
+
+  // Toggle page expand/collapse
+  const togglePageExpand = (pageId: number) => {
+    setExpandedPages((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(pageId)) {
+        newSet.delete(pageId);
+      } else {
+        newSet.add(pageId);
+      }
+      return newSet;
+    });
+  };
+
+  // Load marketing page users from marketing_user_page table
+  const loadMarketingPageUsers = async () => {
+    try {
+      const res = await fetch("api/Marketing_DB/get_marketing_page_users.php");
+      const data = await res.json();
+      if (data.success) {
+        setMarketingPageUsers(data.data);
+      }
+    } catch (e) {
+      console.error("Failed to load marketing page users:", e);
+    }
+  };
+
+  // Handle add user to page
+  const handleAddUser = (pageId: number) => {
+    setSelectedPageForUser(pageId);
+  };
+
+  // Handle remove user from page
+  const handleRemoveUser = async (userId: number, pageId: number) => {
+    if (!confirm("คุณต้องการลบผู้ใช้นี้จากเพจใช่หรือไม่?")) return;
+
+    try {
+      const res = await fetch("api/Marketing_DB/remove_user_from_page.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, pageId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadMarketingPageUsers();
+        alert("ลบผู้ใช้จากเพจสำเร็จ");
+      } else {
+        alert("ลบผู้ใช้จากเพจไม่สำเร็จ: " + data.error);
+      }
+    } catch (e) {
+      console.error("Failed to remove user:", e);
+      alert("ลบผู้ใช้จากเพจไม่สำเร็จ");
+    }
+  };
+
+  // Handle submit user to page
+  const handleSubmitUserToPage = async (userId: number) => {
+    if (!selectedPageForUser) return;
+
+    try {
+      const res = await fetch("api/Marketing_DB/add_user_to_page.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId: selectedPageForUser,
+          userId: userId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadMarketingPageUsers();
+        setSelectedPageForUser(null);
+        alert("เพิ่มผู้ใช้สำเร็จ");
+      } else {
+        alert("เพิ่มผู้ใช้ไม่สำเร็จ: " + data.error);
+      }
+    } catch (e) {
+      console.error("Failed to add user:", e);
+      alert("เพิ่มผู้ใช้ไม่สำเร็จ");
+    }
+  };
 
   // Connect page user to internal user
   const handleConnectUser = async (
@@ -598,42 +691,95 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       <th className="px-3 py-2 text-left">ID</th>
                       <th className="px-3 py-2 text-left">ชื่อเพจ</th>
                       <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                      <th className="px-3 py-2 text-left">URL</th>
+                      <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
                       <th className="px-3 py-2 text-left">สถานะ</th>
+                      <th className="px-3 py-2 text-left">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pages.map((page) => (
-                      <tr key={page.id} className="border-b">
-                        <td className="px-3 py-2">{page.id}</td>
-                        <td className="px-3 py-2 font-medium">{page.name}</td>
-                        <td className="px-3 py-2">{page.platform}</td>
-                        <td className="px-3 py-2">
-                          {page.url ? (
-                            <a
-                              href={page.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 hover:underline"
+                      <React.Fragment key={page.id}>
+                        <tr
+                          className="border-b cursor-pointer hover:bg-gray-50"
+                          onClick={() => togglePageExpand(page.id)}
+                        >
+                          <td className="px-3 py-2">{page.id}</td>
+                          <td className="px-3 py-2 font-medium">{page.name}</td>
+                          <td className="px-3 py-2">{page.platform}</td>
+                          <td className="px-3 py-2">
+                            {
+                              marketingPageUsers.filter(
+                                (user) => user.page_id === page.id,
+                              ).length
+                            }
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                page.active
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
                             >
-                              {page.url}
-                            </a>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              page.active
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {page.active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                      </tr>
+                              {page.active ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddUser(page.id);
+                              }}
+                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                            >
+                              +เพิ่มผู้ใช้
+                            </button>
+                          </td>
+                        </tr>
+                        {expandedPages.has(page.id) && (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-4 bg-gray-50">
+                              <div className="space-y-2">
+                                <h4 className="font-medium text-gray-700">
+                                  ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
+                                </h4>
+                                {marketingPageUsers
+                                  .filter((user) => user.page_id === page.id)
+                                  .map((user) => (
+                                    <div
+                                      key={user.id}
+                                      className="flex items-center justify-between bg-white p-3 rounded border"
+                                    >
+                                      <div>
+                                        <span className="font-medium">
+                                          {user.first_name} {user.last_name}
+                                        </span>
+                                        <span className="text-sm text-gray-600 ml-2">
+                                          ({user.username})
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={() =>
+                                          handleRemoveUser(user.id, page.id)
+                                        }
+                                        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                      >
+                                        ลบ
+                                      </button>
+                                    </div>
+                                  ))}
+                                {marketingPageUsers.filter(
+                                  (user) => user.page_id === page.id,
+                                ).length === 0 && (
+                                  <div className="text-gray-500">
+                                    ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -641,6 +787,43 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             )}
           </section>
         </>
+      )}
+
+      {/* Add User Modal */}
+      {selectedPageForUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {marketingUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleSubmitUserToPage(user.id)}
+                >
+                  <div>
+                    <div className="font-medium">
+                      {user.first_name} {user.last_name}
+                    </div>
+                    <div className="text-sm text-gray-600">{user.username}</div>
+                  </div>
+                  <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                    เลือก
+                  </button>
+                </div>
+              ))}
+              {marketingUsers.length === 0 && (
+                <div className="text-gray-500">ไม่มีผู้ใช้ Marketing</div>
+              )}
+            </div>
+            <button
+              onClick={() => setSelectedPageForUser(null)}
+              className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
