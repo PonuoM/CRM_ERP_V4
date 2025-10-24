@@ -16,6 +16,24 @@ import {
   PageWithUsers,
 } from "@/services/api";
 
+// Function to fetch active pages where still_in_list = 1
+async function listActivePages(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("company_id", String(companyId));
+  const res = await fetch(
+    `api/Marketing_DB/get_active_pages.php${companyId ? `?${qs}` : ""}`,
+    {
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${data?.error || "API error"}`);
+  }
+  return data;
+}
+
 interface MarketingPageProps {
   currentUser: User;
 }
@@ -72,13 +90,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       setLoading(true);
       try {
         const [pg, promo] = await Promise.all([
-          listPages(currentUser.companyId),
+          listActivePages(currentUser.companyId),
           listPromotions(),
         ]);
         if (cancelled) return;
         setPages(
-          Array.isArray(pg)
-            ? pg.map((r: any) => ({
+          Array.isArray(pg?.data)
+            ? pg.data.map((r: any) => ({
                 id: r.id,
                 name: r.name,
                 platform: r.platform,
@@ -285,7 +303,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           จัดการเพจ ช่องทางการขาย โปรโมชัน และค่าโฆษณารายวัน
         </p>
       </div>
-
       {/* Admin Tabs */}
       {hasAdminAccess(currentUser) && (
         <div className="border-b border-gray-200">
@@ -562,201 +579,64 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       {/* User Management Tab - Admin Only */}
       {hasAdminAccess(currentUser) && activeTab === "userManagement" && (
         <>
-          {/* Marketing Users List */}
+          {/* Active Pages List */}
           <section className="bg-white rounded-lg shadow p-5">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              ผู้ใช้ Marketing
+              รายการเพจที่ใช้งานอยู่ (Active Pages)
             </h3>
-            {userManagementLoading ? (
+            {loading ? (
               <div className="text-center py-4">กำลังโหลด...</div>
+            ) : pages.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                ไม่มีเพจที่ใช้งานอยู่
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
                       <th className="px-3 py-2 text-left">ID</th>
-                      <th className="px-3 py-2 text-left">ชื่อ-นามสกุล</th>
-                      <th className="px-3 py-2 text-left">Username</th>
-                      <th className="px-3 py-2 text-left">Email</th>
-                      <th className="px-3 py-2 text-left">เบอร์โทร</th>
-                      <th className="px-3 py-2 text-left">
-                        จำนวนเพจที่เชื่อมต่อ
-                      </th>
+                      <th className="px-3 py-2 text-left">ชื่อเพจ</th>
+                      <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                      <th className="px-3 py-2 text-left">URL</th>
+                      <th className="px-3 py-2 text-left">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {marketingUsers.map((user) => {
-                      const connectedPageCount = pageUsers.filter(
-                        (pu) => pu.user_id === user.id,
-                      ).length;
-                      return (
-                        <tr key={user.id} className="border-b">
-                          <td className="px-3 py-2">{user.id}</td>
-                          <td className="px-3 py-2">
-                            {user.firstName} {user.lastName}
-                          </td>
-                          <td className="px-3 py-2">{user.username}</td>
-                          <td className="px-3 py-2">{user.email || "-"}</td>
-                          <td className="px-3 py-2">{user.phone || "-"}</td>
-                          <td className="px-3 py-2">{connectedPageCount}</td>
-                        </tr>
-                      );
-                    })}
-                    {marketingUsers.length === 0 && (
-                      <tr>
-                        <td
-                          className="px-3 py-6 text-center text-gray-500"
-                          colSpan={6}
-                        >
-                          ยังไม่มีผู้ใช้ Marketing
+                    {pages.map((page) => (
+                      <tr key={page.id} className="border-b">
+                        <td className="px-3 py-2">{page.id}</td>
+                        <td className="px-3 py-2 font-medium">{page.name}</td>
+                        <td className="px-3 py-2">{page.platform}</td>
+                        <td className="px-3 py-2">
+                          {page.url ? (
+                            <a
+                              href={page.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {page.url}
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              page.active
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {page.active ? "Active" : "Inactive"}
+                          </span>
                         </td>
                       </tr>
-                    )}
+                    ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </section>
-
-          {/* Pages with Users Management */}
-          <section className="bg-white rounded-lg shadow p-5">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              จัดการผู้ใช้ต่อเพจ
-            </h3>
-            {userManagementLoading ? (
-              <div className="text-center py-4">กำลังโหลด...</div>
-            ) : (
-              <div className="space-y-4">
-                {pagesWithUsers.map((page) => (
-                  <div key={page.page_id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-800">
-                          {page.page_name}
-                        </h4>
-                        <p className="text-sm text-gray-600">
-                          แพลตฟอร์ม: {page.platform} | ID: {page.page_id}
-                        </p>
-                        {page.url && (
-                          <a
-                            href={page.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline text-sm"
-                          >
-                            {page.url}
-                          </a>
-                        )}
-                      </div>
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
-                          page.active
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {page.active ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-
-                    {page.users.length > 0 ? (
-                      <div className="space-y-2">
-                        {page.users.map((user) => (
-                          <div
-                            key={user.page_user_id}
-                            className="flex items-center justify-between bg-gray-50 p-3 rounded"
-                          >
-                            <div>
-                              <span className="font-medium">
-                                {user.page_user_name}
-                              </span>
-                              <span className="text-sm text-gray-600 ml-2">
-                                ({user.page_user_id})
-                              </span>
-                              <span
-                                className={`ml-2 px-2 py-1 rounded text-xs ${
-                                  user.is_connected
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-gray-200 text-gray-700"
-                                }`}
-                              >
-                                {user.is_connected
-                                  ? "เชื่อมต่อแล้ว"
-                                  : "ยังไม่ได้เชื่อมต่อ"}
-                              </span>
-                              {user.status && (
-                                <span className="ml-2 text-sm text-gray-600">
-                                  สถานะ: {user.status}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {user.is_connected && user.internal_user_id && (
-                                <span className="text-sm text-blue-600">
-                                  {
-                                    marketingUsers.find(
-                                      (mu) => mu.id === user.internal_user_id,
-                                    )?.firstName
-                                  }{" "}
-                                  {
-                                    marketingUsers.find(
-                                      (mu) => mu.id === user.internal_user_id,
-                                    )?.lastName
-                                  }
-                                </span>
-                              )}
-                              {user.is_connected ? (
-                                <button
-                                  onClick={() =>
-                                    handleDisconnectUser(
-                                      parseInt(user.page_user_id),
-                                    )
-                                  }
-                                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                                >
-                                  ยกเลิกการเชื่อมต่อ
-                                </button>
-                              ) : (
-                                <select
-                                  onChange={(e) => {
-                                    const userId = parseInt(e.target.value);
-                                    if (userId) {
-                                      handleConnectUser(
-                                        parseInt(user.page_user_id),
-                                        userId,
-                                      );
-                                    }
-                                  }}
-                                  className="px-3 py-1 border border-gray-300 rounded text-sm"
-                                  defaultValue=""
-                                >
-                                  <option value="" disabled>
-                                    เลือกผู้ใช้...
-                                  </option>
-                                  {marketingUsers.map((mu) => (
-                                    <option key={mu.id} value={mu.id}>
-                                      {mu.firstName} {mu.lastName} (
-                                      {mu.username})
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        ไม่มีผู้ใช้ในเพจนี้
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {pagesWithUsers.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    ไม่มีเพจที่สามารถจัดการได้
-                  </div>
-                )}
               </div>
             )}
           </section>
