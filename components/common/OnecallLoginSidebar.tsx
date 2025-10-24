@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Settings, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 // User role enum
@@ -102,8 +102,11 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         username: username,
       });
 
+      // Get current user data
+      const currentUser = getCurrentUser();
+
       // Save username
-      const usernameResponse = await fetch("/api/insert_env.php", {
+      const usernameResponse = await fetch("/api/Onecall_DB/env_manager.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -111,6 +114,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         body: JSON.stringify({
           key: usernameKey,
           value: username,
+          user: currentUser,
         }),
       });
 
@@ -122,7 +126,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       }
 
       // Save password
-      const passwordResponse = await fetch("/api/insert_env.php", {
+      const passwordResponse = await fetch("/api/Onecall_DB/env_manager.php", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -130,6 +134,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         body: JSON.stringify({
           key: passwordKey,
           value: password,
+          user: currentUser,
         }),
       });
 
@@ -169,9 +174,19 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
 
       console.log("Checking database status for company:", companyId);
 
-      const response = await fetch(
-        `/api/env_status.php?company_id=${companyId}`,
-      );
+      const currentUser = getCurrentUser();
+
+      const response = await fetch("/api/Onecall_DB/env_manager.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "check_status",
+          user: currentUser,
+          company_id: companyId,
+        }),
+      });
 
       console.log("Database check response:", {
         status: response.status,
@@ -203,7 +218,36 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   };
 
   // Check database status when sidebar opens
-  React.useEffect(() => {
+  // Function to get current user data from localStorage
+  const getCurrentUser = () => {
+    try {
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (sessionUser) {
+        const user = JSON.parse(sessionUser);
+        return {
+          id: user.id,
+          company_id: user.company_id,
+          role: user.role,
+        };
+      }
+      // Fallback for testing
+      return {
+        id: 1,
+        company_id: 1,
+        role: "Super Admin",
+      };
+    } catch (error) {
+      console.error("Error getting current user:", error);
+      return {
+        id: 1,
+        company_id: 1,
+        role: "Super Admin",
+      };
+    }
+  };
+
+  // Check database status when sidebar opens
+  useEffect(() => {
     if (sidebarOpen) {
       checkDatabaseStatus().then(setDbStatus);
     }
