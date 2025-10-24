@@ -36,26 +36,97 @@ const formatDate = (dateString: string) => {
   }
 };
 
+// Helper function to guide users to configure Onecall credentials
+const showOnecallSetupMessage = () => {
+  return {
+    success: false,
+    error: "กรุณาใส่ข้อมูลเข้าสู่ระบบ Onecall ของบริษัทท่านในฐานข้อมูล",
+    requiresSetup: true,
+    setupMessage:
+      "กรุณาตั้งค่าข้อมูล Onecall โดยการคลิกปุ่มตั้งค่า (Settings) ที่มุมขวาล่างขวา",
+  };
+};
+
+// Function to get Onecall credentials from database
+const getOnecallCredentialsFromDB = async () => {
+  try {
+    // Get current user from localStorage
+    const sessionUser = localStorage.getItem("sessionUser");
+    if (!sessionUser) {
+      throw new Error("No user session found");
+    }
+
+    const user = JSON.parse(sessionUser);
+
+    // Check if user has permission to access credentials
+    if (user.role !== "Super Admin" && user.role !== "AdminControl") {
+      throw new Error("Access denied - insufficient permissions");
+    }
+
+    // Call secure API to get credentials
+    const response = await fetch("/api/Onecall_DB/get_credentials.php", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user: {
+          id: user.id,
+          company_id: user.company_id,
+          role: user.role,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to retrieve credentials");
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.error || "Credentials not found");
+    }
+
+    return result.data;
+  } catch (error) {
+    console.error("Error retrieving Onecall credentials from database:", error);
+    throw error;
+  }
+};
+
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
   // Use proxy to avoid CORS issues
   const loginUrl =
     "/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true";
 
-  // Get credentials from environment variables (in React, these would be from .env file)
-  const username = (import.meta as any).env.VITE_USERNAME_ONECALL || "";
-  const password = (import.meta as any).env.VITE_PASSWORD_ONECALL || "";
+  let username, password;
+
+  try {
+    // Get credentials from database
+    const credentials = await getOnecallCredentialsFromDB();
+    username = credentials.username;
+    password = credentials.password;
+  } catch (error) {
+    console.error(
+      "Failed to retrieve Onecall credentials from database:",
+      error.message,
+    );
+    return showOnecallSetupMessage();
+  }
 
   if (!username || !password) {
-    return {
-      success: false,
-      error: "Username or password not found in environment variables",
-    };
+    return showOnecallSetupMessage();
   }
 
   // Remove quotes from username and password if present
   const cleanUsername = username.replace(/^"|"$/g, "");
   const cleanPassword = password.replace(/^"|"$/g, "");
+
+  // Log that we're using credentials (without exposing actual values)
+  console.log("Attempting Onecall authentication...");
 
   // Create auth string and encode it (Postman Basic Auth style)
   const authString = `${cleanUsername}:${cleanPassword}`;
