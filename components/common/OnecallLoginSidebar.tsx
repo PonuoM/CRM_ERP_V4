@@ -50,6 +50,10 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   const [authResponse, setAuthResponse] = useState<AuthResponse | null>(null);
   const [showResponse, setShowResponse] = useState(false);
   const [showDetailedResponse, setShowDetailedResponse] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{
+    hasCredentials: boolean;
+    lastUpdated: string | null;
+  }>({ hasCredentials: false, lastUpdated: null });
 
   // Function to check if user has permission to access Onecall settings
   const hasPermission = (): boolean => {
@@ -144,12 +148,66 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
         password: passwordResult,
       });
 
+      // Update database status immediately after save
+      const updatedStatus = await checkDatabaseStatus();
+      setDbStatus(updatedStatus);
+
       return true;
     } catch (error) {
       console.error("Error saving credentials to database:", error);
       return false;
     }
   };
+
+  // Function to check if credentials exist in database for current company
+  const checkDatabaseStatus = async (): Promise<{
+    hasCredentials: boolean;
+    lastUpdated: string | null;
+  }> => {
+    try {
+      const companyId = getCompanyId();
+
+      console.log("Checking database status for company:", companyId);
+
+      const response = await fetch(
+        `/api/env_status.php?company_id=${companyId}`,
+      );
+
+      console.log("Database check response:", {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Database check result:", result);
+
+        if (result.success && result.has_credentials) {
+          return {
+            hasCredentials: true,
+            lastUpdated: result.last_updated || null,
+          };
+        } else {
+          console.log("Credentials not found:", result.message);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error("Database check failed:", errorText);
+      }
+    } catch (error) {
+      console.error("Error checking database status:", error);
+    }
+
+    return { hasCredentials: false, lastUpdated: null };
+  };
+
+  // Check database status when sidebar opens
+  React.useEffect(() => {
+    if (sidebarOpen) {
+      checkDatabaseStatus().then(setDbStatus);
+    }
+  }, [sidebarOpen]);
 
   // JavaScript version of authenticateOneCall function
   const authenticateOneCall = async (
@@ -379,6 +437,41 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
 
             {/* Sidebar Content */}
             <div className="p-6">
+              {/* Database Status Display */}
+              <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-700">
+                    สถานะฐานข้อมูล:
+                  </span>
+                  <button
+                    onClick={async () => {
+                      console.log("Refreshing database status...");
+                      const updatedStatus = await checkDatabaseStatus();
+                      console.log("Updated status:", updatedStatus);
+                      setDbStatus(updatedStatus);
+                    }}
+                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                  >
+                    รีเฟรช
+                  </button>
+                </div>
+                {dbStatus.hasCredentials ? (
+                  <div className="text-xs text-green-700">
+                    ✓ มีข้อมูล Onecall ของบริษัทนี้ในระบบแล้ว
+                    {dbStatus.lastUpdated && (
+                      <div className="text-gray-600 mt-1">
+                        อัพเดตล่าสุด:{" "}
+                        {new Date(dbStatus.lastUpdated).toLocaleString("th-TH")}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-orange-700">
+                    ⚠ ยังไม่มีข้อมูล Onecall ของบริษัทนี้ในระบบ
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
