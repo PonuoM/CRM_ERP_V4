@@ -1,9 +1,10 @@
 
 
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, User, UserRole, CustomerGrade, CustomerLifecycleStatus } from '../types';
 import { Users, Check, AlertTriangle, Info, ListChecks, History, Award, PlayCircle, BarChart, UserCheck, RefreshCw, Calendar } from 'lucide-react';
+import { listCustomersBySource } from '@/services/api';
 
 interface CustomerDistributionPageProps {
     allCustomers: Customer[];
@@ -12,6 +13,7 @@ interface CustomerDistributionPageProps {
 }
 
 type DistributionMode = 'average' | 'backlog' | 'gradeA';
+type CustomerType = 'all' | 'new' | 'repeat' | 'prospect';
 type PreviewAssignments = Record<number, Customer[]>;
 type SkippedCustomer = { customer: Customer, reason: string };
 
@@ -30,12 +32,18 @@ const gradeOrder = [CustomerGrade.APlus, CustomerGrade.A, CustomerGrade.B, Custo
 
 
 const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ allCustomers, allUsers, setCustomers }) => {
+    // Pool source toggle (all | new_sale | waiting_return | stock)
+    const [poolSource, setPoolSource] = useState<'all' | 'new_sale' | 'waiting_return' | 'stock'>('all');
+    const [poolCustomers, setPoolCustomers] = useState<Customer[]>([]);
+    const [loadingPool, setLoadingPool] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<DistributionMode>('average');
     const [targetStatus, setTargetStatus] = useState<CustomerLifecycleStatus>(CustomerLifecycleStatus.DailyDistribution);
     const [excludeGradeAPlus, setExcludeGradeAPlus] = useState(true);
     const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
     const [distributionCount, setDistributionCount] = useState<string>('');
     const [distributionCountError, setDistributionCountError] = useState<string>('');
+    // Customer type filtering is removed; default to 'all' to satisfy references in logic
+    const customerType = 'all';
     
     const [activeDatePreset, setActiveDatePreset] = useState('all');
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -49,8 +57,32 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
         return allUsers.filter(u => u.role === UserRole.Telesale || u.role === UserRole.Supervisor);
     }, [allUsers]);
 
+    // Load customers per selected pool source
+    useEffect(() => {
+        let mounted = true;
+        if (poolSource === 'all') {
+            setPoolCustomers(allCustomers);
+            return;
+        }
+        setLoadingPool(true);
+        // Note: company filter can be added if needed
+        listCustomersBySource(poolSource)
+            .then((rows: any[]) => { if (mounted) setPoolCustomers(rows as Customer[]); })
+            .catch(() => { if (mounted) setPoolCustomers([]); })
+            .finally(() => { if (mounted) setLoadingPool(false); });
+        return () => { mounted = false; };
+    }, [poolSource, allCustomers]);
+
+    // Base dataset used throughout the page
+    const dataCustomers: Customer[] = poolSource === 'all' ? allCustomers : poolCustomers;
+
+    // Basket summaries
+    const waitingBasketCount = useMemo(() => dataCustomers.filter(c => (c as any).isInWaitingBasket && !(c as any).isBlocked).length, [dataCustomers]);
+    const toDistributeCount = useMemo(() => dataCustomers.filter(c => c.assignedTo === null && !(c as any).isBlocked && !(c as any).isInWaitingBasket).length, [dataCustomers]);
+    const blockedCount = useMemo(() => dataCustomers.filter(c => (c as any).isBlocked).length, [dataCustomers]);
+
     const getAgentWorkloadByGrade = (agentId: number) => {
-        const agentCustomers = allCustomers.filter(c => c.assignedTo === agentId);
+        const agentCustomers = dataCustomers.filter(c => c.assignedTo === agentId);
         const gradeCounts = agentCustomers.reduce((acc, customer) => {
             acc[customer.grade] = (acc[customer.grade] || 0) + 1;
             return acc;
@@ -67,34 +99,55 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
     };
 
     const availableCustomers = useMemo(() => {
-        let customers = allCustomers.filter(c => c.assignedTo === null);
+        let customers = dataCustomers.filter(c => c.assignedTo === null && !(c as any).isBlocked && !(c as any).isInWaitingBasket);
         
-        if (activeDatePreset !== 'all') {
+        // กรองตามประเภทลูกค้า
+        switch (customerType) {
+            case 'new':
+                customers = customers.filter(c => c.isNewCustomer === true);
+                break;
+            case 'repeat':
+                customers = customers.filter(c => c.isRepeatCustomer === true);
+                break;
+            case 'prospect':
+                customers = customers.filter(c => !c.firstOrderDate); // ลูกค้าที่ยังไม่เคยซื้อ
+                break;
+            case 'all':
+            default:
+                // ไม่กรอง
+                break;
+        }
+        
+        // กรองตามช่วงเวลาการซื้อครั้งแรก (แทนการมอบหมาย)
+        if (activeDatePreset !== 'all' && customerType !== 'prospect') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
             customers = customers.filter(customer => {
-                const assignedDate = new Date(customer.dateAssigned);
-                assignedDate.setHours(0, 0, 0, 0);
+                // ใช้ firstOrderDate แทน dateAssigned
+                const orderDate = customer.firstOrderDate ? new Date(customer.firstOrderDate) : null;
+                if (!orderDate) return false; // ถ้าไม่มี firstOrderDate ให้ข้าม
+                
+                orderDate.setHours(0, 0, 0, 0);
 
                 switch (activeDatePreset) {
                     case 'today':
-                        return assignedDate.getTime() === today.getTime();
+                        return orderDate.getTime() === today.getTime();
                     case '3days':
                         const threeDaysAgo = new Date(today);
                         threeDaysAgo.setDate(today.getDate() - 2);
-                        return assignedDate >= threeDaysAgo && assignedDate <= today;
+                        return orderDate >= threeDaysAgo && orderDate <= today;
                     case '7days':
                         const sevenDaysAgo = new Date(today);
                         sevenDaysAgo.setDate(today.getDate() - 6);
-                        return assignedDate >= sevenDaysAgo && assignedDate <= today;
+                        return orderDate >= sevenDaysAgo && orderDate <= today;
                     case 'range':
                         if (!dateRange.start || !dateRange.end) return true;
                         const startDate = new Date(dateRange.start);
                         startDate.setHours(0, 0, 0, 0);
                         const endDate = new Date(dateRange.end);
                         endDate.setHours(0, 0, 0, 0);
-                        return assignedDate >= startDate && assignedDate <= endDate;
+                        return orderDate >= startDate && orderDate <= endDate;
                     default:
                         return true;
                 }
@@ -113,7 +166,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                 break;
         }
         return customers;
-    }, [allCustomers, activeTab, excludeGradeAPlus, activeDatePreset, dateRange]);
+    }, [dataCustomers, activeTab, customerType, excludeGradeAPlus, activeDatePreset, dateRange]);
 
     const handleDistributionCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const countStr = e.target.value;
@@ -306,11 +359,66 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                             </div>
                          )}
                     </div>
+
+                    <div className="mt-4">
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setPoolSource('all')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>ทั้งหมด</button>
+                            <button onClick={() => setPoolSource('new_sale')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='new_sale' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>เพิ่งขาย (Admin)</button>
+                            <button onClick={() => setPoolSource('waiting_return')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='waiting_return' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>คืนจากตะกร้า</button>
+                            <button onClick={() => setPoolSource('stock')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='stock' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>สต็อกรอแจก</button>
+                            {loadingPool && poolSource !== 'all' && (<span className="text-xs text-gray-500 ml-2">กำลังโหลด...</span>)}
+                        </div>
+                    </div>
+
+                    {/* ส่วนเลือกประเภทลูกค้า */}
+                    {false && (
+                    <div className="mt-4 pt-4 border-t">
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทลูกค้า</label>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setCustomerType('all')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                        customerType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    ทั้งหมด
+                                </button>
+                                <button
+                                    onClick={() => setCustomerType('new')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                        customerType === 'new' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    ลูกค้าใหม่ (ซื้อครั้งแรก)
+                                </button>
+                                <button
+                                    onClick={() => setCustomerType('repeat')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                        customerType === 'repeat' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    ลูกค้ากลับมา (ซื้อซ้ำ)
+                                </button>
+                                <button
+                                    onClick={() => setCustomerType('prospect')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                        customerType === 'prospect' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    ลูกค้าที่ยังไม่ซื้อ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    )}
+                    
+                    {false && (
                     <div className="mt-4 pt-4 border-t">
                         <div className="flex flex-wrap items-center gap-2">
                             <div className="flex items-center mr-4">
                                 <Calendar size={16} className="text-gray-500 mr-2"/>
-                                <span className="text-sm font-medium text-gray-700">วันที่ลูกค้าเข้าระบบ:</span>
+                                <span className="text-sm font-medium text-gray-700">วันที่ลูกค้าซื้อครั้งแรก:</span>
                             </div>
                             {datePresets.map(preset => (
                                 <DateFilterButton 
@@ -342,6 +450,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 <div className="p-6 bg-white rounded-lg shadow-sm border">
@@ -472,7 +581,15 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
     return (
         <div className="p-6">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">ระบบแจกลูกค้า</h2>
-            
+            {/* moved below into Step 1 card */}{false && (
+            <div className="flex items-center gap-2 mb-4">
+                <button onClick={() => setPoolSource('all')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>ทั้งหมด</button>
+                <button onClick={() => setPoolSource('new_sale')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='new_sale' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>เพิ่งขาย (Admin)</button>
+                <button onClick={() => setPoolSource('waiting_return')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='waiting_return' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>คืนจากตะกร้า</button>
+                <button onClick={() => setPoolSource('stock')} className={`px-3 py-1.5 text-xs rounded-md border ${poolSource==='stock' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>สต็อกรอแจก</button>
+                {loadingPool && poolSource !== 'all' && (<span className="text-xs text-gray-500 ml-2">กำลังโหลด...</span>)}
+            </div>)}
+
             {distributionResult && (
                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-4">
                     <Check size={24} className="text-green-600" />
@@ -482,6 +599,21 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                     </div>
                 </div>
             )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                <div className="p-3 rounded-md border bg-white">
+                    <p className="text-xs text-gray-500 mb-1">ตะกร้ารอแจก</p>
+                    <p className="text-xl font-bold text-blue-600">{toDistributeCount}</p>
+                </div>
+                <div className="p-3 rounded-md border bg-white">
+                    <p className="text-xs text-gray-500 mb-1">ตะกร้าพักรายชื่อ</p>
+                    <p className="text-xl font-bold text-amber-600">{waitingBasketCount}</p>
+                </div>
+                <div className="p-3 rounded-md border bg-white">
+                    <p className="text-xs text-gray-500 mb-1">ตะกร้าบล็อค</p>
+                    <p className="text-xl font-bold text-red-600">{blockedCount}</p>
+                </div>
+            </div>
 
             <div className="flex border-b border-gray-200 mb-6">
                 <button onClick={() => setActiveTab('average')} className={`flex-shrink-0 flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'average' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>

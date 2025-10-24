@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Notification, NotificationType } from '../types';
-import { AlertCircle, Clock, FileCheck2, X } from 'lucide-react';
+import { AlertCircle, Clock, FileCheck2, ShoppingCart, X } from 'lucide-react';
 
 interface NotificationPanelProps {
   notifications: Notification[];
@@ -31,6 +31,8 @@ const NotificationIcon: React.FC<{ type: NotificationType }> = ({ type }) => {
             return <AlertCircle className="w-5 h-5 text-red-500" />;
         case NotificationType.ExpiringOwnership:
             return <Clock className="w-5 h-5 text-orange-500" />;
+        case NotificationType.NewOrderForCustomer:
+            return <ShoppingCart className="w-5 h-5 text-green-600" />;
         default:
             return null;
     }

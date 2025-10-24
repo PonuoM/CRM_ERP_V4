@@ -1,6 +1,6 @@
 
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter } from 'lucide-react';
@@ -41,6 +41,91 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [fDeliveryDate, setFDeliveryDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [fPaymentMethod, setFPaymentMethod] = useState<PaymentMethod | ''>('');
   const [fPaymentStatus, setFPaymentStatus] = useState<PaymentStatus | ''>('');
+  const [fCustomerName, setFCustomerName] = useState('');
+  const [fCustomerPhone, setFCustomerPhone] = useState('');
+  // Applied (effective) advanced filter values - only used after user presses Search
+  const [afOrderId, setAfOrderId] = useState('');
+  const [afTracking, setAfTracking] = useState('');
+  const [afOrderDate, setAfOrderDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [afDeliveryDate, setAfDeliveryDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [afPaymentMethod, setAfPaymentMethod] = useState<PaymentMethod | ''>('');
+  const [afPaymentStatus, setAfPaymentStatus] = useState<PaymentStatus | ''>('');
+  const [afCustomerName, setAfCustomerName] = useState('');
+  const [afCustomerPhone, setAfCustomerPhone] = useState('');
+
+  // Ref for click-outside to collapse advanced filters
+  const advRef = useRef<HTMLDivElement | null>(null);
+
+  // Persist filters across page switches
+  const filterStorageKey = 'manage_orders_filters';
+
+  // Load saved filters once on mount
+  useEffect(() => {
+    try {
+      const savedRaw = localStorage.getItem(filterStorageKey);
+      if (!savedRaw) return;
+      const saved = JSON.parse(savedRaw);
+      if (saved && typeof saved === 'object') {
+        setActiveDatePreset(saved.activeDatePreset ?? 'all');
+        setDateRange(saved.dateRange ?? { start: '', end: '' });
+        setActiveTab(saved.activeTab === 'processed' ? 'processed' : 'pending');
+        setPayTab(saved.payTab === 'unpaid' || saved.payTab === 'paid' ? saved.payTab : 'all');
+        setShowAdvanced(!!saved.showAdvanced);
+        setFOrderId(saved.fOrderId ?? '');
+        setFTracking(saved.fTracking ?? '');
+        setFOrderDate(saved.fOrderDate ?? { start: '', end: '' });
+        setFDeliveryDate(saved.fDeliveryDate ?? { start: '', end: '' });
+        setFPaymentMethod(saved.fPaymentMethod ?? '');
+        // fPaymentStatus is controlled by payTab when not 'all'; when 'all' restore saved
+        if (saved.payTab === 'all') {
+          setFPaymentStatus(saved.fPaymentStatus ?? '');
+        }
+        setFCustomerName(saved.fCustomerName ?? '');
+        setFCustomerPhone(saved.fCustomerPhone ?? '');
+        // Applied values (fallback to edited values if not present)
+        setAfOrderId(saved.afOrderId ?? saved.fOrderId ?? '');
+        setAfTracking(saved.afTracking ?? saved.fTracking ?? '');
+        setAfOrderDate(saved.afOrderDate ?? saved.fOrderDate ?? { start: '', end: '' });
+        setAfDeliveryDate(saved.afDeliveryDate ?? saved.fDeliveryDate ?? { start: '', end: '' });
+        setAfPaymentMethod(saved.afPaymentMethod ?? saved.fPaymentMethod ?? '');
+        setAfPaymentStatus(saved.afPaymentStatus ?? saved.fPaymentStatus ?? '');
+        setAfCustomerName(saved.afCustomerName ?? saved.fCustomerName ?? '');
+        setAfCustomerPhone(saved.afCustomerPhone ?? saved.fCustomerPhone ?? '');
+      }
+    } catch {}
+  }, []);
+
+  // Save filters whenever they change
+  useEffect(() => {
+    try {
+      const payload = {
+        activeDatePreset,
+        dateRange,
+        activeTab,
+        payTab,
+        showAdvanced,
+        fOrderId,
+        fTracking,
+        fOrderDate,
+        fDeliveryDate,
+        fPaymentMethod,
+        // Save fPaymentStatus for 'all' tab; for unpaid/paid it is implied
+        fPaymentStatus: payTab === 'all' ? fPaymentStatus : undefined,
+        fCustomerName,
+        fCustomerPhone,
+        // Applied values
+        afOrderId,
+        afTracking,
+        afOrderDate,
+        afDeliveryDate,
+        afPaymentMethod,
+        afPaymentStatus,
+        afCustomerName,
+        afCustomerPhone,
+      };
+      localStorage.setItem(filterStorageKey, JSON.stringify(payload));
+    } catch {}
+  }, [activeDatePreset, dateRange, activeTab, payTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -98,20 +183,45 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   }, [pendingOrders, processedOrders, activeTab, activeDatePreset, dateRange]);
 
   // Apply advanced filters on top of displayedOrders (non-destructive to existing logic)
+  const customerById = useMemo(() => {
+    const m = new Map<string, Customer>();
+    for (const c of customers) m.set(c.id as any, c);
+    return m;
+  }, [customers]);
+
   const finalDisplayedOrders = useMemo(() => {
     let list = displayedOrders.slice();
-    const idTerm = fOrderId.trim().toLowerCase();
-    const trackTerm = fTracking.trim().toLowerCase();
+    const idTerm = afOrderId.trim().toLowerCase();
+    const trackTerm = afTracking.trim().toLowerCase();
     if (idTerm) list = list.filter(o => o.id.toLowerCase().includes(idTerm));
     if (trackTerm) list = list.filter(o => (o.trackingNumbers || []).some(t => t.toLowerCase().includes(trackTerm)));
-    if (fOrderDate.start) { const s = new Date(fOrderDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (fOrderDate.end) { const e = new Date(fOrderDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
-    if (fDeliveryDate.start) { const s = new Date(fDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (fDeliveryDate.end) { const e = new Date(fDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
-    if (fPaymentMethod) list = list.filter(o => o.paymentMethod === fPaymentMethod);
-    if (fPaymentStatus) list = list.filter(o => o.paymentStatus === fPaymentStatus);
+    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0,0,0,0); return d >= s; }); }
+    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
+    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
+    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
+    if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
+    const effectiveStatus = payTab === 'unpaid' ? PaymentStatus.Unpaid : (payTab === 'paid' ? PaymentStatus.Paid : afPaymentStatus);
+    if (effectiveStatus) list = list.filter(o => o.paymentStatus === effectiveStatus);
+    const nameTerm = afCustomerName.trim().toLowerCase();
+    if (nameTerm) {
+      list = list.filter(o => {
+        const c = customerById.get(o.customerId as any);
+        if (!c) return false;
+        const full = `${(c.firstName||'').toString()} ${(c.lastName||'').toString()}`.toLowerCase();
+        return full.includes(nameTerm) || (c.firstName||'').toString().toLowerCase().includes(nameTerm) || (c.lastName||'').toString().toLowerCase().includes(nameTerm);
+      });
+    }
+    const phoneTerm = afCustomerPhone.replace(/\D/g, '');
+    if (phoneTerm) {
+      list = list.filter(o => {
+        const c = customerById.get(o.customerId as any);
+        if (!c) return false;
+        const p = ((c.phone||'') as any).toString().replace(/\D/g, '');
+        return p.includes(phoneTerm);
+      });
+    }
     return list;
-  }, [displayedOrders, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus]);
+  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
 
   // Local helpers to map API enums/shape to UI types used by the CSV generator
   const fromApiOrderStatus = (s: any): OrderStatus => {
@@ -448,14 +558,85 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   // Sync payment status filter with payTab selection
   useEffect(() => {
-    if (payTab === 'all') {
-      setFPaymentStatus('' as any);
-    } else if (payTab === 'unpaid') {
+    if (payTab === 'unpaid') {
       setFPaymentStatus(PaymentStatus.Unpaid);
-    } else {
+    } else if (payTab === 'paid') {
       setFPaymentStatus(PaymentStatus.Paid);
+    } else {
+      // payTab === 'all' -> keep user-selected payment status (persisted)
     }
   }, [payTab]);
+
+  // Compute ตัวกรองขั้นสูง badge count (exclude implied payTab status)
+  const advancedCount = useMemo(() => {
+    const baseFields = [
+      afOrderId,
+      afTracking,
+      afOrderDate.start,
+      afOrderDate.end,
+      afDeliveryDate.start,
+      afDeliveryDate.end,
+      afPaymentMethod,
+      afCustomerName,
+      afCustomerPhone,
+    ];
+    let c = baseFields.filter(v => !!v && String(v).trim() !== '').length;
+    const statusCountable = payTab === 'all' ? afPaymentStatus : '';
+    if (statusCountable && String(statusCountable).trim() !== '') c += 1;
+    return c;
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone]);
+
+  const clearFilters = () => {
+    // Reset all filters but keep the tab's implied payment status
+    setFOrderId('');
+    setFTracking('');
+    setFOrderDate({ start: '', end: '' });
+    setFDeliveryDate({ start: '', end: '' });
+    setFPaymentMethod('' as any);
+    if (payTab === 'all') {
+      setFPaymentStatus('' as any);
+    }
+    // Reset date presets
+    setActiveDatePreset('all');
+    setDateRange({ start: '', end: '' });
+    // Also clear applied values immediately
+    setAfOrderId('');
+    setAfTracking('');
+    setAfOrderDate({ start: '', end: '' });
+    setAfDeliveryDate({ start: '', end: '' });
+    setAfPaymentMethod('' as any);
+    if (payTab === 'all') setAfPaymentStatus('' as any);
+    setFCustomerName('');
+    setFCustomerPhone('');
+    setAfCustomerName('');
+    setAfCustomerPhone('');
+  };
+
+  // Apply (Search) advanced filters
+  const applyAdvancedFilters = () => {
+    setAfOrderId(fOrderId.trim());
+    setAfTracking(fTracking.trim());
+    setAfOrderDate({ ...fOrderDate });
+    setAfDeliveryDate({ ...fDeliveryDate });
+    setAfPaymentMethod(fPaymentMethod || '' as any);
+    setAfPaymentStatus(payTab === 'all' ? (fPaymentStatus || '' as any) : afPaymentStatus);
+    setAfCustomerName(fCustomerName.trim());
+    setAfCustomerPhone(fCustomerPhone.trim());
+    setShowAdvanced(false);
+  };
+
+  // Click outside to collapse advanced filters
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!showAdvanced) return;
+      const el = advRef.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) {
+        setShowAdvanced(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showAdvanced]);
 
   const datePresets = [
     { label: 'ทั้งหมด', value: 'all' },
@@ -483,17 +664,35 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         )}
       </div>
       
-      {/* Advanced Filters toggle and panel */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
+      {/* ตัวกรองขั้นสูง toggle and panel */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowAdvanced(v=>!v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
-            Advanced Filters
-            {(() => { const c=[fOrderId,fTracking,fOrderDate.start,fOrderDate.end,fDeliveryDate.start,fDeliveryDate.end,fPaymentMethod,fPaymentStatus].filter(v=>!!v&&String(v).trim()!=='').length; return c>0 ? (<span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-[10px]">{c}</span>) : null; })()}
+            ตัวกรองขั้นสูง
+            {advancedCount > 0 ? (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-[10px]">{advancedCount}</span>
+            ) : null}
           </button>
+          <button onClick={applyAdvancedFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100">
+            ค้นหา
+          </button>
+          {(advancedCount > 0 || activeDatePreset !== 'all' || (dateRange.start || dateRange.end)) && (
+            <button onClick={clearFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600">
+              ล้างตัวกรอง
+            </button>
+          )}
         </div>
         {showAdvanced && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
+              <input value={fCustomerName} onChange={e=>setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
+              <input value={fCustomerPhone} onChange={e=>setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">เลขออเดอร์</label>
               <input value={fOrderId} onChange={e=>setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />

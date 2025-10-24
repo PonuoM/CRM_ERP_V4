@@ -52,7 +52,7 @@ if ($resource === '' || $resource === 'health') {
     json_response(['ok' => true, 'status' => 'healthy']);
 }
 
-switch ($resource) {
+    switch ($resource) {
     case 'auth':
         handle_auth($pdo, $id);
         break;
@@ -68,9 +68,12 @@ switch ($resource) {
     case 'permissions':
         handle_permissions($pdo);
         break;
-    case 'users':
-        handle_users($pdo, $id);
-        break;
+        case 'users':
+            handle_users($pdo, $id);
+            break;
+        case 'customer_blocks':
+            handle_customer_blocks($pdo, $id);
+            break;
     case 'customers':
         handle_customers($pdo, $id);
         break;
@@ -132,8 +135,12 @@ switch ($resource) {
         handle_order_slips($pdo, $id);
         break;
     case 'ownership':
-        require_once 'ownership.php';
+        require_once __DIR__ . '/ownership_handler.php';
         handle_ownership($pdo, $id);
+        break;
+    case 'update_customer_order_tracking.php':
+        // Bridge to legacy script without changing frontend path
+        require_once __DIR__ . '/update_customer_order_tracking.php';
         break;
     case 'user_login_history':
         handle_user_login_history($pdo, $id);
@@ -428,6 +435,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 $companyId = $_GET['companyId'] ?? null;
                 $bucket = $_GET['bucket'] ?? null;
                 $userId = $_GET['userId'] ?? null;
+                $source = isset($_GET['source']) ? strtolower(trim((string)$_GET['source'])) : null; // new_sale | waiting_return | stock
+                $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7; // for new_sale freshness window
 
                 if ($bucket === 'NewForMe') {
                     if (!$userId) json_response(['error' => 'USER_ID_REQUIRED'], 400);
@@ -447,6 +456,62 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%";
                     }
                     $sql .= ' ORDER BY c.date_assigned DESC LIMIT 200';
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $customers = $stmt->fetchAll();
+
+                    // Add tags to each customer
+                    foreach ($customers as &$customer) {
+                        $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                        $tagsStmt->execute([$customer['id']]);
+                        $customer['tags'] = $tagsStmt->fetchAll();
+                    }
+
+                    json_response($customers);
+                } elseif (in_array($source, ['new_sale','waiting_return','stock'], true)) {
+                    // Source-specific pools
+                    $params = [];
+                    if ($source === 'new_sale') {
+                        $sql = "SELECT DISTINCT c.*\n"
+                             . "FROM customers c\n"
+                             . "JOIN orders o ON o.customer_id = c.id\n"
+                             . "LEFT JOIN users u ON u.id = o.creator_id\n"
+                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                             . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
+                             . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
+                             . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
+                        $params[] = max(0, $freshDays);
+                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                        if ($q !== '') {
+                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
+                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                        }
+                        $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC LIMIT 200";
+                    } elseif ($source === 'waiting_return') {
+                        $sql = "SELECT c.* FROM customers c\n"
+                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                             . "  AND c.is_in_waiting_basket = 1\n"
+                             . "  AND c.waiting_basket_start_date IS NOT NULL\n"
+                             . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30";
+                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                        if ($q !== '') {
+                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
+                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                        }
+                        $sql .= " ORDER BY c.waiting_basket_start_date ASC LIMIT 200";
+                    } else { // stock
+                        $sql = "SELECT c.* FROM customers c\n"
+                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                             . "  AND c.lifecycle_status = 'DailyDistribution'\n"
+                             . "  AND c.assigned_to IS NULL";
+                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                        if ($q !== '') {
+                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
+                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                        }
+                        $sql .= " ORDER BY c.date_assigned DESC LIMIT 200";
+                    }
+
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
                     $customers = $stmt->fetchAll();
@@ -507,7 +572,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
 
             $assignedTo = $in['assignedTo'] ?? null;
 
-            $stmt = $pdo->prepare('UPDATE customers SET first_name=COALESCE(?, first_name), last_name=COALESCE(?, last_name), phone=COALESCE(?, phone), email=COALESCE(?, email), province=COALESCE(?, province), company_id=COALESCE(?, company_id), assigned_to=COALESCE(?, assigned_to), date_assigned=COALESCE(?, date_assigned), date_registered=COALESCE(?, date_registered), follow_up_date=COALESCE(?, follow_up_date), ownership_expires=COALESCE(?, ownership_expires), lifecycle_status=COALESCE(?, lifecycle_status), behavioral_status=COALESCE(?, behavioral_status), grade=COALESCE(?, grade), total_purchases=COALESCE(?, total_purchases), total_calls=COALESCE(?, total_calls), facebook_name=COALESCE(?, facebook_name), line_id=COALESCE(?, line_id), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), postal_code=COALESCE(?, postal_code) WHERE id=?');
+            $stmt = $pdo->prepare('UPDATE customers SET first_name=COALESCE(?, first_name), last_name=COALESCE(?, last_name), phone=COALESCE(?, phone), email=COALESCE(?, email), province=COALESCE(?, province), company_id=COALESCE(?, company_id), assigned_to=COALESCE(?, assigned_to), date_assigned=COALESCE(?, date_assigned), date_registered=COALESCE(?, date_registered), follow_up_date=COALESCE(?, follow_up_date), ownership_expires=COALESCE(?, ownership_expires), lifecycle_status=COALESCE(?, lifecycle_status), behavioral_status=COALESCE(?, behavioral_status), grade=COALESCE(?, grade), total_purchases=COALESCE(?, total_purchases), total_calls=COALESCE(?, total_calls), facebook_name=COALESCE(?, facebook_name), line_id=COALESCE(?, line_id), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), postal_code=COALESCE(?, postal_code), is_in_waiting_basket=COALESCE(?, is_in_waiting_basket), waiting_basket_start_date=COALESCE(?, waiting_basket_start_date), is_blocked=COALESCE(?, is_blocked) WHERE id=?');
             $addr = $in['address'] ?? [];
             $stmt->execute([
                 $in['firstName'] ?? null,
@@ -532,15 +597,39 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 $addr['subdistrict'] ?? null,
                 $addr['district'] ?? null,
                 $addr['postalCode'] ?? null,
+                array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
+                $in['waiting_basket_start_date'] ?? null,
+                array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
                 $id,
             ]);
 
+            // Normalize ownership history for new assignments
             if (!empty($assignedTo) && (string)$assignedTo !== (string)$oldAssigned) {
                 try {
                     $pdo->prepare('UPDATE customers SET date_assigned=COALESCE(date_assigned, NOW()) WHERE id=?')->execute([$id]);
                     $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())')->execute([$id, $assignedTo]);
                 } catch (Throwable $e) { /* ignore */ }
             }
+
+            // Post-update normalization to avoid overlapping states
+            try {
+                $st2 = $pdo->prepare('SELECT assigned_to, is_in_waiting_basket, is_blocked FROM customers WHERE id=?');
+                $st2->execute([$id]);
+                $row = $st2->fetch();
+                if ($row) {
+                    $assignedNow = $row['assigned_to'];
+                    $waitingNow = (int)$row['is_in_waiting_basket'] === 1;
+                    $blockedNow = (int)$row['is_blocked'] === 1;
+                    // Policy: blocked > waiting > assigned > ready
+                    if ($blockedNow) {
+                        // Ensure blocked customers are not assigned and not in waiting basket
+                        $pdo->prepare('UPDATE customers SET assigned_to=NULL, is_in_waiting_basket=0 WHERE id=?')->execute([$id]);
+                    } else if ($waitingNow && $assignedNow !== null) {
+                        // Waiting basket takes precedence => clear assignment
+                        $pdo->prepare('UPDATE customers SET assigned_to=NULL WHERE id=?')->execute([$id]);
+                    }
+                }
+            } catch (Throwable $e) { /* ignore */ }
             json_response(['ok' => true]);
             break;
         default:
@@ -1205,6 +1294,77 @@ function handle_pages(PDO $pdo, ?string $id): void {
         }
     } catch (Throwable $e) {
         json_response(['error' => 'PAGES_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Customer blocks API
+function handle_customer_blocks(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            $customerId = $_GET['customerId'] ?? null;
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT * FROM customer_blocks WHERE id = ?');
+                $stmt->execute([(int)$id]);
+                $row = $stmt->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } else if ($customerId) {
+                $stmt = $pdo->prepare('SELECT * FROM customer_blocks WHERE customer_id = ? ORDER BY blocked_at DESC');
+                $stmt->execute([$customerId]);
+                json_response($stmt->fetchAll());
+            } else {
+                $stmt = $pdo->query('SELECT * FROM customer_blocks WHERE active = 1 ORDER BY blocked_at DESC');
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $customerId = $in['customerId'] ?? '';
+            $reason = trim((string)($in['reason'] ?? ''));
+            $blockedBy = (int)($in['blockedBy'] ?? 0);
+            if ($customerId === '' || strlen($reason) < 5 || !$blockedBy) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'customerId, reason(>=5), blockedBy required'], 400);
+            }
+            try {
+                $stmt = $pdo->prepare('INSERT INTO customer_blocks (customer_id, reason, blocked_by, blocked_at, active) VALUES (?, ?, ?, NOW(), 1)');
+                $stmt->execute([$customerId, $reason, $blockedBy]);
+                // Remove assignment and flag as blocked
+                try {
+                    $pdo->prepare('UPDATE customers SET assigned_to = NULL, is_blocked = 1 WHERE id = ?')->execute([$customerId]);
+                } catch (Throwable $e) { /* ignore */ }
+                json_response(['ok' => true], 201);
+            } catch (Throwable $e) {
+                json_response(['error' => 'INSERT_FAILED', 'message' => $e->getMessage()], 409);
+            }
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            $active = array_key_exists('active', $in) ? (int)!!$in['active'] : null;
+            $unblockedBy = (int)($in['unblockedBy'] ?? 0);
+            $fields = [];$params = [];
+            if ($active !== null) { $fields[] = 'active = ?'; $params[] = $active; }
+            if ($unblockedBy) { $fields[] = 'unblocked_by = ?'; $params[] = $unblockedBy; $fields[] = 'unblocked_at = NOW()'; }
+            if (empty($fields)) json_response(['ok' => true]);
+            $params[] = (int)$id;
+            try {
+                $pdo->prepare('UPDATE customer_blocks SET '.implode(', ', $fields).' WHERE id = ?')->execute($params);
+                if ($active === 0) {
+                    // clear block flag on customer
+                    try {
+                        $row = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id=?')->execute([(int)$id]);
+                        $cidStmt = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id=?');
+                        $cidStmt->execute([(int)$id]);
+                        $cid = $cidStmt->fetchColumn();
+                        if ($cid) { $pdo->prepare('UPDATE customers SET is_blocked = 0 WHERE id = ?')->execute([$cid]); }
+                    } catch (Throwable $e) { /* ignore */ }
+                }
+                json_response(['ok' => true]);
+            } catch (Throwable $e) {
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 409);
+            }
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
 

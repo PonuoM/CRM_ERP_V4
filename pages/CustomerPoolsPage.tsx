@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Customer, User, ModalType } from '@/types';
-import { Users, Clock, PackageOpen, UserCheck, Eye, PhoneCall } from 'lucide-react';
+import { Users, Clock, PackageOpen, UserCheck, Eye, PhoneCall, Lock } from 'lucide-react';
 import { getRemainingTimeRounded } from '@/utils/time';
 
 interface CustomerPoolsPageProps {
@@ -11,7 +11,7 @@ interface CustomerPoolsPageProps {
   openModal?: (type: ModalType, data: any) => void;
 }
 
-type PoolTab = 'ready' | 'basket' | 'assigned';
+type PoolTab = 'ready' | 'basket' | 'assigned' | 'blocked';
 
 const dayDiff = (from?: string) => {
   if (!from) return null;
@@ -33,29 +33,71 @@ const CustomerPoolsPage: React.FC<CustomerPoolsPageProps> = ({ customers, users,
 
   // Pools
   const readyToDistribute = useMemo(() => {
-    return customers.filter(c => (c.assignedTo === null || typeof c.assignedTo === 'undefined') && !c.isInWaitingBasket);
+    return customers.filter(
+      c => (c.assignedTo === null || typeof c.assignedTo === 'undefined') && !c.isInWaitingBasket && !c.isBlocked,
+    );
   }, [customers]);
 
-  const inWaitingBasket = useMemo(() => customers.filter(c => !!c.isInWaitingBasket), [customers]);
+  const inWaitingBasket = useMemo(
+    () => customers.filter(c => !!c.isInWaitingBasket && !c.isBlocked),
+    [customers],
+  );
 
-  const underCare = useMemo(() => customers.filter(c => c.assignedTo !== null && typeof c.assignedTo !== 'undefined'), [customers]);
+  const underCare = useMemo(
+    () =>
+      customers.filter(
+        c =>
+          c.assignedTo !== null &&
+          typeof c.assignedTo !== 'undefined' &&
+          !c.isInWaitingBasket &&
+          !c.isBlocked,
+      ),
+    [customers],
+  );
+
+  const blocked = useMemo(() => customers.filter(c => !!c.isBlocked), [customers]);
 
   // Counts
   const counts = {
     ready: readyToDistribute.length,
     basket: inWaitingBasket.length,
     assigned: underCare.length,
+    blocked: blocked.length,
   };
 
   // Active list with search
   const filteredList = useMemo(() => {
     const lower = search.trim().toLowerCase();
-    const base = active === 'ready' ? readyToDistribute : active === 'basket' ? inWaitingBasket : underCare;
+    const base = active === 'ready'
+      ? readyToDistribute
+      : active === 'basket'
+      ? inWaitingBasket
+      : active === 'assigned'
+      ? underCare
+      : blocked;
     if (!lower) return base;
     return base.filter(c => `${c.firstName} ${c.lastName}`.toLowerCase().includes(lower) || c.phone.includes(lower));
-  }, [active, search, readyToDistribute, inWaitingBasket, underCare]);
+  }, [active, search, readyToDistribute, inWaitingBasket, underCare, blocked]);
 
   // Render helpers
+  const renderBasketBadge = (c: Customer) => {
+    let label = '';
+    let cls = '';
+    if (c.isBlocked) {
+      label = 'บล็อค';
+      cls = 'bg-red-100 text-red-700';
+    } else if (c.isInWaitingBasket) {
+      label = 'พักรายชื่อ';
+      cls = 'bg-amber-100 text-amber-700';
+    } else if (c.assignedTo === null || typeof c.assignedTo === 'undefined') {
+      label = 'พร้อมแจก';
+      cls = 'bg-blue-100 text-blue-700';
+    } else {
+      label = 'มีผู้ดูแล';
+      cls = 'bg-green-100 text-green-700';
+    }
+    return <span className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${cls}`}>{label}</span>;
+  };
   const renderTimeCell = (c: Customer) => {
     if (active === 'ready') {
       const days = dayDiff(c.waitingBasketStartDate);
@@ -80,13 +122,22 @@ const CustomerPoolsPage: React.FC<CustomerPoolsPageProps> = ({ customers, users,
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <button onClick={() => setActive('ready')} className={`bg-white border rounded-lg p-4 text-left hover:shadow ${active==='ready'?'ring-2 ring-blue-500':''}`}>
           <div className="flex items-center">
             <PackageOpen className="text-blue-600 mr-3" />
             <div>
               <div className="text-sm text-gray-600">ลูกค้าพร้อมแจก</div>
               <div className="text-2xl font-semibold text-gray-900">{counts.ready.toLocaleString()}</div>
+            </div>
+          </div>
+        </button>
+        <button onClick={() => setActive('blocked')} className={`bg-white border rounded-lg p-4 text-left hover:shadow ${active==='blocked'?'ring-2 ring-blue-500':''}`}>
+          <div className="flex items-center">
+            <Lock className="text-red-600 mr-3" />
+            <div>
+              <div className="text-sm text-gray-600">ลูกค้าบล็อค</div>
+              <div className="text-2xl font-semibold text-gray-900">{counts.blocked.toLocaleString()}</div>
             </div>
           </div>
         </button>
@@ -150,6 +201,7 @@ const CustomerPoolsPage: React.FC<CustomerPoolsPageProps> = ({ customers, users,
                     <div className="flex flex-col">
                       <span className="font-medium text-gray-900">{c.firstName} {c.lastName}</span>
                       <span className="text-xs text-gray-500">{c.phone}</span>
+                      {renderBasketBadge(c)}
                     </div>
                   </td>
                   <td className="px-6 py-3">{c.province}</td>

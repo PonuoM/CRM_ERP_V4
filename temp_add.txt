@@ -1,0 +1,27 @@
+// Add after line 220 (after selectedExpiryDays state):
+
+  // Advanced filters state
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [sortBy, setSortBy] = useState("system");
+  const [hideTodayCalls, setHideTodayCalls] = useState(false);
+  const [hideTodayCallsRangeEnabled, setHideTodayCallsRangeEnabled] = useState(false);
+  const [hideTodayCallsRange, setHideTodayCallsRange] = useState({ start: "", end: "" });
+  const advRef = useRef<HTMLDivElement | null>(null);
+
+// Sort Dropdown Component (add before return statement):
+const SortDropdown: React.FC<{
+  selected: string;
+  onSelect: (value: string) => void;
+}> = ({ selected, onSelect }) => {
+  return (
+    <div className="relative" style={{minWidth: '180px'}}>
+      <select value={selected} onChange={e => onSelect(e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm">
+        <option value="system">เรียงตามระบบ</option>
+        <option value="expiry-desc">เรียงตามวันที่คงเหลือ จากมากไปน้อย</option>
+        <option value="expiry-asc">เรียงตามวันที่คงเหลือ จากน้อยไปมาก</option>
+      </select>
+    </div>
+  );
+};
+
+

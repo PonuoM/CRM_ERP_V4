@@ -27,6 +27,20 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ orders }) => {
     }, {} as Record<OrderStatus, number>);
   }, [orders]);
 
+  // ฟังก์ชันแปลสถานะออเดอร์เป็นภาษาไทย
+  const getStatusLabel = (status: OrderStatus): string => {
+    const statusLabels: Record<OrderStatus, string> = {
+      [OrderStatus.Pending]: "รอดำเนินการ",
+      [OrderStatus.Confirmed]: "ยืนยันแล้ว",
+      [OrderStatus.Picking]: "กำลังจัดเตรียม",
+      [OrderStatus.Shipping]: "กำลังจัดส่ง",
+      [OrderStatus.Delivered]: "จัดส่งสำเร็จ",
+      [OrderStatus.Cancelled]: "ยกเลิก",
+      [OrderStatus.Returned]: "ตีกลับ",
+    };
+    return statusLabels[status] || status;
+  };
+
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">รายงานสรุป</h2>
@@ -66,10 +80,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ orders }) => {
         <div className="space-y-4">
             {Object.entries(orderStats).map(([status, count]) => {
                 const percentage = (count / orders.length) * 100;
+                const statusLabel = getStatusLabel(status as OrderStatus);
                 return (
                     <div key={status}>
                         <div className="flex justify-between mb-1">
-                            <span className="text-base font-medium text-gray-700">{status}</span>
+                            <span className="text-base font-medium text-gray-700">{statusLabel}</span>
                             <span className="text-sm font-medium text-gray-500">{count} รายการ</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2.5">

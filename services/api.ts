@@ -89,14 +89,30 @@ export async function listCustomers(params?: {
   companyId?: number;
   bucket?: string;
   userId?: number;
+  source?: 'new_sale' | 'waiting_return' | 'stock';
+  freshDays?: number; // only for source=new_sale
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
   if (params?.companyId) qs.set("companyId", String(params.companyId));
   if (params?.bucket) qs.set("bucket", params.bucket);
   if (params?.userId) qs.set("userId", String(params.userId));
+  if (params?.source) qs.set("source", params.source);
+  if (params?.freshDays != null) qs.set("freshDays", String(params.freshDays));
   const query = qs.toString();
   return apiFetch(`customers${query ? `?${query}` : ""}`);
+}
+
+export async function listCustomersBySource(
+  source: 'new_sale' | 'waiting_return' | 'stock',
+  opts?: { q?: string; companyId?: number; freshDays?: number },
+) {
+  return listCustomers({
+    q: opts?.q,
+    companyId: opts?.companyId,
+    source,
+    freshDays: opts?.freshDays,
+  });
 }
 
 export async function listUsers() {
@@ -374,6 +390,27 @@ export async function createActivity(payload: any) {
   return apiFetch("activities", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+// Customer blocks
+export async function createCustomerBlock(payload: { customerId: string; reason: string; blockedBy: number }) {
+  return apiFetch("customer_blocks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCustomerBlocks(customerId?: string) {
+  const qs = new URLSearchParams();
+  if (customerId) qs.set("customerId", customerId);
+  return apiFetch(`customer_blocks${customerId ? `?${qs}` : ""}`);
+}
+
+export async function unblockCustomerBlock(id: number, unblockedBy: number) {
+  return apiFetch(`customer_blocks/${encodeURIComponent(String(id))}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active: false, unblockedBy }),
   });
 }
 
@@ -691,5 +728,42 @@ export async function updateUserPancakeMapping(
 export async function deleteUserPancakeMapping(id: number): Promise<void> {
   return apiFetch(`user_pancake_mappings/${id}`, {
     method: "DELETE",
+  });
+}
+
+// Customer Order Tracking Functions
+export async function updateCustomerOrderTracking(
+  customerId: string,
+  orderDate: string
+): Promise<{
+  success: boolean;
+  customer_id?: string;
+  first_order_date?: string;
+  last_order_date?: string;
+  order_count?: number;
+  is_new_customer?: boolean;
+  is_repeat_customer?: boolean;
+  error?: string;
+}> {
+  return apiFetch("update_customer_order_tracking.php", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "update_single",
+      customer_id: customerId,
+      order_date: orderDate,
+    }),
+  });
+}
+
+export async function updateAllCustomersOrderTracking(): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  return apiFetch("update_customer_order_tracking.php", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "update_all",
+    }),
   });
 }

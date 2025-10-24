@@ -521,6 +521,9 @@ const App: React.FC = () => {
           totalCalls: Number(r.total_calls || 0),
           facebookName: r.facebook_name ?? undefined,
           lineId: r.line_id ?? undefined,
+          isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
+          waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
+          isBlocked: Boolean(r.is_blocked ?? false),
         });
 
         const mapOrder = (r: any): Order => ({
@@ -927,8 +930,12 @@ const App: React.FC = () => {
   );
 
   const visibleNotifications = useMemo(() => {
-    return notifications.filter((n) => n.forRoles.includes(currentUser.role));
-  }, [notifications, currentUser.role]);
+    return notifications.filter((n) => {
+      const roleMatch = Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
+      const userMatch = typeof (n as any).userId === 'number' && (n as any).userId === currentUser.id;
+      return roleMatch || userMatch;
+    });
+  }, [notifications, currentUser.role, currentUser.id]);
 
   const unreadNotificationCount = useMemo(() => {
     return visibleNotifications.filter((n) => !n.read).length;
@@ -1299,7 +1306,7 @@ const App: React.FC = () => {
         ...newCustomerData,
         id: newCustomerId,
         companyId: currentUser.companyId,
-        assignedTo: currentUser.id,
+        assignedTo: currentUser.role === UserRole.Admin ? (null as any) : currentUser.id,
         dateAssigned: new Date().toISOString(),
         totalPurchases: 0,
         totalCalls: 0,
@@ -1315,7 +1322,7 @@ const App: React.FC = () => {
           email: newCustomer.email,
           province: newCustomer.province,
           companyId: newCustomer.companyId,
-          assignedTo: currentUser.id,
+          assignedTo: currentUser.role === UserRole.Admin ? null : currentUser.id,
           dateAssigned: newCustomer.dateAssigned,
           dateRegistered: new Date().toISOString(),
           followUpDate: null,
@@ -1494,6 +1501,58 @@ const App: React.FC = () => {
       return; // Don't add to local state if API fails
     }
 
+    // Notify assigned telesale or redistribute if needed
+    try {
+      const theCustomer = customers.find((c) => c.id === customerIdForOrder);
+      const assignedUserId = theCustomer?.assignedTo || null;
+      const isAdminCreating = currentUser.role === UserRole.Admin;
+
+      if (assignedUserId && assignedUserId !== currentUser.id) {
+        const notifId = `notif-neworder-${newOrder.id}`;
+        setNotifications((prev) => [
+          {
+            id: notifId,
+            type: NotificationType.NewOrderForCustomer,
+            message: `ลูกค้าของคุณมีคำสั่งซื้อใหม่: ${newOrder.id}`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            relatedId: newOrder.customerId,
+            forRoles: [],
+            userId: assignedUserId,
+          },
+          ...prev,
+        ]);
+      }
+
+      if (isAdminCreating && !assignedUserId) {
+        // Put customer into waiting basket for Admin Control to distribute via "Share"
+        try {
+          await updateCustomer(customerIdForOrder, {
+            // Use backend column names to ensure persistence
+            is_in_waiting_basket: 1,
+            waiting_basket_start_date: new Date().toISOString(),
+            lifecycle_status: 'FollowUp',
+          });
+        } catch (err) {
+          console.warn('update waiting basket flags failed', err);
+        }
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customerIdForOrder
+              ? {
+                  ...c,
+                  lifecycleStatus: CustomerLifecycleStatus.FollowUp,
+                  isInWaitingBasket: true as any,
+                  waitingBasketStartDate: new Date().toISOString() as any,
+                }
+              : c,
+          ),
+        );
+      }
+    } catch (notifyErr) {
+      console.warn('post-create notify/redistribute failed', notifyErr);
+    }
+
     const newActivity: Activity = {
       id: Date.now() + Math.random(),
       customerId: newOrder.customerId,
@@ -1609,6 +1668,7 @@ const App: React.FC = () => {
             ? {
                 ...c,
                 assignedTo: currentUser.id,
+                previousLifecycleStatus: c.lifecycleStatus,
                 lifecycleStatus: CustomerLifecycleStatus.FollowUp,
                 dateAssigned: new Date().toISOString(),
               }
@@ -1814,6 +1874,8 @@ const App: React.FC = () => {
     setCallHistory((prev) => [newCallLog, ...prev]);
 
     // Determine the new lifecycle status based on the business rules
+    // New logic: Do NOT auto-convert New -> Old after the first call.
+    // Only set FollowUp when a follow-up date is created here.
     let newLifecycleStatus: CustomerLifecycleStatus | undefined;
 
     const customer = customers.find((c) => c.id === customerId);
@@ -1821,13 +1883,6 @@ const App: React.FC = () => {
       // If there's a follow-up date, set status to FollowUp
       if (newFollowUpDate) {
         newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
-      }
-      // If this is the first call and there's no follow-up, transition from New to Old
-      else if (
-        customer.lifecycleStatus === CustomerLifecycleStatus.New &&
-        customer.totalCalls === 0
-      ) {
-        newLifecycleStatus = CustomerLifecycleStatus.Old;
       }
     }
 
@@ -1854,6 +1909,10 @@ const App: React.FC = () => {
             ...c,
             totalCalls: c.totalCalls + 1,
             followUpDate: newFollowUpDate || c.followUpDate,
+            previousLifecycleStatus:
+              newFollowUpDate
+                ? (c.previousLifecycleStatus ?? c.lifecycleStatus)
+                : c.previousLifecycleStatus,
             tags: updatedCustomerTags,
           };
 
@@ -2105,6 +2164,8 @@ const App: React.FC = () => {
           return {
             ...c,
             followUpDate: appointmentData.date,
+            previousLifecycleStatus:
+              c.previousLifecycleStatus ?? c.lifecycleStatus,
             lifecycleStatus: CustomerLifecycleStatus.FollowUp,
           };
         }
@@ -2212,21 +2273,20 @@ const App: React.FC = () => {
       setCustomers((prev) =>
         prev.map((c) => {
           if (c.id === appointmentToUpdate.customerId) {
-            // Determine the new lifecycle status based on business rules
+            // Determine the new lifecycle status based on new business rules
             let newLifecycleStatus = c.lifecycleStatus;
-
-            // If the customer was in FollowUp status and now has no pending appointments,
-            // transition based on their previous status and actions
             if (c.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
-              // Check if customer has any orders (sold)
-              // Include both existing orders and newly created orders in this session
-              const customerOrders = orders.filter(
-                (o) => o.customerId === c.id,
+              // If sold and within 90 days -> Old3Months, else revert to previous status
+              const cutoff = new Date();
+              cutoff.setDate(cutoff.getDate() - 90);
+              const hasRecentOrder = orders.some(
+                (o) => o.customerId === c.id && new Date(o.orderDate) >= cutoff,
               );
-              if (customerOrders.length > 0) {
+              if (hasRecentOrder) {
                 newLifecycleStatus = CustomerLifecycleStatus.Old3Months;
               } else {
-                newLifecycleStatus = CustomerLifecycleStatus.Old;
+                newLifecycleStatus =
+                  c.previousLifecycleStatus ?? newLifecycleStatus;
               }
             }
 
@@ -2234,6 +2294,10 @@ const App: React.FC = () => {
               ...c,
               followUpDate: undefined,
               lifecycleStatus: newLifecycleStatus,
+              previousLifecycleStatus:
+                newLifecycleStatus === CustomerLifecycleStatus.FollowUp
+                  ? c.previousLifecycleStatus
+                  : undefined,
             };
           }
           return c;
@@ -2249,20 +2313,20 @@ const App: React.FC = () => {
           if (customer) {
             let updateData: any = { followUpDate: null };
 
-            // Determine the new lifecycle status based on business rules
+            // Mirror local logic for lifecycle status change
             let newLifecycleStatus = customer.lifecycleStatus;
             if (customer.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
-              // Check if customer has any orders (sold)
-              // Include both existing orders and newly created orders in this session
-              const customerOrders = orders.filter(
-                (o) => o.customerId === customer.id,
+              const cutoff = new Date();
+              cutoff.setDate(cutoff.getDate() - 90);
+              const hasRecentOrder = orders.some(
+                (o) => o.customerId === customer.id && new Date(o.orderDate) >= cutoff,
               );
-              if (customerOrders.length > 0) {
+              if (hasRecentOrder) {
                 newLifecycleStatus = CustomerLifecycleStatus.Old3Months;
-              } else {
-                newLifecycleStatus = CustomerLifecycleStatus.Old;
+                updateData.lifecycleStatus = newLifecycleStatus;
+              } else if (customer.previousLifecycleStatus) {
+                updateData.lifecycleStatus = customer.previousLifecycleStatus;
               }
-              updateData.lifecycleStatus = newLifecycleStatus;
             }
 
             await updateCustomer(appointmentToUpdate.customerId, updateData);
@@ -2468,6 +2532,10 @@ const App: React.FC = () => {
           openModal={openModal}
           user={currentUser}
           systemTags={systemTags}
+          ownerName={(function(){
+            const u = companyUsers.find((x)=> x.id === (viewingCustomer as any).assignedTo);
+            return u ? `${u.firstName} ${u.lastName}` : undefined;
+          })()}
           onAddTag={handleAddTagToCustomer}
           onRemoveTag={handleRemoveTagFromCustomer}
           onCreateUserTag={handleCreateUserTag}
@@ -2590,6 +2658,7 @@ const App: React.FC = () => {
             customers={companyCustomers}
             appointments={appointments}
             activities={activities}
+            calls={callHistory}
             onViewCustomer={handleViewCustomer}
             openModal={openModal}
             setActivePage={setActivePage}
@@ -3059,6 +3128,7 @@ const App: React.FC = () => {
                 customers={companyCustomers}
                 appointments={appointments}
                 activities={activities}
+                calls={callHistory}
                 onViewCustomer={handleViewCustomer}
                 openModal={openModal}
                 setActivePage={setActivePage}
@@ -3099,6 +3169,7 @@ const App: React.FC = () => {
                 customers={companyCustomers}
                 appointments={appointments}
                 activities={activities}
+                calls={callHistory}
                 onViewCustomer={handleViewCustomer}
                 openModal={openModal}
                 systemTags={systemTags}

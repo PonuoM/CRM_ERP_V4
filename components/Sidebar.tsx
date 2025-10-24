@@ -100,6 +100,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Warehouse Stock": "สต๊อกคลัง",
     "Lot Tracking": "ติดตามล็อต",
     "Warehouse Allocation": "จัดสรรคลัง",
+    "Call Details": "รายละเอียดการโทร",
+    "Dtac Onecall": "Dtac Onecall",
+    "โปรโมชั่นที่กำลังใช้งาน": "โปรโมชั่นที่กำลังใช้งาน",
+    "ประวัติโปรโมชั่น": "ประวัติโปรโมชั่น",
+    "สร้างโปรโมชั่นใหม่": "สร้างโปรโมชั่นใหม่",
+    "หน้าเพจ": "หน้าเพจ",
+    "สถิติการมีส่วนร่วม": "สถิติการมีส่วนร่วม",
+    "Pancake User Mapping": "Pancake User Mapping",
+    "Customer Pools": "กลุ่มลูกค้า",
   };
 
   const t = (s: string): string => TH[s] ?? s;

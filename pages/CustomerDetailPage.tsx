@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Customer, Order, CallHistory, Appointment, ModalType, User, Tag, Activity, ActivityType, TagType } from '../types';
 // FIX: Add 'X', 'Repeat', 'Paperclip' icons to the import from 'lucide-react'.
-import { ArrowLeft, Phone, Edit, MessageSquare, ShoppingCart, Check, Flame, Tag as TagIcon, Plus, Calendar, List, Truck, Briefcase, Facebook, MoreHorizontal, UserCheck, BarChart, XCircle, X, ChevronLeft, ChevronRight, Repeat, Paperclip } from 'lucide-react';
+import { ArrowLeft, Phone, Edit, MessageSquare, ShoppingCart, Check, Flame, Tag as TagIcon, Plus, Calendar, List, Truck, Briefcase, Facebook, MoreHorizontal, UserCheck, BarChart, XCircle, X, ChevronLeft, ChevronRight, Repeat, Paperclip, ShieldAlert } from 'lucide-react';
 import { getStatusChip, getPaymentStatusChip } from '../components/OrderTable';
+import { createCustomerBlock } from '../services/api';
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -19,6 +20,7 @@ interface CustomerDetailPageProps {
   onCreateUserTag: (tagName: string) => Tag | null;
   onCompleteAppointment?: (appointmentId: number) => void;
   setActivePage?: (page: string) => void;
+  ownerName?: string;
 }
 
 type ActiveTab = 'calls' | 'appointments' | 'orders';
@@ -165,6 +167,26 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     <button onClick={() => openModal('addAppointment', customer)} className="bg-cyan-100 text-cyan-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-cyan-200"><Calendar size={16} className="mr-2"/>นัดหมาย</button>
                     <button onClick={() => setActivePage ? setActivePage('สร้างคำสั่งซื้อ') : openModal('createOrder', { customer })} className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"><ShoppingCart size={16} className="mr-2"/>สร้างคำสั่งซื้อ</button>
                     <button onClick={() => openModal('editCustomer', customer)} className="bg-slate-700 text-white py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-slate-800"><Edit size={16} className="mr-2"/>แก้ไข</button>
+                    <button
+                        onClick={async () => {
+                          if ((customer as any).isBlocked) return;
+                          const ok = window.confirm('คุณแน่ใจหรือไม่ว่าต้องการบล็อคลูกค้ารายนี้?');
+                          if (!ok) return;
+                          const reason = window.prompt('กรุณาระบุเหตุผลในการบล็อค (อย่างน้อย 5 ตัวอักษร)') || '';
+                          if (!reason || reason.trim().length < 5) { alert('กรุณากรอกเหตุผลอย่างน้อย 5 ตัวอักษร'); return; }
+                          try {
+                            await (await import('../services/api')).createCustomerBlock({ customerId: customer.id, reason: reason.trim(), blockedBy: user.id });
+                            alert('บล็อคลูกค้าเรียบร้อย');
+                            window.location.reload();
+                          } catch (e) {
+                            console.error('block customer failed', e);
+                            alert('บล็อคลูกค้าไม่สำเร็จ');
+                          }
+                        }}
+                        className={`py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center ${(customer as any).isBlocked ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                    >
+                        <ShieldAlert size={16} className="mr-2" /> บล็อค
+                    </button>
                 </div>
             </header>
 
@@ -202,7 +224,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                             <InfoItem label="จำนวนครั้งที่ติดต่อ" value={`${customer.totalCalls} ครั้ง`} />
                             <InfoItem label="ผู้ดูแล">
                                 <div className="flex items-center">
-                                    <span className="text-sm font-medium text-gray-800 mr-2">{`${user.firstName} ${user.lastName}`}</span>
+                                    <span className="text-sm font-medium text-gray-800 mr-2">{props.ownerName || (customer.assignedTo ? `ID ${customer.assignedTo}` : '-')}</span>
                                     <button className="text-xs text-blue-600 hover:underline">(เปลี่ยนผู้ดูแล)</button>
                                 </div>
                             </InfoItem>
@@ -321,3 +343,5 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 };
 
 export default CustomerDetailPage;
+
+

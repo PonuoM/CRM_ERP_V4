@@ -165,6 +165,279 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
         </div>
       </div>
 
+      {/* Advanced Filters */}
+      <div
+        className="bg-white p-4 rounded-lg shadow-sm border mb-6"
+        ref={advRef}
+      >
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50"
+          >
+            Advanced Filters
+            {(() => {
+              const count =
+                [
+                  apName,
+                  apPhone,
+                  apProvince,
+                  apLifecycle,
+                  apBehavioral,
+                  apGrade,
+                  apHasOrders !== "all" ? "x" : "",
+                  apDateAssigned.start,
+                  apDateAssigned.end,
+                  apOwnership.start,
+                  apOwnership.end,
+                ].filter((v) => !!v && String(v).trim() !== "").length +
+                (apSelectedUser !== "all" ? 1 : 0);
+              return count > 0 ? (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-[10px]">
+                  {count}
+                </span>
+              ) : null;
+            })()}
+          </button>
+          <button
+            onClick={() => {
+              setApSelectedUser(selectedUser);
+              setApName(fName.trim());
+              setApPhone(fPhone.trim());
+              setApProvince(fProvince.trim());
+              setApLifecycle(fLifecycle);
+              setApBehavioral(fBehavioral);
+              setApGrade(fGrade);
+              setApHasOrders(fHasOrders);
+              setApDateAssigned({ ...fDateAssigned });
+              setApOwnership({ ...fOwnership });
+              setShowAdvanced(false);
+            }}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100"
+          >
+            ค้นหา
+          </button>
+          {(apSelectedUser !== "all" ||
+            apName ||
+            apPhone ||
+            apProvince ||
+            apLifecycle ||
+            apBehavioral ||
+            apGrade ||
+            apHasOrders !== "all" ||
+            apDateAssigned.start ||
+            apDateAssigned.end ||
+            apOwnership.start ||
+            apOwnership.end) && (
+            <button
+              onClick={() => {
+                setSelectedUser("all");
+                setFName("");
+                setFPhone("");
+                setFProvince("");
+                setFLifecycle("");
+                setFBehavioral("");
+                setFGrade("");
+                setFHasOrders("all");
+                setFDateAssigned({ start: "", end: "" });
+                setFOwnership({ start: "", end: "" });
+                setApSelectedUser("all");
+                setApName("");
+                setApPhone("");
+                setApProvince("");
+                setApLifecycle("");
+                setApBehavioral("");
+                setApGrade("");
+                setApHasOrders("all");
+                setApDateAssigned({ start: "", end: "" });
+                setApOwnership({ start: "", end: "" });
+              }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600"
+            >
+              ล้างตัวกรอง
+            </button>
+          )}
+        </div>
+        {showAdvanced && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                ผู้รับผิดชอบ
+              </label>
+              <select
+                value={selectedUser}
+                onChange={(e) =>
+                  setSelectedUser(
+                    e.target.value === "all" ? "all" : Number(e.target.value),
+                  )
+                }
+                className="w-full p-2 border rounded"
+              >
+                <option value="all">ทั้งหมด</option>
+                {allUsers
+                  .filter(
+                    (u) =>
+                      u.role === "Telesale" ||
+                      String(u.role).includes("Supervisor"),
+                  )
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                ชื่อลูกค้า
+              </label>
+              <input
+                value={fName}
+                onChange={(e) => setFName(e.target.value)}
+                className="w-full p-2 border rounded"
+                placeholder="ชื่อหรือนามสกุล"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                เบอร์โทร
+              </label>
+              <input
+                value={fPhone}
+                onChange={(e) => setFPhone(e.target.value)}
+                className="w-full p-2 border rounded"
+                placeholder="เช่น 0812345678"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                จังหวัด
+              </label>
+              <input
+                value={fProvince}
+                onChange={(e) => setFProvince(e.target.value)}
+                className="w-full p-2 border rounded"
+                placeholder="เช่น กรุงเทพมหานคร"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Lifecycle
+              </label>
+              <select
+                value={fLifecycle}
+                onChange={(e) => setFLifecycle(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">ทั้งหมด</option>
+                <option value="New">New</option>
+                <option value="Old">Old</option>
+                <option value="FollowUp">FollowUp</option>
+                <option value="Old3Months">Old3Months</option>
+                <option value="DailyDistribution">DailyDistribution</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Behavioral
+              </label>
+              <select
+                value={fBehavioral}
+                onChange={(e) => setFBehavioral(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">ทั้งหมด</option>
+                <option value="Hot">Hot</option>
+                <option value="Warm">Warm</option>
+                <option value="Cold">Cold</option>
+                <option value="Frozen">Frozen</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">เกรด</label>
+              <select
+                value={fGrade}
+                onChange={(e) => setFGrade(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">ทั้งหมด</option>
+                <option value="A+">A+</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                มีออเดอร์หรือไม่
+              </label>
+              <select
+                value={fHasOrders}
+                onChange={(e) => setFHasOrders(e.target.value as any)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="all">ทั้งหมด</option>
+                <option value="yes">มีออเดอร์</option>
+                <option value="no">ไม่มีออเดอร์</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                วันที่ได้รับมอบหมาย (เริ่ม)
+              </label>
+              <input
+                type="date"
+                value={fDateAssigned.start}
+                onChange={(e) =>
+                  setFDateAssigned((v) => ({ ...v, start: e.target.value }))
+                }
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                วันที่ได้รับมอบหมาย (สิ้นสุด)
+              </label>
+              <input
+                type="date"
+                value={fDateAssigned.end}
+                onChange={(e) =>
+                  setFDateAssigned((v) => ({ ...v, end: e.target.value }))
+                }
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                วันหมดอายุสิทธิ์ (เริ่ม)
+              </label>
+              <input
+                type="date"
+                value={fOwnership.start}
+                onChange={(e) =>
+                  setFOwnership((v) => ({ ...v, start: e.target.value }))
+                }
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                วันหมดอายุสิทธิ์ (สิ้นสุด)
+              </label>
+              <input
+                type="date"
+                value={fOwnership.end}
+                onChange={(e) =>
+                  setFOwnership((v) => ({ ...v, end: e.target.value }))
+                }
+                className="w-full p-2 border rounded"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Filter */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:space-x-4 space-y-4 md:space-y-0">

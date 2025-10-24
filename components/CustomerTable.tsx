@@ -8,6 +8,8 @@ interface CustomerTableProps {
   onViewCustomer: (customer: Customer) => void;
   openModal?: (type: ModalType, data: Customer) => void;
   pageSizeOptions?: number[];
+  showCallNotes?: boolean;
+  hideGrade?: boolean;
 }
 
 const lifecycleLabel = (code: string) => ({
@@ -27,7 +29,7 @@ const statusColorMap: { [key: string]: string } = {
 };
 
 const CustomerTable: React.FC<CustomerTableProps> = (props) => {
-  const { customers, onViewCustomer, openModal, pageSizeOptions = [5, 10, 20, 50] } = props;
+  const { customers, onViewCustomer, openModal, pageSizeOptions = [5, 10, 20, 50], showCallNotes = false, hideGrade = false } = props;
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -118,6 +120,13 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     return pages;
   };
 
+  // Compute dynamic column count for empty state colSpan
+  const hasDoReason = customers.some(c => c.doReason);
+  const baseColumns = 5; // assigned date, name, province, ownership remaining, status
+  const dynamicColumns = (showCallNotes ? 1 : (!hideGrade ? 1 : 0)) + (hasDoReason ? 1 : 0);
+  const trailingColumns = 2; // TAG, actions
+  const totalColumns = baseColumns + dynamicColumns + trailingColumns;
+
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="overflow-x-auto">
@@ -129,8 +138,11 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             <th scope="col" className="px-6 py-3">จังหวัด</th>
             <th scope="col" className="px-6 py-3">เวลาที่เหลือ</th>
             <th scope="col" className="px-6 py-3">สถานะ</th>
-            <th scope="col" className="px-6 py-3">เกรด</th>
-            {customers.some(c => c.doReason) && <th scope="col" className="px-6 py-3 min-w-[250px]">เหตุผล Do</th>}
+            {showCallNotes && <th scope="col" className="px-6 py-3">หมายเหตุการโทร</th>}
+            {!showCallNotes && !hideGrade && (
+              <th scope="col" className="px-6 py-3">????</th>
+            )}
+            {hasDoReason && <th scope="col" className="px-6 py-3 min-w-[250px]">เหตุผล Do</th>}
             <th scope="col" className="px-6 py-3 min-w-[200px]">TAG</th>
             <th scope="col" className="px-6 py-3">การจัดการ</th>
           </tr>
@@ -158,8 +170,15 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                     {lifecycleLabel(customer.lifecycleStatus)}
                   </span>
                 </td>
-                <td className="px-6 py-4 font-semibold text-gray-700">{customer.grade}</td>
-                {customers.some(c => c.doReason) && (
+                {showCallNotes && (
+                  <td className="px-6 py-4 text-gray-700 max-w-[300px] truncate" title={customer.lastCallNote || ''}>
+                    {customer.lastCallNote || '-'}
+                  </td>
+                )}
+                {!showCallNotes && !hideGrade && (
+                  <td className="px-6 py-4 font-semibold text-gray-700">{customer.grade}</td>
+                )}
+                {hasDoReason && (
                   <td className="px-6 py-4">
                     {customer.doReason && (
                       <span className="text-xs text-gray-700">
@@ -179,7 +198,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             )
           }) : (
             <tr>
-              <td colSpan={customers.some(c => c.doReason) ? 9 : 8} className="text-center py-10 text-gray-500">
+              <td colSpan={totalColumns} className="text-center py-10 text-gray-500">
                 ไม่มีข้อมูลลูกค้า
               </td>
             </tr>

@@ -1,4 +1,4 @@
-﻿
+
 export enum UserRole {
   Admin = 'Admin Page',
   Telesale = 'Telesale',
@@ -220,6 +220,7 @@ export interface Customer {
   followUpDate?: string;
   ownershipExpires: string;
   lifecycleStatus: CustomerLifecycleStatus;
+  previousLifecycleStatus?: CustomerLifecycleStatus; // store previous status when entering FollowUp
   behavioralStatus: CustomerBehavioralStatus;
   grade: CustomerGrade;
   tags: Tag[];
@@ -229,34 +230,43 @@ export interface Customer {
   facebookName?: string;
   lineId?: string;
   doReason?: string; // Reason why customer is in Do dashboard
+  lastCallNote?: string; // Latest call note for display
   // Ownership management fields
-  hasSoldBefore?: boolean; // ตรวจสอบว่าลูกค้าซื้อมาก่อนหรือไม่
-  followUpCount?: number; // จำนวนครั้งที่ติดตาม
-  lastFollowUpDate?: string; // วันที่ติดตามครั้งล่าสุด
-  lastSaleDate?: string; // วันที่ขายครั้งล่าสุด
-  isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
-  waitingBasketStartDate?: string; // วันที่เริ่มเข้าตะกร้ารอ
+  hasSoldBefore?: boolean; // ?????????????????????????????????
+  followUpCount?: number; // ???????????????????
+  lastFollowUpDate?: string; // ???????????????????????
+  lastSaleDate?: string; // ????????????????????
+  isInWaitingBasket?: boolean; // ?????????????? 30 ??????????
+  waitingBasketStartDate?: string; // ???????????????????????
+  isBlocked?: boolean;
+  // Order tracking fields
+  firstOrderDate?: string; // วันที่ซื้อครั้งแรก
+  lastOrderDate?: string; // วันที่ซื้อล่าสุด
+  orderCount?: number; // จำนวนครั้งที่ซื้อ
+  isNewCustomer?: boolean; // เป็นลูกค้าใหม่หรือไม่
+  isRepeatCustomer?: boolean; // เป็นลูกค้ากลับมาซื้อหรือไม่
 }
 
 export enum PaymentMethod {
     COD = 'COD',
     Transfer = 'Transfer',
-    PayAfter = 'จ่ายหลังส่ง',
+    PayAfter = '???????????',
 }
 
 export enum OrderStatus {
-    Pending = 'รอการดำเนินการ',
-    Picking = 'กำลังจัดสินค้า',
-    Shipping = 'กำลังจัดส่ง',
-    Delivered = 'จัดส่งแล้ว',
-    Returned = 'คืนสินค้า',
-    Cancelled = 'ยกเลิก',
+    Pending = 'Pending',
+    Confirmed = 'Confirmed',
+    Picking = 'Picking',
+    Shipping = 'Shipping',
+    Delivered = 'Delivered',
+    Returned = 'Returned',
+    Cancelled = 'Cancelled',
 }
 
 export enum PaymentStatus {
-    Unpaid = 'ยังไม่ชำระ',
-    PendingVerification = 'รอตรวจสอบ',
-    Paid = 'ชำระแล้ว',
+    Unpaid = 'Unpaid',
+    PendingVerification = 'PendingVerification',
+    Paid = 'Paid',
 }
 
 export interface LineItem {
@@ -268,9 +278,9 @@ export interface LineItem {
   isFreebie: boolean;
   boxNumber: number;
   productId?: number; // Optional product ID to track products from promotions
-  promotionId?: number; // NEW: รหัสโปรโมชั่นที่รายการนี้มาจาก
-  parentItemId?: number; // NEW: รหัสรายการแม่ (สำหรับรายการย่อยของโปรโมชั่น)
-  isPromotionParent?: boolean; // NEW: เป็นรายการแม่ของโปรโมชั่นหรือไม่
+  promotionId?: number; // NEW: ??????????????????????????????
+  parentItemId?: number; // NEW: ????????????? (????????????????????????????)
+  isPromotionParent?: boolean; // NEW: ????????????????????????????????
 }
 
 export interface CodBox {
@@ -391,7 +401,7 @@ export interface Appointment {
   customerId: string;
   date: string;
   title: string;
-  status: 'เสร็จสิ้น' | 'รอการดำเนินการ';
+  status: '?????????' | '??????????????';
   notes?: string;
 }
 
@@ -429,6 +439,7 @@ export enum NotificationType {
     PendingVerification = 'pending_verification',
     OverduePayment = 'overdue_payment',
     ExpiringOwnership = 'expiring_ownership',
+    NewOrderForCustomer = 'new_order_for_customer',
 }
 
 export interface Notification {
@@ -439,4 +450,5 @@ export interface Notification {
     read: boolean;
     relatedId: string | number; // e.g., order ID or customer ID
     forRoles: UserRole[];
+    userId?: number; // optional: target a specific user
 }

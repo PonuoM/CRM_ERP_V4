@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Oct 20, 2025 at 08:33 AM
+-- Generation Time: Oct 23, 2025 at 03:34 AM
 -- Server version: 8.0.17
 -- PHP Version: 7.3.10
 
@@ -258,7 +258,10 @@ INSERT INTO `activities` (`id`, `customer_id`, `timestamp`, `type`, `description
 (86, 'CUS-002', '2025-10-20 07:30:41', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760945441327', 'Somchai Admin'),
 (87, 'CUS-003', '2025-10-20 08:05:51', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760947550715', 'Somchai Admin'),
 (88, 'CUS-003', '2025-10-20 08:18:23', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760948302845', 'Somsri Telesale'),
-(89, 'CUS-003', '2025-10-20 08:32:32', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760949151533', 'Somsri Telesale');
+(89, 'CUS-003', '2025-10-20 08:32:32', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760949151533', 'Somsri Telesale'),
+(90, 'CUS-003', '2025-10-20 08:57:19', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760950639386', 'Somsri Telesale'),
+(91, 'CUS-003', '2025-10-20 08:59:55', 'order_created', 'สร้างออเดอร์ใหม่ ORD-1760950795424', 'Somsri Telesale'),
+(92, 'CUS-952513121', '2025-10-22 03:42:49', 'appointment_set', 'นัดหมาย \"โทรติดตามผล (สินค้ายังไม่หมด)\" ถูกทำเครื่องหมายว่าเสร็จสิ้น', 'Somsri Telesale');
 
 -- --------------------------------------------------------
 
@@ -315,7 +318,7 @@ INSERT INTO `appointments` (`id`, `customer_id`, `date`, `title`, `status`, `not
 (19, 'CUS-952513121', '2025-10-03 12:41:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
 (20, 'CUS-002', '2025-09-30 16:47:00', 'โทรติดตามผล (ใช้แล้วไม่เห็นผล)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
 (21, 'CUS-005', '2025-10-02 17:00:00', 'โทรติดตามผล (ใช้แล้วไม่เห็นผล)', 'รอดำเนินการ', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
-(22, 'CUS-952513121', '2025-10-03 17:01:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'รอดำเนินการ', 'สร้างอัตโนมัติจากการบันทึกการโทร');
+(22, 'CUS-952513121', '2025-10-03 17:01:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร');
 
 -- --------------------------------------------------------
 
@@ -426,25 +429,31 @@ CREATE TABLE `customers` (
   `last_sale_date` datetime DEFAULT NULL,
   `is_in_waiting_basket` tinyint(1) DEFAULT '0',
   `waiting_basket_start_date` datetime DEFAULT NULL,
-  `followup_bonus_remaining` tinyint(1) NOT NULL DEFAULT '1'
+  `followup_bonus_remaining` tinyint(1) NOT NULL DEFAULT '1',
+  `is_blocked` tinyint(1) NOT NULL DEFAULT '0',
+  `first_order_date` datetime DEFAULT NULL,
+  `last_order_date` datetime DEFAULT NULL,
+  `order_count` int(11) DEFAULT '0',
+  `is_new_customer` tinyint(1) DEFAULT '0',
+  `is_repeat_customer` tinyint(1) DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
 -- Dumping data for table `customers`
 --
 
-INSERT INTO `customers` (`id`, `first_name`, `last_name`, `phone`, `email`, `province`, `company_id`, `assigned_to`, `date_assigned`, `date_registered`, `follow_up_date`, `ownership_expires`, `lifecycle_status`, `behavioral_status`, `grade`, `total_purchases`, `total_calls`, `facebook_name`, `line_id`, `street`, `subdistrict`, `district`, `postal_code`, `has_sold_before`, `follow_up_count`, `last_follow_up_date`, `last_sale_date`, `is_in_waiting_basket`, `waiting_basket_start_date`, `followup_bonus_remaining`) VALUES
-('CUS-001', 'สมชาย', 'ใจดี', '0812345678', 'somchai@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:09', NULL, '2025-10-11 22:30:00', '2025-12-28 10:36:28', 'Old', 'Hot', 'A', '0.00', 1, 'Somchai Jaidee', 'somchai01', '123 ถนนสุขุมวิท', 'คลองตัน', 'วัฒนา', '10110', 0, 1, '2025-09-27 15:30:09', NULL, 0, NULL, 1),
-('CUS-002', 'สมหญิง', 'รักดี', '0823456789', 'somying@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:28', NULL, '2025-09-30 16:47:00', '2025-12-28 03:52:59', 'Old3Months', 'Warm', 'B', '1500.00', 6, 'Somying Rakdee', 'somying02', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', '10900', 0, 1, '2025-09-29 03:52:59', NULL, 0, NULL, 1),
-('CUS-003', 'วิชัย', 'เก่งมาก', '0834567890', 'wichai@email.com', 'นนทบุรี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-01 21:30:00', '2025-12-28 13:59:46', 'Old3Months', 'Cold', 'C', '800.00', 2, 'Wichai Kengmak', 'wichai03', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', '11000', 1, 0, '2025-09-29 05:45:10', '2025-09-29 07:57:55', 0, NULL, 1),
-('CUS-004', 'มาลี', 'สวยงาม', '0845678901', 'malee@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-12 10:38:00', '2025-12-28 03:38:27', 'FollowUp', 'Hot', 'A+', '0.00', 1, 'Malee Suayngam', 'malee04', '321 ถนนรังสิต', 'คลองหนึ่ง', 'คลองหลวง', '12120', 0, 1, '2025-09-29 03:38:27', NULL, 0, NULL, 1),
-('CUS-005', 'ประเสริฐ', 'ดีมาก', '0856789012', 'prasert@email.com', 'สมุทรปราการ', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-02 17:00:00', '2025-11-01 21:03:36', 'FollowUp', 'Warm', 'B', '2200.00', 7, 'Prasert Deemak', 'prasert05', '654 ถนนสุขุมวิท', 'บางนา', 'บางนา', '10260', 0, 0, NULL, NULL, 0, NULL, 0),
-('CUS-100000001', 'Mana', 'Jaidee', '0812345678', 'mana.j@example.com', 'Bangkok', 1, 2, '2025-09-17 10:31:32', '2025-09-12 10:31:32', '2025-09-24 23:54:00', '2025-12-11 10:31:32', 'Old3Months', 'Hot', 'B', '5850.00', 18, 'Mana Jaidee', 'mana.j', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', '10110', 0, 0, NULL, NULL, 0, NULL, 1),
-('CUS-952141254', 'มาเรีย', 'สิกา', '0952141254', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:14:03', '2025-09-24 08:14:03', NULL, '2025-10-24 08:14:03', 'New', 'Warm', 'D', '0.00', 0, 'อิอิ', '', '33/10', 'ออเงิน', 'สายไหม', '12120', 0, 0, NULL, NULL, 0, NULL, 1),
-('CUS-952513121', 'มานี', 'พี่มานะ', '0952513121', NULL, 'ปทุมธานี', 1, 2, '2025-09-22 03:58:57', '2025-09-22 03:58:57', '2025-10-03 17:01:00', '2025-10-22 03:58:57', 'FollowUp', 'Warm', 'D', '0.00', 2, 'mana jaidee', 'manaza007', '33/10', 'ลำลูกกา', 'ลำลูกกา', '12150', 0, 0, NULL, NULL, 0, NULL, 1),
-('CUS-952519797', 'พิมพ์พิกา', 'ณ ระนอง', '0952519797', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:06:52', '2025-09-24 08:06:52', NULL, '2025-10-24 08:06:52', 'New', 'Warm', 'D', '0.00', 0, 'pimmy', 'ก็มาดิค๊าบ', '31/10', 'ออเงิน', 'สายไหม', '10210', 0, 0, NULL, NULL, 0, NULL, 1),
-('CUS-954564646', 'มาโนช', 'ศรีบุญเรือง', '0954564646', NULL, 'กรุงเทพ', 1, 2, '2025-09-22 05:24:32', '2025-09-22 05:24:32', '2025-10-25 10:16:00', '2025-12-28 10:36:28', 'FollowUp', 'Warm', 'D', '0.00', 4, 'maNos', 'Manosza', '214', 'สายไหม', 'ออเงิน', '12150', 0, 2, '2025-09-29 03:16:37', NULL, 0, NULL, 1),
-('CUS-958844578', 'มนัส', 'บุญจำนง', '0958844578', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:52:21', '2025-09-24 08:52:21', NULL, '2025-10-24 08:52:21', 'New', 'Warm', 'D', '0.00', 0, 'manus', '', '32/458', 'ออเงิน', 'สายไหม', '12150', 0, 0, NULL, NULL, 0, NULL, 1);
+INSERT INTO `customers` (`id`, `first_name`, `last_name`, `phone`, `email`, `province`, `company_id`, `assigned_to`, `date_assigned`, `date_registered`, `follow_up_date`, `ownership_expires`, `lifecycle_status`, `behavioral_status`, `grade`, `total_purchases`, `total_calls`, `facebook_name`, `line_id`, `street`, `subdistrict`, `district`, `postal_code`, `has_sold_before`, `follow_up_count`, `last_follow_up_date`, `last_sale_date`, `is_in_waiting_basket`, `waiting_basket_start_date`, `followup_bonus_remaining`, `is_blocked`, `first_order_date`, `last_order_date`, `order_count`, `is_new_customer`, `is_repeat_customer`) VALUES
+('CUS-001', 'สมชาย', 'ใจดี', '0812345678', 'somchai@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:09', NULL, '2025-10-11 22:30:00', '2025-12-28 10:36:28', 'Old', 'Hot', 'A', '0.00', 1, 'Somchai Jaidee', 'somchai01', '123 ถนนสุขุมวิท', 'คลองตัน', 'วัฒนา', '10110', 0, 1, '2025-09-27 15:30:09', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUS-002', 'สมหญิง', 'รักดี', '0823456789', 'somying@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:28', NULL, '2025-09-30 16:47:00', '2025-12-28 03:52:59', 'Old3Months', 'Warm', 'B', '1500.00', 6, 'Somying Rakdee', 'somying02', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', '10900', 0, 1, '2025-09-29 03:52:59', NULL, 0, NULL, 1, 0, '2025-10-17 03:14:36', '2025-10-20 07:30:41', 5, 0, 1),
+('CUS-003', 'วิชัย', 'เก่งมาก', '0834567890', 'wichai@email.com', 'นนทบุรี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-01 21:30:00', '2025-12-28 13:59:46', 'Old3Months', 'Cold', 'C', '800.00', 2, 'Wichai Kengmak', 'wichai03', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', '11000', 1, 0, '2025-09-29 05:45:10', '2025-09-29 07:57:55', 0, NULL, 1, 0, '2025-09-29 07:20:13', '2025-10-20 08:59:55', 7, 0, 1),
+('CUS-004', 'มาลี', 'สวยงาม', '0845678901', 'malee@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-12 10:38:00', '2025-12-28 03:38:27', 'FollowUp', 'Hot', 'A+', '0.00', 1, 'Malee Suayngam', 'malee04', '321 ถนนรังสิต', 'คลองหนึ่ง', 'คลองหลวง', '12120', 0, 1, '2025-09-29 03:38:27', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUS-005', 'ประเสริฐ', 'ดีมาก', '0856789012', 'prasert@email.com', 'สมุทรปราการ', 1, NULL, '2025-09-27 21:00:28', NULL, '2025-10-02 17:00:00', '2025-11-01 21:03:36', 'FollowUp', 'Warm', 'B', '2200.00', 7, 'Prasert Deemak', 'prasert05', '654 ถนนสุขุมวิท', 'บางนา', 'บางนา', '10260', 0, 0, NULL, NULL, 0, NULL, 0, 1, NULL, NULL, 0, 0, 0),
+('CUS-100000001', 'Mana', 'Jaidee', '0812345678', 'mana.j@example.com', 'Bangkok', 1, 2, '2025-09-17 10:31:32', '2025-09-12 10:31:32', '2025-09-24 23:54:00', '2025-12-11 10:31:32', 'Old3Months', 'Hot', 'B', '5850.00', 18, 'Mana Jaidee', 'mana.j', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', '10110', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-21 10:31:32', '2025-10-17 05:25:53', 3, 0, 1),
+('CUS-952141254', 'มาเรีย', 'สิกา', '0952141254', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:14:03', '2025-09-24 08:14:03', NULL, '2025-10-24 08:14:03', 'New', 'Warm', 'D', '0.00', 0, 'อิอิ', '', '33/10', 'ออเงิน', 'สายไหม', '12120', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 14:57:51', '2025-09-24 14:57:51', 1, 1, 0),
+('CUS-952513121', 'มานี', 'พี่มานะ', '0952513121', NULL, 'ปทุมธานี', 1, 2, '2025-09-22 03:58:57', '2025-09-22 03:58:57', '2025-10-03 17:01:00', '2025-10-22 03:58:57', 'Old3Months', 'Warm', 'D', '0.00', 2, 'mana jaidee', 'manaza007', '33/10', 'ลำลูกกา', 'ลำลูกกา', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-22 03:58:57', '2025-09-23 03:32:36', 2, 0, 1),
+('CUS-952519797', 'พิมพ์พิกา', 'ณ ระนอง', '0952519797', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:06:52', '2025-09-24 08:06:52', NULL, '2025-10-24 08:06:52', 'New', 'Warm', 'D', '0.00', 0, 'pimmy', 'ก็มาดิค๊าบ', '31/10', 'ออเงิน', 'สายไหม', '10210', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUS-954564646', 'มาโนช', 'ศรีบุญเรือง', '0954564646', NULL, 'กรุงเทพ', 1, 2, '2025-09-22 05:24:32', '2025-09-22 05:24:32', '2025-10-25 10:16:00', '2025-12-28 10:36:28', 'FollowUp', 'Warm', 'D', '0.00', 4, 'maNos', 'Manosza', '214', 'สายไหม', 'ออเงิน', '12150', 0, 2, '2025-09-29 03:16:37', NULL, 0, NULL, 1, 0, '2025-09-23 03:25:56', '2025-09-23 03:35:12', 3, 0, 1),
+('CUS-958844578', 'มนัส', 'บุญจำนง', '0958844578', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:52:21', '2025-09-24 08:52:21', NULL, '2025-10-24 08:52:21', 'New', 'Warm', 'D', '0.00', 0, 'manus', '', '32/458', 'ออเงิน', 'สายไหม', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 08:52:21', '2025-10-17 02:47:28', 2, 0, 1);
 
 -- --------------------------------------------------------
 
@@ -458,6 +467,30 @@ CREATE TABLE `customer_assignment_history` (
   `user_id` int(11) NOT NULL,
   `assigned_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `customer_blocks`
+--
+
+CREATE TABLE `customer_blocks` (
+  `id` int(11) NOT NULL,
+  `customer_id` varchar(64) NOT NULL,
+  `reason` text NOT NULL,
+  `blocked_by` int(11) NOT NULL,
+  `blocked_at` datetime NOT NULL,
+  `unblocked_by` int(11) DEFAULT NULL,
+  `unblocked_at` datetime DEFAULT NULL,
+  `active` tinyint(1) NOT NULL DEFAULT '1'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `customer_blocks`
+--
+
+INSERT INTO `customer_blocks` (`id`, `customer_id`, `reason`, `blocked_by`, `blocked_at`, `unblocked_by`, `unblocked_at`, `active`) VALUES
+(1, 'CUS-005', 'อิหยังหว่าาาาลูกค้าบ่รับสายเด้อสู', 2, '2025-10-22 13:53:55', NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -502,7 +535,8 @@ INSERT INTO `env` (`id`, `key`, `value`, `created_at`) VALUES
 (2, 'app_version', '1.0.0', '2025-10-16 05:25:55'),
 (3, 'timezone', 'Asia/Bangkok', '2025-10-16 05:25:55'),
 (4, 'date_format', 'Y-m-d H:i:s', '2025-10-16 05:25:55'),
-(5, 'ACCESS_TOKEN_PANCAKE_1', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoidGlrIHRpayIsImV4cCI6MTc2Nzc2ODQyNSwiYXBwbGljYXRpb24iOjEsInVpZCI6IjA0MzY3NTc3LWQxYzUtNDk1Ny04OTQ5LWY5Nzk5YmZlZWQ4OCIsInNlc3Npb25faWQiOiJGZThjVmF6UTA3aGVxWkhkcjZPLy9sVnRHMEVTY0ljc2VuTXg3VEVhT2gwIiwiaWF0IjoxNzU5OTkyNDI1LCJmYl9pZCI6IjE4NTM4ODEwMTE4NDA1MyIsImxvZ2luX3Nlc3Npb24iOm51bGwsImZiX25hbWUiOiJ0aWsgdGlrIn0.Xr5cxiH7_w1yC9T6Tz2XVTC02wd3bATxk1wZVdeQjP8', '2025-10-16 05:27:43');
+(5, 'ACCESS_TOKEN_PANCAKE_1', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoidGlrIHRpayIsImV4cCI6MTc2Nzc2ODQyNSwiYXBwbGljYXRpb24iOjEsInVpZCI6IjA0MzY3NTc3LWQxYzUtNDk1Ny04OTQ5LWY5Nzk5YmZlZWQ4OCIsInNlc3Npb25faWQiOiJGZThjVmF6UTA3aGVxWkhkcjZPLy9sVnRHMEVTY0ljc2VuTXg3VEVhT2gwIiwiaWF0IjoxNzU5OTkyNDI1LCJmYl9pZCI6IjE4NTM4ODEwMTE4NDA1MyIsImxvZ2luX3Nlc3Npb24iOm51bGwsImZiX25hbWUiOiJ0aWsgdGlrIn0.Xr5cxiH7_w1yC9T6Tz2XVTC02wd3bATxk1wZVdeQjP8', '2025-10-16 05:27:43'),
+(6, 'page_store_db', '0', '2025-10-21 04:20:42');
 
 -- --------------------------------------------------------
 
@@ -526,7 +560,7 @@ CREATE TABLE `exports` (
 --
 
 INSERT INTO `exports` (`id`, `filename`, `file_path`, `orders_count`, `user_id`, `exported_by`, `created_at`, `download_count`) VALUES
-(1, 'orders_export_2025-10-17.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251017_052806_orders_export_2025-10-17.csv', 4, 4, 'Sommai Backoffice', '2025-10-17 12:28:06', 0);
+(1, 'orders_export_2025-10-17.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251017_052806_orders_export_2025-10-17.csv', 4, 4, 'Sommai Backoffice', '2025-10-17 12:28:06', 1);
 
 -- --------------------------------------------------------
 
@@ -14202,12 +14236,6 @@ CREATE TABLE `orders` (
   `cod_amount` decimal(12,2) DEFAULT NULL,
   `order_status` enum('Pending','Picking','Shipping','Delivered','Returned','Cancelled') DEFAULT NULL,
   `notes` text,
-  `ocr_sender_name` varchar(255) DEFAULT NULL,
-  `ocr_receiver_name` varchar(255) DEFAULT NULL,
-  `ocr_account_number` varchar(255) DEFAULT NULL,
-  `ocr_amount` decimal(12,2) DEFAULT NULL,
-  `ocr_date` varchar(50) DEFAULT NULL,
-  `ocr_time` varchar(50) DEFAULT NULL,
   `ocr_payment_date` datetime DEFAULT NULL,
   `sales_channel` varchar(128) DEFAULT NULL,
   `sales_channel_page_id` int(11) DEFAULT NULL,
@@ -14218,31 +14246,33 @@ CREATE TABLE `orders` (
 -- Dumping data for table `orders`
 --
 
-INSERT INTO `orders` (`id`, `customer_id`, `company_id`, `creator_id`, `order_date`, `delivery_date`, `street`, `subdistrict`, `district`, `province`, `postal_code`, `shipping_cost`, `bill_discount`, `total_amount`, `payment_method`, `payment_status`, `slip_url`, `amount_paid`, `cod_amount`, `order_status`, `notes`, `ocr_sender_name`, `ocr_receiver_name`, `ocr_account_number`, `ocr_amount`, `ocr_date`, `ocr_time`, `ocr_payment_date`, `sales_channel`, `sales_channel_page_id`, `warehouse_id`) VALUES
-('ORD-100000001', 'CUS-100000001', 1, 2, '2025-09-21 10:31:32', '2025-09-23 10:31:32', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '50.00', '0.00', '2050.00', 'COD', 'PendingVerification', NULL, NULL, '2000.00', 'Delivered', 'First test order', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758513536907', 'CUS-952513121', 1, 2, '2025-09-22 03:58:57', '2025-09-23 00:00:00', '33/10', 'ลำลูกกา', 'ลำลูกกา', 'ปทุมธานี', '12150', '0.00', '0.00', '500.00', 'Transfer', 'Paid', NULL, '500.00', '0.00', 'Shipping', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758597956211', 'CUS-954564646', 1, 2, '2025-09-23 03:25:56', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Paid', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYhAAAQMCAwQFBQcMChEEAgMBAQACAwQRBRIhBhMxQQcUIlFhI3GBkdEVMjZTobGzFhckMzdCUnR1pLLBNVRVVnJzg', '50.00', '0.00', 'Picking', 'ข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x, วันที่: 25 ก.ค. 68, เวลา: 09:45 น.\nข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x\nข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x', 'นาย ธนู ส', 'น.ส. ชุติกาญจน์ จันต๊ะยอด', 'xxx-x-x3504-x', '45.00', '25 ก.ค. 68', '09:45 น.', NULL, NULL, NULL, NULL),
-('ORD-1758598301831', 'CUS-954564646', 1, 2, '2025-09-23 03:31:42', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '500.00', 'Transfer', 'Paid', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYhAAAQMCAwQFBQcMChEEAgMBAQACAwQRBRIhBhMxQQcUIlFhI3GBkdEVMjZTobGzFhckMzdCUnR1pLLBNVRVVnJzg', '500.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758598355828', 'CUS-952513121', 1, 2, '2025-09-23 03:32:36', '2025-09-24 00:00:00', '33/10', 'ลำลูกกา', 'ลำลูกกา', 'ปทุมธานี', '12150', '0.00', '0.00', '120.00', 'Transfer', 'PendingVerification', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYxAAAQMCAwQEBwgJDBEEAgMBAQACAwQRBRIhBhMxQQcUIlEVI2FxgZHRFhcyNlOhsbMkM0JSVnR1pME1N0NUVXJzg', '100.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758598511994', 'CUS-954564646', 1, 2, '2025-09-23 03:35:12', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Paid', 'api/uploads/slips/slip_ORD-1758598511994_20250924_140110.jpg', '50.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758703941450', 'CUS-958844578', 1, 1, '2025-09-24 08:52:21', '2025-09-25 00:00:00', '32/458', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Unpaid', NULL, '0.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1758725870868', 'CUS-952141254', 1, 2, '2025-09-24 14:57:51', '2025-09-25 00:00:00', '33/10', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12120', '0.00', '0.00', '500.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1759130412537', 'CUS-003', 1, 2, '2025-09-29 07:20:13', '2025-09-30 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '520.00', 'COD', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1759132675182', 'CUS-003', 1, 2, '2025-09-29 07:57:55', '2025-09-30 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '50.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760669247836', 'CUS-958844578', 1, 2, '2025-10-17 02:47:28', '2025-10-18 00:00:00', '32/458', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12150', '0.00', '10.00', '1575.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760670875680', 'CUS-002', 1, 2, '2025-10-17 03:14:36', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '40.00', '4.00', '1720.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760672505732', 'CUS-100000001', 1, 2, '2025-10-17 03:41:46', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1250.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760673128688', 'CUS-002', 1, 2, '2025-10-17 03:52:09', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760673567816', 'CUS-002', 1, 2, '2025-10-17 03:59:28', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '120.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760673763984', 'CUS-002', 1, 2, '2025-10-17 04:02:44', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1990.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760678753047', 'CUS-100000001', 1, 2, '2025-10-17 05:25:53', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760679028514', 'CUS-100000001', 1, 2, '2025-10-17 05:30:29', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1870.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760679975662', 'CUS-002', 1, 2, '2025-10-17 05:46:16', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760680043751', 'CUS-002', 1, 2, '2025-10-17 05:47:24', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1950.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760945441327', 'CUS-002', 1, 1, '2025-10-20 07:30:41', '2025-10-21 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1870.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-('ORD-1760947550715', 'CUS-003', 1, 1, '2025-10-20 08:05:51', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '120.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Facebook', 14, NULL),
-('ORD-1760948302845', 'CUS-003', 1, 2, '2025-10-20 08:18:23', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '', NULL, NULL),
-('ORD-1760949151533', 'CUS-003', 1, 2, '2025-10-20 08:32:32', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '', NULL, NULL);
+INSERT INTO `orders` (`id`, `customer_id`, `company_id`, `creator_id`, `order_date`, `delivery_date`, `street`, `subdistrict`, `district`, `province`, `postal_code`, `shipping_cost`, `bill_discount`, `total_amount`, `payment_method`, `payment_status`, `slip_url`, `amount_paid`, `cod_amount`, `order_status`, `notes`, `ocr_payment_date`, `sales_channel`, `sales_channel_page_id`, `warehouse_id`) VALUES
+('ORD-100000001', 'CUS-100000001', 1, 2, '2025-09-21 10:31:32', '2025-09-23 10:31:32', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '50.00', '0.00', '2050.00', 'COD', 'PendingVerification', NULL, NULL, '2000.00', 'Delivered', 'First test order', NULL, NULL, NULL, NULL),
+('ORD-1758513536907', 'CUS-952513121', 1, 2, '2025-09-22 03:58:57', '2025-09-23 00:00:00', '33/10', 'ลำลูกกา', 'ลำลูกกา', 'ปทุมธานี', '12150', '0.00', '0.00', '500.00', 'Transfer', 'Paid', NULL, '500.00', '0.00', 'Shipping', NULL, NULL, NULL, NULL, NULL),
+('ORD-1758597956211', 'CUS-954564646', 1, 2, '2025-09-23 03:25:56', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Paid', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYhAAAQMCAwQFBQcMChEEAgMBAQACAwQRBRIhBhMxQQcUIlFhI3GBkdEVMjZTobGzFhckMzdCUnR1pLLBNVRVVnJzg', '50.00', '0.00', 'Picking', 'ข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x, วันที่: 25 ก.ค. 68, เวลา: 09:45 น.\nข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x\nข้อมูลจากสลิป: ผู้โอน: นาย ธนู ส, ผู้รับ: น.ส. ชุติกาญจน์ จันต๊ะยอด, เลขบัญชี: xxx-x-x3504-x', NULL, NULL, NULL, NULL),
+('ORD-1758598301831', 'CUS-954564646', 1, 2, '2025-09-23 03:31:42', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '500.00', 'Transfer', 'Paid', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYhAAAQMCAwQFBQcMChEEAgMBAQACAwQRBRIhBhMxQQcUIlFhI3GBkdEVMjZTobGzFhckMzdCUnR1pLLBNVRVVnJzg', '500.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1758598355828', 'CUS-952513121', 1, 2, '2025-09-23 03:32:36', '2025-09-24 00:00:00', '33/10', 'ลำลูกกา', 'ลำลูกกา', 'ปทุมธานี', '12150', '0.00', '0.00', '120.00', 'Transfer', 'PendingVerification', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAV6BIwDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAIDAQQGBQcI/8QAYxAAAQMCAwQEBwgJDBEEAgMBAQACAwQRBRIhBhMxQQcUIlEVI2FxgZHRFhcyNlOhsbMkM0JSVnR1pME1N0NUVXJzg', '100.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1758598511994', 'CUS-954564646', 1, 2, '2025-09-23 03:35:12', '2025-09-24 00:00:00', '214', 'สายไหม', 'ออเงิน', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Paid', 'api/uploads/slips/slip_ORD-1758598511994_20250924_140110.jpg', '50.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1758703941450', 'CUS-958844578', 1, 1, '2025-09-24 08:52:21', '2025-09-25 00:00:00', '32/458', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12150', '0.00', '0.00', '50.00', 'Transfer', 'Unpaid', NULL, '0.00', '0.00', 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1758725870868', 'CUS-952141254', 1, 2, '2025-09-24 14:57:51', '2025-09-25 00:00:00', '33/10', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12120', '0.00', '0.00', '500.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1759130412537', 'CUS-003', 1, 2, '2025-09-29 07:20:13', '2025-09-30 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '520.00', 'COD', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1759132675182', 'CUS-003', 1, 2, '2025-09-29 07:57:55', '2025-09-30 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '50.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760669247836', 'CUS-958844578', 1, 2, '2025-10-17 02:47:28', '2025-10-18 00:00:00', '32/458', 'ออเงิน', 'สายไหม', 'กรุงเทพ', '12150', '0.00', '10.00', '1575.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760670875680', 'CUS-002', 1, 2, '2025-10-17 03:14:36', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '40.00', '4.00', '1720.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760672505732', 'CUS-100000001', 1, 2, '2025-10-17 03:41:46', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1250.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760673128688', 'CUS-002', 1, 2, '2025-10-17 03:52:09', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760673567816', 'CUS-002', 1, 2, '2025-10-17 03:59:28', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '120.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760673763984', 'CUS-002', 1, 2, '2025-10-17 04:02:44', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1990.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760678753047', 'CUS-100000001', 1, 2, '2025-10-17 05:25:53', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Picking', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760679028514', 'CUS-100000001', 1, 2, '2025-10-17 05:30:29', '2025-10-18 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '1870.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760679975662', 'CUS-002', 1, 2, '2025-10-17 05:46:16', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760680043751', 'CUS-002', 1, 2, '2025-10-17 05:47:24', '2025-10-18 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1950.00', 'Transfer', '', NULL, NULL, NULL, 'Cancelled', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760945441327', 'CUS-002', 1, 1, '2025-10-20 07:30:41', '2025-10-21 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '1870.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, NULL, NULL, NULL),
+('ORD-1760947550715', 'CUS-003', 1, 1, '2025-10-20 08:05:51', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '120.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, 'Facebook', 14, NULL),
+('ORD-1760948302845', 'CUS-003', 1, 2, '2025-10-20 08:18:23', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, '', NULL, NULL),
+('ORD-1760949151533', 'CUS-003', 1, 2, '2025-10-20 08:32:32', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '1750.00', 'Transfer', '', NULL, NULL, NULL, '', NULL, NULL, '', NULL, NULL),
+('ORD-1760950639386', 'CUS-003', 1, 2, '2025-10-20 08:57:19', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '120.00', 'Transfer', 'Paid', NULL, '120.00', '0.00', 'Pending', NULL, NULL, 'Facebook', 28, 1),
+('ORD-1760950795424', 'CUS-003', 1, 2, '2025-10-20 08:59:55', '2025-10-21 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '120.00', 'COD', '', NULL, NULL, NULL, '', NULL, NULL, 'Facebook', 18, 1);
 
 -- --------------------------------------------------------
 
@@ -14333,7 +14363,11 @@ INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `product_name`, `quan
 (59, 'ORD-1760948302845', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
 (60, 'ORD-1760949151533', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
 (61, 'ORD-1760949151533', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
-(62, 'ORD-1760949151533', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0);
+(62, 'ORD-1760949151533', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
+(63, 'ORD-1760950639386', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(64, 'ORD-1760950795424', NULL, '📦 ชุดทดลองเมล็ด 3 แถม 1', 1, '120.00', '0.00', 0, 1, 2, NULL, 1),
+(65, 'ORD-1760950795424', 3, 'เมล็ดพันธุ์ A', 3, '120.00', '0.00', 0, 1, 2, NULL, 0),
+(66, 'ORD-1760950795424', 3, 'เมล็ดพันธุ์ A (ของแถม)', 1, '0.00', '0.00', 1, 1, 2, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -14368,12 +14402,14 @@ INSERT INTO `order_item_allocations` (`id`, `order_id`, `order_item_id`, `produc
 (2, 'ORD-1760679975662', 47, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:46:15'),
 (3, 'ORD-1760680043751', 50, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
 (4, 'ORD-1760680043751', 51, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
-(5, 'ORD-1760945441327', 54, 2, 5, 0, 4, 0, NULL, NULL, 'PENDING', NULL, 1, '2025-10-20 14:30:41'),
-(6, 'ORD-1760945441327', 55, 2, 5, 1, 1, 0, NULL, NULL, 'PENDING', NULL, 1, '2025-10-20 14:30:41'),
-(7, 'ORD-1760948302845', 58, 2, 5, 0, 4, 0, NULL, NULL, 'PENDING', NULL, 2, '2025-10-20 15:18:22'),
-(8, 'ORD-1760948302845', 59, 2, 5, 1, 1, 0, NULL, NULL, 'PENDING', NULL, 2, '2025-10-20 15:18:22'),
-(9, 'ORD-1760949151533', 61, 2, 5, 0, 4, 0, NULL, NULL, 'PENDING', NULL, 2, '2025-10-20 15:32:31'),
-(10, 'ORD-1760949151533', 62, 2, 5, 1, 1, 0, NULL, NULL, 'PENDING', NULL, 2, '2025-10-20 15:32:31');
+(5, 'ORD-1760945441327', 54, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
+(6, 'ORD-1760945441327', 55, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
+(7, 'ORD-1760948302845', 58, 2, 5, 0, 4, 4, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
+(8, 'ORD-1760948302845', 59, 2, 5, 1, 1, 1, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
+(9, 'ORD-1760949151533', 61, 2, 5, 0, 4, 4, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
+(10, 'ORD-1760949151533', 62, 2, 5, 1, 1, 1, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
+(11, 'ORD-1760950795424', 65, 3, 2, 0, 3, 3, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55'),
+(12, 'ORD-1760950795424', 66, 3, 2, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55');
 
 -- --------------------------------------------------------
 
@@ -14394,7 +14430,8 @@ CREATE TABLE `order_slips` (
 
 INSERT INTO `order_slips` (`id`, `order_id`, `url`, `created_at`) VALUES
 (1, 'ORD-1758703941450', 'api/uploads/slips/slip_ORD-1758703941450_20250924_142320_248511.jpg', '2025-09-24 21:23:20'),
-(3, 'ORD-1758703941450', 'api/uploads/slips/slip_ORD-1758703941450_20250924_144643_a55ab8.jpg', '2025-09-24 21:46:43');
+(3, 'ORD-1758703941450', 'api/uploads/slips/slip_ORD-1758703941450_20250924_144643_a55ab8.jpg', '2025-09-24 21:46:43'),
+(4, 'ORD-1760950639386', 'api/uploads/slips/slip_ORD-1760950639386_20251020_091134_6abc6f.png', '2025-10-20 16:11:34');
 
 -- --------------------------------------------------------
 
@@ -14417,7 +14454,8 @@ INSERT INTO `order_tracking_numbers` (`id`, `order_id`, `tracking_number`) VALUE
 (14, 'ORD-1758513536907', '65465465465'),
 (15, 'ORD-1758597956211', '654987'),
 (19, 'ORD-1758598355828', '55555555'),
-(21, 'ORD-1758598511994', '857458746');
+(21, 'ORD-1758598511994', '857458746'),
+(22, 'ORD-1760950639386', '120');
 
 -- --------------------------------------------------------
 
@@ -14453,7 +14491,7 @@ INSERT INTO `pages` (`id`, `page_id`, `name`, `platform`, `url`, `company_id`, `
 (7, '109469941917375', 'แคลเซียมโบรอน แคลโบมิคพลัส สูตรเข้มข้น ชุดทำดอก เปิดตาดอก เพิ่มผลผลิต', 'facebook', NULL, 1, 1, 1, 26, '2025-10-16 05:26:57'),
 (8, '103978325785122', 'ปุ๋ยน้ำ ปุ๋ยเคมี ปุ๋ยเกษตร คุณภาพสูง สูตรเข้มข้น ปุ๋ยราคาโรงงาน ตราเทพมงคล', 'facebook', NULL, 1, 1, 1, 25, '2025-10-16 05:26:57'),
 (9, '506123202564799', 'ปุ๋ยเทพมงคล ปุ๋ยคุณภาพ เพื่อนคู่ใจเกษตรกร', 'facebook', NULL, 1, 1, 1, 23, '2025-10-16 05:26:57'),
-(10, '381161481741058', 'ปุ๋ยตราเทพมงคล ราคาโรงงาน', 'facebook', NULL, 1, 1, 1, 23, '2025-10-16 05:26:57'),
+(10, '381161481741058', 'ปุ๋ยตราเทพมงคล', 'facebook', NULL, 1, 1, 1, 24, '2025-10-16 05:26:57'),
 (11, '187039081162246', 'ศูนย์รวมชีวภัณฑ์ และปุ๋ยพรีเมี่ยม ส่งตรงจากโรงงาน', 'facebook', NULL, 1, 1, 1, 26, '2025-10-16 05:26:57'),
 (12, '246504471882211', 'ปุ๋ย ตราเทพมงคล', 'facebook', NULL, 1, 1, 1, 24, '2025-10-16 05:26:57'),
 (13, '102155039237134', 'ไคโตซานมิคชนิดน้ำสำหรับพืช แข็งแรง ภูมิคุ้มกันสูง ต้านทานโรคพืช ต้านทานแมลง', 'facebook', NULL, 1, 1, 1, 24, '2025-10-16 05:26:57'),
@@ -14475,6 +14513,78 @@ INSERT INTO `pages` (`id`, `page_id`, `name`, `platform`, `url`, `company_id`, `
 (29, 'ttm_-000JOPIp6Kjwxz1vy5AYeQbt6sXOXz-coDl', 'ปุ๋ยเทพมงคล', 'tiktok_business_messaging', NULL, 1, 0, 1, 0, '2025-10-16 05:26:57'),
 (30, 'ttm_-000Z5UkemWkPL8-HL3g3YcvwGYFzBCeCYUH', 'โบว์ลูกเกษตร', 'tiktok_business_messaging', NULL, 1, 0, 1, 0, '2025-10-16 05:26:57'),
 (31, 'ln_2000262606', 'จำหน่ายชีวภัณฑ์', 'line', NULL, 1, 0, 1, 0, '2025-10-16 05:26:57');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `page_engagement_batch`
+--
+
+CREATE TABLE `page_engagement_batch` (
+  `id` int(11) NOT NULL,
+  `date_range` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` enum('pending','processing','completed','failed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `records_count` int(11) DEFAULT NULL,
+  `user_id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `page_engagement_log`
+--
+
+CREATE TABLE `page_engagement_log` (
+  `id` int(11) NOT NULL,
+  `batch_id` int(11) NOT NULL,
+  `page_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date` date NOT NULL,
+  `inbox` int(11) DEFAULT '0',
+  `comment` int(11) DEFAULT '0',
+  `total` int(11) DEFAULT '0',
+  `new_customer_replied` int(11) DEFAULT '0',
+  `customer_engagement_new_inbox` int(11) DEFAULT '0',
+  `order_count` int(11) DEFAULT '0',
+  `old_order_count` int(11) DEFAULT '0'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `page_stats_batch`
+--
+
+CREATE TABLE `page_stats_batch` (
+  `id` int(11) NOT NULL,
+  `date_range` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Date range in format YYYY-MM-DD - YYYY-MM-DD',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `page_stats_log`
+--
+
+CREATE TABLE `page_stats_log` (
+  `id` int(11) NOT NULL,
+  `batch_id` int(11) NOT NULL,
+  `page_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `time_column` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Date or datetime depending on view mode',
+  `new_customers` int(11) NOT NULL DEFAULT '0',
+  `total_phones` int(11) NOT NULL DEFAULT '0',
+  `new_phones` int(11) NOT NULL DEFAULT '0',
+  `total_comments` int(11) NOT NULL DEFAULT '0',
+  `total_chats` int(11) NOT NULL DEFAULT '0',
+  `total_page_comments` int(11) NOT NULL DEFAULT '0',
+  `total_page_chats` int(11) NOT NULL DEFAULT '0',
+  `new_chats` int(11) NOT NULL DEFAULT '0',
+  `chats_from_old_customers` int(11) NOT NULL DEFAULT '0',
+  `web_logged_in` int(11) NOT NULL DEFAULT '0',
+  `web_guest` int(11) NOT NULL DEFAULT '0',
+  `orders_count` int(11) NOT NULL DEFAULT '0'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -14688,7 +14798,9 @@ INSERT INTO `tags` (`id`, `name`, `type`) VALUES
 (3, 'ใกล้หมดอายุ', 'SYSTEM'),
 (4, 'Lead ใหม่', 'SYSTEM'),
 (5, 'สนใจโปร', 'SYSTEM'),
-(6, 'ลูกค้าประจำ', 'SYSTEM');
+(6, 'ลูกค้าประจำ', 'SYSTEM'),
+(17, 'VIP', 'SYSTEM'),
+(18, 'Lead', 'SYSTEM');
 
 -- --------------------------------------------------------
 
@@ -14721,12 +14833,12 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `email`, `phone`, `role`, `company_id`, `team_id`, `supervisor_id`, `id_oth`, `status`, `created_at`, `last_login`, `login_count`) VALUES
-(1, 'admin1', 'admin123', 'Somchai', 'Admin', 'admin1@example.com', '0810000001', 'Admin Page', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-20 15:00:53', 4),
-(2, 'telesale1', 'telesale123', 'Somsri', 'Telesale', 'telesale1@example.com', '0810000002', 'Telesale', 1, 1, 3, NULL, 'active', '2025-10-13 10:54:34', '2025-10-20 15:17:31', 26),
+(1, 'admin1', 'admin123', 'Somchai', 'Admin', 'admin1@example.com', '0810000001', 'Admin Page', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-22 11:47:50', 6),
+(2, 'telesale1', 'telesale123', 'Somsri', 'Telesale', 'telesale1@example.com', '0810000002', 'Telesale', 1, 1, 3, NULL, 'active', '2025-10-13 10:54:34', '2025-10-22 15:04:23', 31),
 (3, 'supervisor1', 'supervisor123', 'Somying', 'Supervisor', 'supervisor1@example.com', '0810000003', 'Supervisor Telesale', 1, 1, NULL, NULL, 'active', '2025-10-13 10:54:34', NULL, 0),
 (4, 'backoffice1', 'backoffice123', 'Sommai', 'Backoffice', 'backoffice1@example.com', '0810000004', 'Backoffice', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-17 12:27:41', 1),
-(5, 'owner1', 'owner123', 'Owner', 'Control', 'owner1@example.com', '0810000005', 'Admin Control', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-13 16:41:54', 3),
-(6, 'superadmin', 'superadmin123', 'Super', 'Admin', 'superadmin@example.com', '0810000000', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', NULL, 0),
+(5, 'owner1', 'owner123', 'Owner', 'Control', 'owner1@example.com', '0810000005', 'Admin Control', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-23 09:48:35', 5),
+(6, 'superadmin', 'superadmin123', 'Super', 'Admin', 'superadmin@example.com', '0810000000', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-22 15:05:57', 1),
 (21, 'thanu.m', '1234', 'th', 'df', 'admin@prima49.com', '0952519797', 'Marketing', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', NULL, 0),
 (24, 'pnr', '1234', 'ปอนด์', '[Supervisor]', 'pnr@gmail.com', '0950546556', 'Supervisor Telesale', 1, 1, NULL, NULL, 'active', '2025-09-03 14:13:09', '2025-10-13 09:22:11', 0),
 (25, 'nnn', '1234', 'หนิง', '[Supervisor]', 'nnn@gmail.com', '0994164440', 'Supervisor Telesale', 1, 2, NULL, NULL, 'active', '2025-09-03 14:14:15', '2025-10-14 12:03:48', 4),
@@ -14738,14 +14850,14 @@ INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `e
 (31, 'viv', '1234', 'กวาง', '[Telesale]', 'viv@gmail.com', '0652041252', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:30:25', '2025-10-14 12:04:13', 1),
 (32, 'eng', '1234', 'พลอยใส', '[Telesale]', 'eng@gmail.com', '0945547266', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:31:34', '2025-10-13 09:08:07', 0),
 (33, 'noi', '1234', 'หน่อย', '[Telesale]', 'noi@gmail.com', '0660624651', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:32:24', '2025-10-13 09:11:19', 0),
-(34, 'min', '1234', 'มินนี่', '[Telesale]', 'min@gmail.com', '0660524963', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:33:19', '2025-10-13 09:15:42', 0),
+(34, 'min', '1234', 'มินนี่', '[Telesale]', 'min@gmail.com', '0660524963', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:33:19', '2025-10-22 09:30:22', 1),
 (35, 'ggg', '1234', 'แกรน', '[Telelsale]', 'ggg@gmail.com', '0626633267', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:34:10', '2025-10-14 12:05:52', 1),
 (36, 'gof', '1234', 'กล๊อฟ', '[Telesale]', 'gof@gmail.com', '0945547598', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-03 14:35:09', '2025-10-13 09:04:45', 0),
 (37, 'api', '1234', 'ตูน', '[Telesale]', 'api@gmail.com', '0831092265', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-03 14:37:15', '2025-10-13 09:08:13', 0),
 (38, 'cha', '1234', 'เอ้', '[Telesale]', 'cha@gmail.com', '0991451323', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:37:59', '2025-10-13 08:36:46', 0),
 (39, 'see', '1234', 'ซี', '[Telesale]', 'see@gmail.com', '0831092262', 'Telesale', 1, 2, 25, NULL, 'active', '2025-09-03 14:38:54', '2025-10-13 11:03:56', 0),
 (40, 'nut', '1234', 'นัท', '[Telesale]', 'nut@gmail.com', '0831092264', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:39:51', '2025-10-13 08:43:28', 0),
-(47, 'thanu', '1234', 'ธนู', 'สุริวงศ์', 'prima.thanu.s@gmail.com', '0952519797', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-03 23:03:32', '2025-10-20 15:09:56', 24),
+(47, 'thanu', '1234', 'ธนู', 'สุริวงศ์', 'prima.thanu.s@gmail.com', '0952519797', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-03 23:03:32', '2025-10-22 13:55:34', 26),
 (48, 'Boss', '1234', 'วัชรพัน', 'ลิ้มถาวรวิวัฒน์', 'watcharaphan.prima@gmail.com', '0958765410', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-04 09:31:21', '2025-10-13 08:59:00', 0),
 (62, 'tai', '1234', 'ต่าย', '[Telesale]', 'tai@gmail.com', '0626831777', 'Telesale', 1, 2, 25, NULL, 'active', '2025-09-04 14:04:38', '2025-10-13 11:14:49', 0),
 (64, 'sry1', '1234', 'ปอ', 'Admin Page', 'sry1@prima49.com', '-', 'Admin Page', 1, NULL, NULL, NULL, 'inactive', '2025-09-05 13:43:18', NULL, 0),
@@ -14761,7 +14873,7 @@ INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `e
 (74, 'ben1', '1234', 'เบญ', 'Admin Page', 'test1@test.com', '-', 'Admin Page', 1, NULL, NULL, NULL, 'inactive', '2025-09-09 11:45:55', NULL, 0),
 (75, 'jay1', '1234', 'เจ', 'Admin Page', 'test1@test.com', '-', 'Admin Page', 1, NULL, NULL, NULL, 'inactive', '2025-09-09 11:46:29', NULL, 0),
 (83, 'Zim', '1234', 'ซิ้ม', '[Telesale]', 'prima.telesale.001@gmail.com', '0945551165', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-12 14:34:54', '2025-10-13 08:38:37', 0),
-(84, 'aee', '1234', 'เอ๋', '[Telesale]', 'aee@gmail.com', '0943326663', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-13 08:31:36', '2025-10-13 08:50:18', 0),
+(84, 'aee', '1234', 'เอ๋', '[Telesale]', 'aee@gmail.com', '0943326663', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-13 08:31:36', '2025-10-22 09:37:44', 1),
 (85, 'pie', '1234', 'เปิ้ล', 'Telesale', 'pie@gmail.com', '0945463805', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-25 16:26:27', '2025-10-13 09:00:49', 0),
 (88, 'som', '1234', 'ส้ม', '[Telesale]', 'prima.telesale.003@gmail.com', '0805604433', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-26 14:33:18', '2025-10-13 08:06:44', 0),
 (89, 'Nook', '1234', 'นุ๊ก', '[Telesale]', 'prima.telesale.004@gmail.com', '0944053557', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-26 14:35:51', '2025-10-13 09:00:18', 0),
@@ -14894,6 +15006,19 @@ DELIMITER ;
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `user_pancake_mapping`
+--
+
+CREATE TABLE `user_pancake_mapping` (
+  `id` int(11) NOT NULL,
+  `id_user` int(11) NOT NULL,
+  `id_panake` varchar(191) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `user_tags`
 --
 
@@ -14905,16 +15030,57 @@ CREATE TABLE `user_tags` (
 -- --------------------------------------------------------
 
 --
+-- Stand-in structure for view `v_customer_buckets`
+-- (See below for the actual view)
+--
+CREATE TABLE `v_customer_buckets` (
+`assigned_to` int(11)
+,`behavioral_status` enum('Hot','Warm','Cold','Frozen')
+,`bucket` varchar(8)
+,`company_id` int(11)
+,`date_assigned` datetime
+,`date_registered` datetime
+,`district` varchar(128)
+,`email` varchar(255)
+,`facebook_name` varchar(255)
+,`first_name` varchar(128)
+,`follow_up_count` int(11)
+,`follow_up_date` datetime
+,`followup_bonus_remaining` tinyint(1)
+,`grade` enum('D','C','B','A','A+')
+,`has_sold_before` tinyint(1)
+,`id` varchar(32)
+,`is_blocked` tinyint(1)
+,`is_in_waiting_basket` tinyint(1)
+,`last_follow_up_date` datetime
+,`last_name` varchar(128)
+,`last_sale_date` datetime
+,`lifecycle_status` enum('New','Old','FollowUp','Old3Months','DailyDistribution')
+,`line_id` varchar(128)
+,`ownership_expires` datetime
+,`phone` varchar(64)
+,`postal_code` varchar(16)
+,`province` varchar(128)
+,`street` varchar(255)
+,`subdistrict` varchar(128)
+,`total_calls` int(11)
+,`total_purchases` decimal(12,2)
+,`waiting_basket_start_date` datetime
+);
+
+-- --------------------------------------------------------
+
+--
 -- Stand-in structure for view `v_order_required_stock`
 -- (See below for the actual view)
 --
 CREATE TABLE `v_order_required_stock` (
-`order_id` varchar(32)
+`allocated_qty` decimal(32,0)
+,`free_qty` decimal(32,0)
+,`order_id` varchar(32)
+,`paid_qty` decimal(32,0)
 ,`product_id` int(11)
 ,`required_qty` decimal(32,0)
-,`allocated_qty` decimal(32,0)
-,`free_qty` decimal(32,0)
-,`paid_qty` decimal(32,0)
 );
 
 -- --------------------------------------------------------
@@ -14924,16 +15090,16 @@ CREATE TABLE `v_order_required_stock` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_telesale_call_overview_monthly` (
-`month_key` varchar(7)
-,`user_id` int(11)
+`connected_calls` decimal(23,0)
 ,`first_name` varchar(128)
-,`role` varchar(64)
-,`phone` varchar(64)
-,`working_days` decimal(25,1)
-,`total_minutes` decimal(35,2)
-,`connected_calls` decimal(23,0)
-,`total_calls` bigint(21)
 ,`minutes_per_workday` decimal(37,2)
+,`month_key` varchar(7)
+,`phone` varchar(64)
+,`role` varchar(64)
+,`total_calls` bigint(21)
+,`total_minutes` decimal(35,2)
+,`user_id` int(11)
+,`working_days` decimal(25,1)
 );
 
 -- --------------------------------------------------------
@@ -14943,22 +15109,22 @@ CREATE TABLE `v_telesale_call_overview_monthly` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_user_daily_attendance` (
-`id` bigint(20)
-,`user_id` int(11)
-,`username` varchar(64)
-,`full_name` varchar(257)
-,`role` varchar(64)
-,`work_date` date
+`attendance_status` enum('absent','half','full')
+,`attendance_value` decimal(3,1)
+,`computed_at` datetime
+,`effective_hours` decimal(13,2)
+,`effective_seconds` int(11)
 ,`first_login` datetime
+,`full_name` varchar(257)
+,`id` bigint(20)
 ,`last_logout` datetime
 ,`login_sessions` int(11)
-,`effective_seconds` int(11)
-,`effective_hours` decimal(13,2)
 ,`percent_of_workday` decimal(5,2)
-,`attendance_value` decimal(3,1)
-,`attendance_status` enum('absent','half','full')
-,`computed_at` datetime
+,`role` varchar(64)
 ,`updated_at` datetime
+,`user_id` int(11)
+,`username` varchar(64)
+,`work_date` date
 );
 
 -- --------------------------------------------------------
@@ -14968,15 +15134,15 @@ CREATE TABLE `v_user_daily_attendance` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_user_daily_kpis` (
-`user_id` int(11)
-,`username` varchar(64)
+`attendance_status` enum('absent','half','full')
+,`attendance_value` decimal(3,1)
+,`call_minutes` decimal(35,2)
+,`effective_seconds` int(11)
 ,`full_name` varchar(257)
 ,`role` varchar(64)
+,`user_id` int(11)
+,`username` varchar(64)
 ,`work_date` date
-,`attendance_value` decimal(3,1)
-,`attendance_status` enum('absent','half','full')
-,`effective_seconds` int(11)
-,`call_minutes` decimal(35,2)
 );
 
 -- --------------------------------------------------------
@@ -15052,7 +15218,18 @@ INSERT INTO `warehouse_stocks` (`id`, `warehouse_id`, `product_id`, `lot_number`
 (5, 2, 2, 'LOT-2024-005', 5, 30, 0, '2025-11-30', '80.00', '200.00', 'B-1-2', NULL, '2025-10-09 16:03:18'),
 (6, 3, 1, 'LOT-2024-006', 6, 60, 0, '2025-12-31', '100.00', '200.00', 'C-1-1', NULL, '2025-10-09 16:03:18'),
 (7, 4, 1, 'LOT-2024-007', 7, 40, 0, '2025-12-31', '100.00', '200.00', 'D-1-1', NULL, '2025-10-09 16:03:18'),
-(8, 1, 2, NULL, NULL, 0, 10, NULL, NULL, NULL, NULL, NULL, '2025-10-17 14:15:16');
+(8, 1, 2, NULL, NULL, 0, 15, NULL, NULL, NULL, NULL, NULL, '2025-10-17 14:15:16'),
+(9, 2, 2, NULL, NULL, 0, 10, NULL, NULL, NULL, NULL, NULL, '2025-10-21 12:08:33'),
+(10, 1, 3, NULL, NULL, 0, 4, NULL, NULL, NULL, NULL, NULL, '2025-10-21 12:08:36');
+
+-- --------------------------------------------------------
+
+--
+-- Structure for view `v_customer_buckets`
+--
+DROP TABLE IF EXISTS `v_customer_buckets`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_customer_buckets`  AS  select `c`.`id` AS `id`,`c`.`first_name` AS `first_name`,`c`.`last_name` AS `last_name`,`c`.`phone` AS `phone`,`c`.`email` AS `email`,`c`.`province` AS `province`,`c`.`company_id` AS `company_id`,`c`.`assigned_to` AS `assigned_to`,`c`.`date_assigned` AS `date_assigned`,`c`.`date_registered` AS `date_registered`,`c`.`follow_up_date` AS `follow_up_date`,`c`.`ownership_expires` AS `ownership_expires`,`c`.`lifecycle_status` AS `lifecycle_status`,`c`.`behavioral_status` AS `behavioral_status`,`c`.`grade` AS `grade`,`c`.`total_purchases` AS `total_purchases`,`c`.`total_calls` AS `total_calls`,`c`.`facebook_name` AS `facebook_name`,`c`.`line_id` AS `line_id`,`c`.`street` AS `street`,`c`.`subdistrict` AS `subdistrict`,`c`.`district` AS `district`,`c`.`postal_code` AS `postal_code`,`c`.`has_sold_before` AS `has_sold_before`,`c`.`follow_up_count` AS `follow_up_count`,`c`.`last_follow_up_date` AS `last_follow_up_date`,`c`.`last_sale_date` AS `last_sale_date`,`c`.`is_in_waiting_basket` AS `is_in_waiting_basket`,`c`.`waiting_basket_start_date` AS `waiting_basket_start_date`,`c`.`followup_bonus_remaining` AS `followup_bonus_remaining`,`c`.`is_blocked` AS `is_blocked`,(case when (coalesce(`c`.`is_blocked`,0) = 1) then 'blocked' when (coalesce(`c`.`is_in_waiting_basket`,0) = 1) then 'waiting' when (`c`.`assigned_to` is null) then 'ready' else 'assigned' end) AS `bucket` from `customers` `c` ;
 
 -- --------------------------------------------------------
 
@@ -15140,7 +15317,9 @@ ALTER TABLE `customers`
   ADD KEY `idx_customers_assigned_to` (`assigned_to`),
   ADD KEY `idx_customers_lifecycle_status` (`lifecycle_status`),
   ADD KEY `idx_customers_ownership_expires` (`ownership_expires`),
-  ADD KEY `idx_customers_date_assigned` (`date_assigned`);
+  ADD KEY `idx_customers_date_assigned` (`date_assigned`),
+  ADD KEY `idx_customers_blocked` (`is_blocked`),
+  ADD KEY `idx_customers_waiting` (`is_in_waiting_basket`);
 
 --
 -- Indexes for table `customer_assignment_history`
@@ -15149,6 +15328,12 @@ ALTER TABLE `customer_assignment_history`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_customer_user_first` (`customer_id`,`user_id`),
   ADD KEY `fk_cah_user` (`user_id`);
+
+--
+-- Indexes for table `customer_blocks`
+--
+ALTER TABLE `customer_blocks`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indexes for table `customer_tags`
@@ -15252,6 +15437,41 @@ ALTER TABLE `pages`
   ADD KEY `idx_page_id` (`page_id`);
 
 --
+-- Indexes for table `page_engagement_batch`
+--
+ALTER TABLE `page_engagement_batch`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `idx_status` (`status`);
+
+--
+-- Indexes for table `page_engagement_log`
+--
+ALTER TABLE `page_engagement_log`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_batch_id` (`batch_id`),
+  ADD KEY `idx_page_id` (`page_id`),
+  ADD KEY `idx_date` (`date`);
+
+--
+-- Indexes for table `page_stats_batch`
+--
+ALTER TABLE `page_stats_batch`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_date_range` (`date_range`),
+  ADD KEY `idx_created_at` (`created_at`);
+
+--
+-- Indexes for table `page_stats_log`
+--
+ALTER TABLE `page_stats_log`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_batch_page_time` (`batch_id`,`page_id`,`time_column`),
+  ADD KEY `idx_batch_id` (`batch_id`),
+  ADD KEY `idx_page_id` (`page_id`),
+  ADD KEY `idx_time_column` (`time_column`);
+
+--
 -- Indexes for table `products`
 --
 ALTER TABLE `products`
@@ -15348,6 +15568,16 @@ ALTER TABLE `user_login_history`
   ADD KEY `idx_login_time` (`login_time`);
 
 --
+-- Indexes for table `user_pancake_mapping`
+--
+ALTER TABLE `user_pancake_mapping`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_user` (`id_user`),
+  ADD UNIQUE KEY `uniq_panake` (`id_panake`),
+  ADD KEY `idx_user` (`id_user`),
+  ADD KEY `idx_panake` (`id_panake`);
+
+--
 -- Indexes for table `user_tags`
 --
 ALTER TABLE `user_tags`
@@ -15382,7 +15612,7 @@ ALTER TABLE `warehouse_stocks`
 -- AUTO_INCREMENT for table `activities`
 --
 ALTER TABLE `activities`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=90;
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=93;
 
 --
 -- AUTO_INCREMENT for table `ad_spend`
@@ -15415,10 +15645,16 @@ ALTER TABLE `customer_assignment_history`
   MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `customer_blocks`
+--
+ALTER TABLE `customer_blocks`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
 -- AUTO_INCREMENT for table `env`
 --
 ALTER TABLE `env`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `exports`
@@ -15448,31 +15684,55 @@ ALTER TABLE `order_boxes`
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=63;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=67;
 
 --
 -- AUTO_INCREMENT for table `order_item_allocations`
 --
 ALTER TABLE `order_item_allocations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `order_slips`
 --
 ALTER TABLE `order_slips`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `order_tracking_numbers`
 --
 ALTER TABLE `order_tracking_numbers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `pages`
 --
 ALTER TABLE `pages`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
+
+--
+-- AUTO_INCREMENT for table `page_engagement_batch`
+--
+ALTER TABLE `page_engagement_batch`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `page_engagement_log`
+--
+ALTER TABLE `page_engagement_log`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `page_stats_batch`
+--
+ALTER TABLE `page_stats_batch`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `page_stats_log`
+--
+ALTER TABLE `page_stats_log`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `products`
@@ -15514,7 +15774,7 @@ ALTER TABLE `stock_reservations`
 -- AUTO_INCREMENT for table `tags`
 --
 ALTER TABLE `tags`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -15535,6 +15795,12 @@ ALTER TABLE `user_login_history`
   MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
 
 --
+-- AUTO_INCREMENT for table `user_pancake_mapping`
+--
+ALTER TABLE `user_pancake_mapping`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `warehouses`
 --
 ALTER TABLE `warehouses`
@@ -15544,7 +15810,7 @@ ALTER TABLE `warehouses`
 -- AUTO_INCREMENT for table `warehouse_stocks`
 --
 ALTER TABLE `warehouse_stocks`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- Constraints for dumped tables
@@ -15655,6 +15921,18 @@ ALTER TABLE `pages`
   ADD CONSTRAINT `fk_pages_company` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`);
 
 --
+-- Constraints for table `page_engagement_log`
+--
+ALTER TABLE `page_engagement_log`
+  ADD CONSTRAINT `fk_page_engagement_log_batch` FOREIGN KEY (`batch_id`) REFERENCES `page_engagement_batch` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `page_stats_log`
+--
+ALTER TABLE `page_stats_log`
+  ADD CONSTRAINT `page_stats_log_ibfk_1` FOREIGN KEY (`batch_id`) REFERENCES `page_stats_batch` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints for table `products`
 --
 ALTER TABLE `products`
@@ -15714,6 +15992,12 @@ ALTER TABLE `user_daily_attendance`
 --
 ALTER TABLE `user_login_history`
   ADD CONSTRAINT `user_login_history_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `user_pancake_mapping`
+--
+ALTER TABLE `user_pancake_mapping`
+  ADD CONSTRAINT `fk_upm_user` FOREIGN KEY (`id_user`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `user_tags`
