@@ -89,7 +89,7 @@ export async function listCustomers(params?: {
   companyId?: number;
   bucket?: string;
   userId?: number;
-  source?: 'new_sale' | 'waiting_return' | 'stock';
+  source?: "new_sale" | "waiting_return" | "stock";
   freshDays?: number; // only for source=new_sale
 }) {
   const qs = new URLSearchParams();
@@ -104,7 +104,7 @@ export async function listCustomers(params?: {
 }
 
 export async function listCustomersBySource(
-  source: 'new_sale' | 'waiting_return' | 'stock',
+  source: "new_sale" | "waiting_return" | "stock",
   opts?: { q?: string; companyId?: number; freshDays?: number },
 ) {
   return listCustomers({
@@ -139,7 +139,9 @@ export async function listAdminPageUsers(): Promise<AdminPageUser[]> {
   const qs = new URLSearchParams({ status: "active" });
   const users = await apiFetch(`users?${qs}`);
   return (Array.isArray(users) ? users : []).filter(
-    (u: any) => String(u.role) === "Admin Page" && String(u.status || "active") === "active",
+    (u: any) =>
+      String(u.role) === "Admin Page" &&
+      String(u.status || "active") === "active",
   );
 }
 
@@ -394,7 +396,11 @@ export async function createActivity(payload: any) {
 }
 
 // Customer blocks
-export async function createCustomerBlock(payload: { customerId: string; reason: string; blockedBy: number }) {
+export async function createCustomerBlock(payload: {
+  customerId: string;
+  reason: string;
+  blockedBy: number;
+}) {
   return apiFetch("customer_blocks", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -734,7 +740,7 @@ export async function deleteUserPancakeMapping(id: number): Promise<void> {
 // Customer Order Tracking Functions
 export async function updateCustomerOrderTracking(
   customerId: string,
-  orderDate: string
+  orderDate: string,
 ): Promise<{
   success: boolean;
   customer_id?: string;
@@ -766,4 +772,75 @@ export async function updateAllCustomersOrderTracking(): Promise<{
       action: "update_all",
     }),
   });
+}
+
+// Page User Management APIs
+export interface PageUser {
+  id: number;
+  user_id: number | null;
+  page_user_id: string;
+  page_user_name: string;
+  page_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageWithUsers {
+  page_id: string;
+  page_name: string;
+  platform: string;
+  active: boolean;
+  url: string | null;
+  users: Array<{
+    page_user_id: string;
+    page_user_name: string;
+    internal_user_id: number | null;
+    is_connected: boolean;
+    status: string;
+  }>;
+}
+
+export async function getPageUsers(): Promise<PageUser[]> {
+  const response = await fetch("api/get_page_users.php");
+  if (!response.ok) {
+    throw new Error("Failed to fetch page users");
+  }
+  const users = await response.json();
+  return Array.isArray(users) ? users : [];
+}
+
+export async function getPagesWithUsers(
+  companyId: number,
+): Promise<PageWithUsers[]> {
+  const response = await fetch("api/get_pages_with_users.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ companyId }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch pages with users");
+  }
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updatePageUserConnection(
+  pageUserId: number,
+  internalUserId: number | null,
+): Promise<{ ok: boolean; message?: string }> {
+  const response = await fetch("api/update_page_user_connection.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pageUserId,
+      internalUserId,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to update page user connection");
+  }
+
+  return await response.json();
 }
