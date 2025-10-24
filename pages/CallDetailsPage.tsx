@@ -239,6 +239,7 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
 
       {/* Onecall Login Sidebar Component */}
       <OnecallLoginSidebar
+        currentUser={currentUser}
         onLogin={(username, password) => {
           console.log("Onecall login successful in CallDetailsPage:", {
             username: username,

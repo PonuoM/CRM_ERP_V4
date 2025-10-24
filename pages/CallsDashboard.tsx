@@ -1043,7 +1043,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       )}
 
       {/* Onecall Login Sidebar Component */}
-      <OnecallLoginSidebar onLogin={handleOnecallLogin} />
+      <OnecallLoginSidebar currentUser={user} onLogin={handleOnecallLogin} />
 
       <div className="p-6">
         {/* Filters (layout only) */}

@@ -1,9 +1,32 @@
 import React, { useState } from "react";
 import { Settings, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
+// User role enum
+enum UserRole {
+  SuperAdmin = "Super Admin",
+  AdminControl = "AdminControl",
+  Admin = "Admin",
+  User = "User",
+}
+
+interface User {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  company_id: number;
+  team_id: number | null;
+  supervisor_id: number | null;
+  status: string;
+}
+
 interface OnecallLoginSidebarProps {
   onLogin?: (username: string, password: string) => void;
   className?: string;
+  currentUser?: User | null;
 }
 
 interface AuthResponse {
@@ -18,6 +41,7 @@ interface AuthResponse {
 const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   onLogin,
   className = "",
+  currentUser,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [username, setUsername] = useState("");
@@ -26,6 +50,106 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   const [authResponse, setAuthResponse] = useState<AuthResponse | null>(null);
   const [showResponse, setShowResponse] = useState(false);
   const [showDetailedResponse, setShowDetailedResponse] = useState(false);
+
+  // Function to check if user has permission to access Onecall settings
+  const hasPermission = (): boolean => {
+    if (!currentUser) return false;
+    return (
+      currentUser.role === UserRole.SuperAdmin ||
+      currentUser.role === UserRole.AdminControl
+    );
+  };
+
+  // Function to get company ID from currentUser or localStorage
+  const getCompanyId = (): number => {
+    try {
+      // First try to get from currentUser prop
+      if (currentUser && currentUser.company_id) {
+        return currentUser.company_id;
+      }
+
+      // Fallback to localStorage
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (sessionUser) {
+        const user = JSON.parse(sessionUser);
+        return user.company_id || 1; // Default to 1 if no company_id
+      }
+      return 1; // Default fallback
+    } catch (error) {
+      console.error("Error getting company ID:", error);
+      return 1; // Default fallback
+    }
+  };
+
+  // Function to save credentials to database
+  const saveCredentialsToDatabase = async (
+    username: string,
+    password: string,
+  ): Promise<boolean> => {
+    try {
+      const companyId = getCompanyId();
+      const usernameKey = `ONECALL_USERNAME_${companyId}`;
+      const passwordKey = `ONECALL_PASSWORD_${companyId}`;
+
+      console.log("Saving credentials to database:", {
+        companyId,
+        usernameKey,
+        passwordKey: passwordKey.replace("PASSWORD", "PASSWORD"), // Log password key without revealing it's a password
+        username: username,
+      });
+
+      // Save username
+      const usernameResponse = await fetch("/api/insert_env.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: usernameKey,
+          value: username,
+        }),
+      });
+
+      if (!usernameResponse.ok) {
+        const errorData = await usernameResponse.json();
+        throw new Error(
+          `Failed to save username: ${errorData.error || "Unknown error"}`,
+        );
+      }
+
+      // Save password
+      const passwordResponse = await fetch("/api/insert_env.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: passwordKey,
+          value: password,
+        }),
+      });
+
+      if (!passwordResponse.ok) {
+        const errorData = await passwordResponse.json();
+        throw new Error(
+          `Failed to save password: ${errorData.error || "Unknown error"}`,
+        );
+      }
+
+      const usernameResult = await usernameResponse.json();
+      const passwordResult = await passwordResponse.json();
+
+      console.log("Credentials saved successfully:", {
+        username: usernameResult,
+        password: passwordResult,
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error saving credentials to database:", error);
+      return false;
+    }
+  };
 
   // JavaScript version of authenticateOneCall function
   const authenticateOneCall = async (
@@ -140,13 +264,44 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       setAuthResponse(result);
       setShowResponse(true);
 
-      // If login is successful and onLogin callback is provided
-      if (result.success && onLogin) {
-        onLogin(username, password);
-      }
-
-      // Auto close sidebar after successful login
+      // If login is successful, save credentials to database
       if (result.success) {
+        console.log("Login successful, saving credentials to database...");
+
+        // Save credentials to database
+        const saveSuccess = await saveCredentialsToDatabase(username, password);
+
+        if (saveSuccess) {
+          console.log("Credentials saved to database successfully");
+          // Update response to show database save success
+          setAuthResponse((prev) => ({
+            ...prev!,
+            data: {
+              ...prev!.data,
+              database_saved: true,
+              message: "Login successful and credentials saved to database",
+            },
+          }));
+        } else {
+          console.error("Failed to save credentials to database");
+          // Update response to show database save failure
+          setAuthResponse((prev) => ({
+            ...prev!,
+            data: {
+              ...prev!.data,
+              database_saved: false,
+              message:
+                "Login successful but failed to save credentials to database",
+            },
+          }));
+        }
+
+        // If onLogin callback is provided
+        if (onLogin) {
+          onLogin(username, password);
+        }
+
+        // Auto close sidebar after successful login
         setTimeout(() => {
           setSidebarOpen(false);
           // Clear form
@@ -154,7 +309,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
           setPassword("");
           setShowResponse(false);
           setShowDetailedResponse(false);
-        }, 2000);
+        }, 3000); // Extended time to show database save status
       }
     } catch (error) {
       const errorResponse: AuthResponse = {
@@ -175,6 +330,11 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       return String(obj);
     }
   };
+
+  // Don't render if user doesn't have permission
+  if (!hasPermission()) {
+    return null;
+  }
 
   return (
     <>
@@ -318,6 +478,20 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
                             </span>
                             <span className="ml-1 text-green-600 text-xs break-all">
                               {authResponse.token.substring(0, 20)}...
+                            </span>
+                          </div>
+                        )}
+                        {authResponse.data?.database_saved !== undefined && (
+                          <div className="col-span-2">
+                            <span className="font-medium text-gray-600">
+                              Database:
+                            </span>
+                            <span
+                              className={`ml-1 text-xs ${authResponse.data.database_saved ? "text-green-600" : "text-orange-600"}`}
+                            >
+                              {authResponse.data.database_saved
+                                ? "✓ Saved"
+                                : "⚠ Failed"}
                             </span>
                           </div>
                         )}
