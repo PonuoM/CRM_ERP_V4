@@ -1315,73 +1315,99 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Quick Date Range Buttons */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            <button
-              onClick={() => {
-                const now = new Date();
-                const dayOfWeek = now.getDay();
-                const startOfWeek = new Date(now);
-                startOfWeek.setDate(now.getDate() - dayOfWeek);
-                const endOfWeek = new Date(startOfWeek);
-                endOfWeek.setDate(startOfWeek.getDate() + 6);
-                setStartDate(startOfWeek.toISOString().slice(0, 10));
-                setEndDate(endOfWeek.toISOString().slice(0, 10));
-              }}
-              className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
-            >
-              อาทิตย์นี้
-            </button>
-            <button
-              onClick={() => {
-                const now = new Date();
-                const startOfMonth = new Date(
-                  now.getFullYear(),
-                  now.getMonth(),
-                  1,
-                );
-                const endOfMonth = new Date(
-                  now.getFullYear(),
-                  now.getMonth() + 1,
-                  0,
-                );
-                setStartDate(startOfMonth.toISOString().slice(0, 10));
-                setEndDate(endOfMonth.toISOString().slice(0, 10));
-              }}
-              className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
-            >
-              เดือนนี้
-            </button>
-          </div>
-
-          {/* Date Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className={labelClass}>วันที่เริ่มต้น</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>วันที่สิ้นสุด</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={() => loadDashboardData()}
-                disabled={dashboardLoading}
-                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
-              </button>
+          {/* Combined Date Filter Input */}
+          <div className="mb-4">
+            <label className={labelClass}>เลือกช่วงวันที่</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <div className="flex rounded-md overflow-hidden border border-gray-300">
+                  <input
+                    type="date"
+                    className="flex-1 px-3 py-2 border-0 focus:ring-2 focus:ring-blue-500"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    placeholder="วันที่เริ่มต้น"
+                  />
+                  <span className="px-3 py-2 bg-gray-50 border-l border-gray-300 text-gray-500">
+                    ถึง
+                  </span>
+                  <input
+                    type="date"
+                    className="flex-1 px-3 py-2 border-0 focus:ring-2 focus:ring-blue-500"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    placeholder="วันที่สิ้นสุด"
+                  />
+                  <button
+                    onClick={() => loadDashboardData()}
+                    disabled={dashboardLoading}
+                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed min-w-[100px]"
+                  >
+                    {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
+                  </button>
+                </div>
+                <div className="flex gap-1 mt-2">
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const dayOfWeek = now.getDay();
+                      const startOfWeek = new Date(now);
+                      startOfWeek.setDate(now.getDate() - dayOfWeek);
+                      const endOfWeek = new Date(startOfWeek);
+                      endOfWeek.setDate(startOfWeek.getDate() + 6);
+                      setStartDate(startOfWeek.toISOString().slice(0, 10));
+                      setEndDate(endOfWeek.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  >
+                    อาทิตย์นี้
+                  </button>
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const startOfMonth = new Date(
+                        now.getFullYear(),
+                        now.getMonth(),
+                        1,
+                      );
+                      const endOfMonth = new Date(
+                        now.getFullYear(),
+                        now.getMonth() + 1,
+                        0,
+                      );
+                      setStartDate(startOfMonth.toISOString().slice(0, 10));
+                      setEndDate(endOfMonth.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  >
+                    เดือนนี้
+                  </button>
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const last7Days = new Date(now);
+                      last7Days.setDate(now.getDate() - 6);
+                      setStartDate(last7Days.toISOString().slice(0, 10));
+                      setEndDate(now.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  >
+                    7 วันล่าสุด
+                  </button>
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const last30Days = new Date(now);
+                      last30Days.setDate(now.getDate() - 29);
+                      setStartDate(last30Days.toISOString().slice(0, 10));
+                      setEndDate(now.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  >
+                    30 วันล่าสุด
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
