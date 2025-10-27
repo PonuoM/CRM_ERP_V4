@@ -50,12 +50,18 @@ const hasAdminAccess = (user: User) => {
 
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<
-    "ads" | "userManagement" | "adsInput"
+    "ads" | "userManagement" | "adsInput" | "dashboard"
   >("ads");
   const [pages, setPages] = useState<Page[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // States for dashboard
+  const [dashboardData, setDashboardData] = useState<any[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
@@ -668,6 +674,48 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Connect page user to internal user
 
+  // Function to load dashboard data
+  const loadDashboardData = async () => {
+    setDashboardLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set("date_from", startDate);
+      if (endDate) params.set("date_to", endDate);
+
+      const res = await fetch(
+        `api/Marketing_DB/dashboard_data.php${params.toString() ? `?${params}` : ""}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        setDashboardData(data.data);
+      } else {
+        setDashboardData([]);
+        console.error("Failed to load dashboard data:", data.error);
+      }
+    } catch (e) {
+      console.error("Failed to load dashboard data:", e);
+      setDashboardData([]);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  // Set default dates to include test data
+  useEffect(() => {
+    setStartDate("2025-01-01");
+    setEndDate("2025-01-31");
+  }, []);
+
+  // Load dashboard data when tab changes to dashboard
+  useEffect(() => {
+    if (activeTab === "dashboard" && startDate && endDate) {
+      loadDashboardData();
+    }
+  }, [activeTab, startDate, endDate]);
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -680,6 +728,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       {hasAdminAccess(currentUser) && (
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "dashboard"
+                  ? "border-emerald-500 text-emerald-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              แดชบอร์ด
+            </button>
             <button
               onClick={() => setActiveTab("ads")}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -1217,6 +1275,100 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             )}
           </section>
         </>
+      )}
+
+      {/* Dashboard Tab */}
+      {hasAdminAccess(currentUser) && activeTab === "dashboard" && (
+        <section className="bg-white rounded-lg shadow p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">
+              แดชบอร์ดข้อมูล Ads
+            </h3>
+          </div>
+
+          {/* Date Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className={labelClass}>วันที่เริ่มต้น</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>วันที่สิ้นสุด</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => loadDashboardData()}
+                disabled={dashboardLoading}
+                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
+              </button>
+            </div>
+          </div>
+
+          {/* Dashboard Table */}
+          {dashboardLoading ? (
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left">วันที่</th>
+                    <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">ผู้ใช้</th>
+                    <th className="px-3 py-2 text-left">ค่า Ads</th>
+                    <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                    <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                    <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardData.length > 0 ? (
+                    dashboardData.map((row, index) => (
+                      <tr key={index} className="border-b hover:bg-gray-50">
+                        <td className="px-3 py-2">{row.log_date}</td>
+                        <td className="px-3 py-2">{row.page_name}</td>
+                        <td className="px-3 py-2">
+                          {row.first_name} {row.last_name}
+                        </td>
+                        <td className="px-3 py-2">
+                          ฿{Number(row.ads_cost || 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2">{row.impressions || 0}</td>
+                        <td className="px-3 py-2">{row.reach || 0}</td>
+                        <td className="px-3 py-2">{row.clicks || 0}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="text-center py-8 text-gray-500"
+                      >
+                        ไม่มีข้อมูลในช่วงวันที่ที่เลือก
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Add User Modal */}
