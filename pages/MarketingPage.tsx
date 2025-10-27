@@ -703,10 +703,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   };
 
-  // Set default dates to include test data
+  // Set default dates to current week
   useEffect(() => {
-    setStartDate("2025-01-01");
-    setEndDate("2025-01-31");
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - dayOfWeek);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+    setStartDate(startOfWeek.toISOString().slice(0, 10));
+    setEndDate(endOfWeek.toISOString().slice(0, 10));
   }, []);
 
   // Load dashboard data when tab changes to dashboard
@@ -1281,9 +1289,69 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       {hasAdminAccess(currentUser) && activeTab === "dashboard" && (
         <section className="bg-white rounded-lg shadow p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">
-              แดชบอร์ดข้อมูล Ads
-            </h3>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">
+                แดชบอร์ดข้อมูล Ads
+              </h3>
+              {startDate && endDate && (
+                <p className="text-sm text-gray-600 mt-1">
+                  แสดงข้อมูล:{" "}
+                  {new Date(startDate + "T00:00:00").toLocaleDateString(
+                    "th-TH",
+                    {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    },
+                  )}{" "}
+                  -{" "}
+                  {new Date(endDate + "T00:00:00").toLocaleDateString("th-TH", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Date Range Buttons */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const startOfWeek = new Date(now);
+                startOfWeek.setDate(now.getDate() - dayOfWeek);
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                setStartDate(startOfWeek.toISOString().slice(0, 10));
+                setEndDate(endOfWeek.toISOString().slice(0, 10));
+              }}
+              className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
+            >
+              อาทิตย์นี้
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const startOfMonth = new Date(
+                  now.getFullYear(),
+                  now.getMonth(),
+                  1,
+                );
+                const endOfMonth = new Date(
+                  now.getFullYear(),
+                  now.getMonth() + 1,
+                  0,
+                );
+                setStartDate(startOfMonth.toISOString().slice(0, 10));
+                setEndDate(endOfMonth.toISOString().slice(0, 10));
+              }}
+              className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
+            >
+              เดือนนี้
+            </button>
           </div>
 
           {/* Date Filters */}
