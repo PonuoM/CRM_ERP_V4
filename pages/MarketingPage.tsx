@@ -10,6 +10,9 @@ import {
   listUsers,
   updateUser,
 } from "@/services/api";
+import MarketingDatePicker, {
+  DateRange,
+} from "@/components/Dashboard/MarketingDatePicker";
 
 // Function to fetch active pages where still_in_list = 1
 async function listActivePages(companyId?: number) {
@@ -60,8 +63,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // States for dashboard
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [dateRange, setDateRange] = useState<DateRange>({
+    start: "",
+    end: "",
+  });
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
@@ -679,8 +684,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     setDashboardLoading(true);
     try {
       const params = new URLSearchParams();
-      if (startDate) params.set("date_from", startDate);
-      if (endDate) params.set("date_to", endDate);
+      if (dateRange.start) params.set("date_from", dateRange.start);
+      if (dateRange.end) params.set("date_to", dateRange.end);
 
       const res = await fetch(
         `api/Marketing_DB/dashboard_data.php${params.toString() ? `?${params}` : ""}`,
@@ -713,16 +718,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
 
-    setStartDate(startOfWeek.toISOString().slice(0, 10));
-    setEndDate(endOfWeek.toISOString().slice(0, 10));
+    setDateRange({
+      start: startOfWeek.toISOString().slice(0, 10),
+      end: endOfWeek.toISOString().slice(0, 10),
+    });
   }, []);
 
   // Load dashboard data when tab changes to dashboard
   useEffect(() => {
-    if (activeTab === "dashboard" && startDate && endDate) {
+    if (activeTab === "dashboard" && dateRange.start && dateRange.end) {
       loadDashboardData();
     }
-  }, [activeTab, startDate, endDate]);
+  }, [activeTab, dateRange]);
 
   return (
     <div className="p-6 space-y-6">
@@ -1293,122 +1300,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <h3 className="text-lg font-semibold text-gray-800">
                 แดชบอร์ดข้อมูล Ads
               </h3>
-              {startDate && endDate && (
-                <p className="text-sm text-gray-600 mt-1">
-                  แสดงข้อมูล:{" "}
-                  {new Date(startDate + "T00:00:00").toLocaleDateString(
-                    "th-TH",
-                    {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    },
-                  )}{" "}
-                  -{" "}
-                  {new Date(endDate + "T00:00:00").toLocaleDateString("th-TH", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </p>
-              )}
             </div>
           </div>
 
-          {/* Combined Date Filter Input */}
+          {/* Marketing Date Range Picker */}
           <div className="mb-4">
             <label className={labelClass}>เลือกช่วงวันที่</label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <div className="flex rounded-md overflow-hidden border border-gray-300">
-                  <input
-                    type="date"
-                    className="flex-1 px-3 py-2 border-0 focus:ring-2 focus:ring-blue-500"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    placeholder="วันที่เริ่มต้น"
-                  />
-                  <span className="px-3 py-2 bg-gray-50 border-l border-gray-300 text-gray-500">
-                    ถึง
-                  </span>
-                  <input
-                    type="date"
-                    className="flex-1 px-3 py-2 border-0 focus:ring-2 focus:ring-blue-500"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    placeholder="วันที่สิ้นสุด"
-                  />
-                  <button
-                    onClick={() => loadDashboardData()}
-                    disabled={dashboardLoading}
-                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed min-w-[100px]"
-                  >
-                    {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
-                  </button>
-                </div>
-                <div className="flex gap-1 mt-2">
-                  <button
-                    onClick={() => {
-                      const now = new Date();
-                      const dayOfWeek = now.getDay();
-                      const startOfWeek = new Date(now);
-                      startOfWeek.setDate(now.getDate() - dayOfWeek);
-                      const endOfWeek = new Date(startOfWeek);
-                      endOfWeek.setDate(startOfWeek.getDate() + 6);
-                      setStartDate(startOfWeek.toISOString().slice(0, 10));
-                      setEndDate(endOfWeek.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  >
-                    อาทิตย์นี้
-                  </button>
-                  <button
-                    onClick={() => {
-                      const now = new Date();
-                      const startOfMonth = new Date(
-                        now.getFullYear(),
-                        now.getMonth(),
-                        1,
-                      );
-                      const endOfMonth = new Date(
-                        now.getFullYear(),
-                        now.getMonth() + 1,
-                        0,
-                      );
-                      setStartDate(startOfMonth.toISOString().slice(0, 10));
-                      setEndDate(endOfMonth.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  >
-                    เดือนนี้
-                  </button>
-                  <button
-                    onClick={() => {
-                      const now = new Date();
-                      const last7Days = new Date(now);
-                      last7Days.setDate(now.getDate() - 6);
-                      setStartDate(last7Days.toISOString().slice(0, 10));
-                      setEndDate(now.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  >
-                    7 วันล่าสุด
-                  </button>
-                  <button
-                    onClick={() => {
-                      const now = new Date();
-                      const last30Days = new Date(now);
-                      last30Days.setDate(now.getDate() - 29);
-                      setStartDate(last30Days.toISOString().slice(0, 10));
-                      setEndDate(now.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  >
-                    30 วันล่าสุด
-                  </button>
-                </div>
-              </div>
-            </div>
+            <MarketingDatePicker
+              value={dateRange}
+              onChange={(range) => setDateRange(range)}
+              onSearch={() => loadDashboardData()}
+              loading={dashboardLoading}
+            />
           </div>
 
           {/* Dashboard Table */}
