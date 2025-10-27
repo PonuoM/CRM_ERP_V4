@@ -58,15 +58,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [pages, setPages] = useState<Page[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
-  const [pageUsers, setPageUsers] = useState<PageUser[]>([]);
-  const [pagesWithUsers, setPagesWithUsers] = useState<PageWithUsers[]>([]);
-  const [marketingUsers, setMarketingUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userManagementLoading, setUserManagementLoading] = useState(false);
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
   const [marketingPageUsers, setMarketingPageUsers] = useState<any[]>([]);
+  const [marketingUsersList, setMarketingUsersList] = useState<any[]>([]);
   const [selectedPageForUser, setSelectedPageForUser] = useState<number | null>(
     null,
   );
@@ -236,46 +233,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   };
 
-  // Load page users and marketing users for admin access
-  const loadUserManagementData = async () => {
-    if (!hasAdminAccess(currentUser)) return;
-
-    setUserManagementLoading(true);
-    try {
-      // Load page users
-      const users = await getPageUsers();
-      setPageUsers(users);
-
-      // Load pages with users
-      const data = await getPagesWithUsers(currentUser.companyId);
-      setPagesWithUsers(data);
-
-      // Load marketing users
-      const allUsers = await listUsers();
-      const marketingRoleUsers = Array.isArray(allUsers)
-        ? allUsers.filter(
-            (u: any) =>
-              u.role === UserRole.Marketing &&
-              u.companyId === currentUser.companyId,
-          )
-        : [];
-      setMarketingUsers(marketingRoleUsers);
-    } catch (e) {
-      console.error("Failed to load user management data:", e);
-    } finally {
-      setUserManagementLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (hasAdminAccess(currentUser)) {
-      loadUserManagementData();
-    }
-  }, [currentUser.companyId]);
-
-  // Load marketing page users
+  // Load marketing page users and marketing users list
   useEffect(() => {
     loadMarketingPageUsers();
+    loadMarketingUsers();
   }, []);
 
   // Toggle page expand/collapse
@@ -301,6 +262,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       }
     } catch (e) {
       console.error("Failed to load marketing page users:", e);
+    }
+  };
+
+  // Load all marketing users for selection in modal
+  const loadMarketingUsers = async () => {
+    try {
+      const allUsers = await listUsers();
+      const marketingRoleUsers = Array.isArray(allUsers)
+        ? allUsers.filter(
+            (u: any) =>
+              u.role === "Marketing" &&
+              (u.company_id === currentUser.companyId ||
+                u.companyId === currentUser.companyId),
+          )
+        : [];
+      setMarketingUsersList(marketingRoleUsers);
+    } catch (e) {
+      console.error("Failed to load marketing users:", e);
     }
   };
 
@@ -366,7 +345,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   ) => {
     try {
       await updatePageUserConnection(pageUserId, internalUserId);
-      await loadUserManagementData();
       alert("เชื่อมต่อผู้ใช้สำเร็จ");
     } catch (e: any) {
       console.error("Failed to connect user:", e);
@@ -378,7 +356,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const handleDisconnectUser = async (pageUserId: number) => {
     try {
       await updatePageUserConnection(pageUserId, null);
-      await loadUserManagementData();
       alert("ยกเลิกการเชื่อมต่อผู้ใช้สำเร็จ");
     } catch (e: any) {
       console.error("Failed to disconnect user:", e);
@@ -795,7 +772,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {marketingUsers.map((user) => (
+              {marketingUsersList.map((user) => (
                 <div
                   key={user.id}
                   className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
@@ -812,7 +789,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   </button>
                 </div>
               ))}
-              {marketingUsers.length === 0 && (
+              {marketingUsersList.length === 0 && (
                 <div className="text-gray-500">ไม่มีผู้ใช้ Marketing</div>
               )}
             </div>
