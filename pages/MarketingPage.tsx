@@ -49,7 +49,9 @@ const hasAdminAccess = (user: User) => {
 };
 
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<"ads" | "userManagement">("ads");
+  const [activeTab, setActiveTab] = useState<
+    "ads" | "userManagement" | "adsInput"
+  >("ads");
   const [pages, setPages] = useState<Page[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
@@ -62,6 +64,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [selectedPageForUser, setSelectedPageForUser] = useState<number | null>(
     null,
   );
+
+  // States for ads input
+  const [userPages, setUserPages] = useState<any[]>([]);
+  const [adsInputData, setAdsInputData] = useState<any[]>([]);
 
   // New page form
   const [newPage, setNewPage] = useState<{
@@ -234,6 +240,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     loadMarketingUsers();
   }, []);
 
+  // Load user pages from marketing_user_page table
+  useEffect(() => {
+    loadUserPages();
+  }, [currentUser.id]);
+
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
     setExpandedPages((prev) => {
@@ -333,6 +344,90 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   };
 
+  // Load user pages from marketing_user_page table
+  const loadUserPages = async () => {
+    try {
+      const res = await fetch("api/Marketing_DB/get_user_pages.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUserPages(data.data);
+      }
+    } catch (e) {
+      console.error("Failed to load user pages:", e);
+    }
+  };
+
+  // Handle ads input change
+  const handleAdsInputChange = (
+    index: number,
+    field: string,
+    value: string,
+  ) => {
+    const newData = [...adsInputData];
+    if (!newData[index]) {
+      newData[index] = {};
+    }
+    newData[index][field] = value;
+    setAdsInputData(newData);
+  };
+
+  // Handle save all ads data
+  const handleSaveAllAdsData = async () => {
+    if (adsInputData.length === 0) {
+      alert("ไม่มีข้อมูลที่ต้องการบันทึก");
+      return;
+    }
+
+    try {
+      const res = await fetch("api/Marketing_DB/save_ads_data.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: adsInputData,
+          userId: currentUser.id,
+        }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert("บันทึกข้อมูลสำเร็จ");
+        setAdsInputData([]);
+      } else {
+        alert("บันทึกข้อมูลไม่สำเร็จ: " + result.error);
+      }
+    } catch (e) {
+      console.error("Failed to save ads data:", e);
+      alert("บันทึกข้อมูลไม่สำเร็จ");
+    }
+  };
+
+  // Handle ads input change for user pages
+  const handleUserPageInputChange = (
+    pageId: number,
+    field: string,
+    value: string,
+  ) => {
+    const newData = [...adsInputData];
+    const existingIndex = newData.findIndex((row) => row.pageId === pageId);
+
+    if (existingIndex >= 0) {
+      newData[existingIndex] = { ...newData[existingIndex], [field]: value };
+    } else {
+      newData.push({ pageId: pageId.toString(), [field]: value });
+    }
+
+    setAdsInputData(newData);
+  };
+
+  // Get input value for specific page and field
+  const getInputValue = (pageId: number, field: string) => {
+    const row = adsInputData.find((r) => r.pageId === pageId.toString());
+    return row ? row[field] : "";
+  };
+
   // Connect page user to internal user
 
   return (
@@ -366,6 +461,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               }`}
             >
               จัดการผู้ใช้การตลาด-เพจ
+            </button>
+            <button
+              onClick={() => setActiveTab("adsInput")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "adsInput"
+                  ? "border-emerald-500 text-emerald-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              กรอกค่า Ads
             </button>
           </nav>
         </div>
@@ -735,6 +840,122 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 </table>
               </div>
             )}
+          </section>
+        </>
+      )}
+
+      {/* Ads Input Tab */}
+      {hasAdminAccess(currentUser) && activeTab === "adsInput" && (
+        <>
+          <section className="bg-white rounded-lg shadow p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">
+                กรอกค่า Ads
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                    <th className="px-3 py-2 text-left">ค่า Ads</th>
+                    <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                    <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                    <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Display all user pages by default */}
+                  {userPages.length > 0 &&
+                    adsInputData.length === 0 &&
+                    userPages.map((page, index) => (
+                      <tr key={page.id} className="border-b">
+                        <td className="px-3 py-2 font-medium">{page.name}</td>
+                        <td className="px-3 py-2">{page.platform}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="0.00"
+                            value={getInputValue(page.id, "adsCost")}
+                            onChange={(e) =>
+                              handleUserPageInputChange(
+                                page.id,
+                                "adsCost",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="0"
+                            value={getInputValue(page.id, "impressions")}
+                            onChange={(e) =>
+                              handleUserPageInputChange(
+                                page.id,
+                                "impressions",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="0"
+                            value={getInputValue(page.id, "reach")}
+                            onChange={(e) =>
+                              handleUserPageInputChange(
+                                page.id,
+                                "reach",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="0"
+                            value={getInputValue(page.id, "clicks")}
+                            onChange={(e) =>
+                              handleUserPageInputChange(
+                                page.id,
+                                "clicks",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  {userPages.length === 0 && adsInputData.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="text-center py-8 text-gray-500"
+                      >
+                        ไม่มีเพจที่คุณมีสิทธิ์จัดการ
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleSaveAllAdsData}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  บันทึกข้อมูลทั้งหมด
+                </button>
+              </div>
+            </div>
           </section>
         </>
       )}
