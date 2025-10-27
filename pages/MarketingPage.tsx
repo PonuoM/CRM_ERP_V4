@@ -9,11 +9,6 @@ import {
   createAdSpend,
   listUsers,
   updateUser,
-  getPageUsers,
-  getPagesWithUsers,
-  updatePageUserConnection,
-  PageUser,
-  PageWithUsers,
 } from "@/services/api";
 
 // Function to fetch active pages where still_in_list = 1
@@ -339,31 +334,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   };
 
   // Connect page user to internal user
-  const handleConnectUser = async (
-    pageUserId: number,
-    internalUserId: number,
-  ) => {
-    try {
-      await updatePageUserConnection(pageUserId, internalUserId);
-      alert("เชื่อมต่อผู้ใช้สำเร็จ");
-    } catch (e: any) {
-      console.error("Failed to connect user:", e);
-      alert("เชื่อมต่อผู้ใช้ไม่สำเร็จ: " + (e.message || "Unknown error"));
-    }
-  };
-
-  // Disconnect page user
-  const handleDisconnectUser = async (pageUserId: number) => {
-    try {
-      await updatePageUserConnection(pageUserId, null);
-      alert("ยกเลิกการเชื่อมต่อผู้ใช้สำเร็จ");
-    } catch (e: any) {
-      console.error("Failed to disconnect user:", e);
-      alert(
-        "ยกเลิกการเชื่อมต่อผู้ใช้ไม่สำเร็จ: " + (e.message || "Unknown error"),
-      );
-    }
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -737,7 +707,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                       </div>
                                       <button
                                         onClick={() =>
-                                          handleRemoveUser(user.id, page.id)
+                                          handleRemoveUser(
+                                            user.user_id,
+                                            page.id,
+                                          )
                                         }
                                         className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
                                       >

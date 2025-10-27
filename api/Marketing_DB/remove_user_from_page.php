@@ -13,6 +13,9 @@ try {
     // Additional support for removing specific user-page relationship
     $pageId = $input['pageId'] ?? null;
 
+    // Debug logging
+    error_log("remove_user_from_page: userId=" . $userId . ", pageId=" . ($pageId ?? 'null'));
+
     // Validate input
     if (!$userId) {
         json_response([
@@ -27,6 +30,8 @@ try {
         $existingCheck = $pdo->prepare("SELECT id FROM marketing_user_page WHERE page_id = ? AND user_id = ?");
         $existingCheck->execute([$pageId, $userId]);
         $existing = $existingCheck->fetch();
+
+        error_log("Relationship exists: " . ($existing ? 'yes' : 'no'));
 
         if (!$existing) {
             json_response([
