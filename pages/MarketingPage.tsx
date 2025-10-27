@@ -416,17 +416,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
     setIsSaving(true);
     try {
-      // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ
+      // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ (เฉพาะของผู้ใช้ปัจจุบัน)
       const existingLogs = await loadAdsLogs(
         undefined, // all pages
         selectedDate,
         selectedDate, // single date
+        currentUser.id, // current user ID
       );
 
       // สร้าง Map ของ existing logs โดยใช้ page_id เป็น key
       const existingLogsMap = new Map();
       existingLogs.forEach((log) => {
-        existingLogsMap.set(log.page_id, log);
+        // ตรวจสอบว่า log เป็นของผู้ใช้ปัจจุบันก่อนเพิ่มลง map
+        if (log.user_id === currentUser.id) {
+          existingLogsMap.set(log.page_id, log);
+        }
       });
 
       const savePromises = adsInputData.map(async (row) => {
@@ -456,6 +460,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               id: existingLog.id,
+              user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
               ...payload,
             }),
           });
@@ -511,12 +516,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     pageId?: number,
     dateFrom?: string,
     dateTo?: string,
+    userId?: number,
   ) => {
     try {
       const params = new URLSearchParams();
       if (pageId) params.set("page_id", String(pageId));
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
+      // เพิ่มเงื่อนไข user_id ให้แสดงเฉพาะข้อมูลของผู้ใช้ที่ระบุ
+      if (userId) {
+        params.set("user_id", String(userId));
+      } else {
+        params.set("user_id", String(currentUser.id));
+      }
 
       const res = await fetch(
         `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
@@ -541,7 +553,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const res = await fetch("api/Marketing_DB/ads_log_update.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...updates }),
+        body: JSON.stringify({
+          id,
+          user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
+          ...updates,
+        }),
       });
       return await res.json();
     } catch (e) {
@@ -558,7 +574,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const res = await fetch("api/Marketing_DB/ads_log_delete.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({
+          id,
+          user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -575,7 +594,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   };
 
-  // Load existing ads data for selected date
+  // Load existing ads data for the selected date (current user only)
   const loadExistingAdsData = async () => {
     if (!selectedDate) return;
 
@@ -585,6 +604,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         undefined, // all pages
         selectedDate,
         selectedDate, // single date
+        currentUser.id, // current user ID
       );
 
       // Convert logs to input data format
