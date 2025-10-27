@@ -68,6 +68,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
   const [adsInputData, setAdsInputData] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  );
 
   // New page form
   const [newPage, setNewPage] = useState<{
@@ -382,26 +385,59 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       return;
     }
 
+    // แสดงข้อความยืนยัน
+    const confirmed = confirm(
+      `คุณต้องการบันทึกข้อมูลค่า Ads จำนวน ${adsInputData.length} รายการ ในวันที่ ${selectedDate} ใช่หรือไม่?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     try {
-      const res = await fetch("api/Marketing_DB/save_ads_data.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: adsInputData,
-          userId: currentUser.id,
-        }),
+      // สร้างข้อมูลสำหรับบันทึกทีละรายการ
+      const savePromises = adsInputData.map(async (row) => {
+        const res = await fetch("api/Marketing_DB/marketing_ads_log.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageId: row.pageId,
+            userId: currentUser.id,
+            date: selectedDate,
+            adsCost: row.adsCost || 0,
+            impressions: row.impressions || 0,
+            reach: row.reach || 0,
+            clicks: row.clicks || 0,
+          }),
+        });
+        return res.json();
       });
-      const result = await res.json();
-      if (result.success) {
-        alert("บันทึกข้อมูลสำเร็จ");
+
+      // รอให้ทุก request เสร็จสิ้น
+      const results = await Promise.all(savePromises);
+
+      // ตรวจสอบผลลัพธ์
+      const successCount = results.filter((r) => r.success).length;
+      const errorCount = results.length - successCount;
+
+      if (successCount > 0) {
+        alert(
+          `บันทึกข้อมูลสำเร็จ ${successCount} รายการ${errorCount > 0 ? ` และผิดพลาด ${errorCount} รายการ` : ""}`,
+        );
         setAdsInputData([]);
       } else {
-        alert("บันทึกข้อมูลไม่สำเร็จ: " + result.error);
+        alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
       }
     } catch (e) {
       console.error("Failed to save ads data:", e);
-      alert("บันทึกข้อมูลไม่สำเร็จ");
+      alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
     }
+  };
+
+  // Get input value for specific page and field (always returns string)
+  const getInputValue = (pageId: number, field: string) => {
+    const row = adsInputData.find((r) => r.pageId === pageId.toString());
+    return row?.[field] || "";
   };
 
   // Handle ads input change for user pages
@@ -410,22 +446,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     field: string,
     value: string,
   ) => {
-    const newData = [...adsInputData];
-    const existingIndex = newData.findIndex((row) => row.pageId === pageId);
+    setAdsInputData((prev) => {
+      const newData = [...prev];
+      const existingIndex = newData.findIndex(
+        (row) => row.pageId === pageId.toString(),
+      );
 
-    if (existingIndex >= 0) {
-      newData[existingIndex] = { ...newData[existingIndex], [field]: value };
-    } else {
-      newData.push({ pageId: pageId.toString(), [field]: value });
-    }
+      if (existingIndex >= 0) {
+        newData[existingIndex] = { ...newData[existingIndex], [field]: value };
+      } else {
+        newData.push({ pageId: pageId.toString(), [field]: value });
+      }
 
-    setAdsInputData(newData);
-  };
-
-  // Get input value for specific page and field
-  const getInputValue = (pageId: number, field: string) => {
-    const row = adsInputData.find((r) => r.pageId === pageId.toString());
-    return row ? row[field] : "";
+      return newData;
+    });
   };
 
   // Connect page user to internal user
@@ -866,9 +900,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Display all user pages by default */}
+                  {/* Display all user pages */}
                   {userPages.length > 0 &&
-                    adsInputData.length === 0 &&
                     userPages.map((page, index) => (
                       <tr key={page.id} className="border-b">
                         <td className="px-3 py-2 font-medium">{page.name}</td>
@@ -933,9 +966,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             }
                           />
                         </td>
+                        <td className="px-3 py-2">
+                          <span className="text-gray-400">-</span>
+                        </td>
                       </tr>
                     ))}
-                  {userPages.length === 0 && adsInputData.length === 0 && (
+                  {userPages.length === 0 && (
                     <tr>
                       <td
                         colSpan={6}
@@ -947,14 +983,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   )}
                 </tbody>
               </table>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={handleSaveAllAdsData}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  บันทึกข้อมูลทั้งหมด
-                </button>
-              </div>
             </div>
           </section>
         </>

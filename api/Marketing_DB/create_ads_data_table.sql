@@ -1,10 +1,11 @@
--- สร้างตาราง ads_data เพื่อเก็บข้อมูลค่าโฆษณา
+-- สร้างตาราง marketing_ads_log เพื่อเก็บข้อมูลค่าโฆษณา
 -- ตารางนี้ใช้สำหรับเก็บข้อมูลการใช้งานโฆษณาต่างๆ ของผู้ใช้สำหรับแต่ละเพจ
 
-CREATE TABLE IF NOT EXISTS `ads_data` (
+CREATE TABLE IF NOT EXISTS `marketing_ads_log` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `page_id` INT NOT NULL,
   `user_id` INT NOT NULL,
+  `date` DATE NOT NULL,
   `ads_cost` DECIMAL(10,2) DEFAULT 0.00,
   `impressions` INT DEFAULT 0,
   `reach` INT DEFAULT 0,
@@ -16,12 +17,12 @@ CREATE TABLE IF NOT EXISTS `ads_data` (
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_created_at` (`created_at`),
   UNIQUE KEY `unique_page_user_ads` (`page_id`, `user_id`),
-  CONSTRAINT `fk_ads_data_page_id`
+  CONSTRAINT `fk_marketing_ads_log_page_id`
     FOREIGN KEY (`page_id`)
     REFERENCES `pages` (`id`)
     ON DELETE CASCADE
     ON UPDATE CASCADE,
-  CONSTRAINT `fk_ads_data_user_id`
+  CONSTRAINT `fk_marketing_ads_log_user_id`
     FOREIGN KEY (`user_id`)
     REFERENCES `users` (`id`)
     ON DELETE CASCADE
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `ads_data` (
 -- - id: Primary key สำหรับระเบียนข้อมูลค่าโฆษณา
 -- - page_id: Foreign key ไปยังตาราง pages
 -- - user_id: Foreign key ไปยังตาราง users
+-- - date: วันที่ของข้อมูลค่าโฆษณา
 -- - ads_cost: ค่าโฆษณา (DECIMAL สำหรับค่าเงินที่แม่นยำ)
 -- - impressions: จำนวนการแสดงผล (impression)
 -- - reach: จำนวนการเข้าถึง (reach)
