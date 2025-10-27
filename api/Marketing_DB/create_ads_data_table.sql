@@ -6,10 +6,10 @@ CREATE TABLE IF NOT EXISTS `marketing_ads_log` (
   `page_id` INT NOT NULL,
   `user_id` INT NOT NULL,
   `date` DATE NOT NULL,
-  `ads_cost` DECIMAL(10,2) DEFAULT 0.00,
-  `impressions` INT DEFAULT 0,
-  `reach` INT DEFAULT 0,
-  `clicks` INT DEFAULT 0,
+  `ads_cost` DECIMAL(10,2) DEFAULT NULL,
+  `impressions` INT DEFAULT NULL,
+  `reach` INT DEFAULT NULL,
+  `clicks` INT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -34,10 +34,10 @@ CREATE TABLE IF NOT EXISTS `marketing_ads_log` (
 -- - page_id: Foreign key ไปยังตาราง pages
 -- - user_id: Foreign key ไปยังตาราง users
 -- - date: วันที่ของข้อมูลค่าโฆษณา
--- - ads_cost: ค่าโฆษณา (DECIMAL สำหรับค่าเงินที่แม่นยำ)
--- - impressions: จำนวนการแสดงผล (impression)
--- - reach: จำนวนการเข้าถึง (reach)
--- - clicks: จำนวนการคลิก (clicks)
+-- - ads_cost: ค่าโฆษณา (DECIMAL สำหรับค่าเงินที่แม่นยำ) - nullable
+-- - impressions: จำนวนการแสดงผล (impression) - nullable
+-- - reach: จำนวนการเข้าถึง (reach) - nullable
+-- - clicks: จำนวนการคลิก (clicks) - nullable
 -- - created_at: วันที่สร้างข้อมูล
 -- - updated_at: วันที่อัปเดตข้อมูลล่าสุด
 -- - unique_page_user_ads: ทำให้แต่ละเพจสามารถมีข้อมูลค่าโฆษณาสำหรับแต่ละผู้ใช้ได้เพียงครั้งเดียว

@@ -71,6 +71,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().slice(0, 10),
   );
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // New page form
   const [newPage, setNewPage] = useState<{
@@ -248,6 +250,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     loadUserPages();
   }, [currentUser.id]);
 
+  // Load existing ads data when date changes or when component mounts
+  useEffect(() => {
+    if (selectedDate && userPages.length > 0) {
+      loadExistingAdsData();
+    }
+  }, [selectedDate, userPages]);
+
+  // Initial data loading when component first mounts
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (selectedDate && userPages.length > 0) {
+        loadExistingAdsData();
+      }
+    }, 500); // Small delay to ensure userPages are loaded
+
+    return () => clearTimeout(timer);
+  }, [selectedDate]);
+
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
     setExpandedPages((prev) => {
@@ -378,7 +398,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     setAdsInputData(newData);
   };
 
-  // Handle save all ads data
+  // Handle save all ads data - ใช้ ads_log_insert.php และ ads_log_update.php
   const handleSaveAllAdsData = async () => {
     if (adsInputData.length === 0) {
       alert("ไม่มีข้อมูลที่ต้องการบันทึก");
@@ -394,43 +414,207 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       return;
     }
 
+    setIsSaving(true);
     try {
-      // สร้างข้อมูลสำหรับบันทึกทีละรายการ
+      // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ
+      const existingLogs = await loadAdsLogs(
+        undefined, // all pages
+        selectedDate,
+        selectedDate, // single date
+      );
+
+      // สร้าง Map ของ existing logs โดยใช้ page_id เป็น key
+      const existingLogsMap = new Map();
+      existingLogs.forEach((log) => {
+        existingLogsMap.set(log.page_id, log);
+      });
+
       const savePromises = adsInputData.map(async (row) => {
-        const res = await fetch("api/Marketing_DB/marketing_ads_log.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pageId: row.pageId,
-            userId: currentUser.id,
-            date: selectedDate,
-            adsCost: row.adsCost || 0,
-            impressions: row.impressions || 0,
-            reach: row.reach || 0,
-            clicks: row.clicks || 0,
-          }),
-        });
-        return res.json();
+        // ตรวจสอบว่ามีข้อมูลที่จำเป็นหรือไม่
+        if (!row.adsCost && !row.impressions && !row.reach && !row.clicks) {
+          return { success: true, message: "Skipped empty record" }; // ข้ามรายการที่ไม่มีข้อมูล
+        }
+
+        const pageId = Number(row.pageId);
+        const existingLog = existingLogsMap.get(pageId);
+
+        const payload = {
+          page_id: pageId,
+          user_id: currentUser.id,
+          date: selectedDate,
+          ads_cost: row.adsCost ? parseFloat(row.adsCost) : null,
+          impressions: row.impressions ? parseInt(row.impressions) : null,
+          reach: row.reach ? parseInt(row.reach) : null,
+          clicks: row.clicks ? parseInt(row.clicks) : null,
+        };
+
+        let res;
+        if (existingLog) {
+          // ถ้ามีข้อมูลอยู่แล้ว ให้อัปเดต
+          res = await fetch("api/Marketing_DB/ads_log_update.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: existingLog.id,
+              ...payload,
+            }),
+          });
+        } else {
+          // ถ้าไม่มีข้อมูล ให้สร้างใหม่
+          res = await fetch("api/Marketing_DB/ads_log_insert.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+        return await res.json();
       });
 
       // รอให้ทุก request เสร็จสิ้น
       const results = await Promise.all(savePromises);
 
       // ตรวจสอบผลลัพธ์
-      const successCount = results.filter((r) => r.success).length;
-      const errorCount = results.length - successCount;
+      const successCount = results.filter(
+        (r) => r && r.success === true,
+      ).length;
+      const skippedCount = results.filter(
+        (r) => r && r.message === "Skipped empty record",
+      ).length;
+      const errorCount = results.length - successCount - skippedCount;
 
       if (successCount > 0) {
-        alert(
-          `บันทึกข้อมูลสำเร็จ ${successCount} รายการ${errorCount > 0 ? ` และผิดพลาด ${errorCount} รายการ` : ""}`,
-        );
-        setAdsInputData([]);
+        let message = `บันทึกข้อมูลสำเร็จ ${successCount} รายการ`;
+        if (skippedCount > 0) {
+          message += ` ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`;
+        }
+        if (errorCount > 0) {
+          message += ` และผิดพลาด ${errorCount} รายการ`;
+        }
+        alert(message);
+        // โหลดข้อมูลใหม่หลังบันทึกเสร็จ
+        loadExistingAdsData();
+      } else if (skippedCount > 0) {
+        alert(`ข้าม ${skippedCount} รายการที่ไม่มีข้อมูล`);
       } else {
         alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
       }
     } catch (e) {
       console.error("Failed to save ads data:", e);
       alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Load ads log data for display
+  const loadAdsLogs = async (
+    pageId?: number,
+    dateFrom?: string,
+    dateTo?: string,
+  ) => {
+    try {
+      const params = new URLSearchParams();
+      if (pageId) params.set("page_id", String(pageId));
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+
+      const res = await fetch(
+        `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        return data.data;
+      }
+      return [];
+    } catch (e) {
+      console.error("Failed to load ads logs:", e);
+      return [];
+    }
+  };
+
+  // Update existing ads log
+  const updateAdsLog = async (id: number, updates: any) => {
+    try {
+      const res = await fetch("api/Marketing_DB/ads_log_update.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error("Failed to update ads log:", e);
+      return { success: false, error: "Failed to update" };
+    }
+  };
+
+  // Delete ads log
+  const deleteAdsLog = async (id: number) => {
+    if (!confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return false;
+
+    try {
+      const res = await fetch("api/Marketing_DB/ads_log_delete.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("ลบข้อมูลสำเร็จ");
+        return true;
+      } else {
+        alert("ลบข้อมูลไม่สำเร็จ: " + data.error);
+        return false;
+      }
+    } catch (e) {
+      console.error("Failed to delete ads log:", e);
+      alert("ลบข้อมูลไม่สำเร็จ");
+      return false;
+    }
+  };
+
+  // Load existing ads data for selected date
+  const loadExistingAdsData = async () => {
+    if (!selectedDate) return;
+
+    setIsLoadingData(true);
+    try {
+      const logs = await loadAdsLogs(
+        undefined, // all pages
+        selectedDate,
+        selectedDate, // single date
+      );
+
+      // Convert logs to input data format
+      const existingData = logs.reduce((acc: any[], log) => {
+        acc.push({
+          pageId: log.page_id.toString(),
+          adsCost: log.ads_cost ? log.ads_cost.toString() : "",
+          impressions: log.impressions ? log.impressions.toString() : "",
+          reach: log.reach ? log.reach.toString() : "",
+          clicks: log.clicks ? log.clicks.toString() : "",
+        });
+        return acc;
+      }, []);
+
+      setAdsInputData(existingData);
+
+      // แสดงข้อความแจ้งเตือน
+      if (existingData.length > 0) {
+        const filledCount = existingData.filter(
+          (d) => d.adsCost || d.impressions || d.reach || d.clicks,
+        ).length;
+        console.log(
+          `โหลดข้อมูลสำเร็จ ${filledCount} รายการจาก ${existingData.length} เพจ`,
+        );
+      }
+    } catch (e) {
+      console.error("Failed to load existing ads data:", e);
+      alert("โหลดข้อมูลผิดพลาด กรุณาลองใหม่");
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -886,104 +1070,131 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <h3 className="text-lg font-semibold text-gray-800">
                 กรอกค่า Ads
               </h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                />
+                <button
+                  onClick={() => loadExistingAdsData()}
+                  disabled={isLoadingData}
+                  className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  title="โหลดข้อมูลที่มีอยู่แล้ว"
+                >
+                  {isLoadingData ? "กำลังโหลด..." : "โหลดข้อมูล"}
+                </button>
+                <button
+                  onClick={handleSaveAllAdsData}
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
+                </button>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left">เพจ</th>
-                    <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                    <th className="px-3 py-2 text-left">ค่า Ads</th>
-                    <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                    <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                    <th className="px-3 py-2 text-left">ทัก/คลิก</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Display all user pages */}
-                  {userPages.length > 0 &&
-                    userPages.map((page, index) => (
-                      <tr key={page.id} className="border-b">
-                        <td className="px-3 py-2 font-medium">{page.name}</td>
-                        <td className="px-3 py-2">{page.platform}</td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            className="w-full p-2 border border-gray-300 rounded"
-                            placeholder="0.00"
-                            value={getInputValue(page.id, "adsCost")}
-                            onChange={(e) =>
-                              handleUserPageInputChange(
-                                page.id,
-                                "adsCost",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            className="w-full p-2 border border-gray-300 rounded"
-                            placeholder="0"
-                            value={getInputValue(page.id, "impressions")}
-                            onChange={(e) =>
-                              handleUserPageInputChange(
-                                page.id,
-                                "impressions",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            className="w-full p-2 border border-gray-300 rounded"
-                            placeholder="0"
-                            value={getInputValue(page.id, "reach")}
-                            onChange={(e) =>
-                              handleUserPageInputChange(
-                                page.id,
-                                "reach",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            className="w-full p-2 border border-gray-300 rounded"
-                            placeholder="0"
-                            value={getInputValue(page.id, "clicks")}
-                            onChange={(e) =>
-                              handleUserPageInputChange(
-                                page.id,
-                                "clicks",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-gray-400">-</span>
+            {isLoadingData ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">เพจ</th>
+                      <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                      <th className="px-3 py-2 text-left">ค่า Ads</th>
+                      <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                      <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                      <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Display all user pages */}
+                    {userPages.length > 0 &&
+                      userPages.map((page, index) => (
+                        <tr key={page.id} className="border-b">
+                          <td className="px-3 py-2 font-medium">{page.name}</td>
+                          <td className="px-3 py-2">{page.platform}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              className="w-full p-2 border border-gray-300 rounded"
+                              placeholder="0"
+                              value={getInputValue(page.id, "adsCost")}
+                              onChange={(e) =>
+                                handleUserPageInputChange(
+                                  page.id,
+                                  "adsCost",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              className="w-full p-2 border border-gray-300 rounded"
+                              placeholder="0"
+                              value={getInputValue(page.id, "impressions")}
+                              onChange={(e) =>
+                                handleUserPageInputChange(
+                                  page.id,
+                                  "impressions",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              className="w-full p-2 border border-gray-300 rounded"
+                              placeholder="0"
+                              value={getInputValue(page.id, "reach")}
+                              onChange={(e) =>
+                                handleUserPageInputChange(
+                                  page.id,
+                                  "reach",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              className="w-full p-2 border border-gray-300 rounded"
+                              placeholder="0"
+                              value={getInputValue(page.id, "clicks")}
+                              onChange={(e) =>
+                                handleUserPageInputChange(
+                                  page.id,
+                                  "clicks",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    {userPages.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="text-center py-8 text-gray-500"
+                        >
+                          ไม่มีเพจที่คุณมีสิทธิ์จัดการ
                         </td>
                       </tr>
-                    ))}
-                  {userPages.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="text-center py-8 text-gray-500"
-                      >
-                        ไม่มีเพจที่คุณมีสิทธิ์จัดการ
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}
