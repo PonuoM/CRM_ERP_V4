@@ -773,12 +773,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   }, [pages]);
 
-  // Load dashboard data when tab changes to dashboard
-  useEffect(() => {
-    if (activeTab === "dashboard" && dateRange.start && dateRange.end) {
-      loadDashboardData();
-    }
-  }, [activeTab, dateRange, selectedPages]);
+  // Dashboard data loads only when clicking the search button.
 
   return (
     <div className="p-6 space-y-6">
@@ -1403,7 +1398,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 />
               </div>
 
-              <div className="pb-2">
+              <div className="">
                 <button
                   onClick={() => loadDashboardData()}
                   disabled={dashboardLoading}
