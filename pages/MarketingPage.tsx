@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar } from "lucide-react";
+import { Calendar, Pencil } from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
@@ -56,7 +56,7 @@ const hasAdminAccess = (user: User) => {
 
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<
-    "ads" | "userManagement" | "adsInput" | "dashboard"
+    "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
   >("dashboard");
   const [pages, setPages] = useState<Page[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -125,6 +125,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   );
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Ads history list
+  const [adsLogs, setAdsLogs] = useState<any[]>([]);
+  const [adsLogsLoading, setAdsLogsLoading] = useState(false);
 
   // New page form
   const [newPage, setNewPage] = useState<{
@@ -346,6 +349,34 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
     return () => clearTimeout(timer);
   }, [activeTab, selectedDate]);
+
+  // Load ads history when switching to adsHistory tab (current user only)
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (activeTab !== "adsHistory") return;
+      setAdsLogsLoading(true);
+      try {
+        const rows = await loadAdsLogs(undefined, undefined, undefined, currentUser.id);
+        const sorted = Array.isArray(rows)
+          ? [...rows].sort((a, b) => {
+              const d1 = (a.date || a.log_date || "");
+              const d2 = (b.date || b.log_date || "");
+              if (d1 === d2) {
+                return (a.page_name || "").localeCompare(b.page_name || "");
+              }
+              return d1 < d2 ? 1 : -1;
+            })
+          : [];
+        setAdsLogs(sorted);
+      } catch (e) {
+        console.error("Failed to load ads history:", e);
+        setAdsLogs([]);
+      } finally {
+        setAdsLogsLoading(false);
+      }
+    };
+    loadHistory();
+  }, [activeTab]);
 
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
@@ -869,6 +900,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               }`}
             >
               กรอกค่า Ads
+            </button>
+            <button
+              onClick={() => setActiveTab("adsHistory")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "adsHistory"
+                  ? "border-emerald-500 text-emerald-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              ประวัติการกรอก Ads
             </button>
           </nav>
         </div>
@@ -1669,6 +1710,76 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         className="text-center py-8 text-gray-500"
                       >
                         ไม่มีข้อมูลในช่วงวันที่ที่เลือก
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Ads History Tab */}
+      {hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
+        <section className="bg-white rounded-lg shadow p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">ประวัติการกรอก Ads</h3>
+            <div className="text-sm text-gray-600">
+              ผู้ใช้: {(currentUser.firstName && currentUser.lastName)
+                ? `${currentUser.firstName} ${currentUser.lastName}`
+                : currentUser.username}
+            </div>
+          </div>
+          {adsLogsLoading ? (
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+              <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="px-3 py-2 text-left">วันที่</th>
+                    <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">ค่า Ads</th>
+                    <th className="px-3 py-2 text-left">Impressions</th>
+                    <th className="px-3 py-2 text-left">Reach</th>
+                    <th className="px-3 py-2 text-left">Clicks</th>
+                    <th className="px-3 py-2 text-left">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adsLogs.length > 0 ? (
+                    adsLogs.map((log: any) => (
+                      <tr key={log.id} className="border-b hover:bg-gray-50">
+                        <td className="px-3 py-2">{log.date || log.log_date}</td>
+                        <td className="px-3 py-2">{log.page_name || pages.find(p => p.id === Number(log.page_id))?.name || log.page_id}</td>
+                        <td className="px-3 py-2">฿{Number(log.ads_cost || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2">{log.impressions ?? 0}</td>
+                        <td className="px-3 py-2">{log.reach ?? 0}</td>
+                        <td className="px-3 py-2">{log.clicks ?? 0}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                            title="แก้ไขรายการนี้"
+                            onClick={() => {
+                              const d = (log.date || log.log_date || "");
+                              if (d) setSelectedDate(d);
+                              setActiveTab("adsInput");
+                            }}
+                          >
+                            <Pencil className="w-4 h-4" />
+                            แก้ไข
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-gray-500" colSpan={7}>
+                        ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
                       </td>
                     </tr>
                   )}
