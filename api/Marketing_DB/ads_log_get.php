@@ -8,6 +8,7 @@ try {
 
   // Get query parameters
   $pageId = isset($_GET["page_id"]) ? (int) $_GET["page_id"] : null;
+  $pageIds = isset($_GET["page_ids"]) ? $_GET["page_ids"] : null;
   $userId = isset($_GET["user_id"]) ? (int) $_GET["user_id"] : null;
   $dateFrom = isset($_GET["date_from"]) ? $_GET["date_from"] : null;
   $dateTo = isset($_GET["date_to"]) ? $_GET["date_to"] : null;
@@ -21,6 +22,15 @@ try {
   if ($pageId) {
     $whereConditions[] = "mal.page_id = ?";
     $params[] = $pageId;
+  } elseif ($pageIds) {
+    $pageIdArray = explode(",", $pageIds);
+    $pageIdArray = array_map("intval", $pageIdArray);
+    $pageIdArray = array_filter($pageIdArray);
+    if (!empty($pageIdArray)) {
+      $placeholders = str_repeat("?,", count($pageIdArray) - 1) . "?";
+      $whereConditions[] = "mal.page_id IN ($placeholders)";
+      $params = array_merge($params, $pageIdArray);
+    }
   }
 
   if ($userId) {
@@ -83,6 +93,13 @@ try {
   $countParams = [];
   if ($pageId) {
     $countParams[] = $pageId;
+  } elseif ($pageIds) {
+    $pageIdArray = explode(",", $pageIds);
+    $pageIdArray = array_map("intval", $pageIdArray);
+    $pageIdArray = array_filter($pageIdArray);
+    if (!empty($pageIdArray)) {
+      $countParams = array_merge($countParams, $pageIdArray);
+    }
   }
   if ($userId) {
     $countParams[] = $userId;
@@ -124,6 +141,7 @@ try {
     ],
     "filters" => [
       "page_id" => $pageId,
+      "page_ids" => $pageIds,
       "user_id" => $userId,
       "date_from" => $dateFrom,
       "date_to" => $dateTo,

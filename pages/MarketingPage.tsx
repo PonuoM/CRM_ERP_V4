@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Calendar, Pencil } from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
@@ -137,6 +137,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Pagination for Ads History
   const [adsHistoryPage, setAdsHistoryPage] = useState(1);
   const [adsHistoryPageSize, setAdsHistoryPageSize] = useState(10);
+  // Filters for Ads History
+  const [adsHistoryDateRange, setAdsHistoryDateRange] = useState({
+    start: "",
+    end: "",
+  });
+  const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
+    number[]
+  >([]);
+  const [adsHistoryDatePickerOpen, setAdsHistoryDatePickerOpen] =
+    useState(false);
+  const [adsHistoryTempStart, setAdsHistoryTempStart] = useState(
+    adsHistoryDateRange.start,
+  );
+  const [adsHistoryTempEnd, setAdsHistoryTempEnd] = useState(
+    adsHistoryDateRange.end,
+  );
+  const adsHistoryDatePickerRef = useRef<HTMLDivElement>(null);
   const totalAdsHistoryPages = useMemo(
     () => Math.max(1, Math.ceil((adsLogsTotal || 0) / adsHistoryPageSize)),
     [adsLogsTotal, adsHistoryPageSize],
@@ -147,10 +164,25 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   //   const end = start + adsHistoryPageSize;
   //   return (adsLogs || []).slice(start, end);
   // }, [adsLogs, adsHistoryPage, adsHistoryPageSize]);
-  // Reset to first page when data or page size changes
+  // Reset to first page when data, page size, or filters change
   useEffect(() => {
     setAdsHistoryPage(1);
-  }, [adsHistoryPageSize]);
+  }, [adsHistoryPageSize, adsHistoryDateRange, adsHistorySelectedPages]);
+
+  // Handle clicks outside date picker for Ads History
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        adsHistoryDatePickerRef.current &&
+        !adsHistoryDatePickerRef.current.contains(event.target as Node)
+      ) {
+        setAdsHistoryDatePickerOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Map each date to a background color for consistent grouping in tables
   const adsLogsDateBgMap = useMemo(() => {
@@ -398,7 +430,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     return () => clearTimeout(timer);
   }, [activeTab, selectedDate]);
 
-  // Load ads history when switching to adsHistory tab or when pagination changes
+  // Load ads history when switching to adsHistory tab or when pagination/filters change
   useEffect(() => {
     const loadHistory = async () => {
       if (activeTab !== "adsHistory") return;
@@ -406,9 +438,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       try {
         const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
         const result = await loadAdsLogs(
-          undefined,
-          undefined,
-          undefined,
+          adsHistorySelectedPages.length > 0
+            ? adsHistorySelectedPages
+            : undefined,
+          adsHistoryDateRange.start || undefined,
+          adsHistoryDateRange.end || undefined,
           currentUser.id,
           adsHistoryPageSize,
           offset,
@@ -434,7 +468,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       }
     };
     loadHistory();
-  }, [activeTab, adsHistoryPage, adsHistoryPageSize]);
+  }, [
+    activeTab,
+    adsHistoryPage,
+    adsHistoryPageSize,
+    adsHistoryDateRange,
+    adsHistorySelectedPages,
+  ]);
 
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
@@ -586,7 +626,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     try {
       // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ (เฉพาะของผู้ใช้ปัจจุบัน)
       const existingLogsResult = await loadAdsLogs(
-        undefined,
+        undefined, // no page filter
         selectedDate,
         selectedDate, // single date
         currentUser.id, // current user ID
@@ -682,7 +722,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Load ads log data for display with pagination
   const loadAdsLogs = async (
-    pageId?: number,
+    pageIds?: number[],
     dateFrom?: string,
     dateTo?: string,
     userId?: number,
@@ -691,7 +731,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   ) => {
     try {
       const params = new URLSearchParams();
-      if (pageId) params.set("page_id", String(pageId));
+      if (pageIds && pageIds.length > 0) {
+        params.set("page_ids", pageIds.join(","));
+      }
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       // เพิ่มเงื่อนไข user_id ให้แสดงเฉพาะข้อมูลของผู้ใช้ที่ระบุ
@@ -795,7 +837,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     setIsLoadingData(true);
     try {
       const logs = await loadAdsLogs(
-        undefined, // all pages
+        undefined, // no page filter
         selectedDate,
         selectedDate, // single date
         currentUser.id, // current user ID
@@ -1822,6 +1864,199 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 : currentUser.username}
             </div>
           </div>
+
+          {/* Ads History Filters */}
+          <div className="mb-4">
+            <div className="flex gap-4 items-end">
+              <div className="flex-1">
+                <label className={labelClass}>เลือกช่วงวันที่</label>
+                <button
+                  onClick={() =>
+                    setAdsHistoryDatePickerOpen(!adsHistoryDatePickerOpen)
+                  }
+                  className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                >
+                  <span
+                    className={
+                      adsHistoryDateRange.start && adsHistoryDateRange.end
+                        ? "text-gray-900"
+                        : "text-gray-500"
+                    }
+                  >
+                    {adsHistoryDateRange.start && adsHistoryDateRange.end
+                      ? `${new Date(adsHistoryDateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(adsHistoryDateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                      : "เลือกช่วงวันที่"}
+                  </span>
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="flex-1">
+                <label className={labelClass}>เลือกเพจ</label>
+                <MultiSelectPageFilter
+                  pages={pages.map((page) => ({
+                    id: page.id,
+                    name: page.name,
+                    platform: page.platform,
+                  }))}
+                  selectedPages={adsHistorySelectedPages}
+                  onChange={setAdsHistorySelectedPages}
+                />
+              </div>
+
+              <div className="">
+                <button
+                  onClick={() => setAdsHistoryPage(1)}
+                  disabled={adsLogsLoading}
+                  className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
+                >
+                  {adsLogsLoading ? "กำลังโหลด..." : "ค้นหา"}
+                </button>
+              </div>
+            </div>
+
+            {/* Ads History Date Picker Dropdown */}
+            {adsHistoryDatePickerOpen && (
+              <div
+                className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                ref={adsHistoryDatePickerRef}
+              >
+                <div className="p-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        วันที่เริ่มต้น
+                      </label>
+                      <input
+                        type="date"
+                        value={adsHistoryTempStart}
+                        onChange={(e) => setAdsHistoryTempStart(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        วันที่สิ้นสุด
+                      </label>
+                      <input
+                        type="date"
+                        value={adsHistoryTempEnd}
+                        onChange={(e) => setAdsHistoryTempEnd(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="text-xs font-medium text-gray-700 mb-2">
+                      เลือกช่วงเวลาด่วน:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const dayOfWeek = now.getDay();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - dayOfWeek);
+                          const endDate = new Date(startDate);
+                          endDate.setDate(startDate.getDate() + 6);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setAdsHistoryTempStart(newRange.start);
+                          setAdsHistoryTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        อาทิตย์นี้
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(
+                            now.getFullYear(),
+                            now.getMonth(),
+                            1,
+                          );
+                          const endDate = new Date(
+                            now.getFullYear(),
+                            now.getMonth() + 1,
+                            0,
+                          );
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setAdsHistoryTempStart(newRange.start);
+                          setAdsHistoryTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        เดือนนี้
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - 6);
+                          const endDate = new Date(now);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setAdsHistoryTempStart(newRange.start);
+                          setAdsHistoryTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                        7 วันล่าสุด
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - 29);
+                          const endDate = new Date(now);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setAdsHistoryTempStart(newRange.start);
+                          setAdsHistoryTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                        30 วันล่าสุด
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        if (adsHistoryTempStart && adsHistoryTempEnd) {
+                          setAdsHistoryDateRange({
+                            start: adsHistoryTempStart,
+                            end: adsHistoryTempEnd,
+                          });
+                          setAdsHistoryDatePickerOpen(false);
+                        }
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                    >
+                      ตกลง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {adsLogsLoading ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
