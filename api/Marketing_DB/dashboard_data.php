@@ -19,6 +19,8 @@ try {
   $dateTo = $_GET["date_to"] ?? null;
   $pageIds = $_GET["page_ids"] ?? null;
   $userIds = $_GET["user_ids"] ?? null;
+  $limit = isset($_GET["limit"]) ? (int) $_GET["limit"] : null;
+  $offset = isset($_GET["offset"]) ? (int) $_GET["offset"] : 0;
 
   // Get session user from localStorage (simulate login session)
   session_start();
@@ -111,6 +113,13 @@ try {
       ORDER BY mal.date DESC, p.name ASC
   ";
 
+  // Add pagination if specified
+  if ($limit) {
+    $query .= " LIMIT ? OFFSET ?";
+    $params[] = $limit;
+    $params[] = $offset;
+  }
+
   // Prepare and execute query
   $stmt = $conn->prepare($query);
   if ($stmt === false) {
@@ -121,10 +130,51 @@ try {
   $stmt->execute($params);
   $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-  // Add debug info to response
+  // Get total count for pagination (without LIMIT/OFFSET)
+  $countQuery = "
+      SELECT COUNT(*) as total
+      FROM marketing_ads_log mal
+      LEFT JOIN pages p ON mal.page_id = p.id
+      LEFT JOIN users u ON mal.user_id = u.id
+      WHERE $whereClause
+  ";
+
+  $countStmt = $conn->prepare($countQuery);
+  if ($countStmt === false) {
+    throw new Exception("Count query preparation failed");
+  }
+
+  // Execute count query with same parameters
+  $countParams = $params;
+  // Remove LIMIT and OFFSET parameters from count query
+  if ($limit) {
+    array_pop($countParams); // Remove offset
+    array_pop($countParams); // Remove limit
+  }
+
+  $countStmt->execute($countParams);
+  $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)["total"];
+
+  // Calculate pagination info
+  $pageSize = $limit ?: 10; // Default page size if not specified
+  $totalPages = $pageSize > 0 ? ceil($totalCount / $pageSize) : 1;
+  $currentPage = $pageSize > 0 ? floor($offset / $pageSize) + 1 : 1;
+
+  // Add debug info and pagination to response
+  header("Content-Type: application/json");
   echo json_encode([
     "success" => true,
     "data" => $data,
+    "pagination" => [
+      "total" => (int) $totalCount,
+      "limit" => $limit,
+      "offset" => $offset,
+      "page_size" => $pageSize,
+      "current_page" => (int) $currentPage,
+      "total_pages" => (int) $totalPages,
+      "has_more" => $limit ? $offset + $limit < $totalCount : false,
+      "has_previous" => $offset > 0,
+    ],
     "debug" => [
       "current_user_id" => $currentUserId,
       "provided_user_ids" => $userIds,

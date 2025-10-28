@@ -69,6 +69,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardView, setDashboardView] = useState<"user" | "page">("user");
+  // Pagination for Dashboard
+  const [dashboardPage, setDashboardPage] = useState(1);
+  const [dashboardPageSize, setDashboardPageSize] = useState(10);
+  const [dashboardTotal, setDashboardTotal] = useState(0);
+  const dashboardTotalPages = useMemo(
+    () => Math.max(1, Math.ceil((dashboardTotal || 0) / dashboardPageSize)),
+    [dashboardTotal, dashboardPageSize],
+  );
+
   const [dateRange, setDateRange] = useState<DateRange>({
     start: "",
     end: "",
@@ -953,22 +962,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         params.set("user_ids", selectedUsers.join(","));
       }
 
+      // Add pagination parameters
+      if (dashboardPageSize) {
+        params.set("limit", String(dashboardPageSize));
+        params.set("offset", String((dashboardPage - 1) * dashboardPageSize));
+      }
+
       const res = await fetch(
-        `api/Marketing_DB/dashboard_data.php${params.toString() ? `?${params}` : ""}`,
+        `api/Marketing_DB/dashboard_data.php?${params.toString()}`,
         {
           headers: { "Content-Type": "application/json" },
         },
       );
       const data = await res.json();
       if (data.success) {
-        setDashboardData(data.data);
+        setDashboardData(data.data || []);
+        setDashboardTotal(data.pagination?.total || 0);
       } else {
         setDashboardData([]);
+        setDashboardTotal(0);
         console.error("Failed to load dashboard data:", data.error);
       }
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
       setDashboardData([]);
+      setDashboardTotal(0);
     } finally {
       setDashboardLoading(false);
     }
@@ -997,7 +1015,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Dashboard data loads only when clicking the search button.
 
-  // Trigger initial load for dashboard when filters are ready
+  // Reset to first page when data or page size changes
+  useEffect(() => {
+    setDashboardPage(1);
+  }, [dateRange, selectedPages, selectedUsers, dashboardPageSize]);
+
+  // Load dashboard data when dependencies change
   useEffect(() => {
     const ready =
       activeTab === "dashboard" &&
@@ -1005,10 +1028,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       !!dateRange.end &&
       selectedPages.length > 0 &&
       selectedUsers.length > 0;
+
     if (ready) {
       loadDashboardData();
     }
-  }, [activeTab, dateRange.start, dateRange.end, selectedPages, selectedUsers]);
+  }, [
+    activeTab,
+    dateRange,
+    dateRange.end,
+    selectedPages,
+    selectedUsers,
+    dashboardPage,
+    dashboardPageSize,
+  ]);
 
   return (
     <div className="p-6 space-y-6">
@@ -1880,6 +1912,83 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   )}
                 </tbody>
               </table>
+
+              {/* Dashboard Pagination */}
+              {dashboardData.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                  <div className="text-sm text-gray-600">
+                    {(() => {
+                      const start = (dashboardPage - 1) * dashboardPageSize + 1;
+                      const end = Math.min(
+                        start + dashboardPageSize - 1,
+                        dashboardTotal,
+                      );
+                      return dashboardTotal > 0
+                        ? `แสดง ${start}-${end} จาก ${dashboardTotal} รายการ (ทั้งหมด ${dashboardTotalPages} หน้า)`
+                        : "ไม่มีข้อมูล";
+                    })()}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-700">แถวต่อหน้า</label>
+                    <select
+                      className="border rounded px-2 py-1 text-sm bg-white"
+                      value={dashboardPageSize}
+                      onChange={(e) =>
+                        setDashboardPageSize(Number(e.target.value))
+                      }
+                    >
+                      {[10, 20, 50, 100].map((sz) => (
+                        <option key={sz} value={sz}>
+                          {sz}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                      onClick={() =>
+                        setDashboardPage((p) => Math.max(1, p - 1))
+                      }
+                      disabled={dashboardPage === 1}
+                    >
+                      ก่อนหน้า
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-700">หน้า</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={dashboardTotalPages}
+                        value={dashboardPage}
+                        onChange={(e) => {
+                          const page = Math.max(
+                            1,
+                            Math.min(
+                              dashboardTotalPages,
+                              Number(e.target.value) || 1,
+                            ),
+                          );
+                          setDashboardPage(page);
+                        }}
+                        className="w-16 px-2 py-1 border rounded text-sm text-center"
+                      />
+                      <span className="text-sm text-gray-700">
+                        / {dashboardTotalPages}
+                      </span>
+                    </div>
+                    <button
+                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                      onClick={() =>
+                        setDashboardPage((p) =>
+                          Math.min(dashboardTotalPages, p + 1),
+                        )
+                      }
+                      disabled={dashboardPage === dashboardTotalPages}
+                    >
+                      ถัดไป
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
