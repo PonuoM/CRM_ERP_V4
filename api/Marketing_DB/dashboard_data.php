@@ -20,9 +20,20 @@ try {
   $pageIds = $_GET["page_ids"] ?? null;
   $userIds = $_GET["user_ids"] ?? null;
 
+  // Get session user from localStorage (simulate login session)
+  session_start();
+  $sessionUser = $_SESSION["user"] ?? null;
+  $currentUserId = $sessionUser ? $sessionUser["id"] : null;
+
   // Build WHERE conditions with BETWEEN
   $whereConditions = ["1=1"];
   $params = [];
+
+  // Add automatic current user filtering if no user_ids provided but user is logged in
+  if (empty($userIdArray) && $currentUserId) {
+    $whereConditions[] = "mal.user_id = ?";
+    $params[] = $currentUserId;
+  }
 
   if ($dateFrom && $dateTo) {
     $whereConditions[] = "date BETWEEN ? AND ?";
@@ -100,6 +111,7 @@ try {
       ORDER BY mal.date DESC, p.name ASC
   ";
 
+  // Prepare and execute query
   $stmt = $conn->prepare($query);
   if ($stmt === false) {
     throw new Exception("Query preparation failed");
@@ -109,9 +121,17 @@ try {
   $stmt->execute($params);
   $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+  // Add debug info to response
   echo json_encode([
     "success" => true,
     "data" => $data,
+    "debug" => [
+      "current_user_id" => $currentUserId,
+      "provided_user_ids" => $userIds,
+      "auto_filtered" => empty($userIdArray) && $currentUserId ? true : false,
+      "where_clause" => $whereClause,
+      "params" => $params,
+    ],
   ]);
 } catch (Exception $e) {
   http_response_code(500);
