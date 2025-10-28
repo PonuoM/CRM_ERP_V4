@@ -329,23 +329,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [datePickerOpen, datePickerRef]);
 
-  // Load existing ads data when date changes or when component mounts
+  // Load existing ads data only when on Ads Input tab
   useEffect(() => {
-    if (selectedDate && userPages.length > 0) {
+    if (activeTab === "adsInput" && selectedDate && userPages.length > 0) {
       loadExistingAdsData();
     }
-  }, [selectedDate, userPages]);
+  }, [activeTab, selectedDate, userPages]);
 
-  // Initial data loading when component first mounts
+  // Initial data loading for Ads Input when component mounts
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (selectedDate && userPages.length > 0) {
+      if (activeTab === "adsInput" && selectedDate && userPages.length > 0) {
         loadExistingAdsData();
       }
-    }, 500); // Small delay to ensure userPages are loaded
+    }, 500);
 
     return () => clearTimeout(timer);
-  }, [selectedDate]);
+  }, [activeTab, selectedDate]);
 
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
@@ -805,13 +805,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Dashboard data loads only when clicking the search button.
 
-  // Trigger initial load when entering the dashboard tab
+  // Trigger initial load for dashboard when filters are ready
   useEffect(() => {
-    if (activeTab === "dashboard" && dateRange.start && dateRange.end) {
+    const ready =
+      activeTab === "dashboard" &&
+      !!dateRange.start &&
+      !!dateRange.end &&
+      selectedPages.length > 0 &&
+      selectedUsers.length > 0;
+    if (ready) {
       loadDashboardData();
     }
-    // Note: intentionally not depending on dateRange/selectedPages to avoid auto-requests
-  }, [activeTab]);
+  }, [activeTab, dateRange.start, dateRange.end, selectedPages, selectedUsers]);
 
   return (
     <div className="p-6 space-y-6">
