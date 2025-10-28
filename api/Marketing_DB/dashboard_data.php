@@ -17,6 +17,7 @@ try {
   // Get date filters from query parameters
   $dateFrom = $_GET["date_from"] ?? null;
   $dateTo = $_GET["date_to"] ?? null;
+  $pageIds = $_GET["page_ids"] ?? null;
 
   // Build WHERE conditions with BETWEEN
   $whereConditions = ["1=1"];
@@ -32,6 +33,19 @@ try {
   } elseif ($dateTo) {
     $whereConditions[] = "date <= ?";
     $params[] = $dateTo;
+  }
+
+  // Add page IDs filter
+  if ($pageIds) {
+    $pageIdArray = explode(",", $pageIds);
+    $pageIdArray = array_map("intval", $pageIdArray);
+    $pageIdArray = array_filter($pageIdArray);
+
+    if (!empty($pageIdArray)) {
+      $placeholders = str_repeat("?,", count($pageIdArray) - 1) . "?";
+      $whereConditions[] = "mal.page_id IN ($placeholders)";
+      $params = array_merge($params, $pageIdArray);
+    }
   }
 
   $whereClause = implode(" AND ", $whereConditions);

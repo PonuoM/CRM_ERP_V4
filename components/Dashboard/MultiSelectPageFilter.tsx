@@ -24,7 +24,10 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -33,9 +36,10 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredPages = pages.filter((page) =>
-    page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    page.platform.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPages = pages.filter(
+    (page) =>
+      page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      page.platform.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleTogglePage = (pageId: number) => {
@@ -47,7 +51,7 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
   };
 
   const handleSelectAll = () => {
-    const allPageIds = filteredPages.map((page) => page.id);
+    const allPageIds = pages.map((page) => page.id);
     onChange(allPageIds);
   };
 
@@ -160,7 +164,7 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
           {/* Footer with selected count */}
           <div className="p-3 border-t border-gray-200 bg-gray-50">
             <div className="text-sm text-gray-600">
-              กำลังเลือก{" "}
+              เลือกแล้ว{" "}
               <span className="font-semibold text-gray-900">
                 {selectedPages.length}
               </span>{" "}

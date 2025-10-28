@@ -727,7 +727,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       start: startOfWeek.toISOString().slice(0, 10),
       end: endOfWeek.toISOString().slice(0, 10),
     });
-  }, []);
+
+    // Set default to select all pages
+    if (pages.length > 0) {
+      setSelectedPages(pages.map((p) => p.id));
+    }
+  }, [pages]);
 
   // Load dashboard data when tab changes to dashboard
   useEffect(() => {
