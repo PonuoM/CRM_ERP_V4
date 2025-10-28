@@ -65,7 +65,7 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <div className="mb-4">
+      <div className="">
         <label className="block text-sm font-medium text-gray-700 mb-1">
           กรองตามเพจ
         </label>

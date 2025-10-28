@@ -1341,25 +1341,27 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
           {/* Marketing Date Range Picker and Page Filter */}
           <div className="mb-4">
-            <label className={labelClass}>เลือกช่วงวันที่และเพจ</label>
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={() => setDatePickerOpen(!datePickerOpen)}
-                className="w-64 px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
-              >
-                <span
-                  className={
-                    dateRange.start && dateRange.end
-                      ? "text-gray-900"
-                      : "text-gray-500"
-                  }
+            <div className="flex gap-4 items-end">
+              <div className="flex-1">
+                <label className={labelClass}>เลือกช่วงวันที่</label>
+                <button
+                  onClick={() => setDatePickerOpen(!datePickerOpen)}
+                  className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
                 >
-                  {dateRange.start && dateRange.end
-                    ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                    : "เลือกช่วงวันที่"}
-                </span>
-                <Calendar className="w-4 h-4 text-gray-400" />
-              </button>
+                  <span
+                    className={
+                      dateRange.start && dateRange.end
+                        ? "text-gray-900"
+                        : "text-gray-500"
+                    }
+                  >
+                    {dateRange.start && dateRange.end
+                      ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                      : "เลือกช่วงวันที่"}
+                  </span>
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
 
               <div className="flex-1">
                 <MultiSelectPageFilter
@@ -1373,154 +1375,154 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 />
               </div>
 
-              <div className="relative">
+              <div className="">
                 <button
                   onClick={() => loadDashboardData()}
                   disabled={dashboardLoading}
-                  className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm"
+                  className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
                 >
                   {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
                 </button>
-
-                {/* Date Picker Dropdown */}
-                {datePickerOpen && (
-                  <div
-                    className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 left-0"
-                    ref={datePickerRef}
-                  >
-                    <div className="p-4">
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            วันที่เริ่มต้น
-                          </label>
-                          <input
-                            type="date"
-                            value={tempStart}
-                            onChange={(e) => setTempStart(e.target.value)}
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            วันที่สิ้นสุด
-                          </label>
-                          <input
-                            type="date"
-                            value={tempEnd}
-                            onChange={(e) => setTempEnd(e.target.value)}
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="border-t border-gray-100 pt-3">
-                        <p className="text-xs font-medium text-gray-700 mb-2">
-                          เลือกช่วงเวลาด่วน:
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => {
-                              const now = new Date();
-                              const dayOfWeek = now.getDay();
-                              const startDate = new Date(now);
-                              startDate.setDate(now.getDate() - dayOfWeek);
-                              const endDate = new Date(startDate);
-                              endDate.setDate(startDate.getDate() + 6);
-                              const newRange = {
-                                start: startDate.toISOString().slice(0, 10),
-                                end: endDate.toISOString().slice(0, 10),
-                              };
-                              setTempStart(newRange.start);
-                              setTempEnd(newRange.end);
-                            }}
-                            className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                          >
-                            <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                            อาทิตย์นี้
-                          </button>
-                          <button
-                            onClick={() => {
-                              const now = new Date();
-                              const startDate = new Date(
-                                now.getFullYear(),
-                                now.getMonth(),
-                                1,
-                              );
-                              const endDate = new Date(
-                                now.getFullYear(),
-                                now.getMonth() + 1,
-                                0,
-                              );
-                              const newRange = {
-                                start: startDate.toISOString().slice(0, 10),
-                                end: endDate.toISOString().slice(0, 10),
-                              };
-                              setTempStart(newRange.start);
-                              setTempEnd(newRange.end);
-                            }}
-                            className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                          >
-                            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                            เดือนนี้
-                          </button>
-                          <button
-                            onClick={() => {
-                              const now = new Date();
-                              const startDate = new Date(now);
-                              startDate.setDate(now.getDate() - 6);
-                              const endDate = new Date(now);
-                              const newRange = {
-                                start: startDate.toISOString().slice(0, 10),
-                                end: endDate.toISOString().slice(0, 10),
-                              };
-                              setTempStart(newRange.start);
-                              setTempEnd(newRange.end);
-                            }}
-                            className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                          >
-                            <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                            7 วันล่าสุด
-                          </button>
-                          <button
-                            onClick={() => {
-                              const now = new Date();
-                              const startDate = new Date(now);
-                              startDate.setDate(now.getDate() - 29);
-                              const endDate = new Date(now);
-                              const newRange = {
-                                start: startDate.toISOString().slice(0, 10),
-                                end: endDate.toISOString().slice(0, 10),
-                              };
-                              setTempStart(newRange.start);
-                              setTempEnd(newRange.end);
-                            }}
-                            className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                          >
-                            <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                            30 วันล่าสุด
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
-                        <button
-                          onClick={() => {
-                            if (tempStart && tempEnd) {
-                              setDateRange({ start: tempStart, end: tempEnd });
-                              setDatePickerOpen(false);
-                            }
-                          }}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                        >
-                          ตกลง
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
+
+            {/* Date Picker Dropdown */}
+            {datePickerOpen && (
+              <div
+                className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                ref={datePickerRef}
+              >
+                <div className="p-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        วันที่เริ่มต้น
+                      </label>
+                      <input
+                        type="date"
+                        value={tempStart}
+                        onChange={(e) => setTempStart(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        วันที่สิ้นสุด
+                      </label>
+                      <input
+                        type="date"
+                        value={tempEnd}
+                        onChange={(e) => setTempEnd(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="text-xs font-medium text-gray-700 mb-2">
+                      เลือกช่วงเวลาด่วน:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const dayOfWeek = now.getDay();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - dayOfWeek);
+                          const endDate = new Date(startDate);
+                          endDate.setDate(startDate.getDate() + 6);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setTempStart(newRange.start);
+                          setTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        อาทิตย์นี้
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(
+                            now.getFullYear(),
+                            now.getMonth(),
+                            1,
+                          );
+                          const endDate = new Date(
+                            now.getFullYear(),
+                            now.getMonth() + 1,
+                            0,
+                          );
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setTempStart(newRange.start);
+                          setTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        เดือนนี้
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - 6);
+                          const endDate = new Date(now);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setTempStart(newRange.start);
+                          setTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                        7 วันล่าสุด
+                      </button>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const startDate = new Date(now);
+                          startDate.setDate(now.getDate() - 29);
+                          const endDate = new Date(now);
+                          const newRange = {
+                            start: startDate.toISOString().slice(0, 10),
+                            end: endDate.toISOString().slice(0, 10),
+                          };
+                          setTempStart(newRange.start);
+                          setTempEnd(newRange.end);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                        30 วันล่าสุด
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        if (tempStart && tempEnd) {
+                          setDateRange({ start: tempStart, end: tempEnd });
+                          setDatePickerOpen(false);
+                        }
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                    >
+                      ตกลง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dashboard Table */}
