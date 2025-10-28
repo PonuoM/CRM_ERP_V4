@@ -66,9 +66,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // States for dashboard
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [dashboardView, setDashboardView] = useState<"user" | "page">(
-    "user",
-  );
+  const [dashboardView, setDashboardView] = useState<"user" | "page">("user");
   const [dateRange, setDateRange] = useState<DateRange>({
     start: "",
     end: "",
@@ -128,22 +126,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Ads history list
   const [adsLogs, setAdsLogs] = useState<any[]>([]);
   const [adsLogsLoading, setAdsLogsLoading] = useState(false);
+  const [adsLogsTotal, setAdsLogsTotal] = useState(0);
+  // Server pagination info from API
+  const [serverPagination, setServerPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    hasPrevious: false,
+    hasMore: false,
+  });
   // Pagination for Ads History
   const [adsHistoryPage, setAdsHistoryPage] = useState(1);
   const [adsHistoryPageSize, setAdsHistoryPageSize] = useState(10);
   const totalAdsHistoryPages = useMemo(
-    () => Math.max(1, Math.ceil((adsLogs?.length || 0) / adsHistoryPageSize)),
-    [adsLogs?.length, adsHistoryPageSize],
+    () => Math.max(1, Math.ceil((adsLogsTotal || 0) / adsHistoryPageSize)),
+    [adsLogsTotal, adsHistoryPageSize],
   );
-  const paginatedAdsLogs = useMemo(() => {
-    const start = (adsHistoryPage - 1) * adsHistoryPageSize;
-    const end = start + adsHistoryPageSize;
-    return (adsLogs || []).slice(start, end);
-  }, [adsLogs, adsHistoryPage, adsHistoryPageSize]);
+  // No longer need client-side pagination since we're using server-side pagination
+  // const paginatedAdsLogs = useMemo(() => {
+  //   const start = (adsHistoryPage - 1) * adsHistoryPageSize;
+  //   const end = start + adsHistoryPageSize;
+  //   return (adsLogs || []).slice(start, end);
+  // }, [adsLogs, adsHistoryPage, adsHistoryPageSize]);
   // Reset to first page when data or page size changes
   useEffect(() => {
     setAdsHistoryPage(1);
-  }, [adsLogs, adsHistoryPageSize]);
+  }, [adsHistoryPageSize]);
 
   // Map each date to a background color for consistent grouping in tables
   const adsLogsDateBgMap = useMemo(() => {
@@ -160,7 +167,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     const map = new Map<string, string>();
     let idx = 0;
     for (const log of adsLogs) {
-      const d = (log?.date || log?.log_date || "");
+      const d = log?.date || log?.log_date || "";
       if (!d) continue;
       if (!map.has(d)) {
         map.set(d, palette[idx % palette.length]);
@@ -391,33 +398,43 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     return () => clearTimeout(timer);
   }, [activeTab, selectedDate]);
 
-  // Load ads history when switching to adsHistory tab (current user only)
+  // Load ads history when switching to adsHistory tab or when pagination changes
   useEffect(() => {
     const loadHistory = async () => {
       if (activeTab !== "adsHistory") return;
       setAdsLogsLoading(true);
       try {
-        const rows = await loadAdsLogs(undefined, undefined, undefined, currentUser.id);
-        const sorted = Array.isArray(rows)
-          ? [...rows].sort((a, b) => {
-              const d1 = (a.date || a.log_date || "");
-              const d2 = (b.date || b.log_date || "");
-              if (d1 === d2) {
-                return (a.page_name || "").localeCompare(b.page_name || "");
-              }
-              return d1 < d2 ? 1 : -1;
-            })
-          : [];
-        setAdsLogs(sorted);
+        const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+        const result = await loadAdsLogs(
+          undefined,
+          undefined,
+          undefined,
+          currentUser.id,
+          adsHistoryPageSize,
+          offset,
+        );
+
+        // No need to sort on client side since server already sorts by date DESC
+        setAdsLogs(result.data || []);
+        setAdsLogsTotal(result.total || 0);
+
+        // Update server pagination info
+        setServerPagination({
+          currentPage: result.currentPage || 1,
+          totalPages: result.totalPages || 1,
+          hasPrevious: result.hasPrevious || false,
+          hasMore: result.hasMore || false,
+        });
       } catch (e) {
         console.error("Failed to load ads history:", e);
         setAdsLogs([]);
+        setAdsLogsTotal(0);
       } finally {
         setAdsLogsLoading(false);
       }
     };
     loadHistory();
-  }, [activeTab]);
+  }, [activeTab, adsHistoryPage, adsHistoryPageSize]);
 
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
@@ -568,12 +585,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     setIsSaving(true);
     try {
       // โหลดข้อมูลที่มีอยู่แล้วสำหรับตรวจสอบ (เฉพาะของผู้ใช้ปัจจุบัน)
-      const existingLogs = await loadAdsLogs(
-        undefined, // all pages
+      const existingLogsResult = await loadAdsLogs(
+        undefined,
         selectedDate,
         selectedDate, // single date
         currentUser.id, // current user ID
       );
+      const existingLogs = existingLogsResult.data || [];
 
       // สร้าง Map ของ existing logs โดยใช้ page_id เป็น key
       const existingLogsMap = new Map();
@@ -662,12 +680,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     }
   };
 
-  // Load ads log data for display
+  // Load ads log data for display with pagination
   const loadAdsLogs = async (
     pageId?: number,
     dateFrom?: string,
     dateTo?: string,
     userId?: number,
+    limit?: number,
+    offset?: number,
   ) => {
     try {
       const params = new URLSearchParams();
@@ -680,6 +700,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       } else {
         params.set("user_id", String(currentUser.id));
       }
+      if (limit) params.set("limit", String(limit));
+      if (offset !== undefined) params.set("offset", String(offset));
 
       const res = await fetch(
         `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
@@ -689,12 +711,33 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       );
       const data = await res.json();
       if (data.success) {
-        return data.data;
+        return {
+          data: data.data,
+          total: data.pagination?.total || 0,
+          currentPage: data.pagination?.current_page || 1,
+          totalPages: data.pagination?.total_pages || 1,
+          hasPrevious: data.pagination?.has_previous || false,
+          hasMore: data.pagination?.has_more || false,
+        };
       }
-      return [];
+      return {
+        data: [],
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        hasPrevious: false,
+        hasMore: false,
+      };
     } catch (e) {
       console.error("Failed to load ads logs:", e);
-      return [];
+      return {
+        data: [],
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        hasPrevious: false,
+        hasMore: false,
+      };
     }
   };
 
@@ -759,7 +802,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       );
 
       // Convert logs to input data format
-      const existingData = logs.reduce((acc: any[], log) => {
+      const existingData = logs.data.reduce((acc: any[], log) => {
         acc.push({
           pageId: log.page_id.toString(),
           adsCost: log.ads_cost ? log.ads_cost.toString() : "",
@@ -1722,8 +1765,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(dashboardView === "user" ? dashboardData : aggregatedByPage).length > 0 ? (
-                    (dashboardView === "user" ? dashboardData : aggregatedByPage).map((row, index) => (
+                  {(dashboardView === "user" ? dashboardData : aggregatedByPage)
+                    .length > 0 ? (
+                    (dashboardView === "user"
+                      ? dashboardData
+                      : aggregatedByPage
+                    ).map((row, index) => (
                       <tr key={index} className="border-b hover:bg-gray-50">
                         <td className="px-3 py-2">
                           {dashboardView === "user"
@@ -1765,9 +1812,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       {hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
         <section className="bg-white rounded-lg shadow p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">ประวัติการกรอก Ads</h3>
+            <h3 className="text-lg font-semibold text-gray-800">
+              ประวัติการกรอก Ads
+            </h3>
             <div className="text-sm text-gray-600">
-              ผู้ใช้: {(currentUser.firstName && currentUser.lastName)
+              ผู้ใช้:{" "}
+              {currentUser.firstName && currentUser.lastName
                 ? `${currentUser.firstName} ${currentUser.lastName}`
                 : currentUser.username}
             </div>
@@ -1793,14 +1843,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 </thead>
                 <tbody>
                   {adsLogs.length > 0 ? (
-                    paginatedAdsLogs.map((log: any) => {
-                      const d = (log.date || log.log_date || "");
+                    adsLogs.map((log: any) => {
+                      const d = log.date || log.log_date || "";
                       const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
                       return (
-                        <tr key={log.id} className={`border-b ${bg} hover:bg-gray-50`}>
+                        <tr
+                          key={log.id}
+                          className={`border-b ${bg} hover:bg-gray-50`}
+                        >
                           <td className="px-3 py-2">{d}</td>
-                          <td className="px-3 py-2">{log.page_name || pages.find(p => p.id === Number(log.page_id))?.name || log.page_id}</td>
-                          <td className="px-3 py-2">฿{Number(log.ads_cost || 0).toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            {log.page_name ||
+                              pages.find((p) => p.id === Number(log.page_id))
+                                ?.name ||
+                              log.page_id}
+                          </td>
+                          <td className="px-3 py-2">
+                            ฿{Number(log.ads_cost || 0).toFixed(2)}
+                          </td>
                           <td className="px-3 py-2">{log.impressions ?? 0}</td>
                           <td className="px-3 py-2">{log.reach ?? 0}</td>
                           <td className="px-3 py-2">{log.clicks ?? 0}</td>
@@ -1809,13 +1869,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                               className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
                               title="แก้ไขรายการนี้"
                               onClick={() => {
-                              const editDate = (log.date || log.log_date || "");
-                              if (editDate) setSelectedDate(editDate);
-                              setActiveTab("adsInput");
+                                const editDate = log.date || log.log_date || "";
+                                if (editDate) setSelectedDate(editDate);
+                                setActiveTab("adsInput");
                               }}
                             >
                               <Pencil className="w-4 h-4" />
-                              แก้ไข
                             </button>
                           </td>
                         </tr>
@@ -1823,7 +1882,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     })
                   ) : (
                     <tr>
-                      <td className="px-3 py-6 text-center text-gray-500" colSpan={7}>
+                      <td
+                        className="px-3 py-6 text-center text-gray-500"
+                        colSpan={7}
+                      >
                         ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
                       </td>
                     </tr>
@@ -1834,9 +1896,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                   <div className="text-sm text-gray-600">
                     {(() => {
-                      const start = (adsHistoryPage - 1) * adsHistoryPageSize;
-                      const end = Math.min(start + adsHistoryPageSize, adsLogs.length);
-                      return `แสดง ${start + 1}-${end} จาก ${adsLogs.length} รายการ`;
+                      const start =
+                        (adsHistoryPage - 1) * adsHistoryPageSize + 1;
+                      const end = Math.min(
+                        start + adsHistoryPageSize - 1,
+                        adsLogsTotal,
+                      );
+                      return adsLogsTotal > 0
+                        ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
+                        : "ไม่มีข้อมูล";
                     })()}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1844,26 +1912,61 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <select
                       className="border rounded px-2 py-1 text-sm bg-white"
                       value={adsHistoryPageSize}
-                      onChange={(e) => setAdsHistoryPageSize(Number(e.target.value))}
+                      onChange={(e) =>
+                        setAdsHistoryPageSize(Number(e.target.value))
+                      }
                     >
                       {[10, 20, 50, 100].map((sz) => (
-                        <option key={sz} value={sz}>{sz}</option>
+                        <option key={sz} value={sz}>
+                          {sz}
+                        </option>
                       ))}
                     </select>
                     <button
                       className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() => setAdsHistoryPage((p) => Math.max(1, p - 1))}
-                      disabled={adsHistoryPage === 1}
+                      onClick={() =>
+                        setAdsHistoryPage((p) => Math.max(1, p - 1))
+                      }
+                      disabled={
+                        !serverPagination.hasPrevious || adsHistoryPage === 1
+                      }
                     >
                       ก่อนหน้า
                     </button>
-                    <span className="text-sm text-gray-700">
-                      หน้า {adsHistoryPage} / {totalAdsHistoryPages}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-700">หน้า</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={serverPagination.totalPages}
+                        value={adsHistoryPage}
+                        onChange={(e) => {
+                          const page = Math.max(
+                            1,
+                            Math.min(
+                              serverPagination.totalPages,
+                              Number(e.target.value) || 1,
+                            ),
+                          );
+                          setAdsHistoryPage(page);
+                        }}
+                        className="w-16 px-2 py-1 border rounded text-sm text-center"
+                      />
+                      <span className="text-sm text-gray-700">
+                        / {serverPagination.totalPages}
+                      </span>
+                    </div>
                     <button
                       className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() => setAdsHistoryPage((p) => Math.min(totalAdsHistoryPages, p + 1))}
-                      disabled={adsHistoryPage === totalAdsHistoryPages}
+                      onClick={() =>
+                        setAdsHistoryPage((p) =>
+                          Math.min(serverPagination.totalPages, p + 1),
+                        )
+                      }
+                      disabled={
+                        !serverPagination.hasMore ||
+                        adsHistoryPage === serverPagination.totalPages
+                      }
                     >
                       ถัดไป
                     </button>

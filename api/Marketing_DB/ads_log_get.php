@@ -1,55 +1,57 @@
 <?php
-require_once __DIR__ . '/../config.php';
+require_once __DIR__ . "/../config.php";
 
 cors();
 
 try {
-    $pdo = db_connect();
+  $pdo = db_connect();
 
-    // Get query parameters
-    $pageId = isset($_GET['page_id']) ? (int)$_GET['page_id'] : null;
-    $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : null;
-    $dateFrom = isset($_GET['date_from']) ? $_GET['date_from'] : null;
-    $dateTo = isset($_GET['date_to']) ? $_GET['date_to'] : null;
-    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : null;
-    $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+  // Get query parameters
+  $pageId = isset($_GET["page_id"]) ? (int) $_GET["page_id"] : null;
+  $userId = isset($_GET["user_id"]) ? (int) $_GET["user_id"] : null;
+  $dateFrom = isset($_GET["date_from"]) ? $_GET["date_from"] : null;
+  $dateTo = isset($_GET["date_to"]) ? $_GET["date_to"] : null;
+  $limit = isset($_GET["limit"]) ? (int) $_GET["limit"] : null;
+  $offset = isset($_GET["offset"]) ? (int) $_GET["offset"] : 0;
 
-    // Build WHERE conditions
-    $whereConditions = [];
-    $params = [];
+  // Build WHERE conditions
+  $whereConditions = [];
+  $params = [];
 
-    if ($pageId) {
-        $whereConditions[] = "mal.page_id = ?";
-        $params[] = $pageId;
-    }
+  if ($pageId) {
+    $whereConditions[] = "mal.page_id = ?";
+    $params[] = $pageId;
+  }
 
-    if ($userId) {
-        $whereConditions[] = "mal.user_id = ?";
-        $params[] = $userId;
-    }
+  if ($userId) {
+    $whereConditions[] = "mal.user_id = ?";
+    $params[] = $userId;
+  }
 
-    if ($dateFrom) {
-        $whereConditions[] = "mal.date >= ?";
-        $params[] = $dateFrom;
-    }
+  if ($dateFrom) {
+    $whereConditions[] = "mal.date >= ?";
+    $params[] = $dateFrom;
+  }
 
-    if ($dateTo) {
-        $whereConditions[] = "mal.date <= ?";
-        $params[] = $dateTo;
-    }
+  if ($dateTo) {
+    $whereConditions[] = "mal.date <= ?";
+    $params[] = $dateTo;
+  }
 
-    $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
+  $whereClause = !empty($whereConditions)
+    ? "WHERE " . implode(" AND ", $whereConditions)
+    : "";
 
-    // Build LIMIT clause
-    $limitClause = "";
-    if ($limit) {
-        $limitClause = "LIMIT ? OFFSET ?";
-        $params[] = $limit;
-        $params[] = $offset;
-    }
+  // Build LIMIT clause
+  $limitClause = "";
+  if ($limit) {
+    $limitClause = "LIMIT ? OFFSET ?";
+    $params[] = $limit;
+    $params[] = $offset;
+  }
 
-    // Main query with joins to get page and user details
-    $sql = "
+  // Main query with joins to get page and user details
+  $sql = "
         SELECT
             mal.id,
             mal.page_id,
@@ -73,43 +75,68 @@ try {
         {$limitClause}
     ";
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $logs = $stmt->fetchAll();
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($params);
+  $logs = $stmt->fetchAll();
 
-    // Get total count for pagination
-    $countSql = "
-        SELECT COUNT(*) as total
-        FROM marketing_ads_log mal
-        {$whereClause}
-    ";
+  // Get total count for pagination (use same WHERE conditions but without LIMIT/OFFSET)
+  $countParams = [];
+  if ($pageId) {
+    $countParams[] = $pageId;
+  }
+  if ($userId) {
+    $countParams[] = $userId;
+  }
+  if ($dateFrom) {
+    $countParams[] = $dateFrom;
+  }
+  if ($dateTo) {
+    $countParams[] = $dateTo;
+  }
 
-    $countStmt = $pdo->prepare($countSql);
-    $countStmt->execute($params);
-    $totalCount = $countStmt->fetch()['total'];
+  $countSql = "
+      SELECT COUNT(*) as total
+      FROM marketing_ads_log mal
+      {$whereClause}
+  ";
 
-    json_response([
-        'success' => true,
-        'data' => $logs,
-        'pagination' => [
-            'total' => (int)$totalCount,
-            'limit' => $limit,
-            'offset' => $offset,
-            'has_more' => $limit ? ($offset + $limit) < $totalCount : false
-        ],
-        'filters' => [
-            'page_id' => $pageId,
-            'user_id' => $userId,
-            'date_from' => $dateFrom,
-            'date_to' => $dateTo
-        ]
-    ]);
+  $countStmt = $pdo->prepare($countSql);
+  $countStmt->execute($countParams);
+  $totalCount = $countStmt->fetch()["total"];
 
+  // Calculate pagination info
+  $pageSize = $limit ?: 10; // Default page size if not specified
+  $totalPages = $pageSize > 0 ? ceil($totalCount / $pageSize) : 1;
+  $currentPage = $pageSize > 0 ? floor($offset / $pageSize) + 1 : 1;
+
+  json_response([
+    "success" => true,
+    "data" => $logs,
+    "pagination" => [
+      "total" => (int) $totalCount,
+      "limit" => $limit,
+      "offset" => $offset,
+      "page_size" => $pageSize,
+      "current_page" => (int) $currentPage,
+      "total_pages" => (int) $totalPages,
+      "has_more" => $limit ? $offset + $limit < $totalCount : false,
+      "has_previous" => $offset > 0,
+    ],
+    "filters" => [
+      "page_id" => $pageId,
+      "user_id" => $userId,
+      "date_from" => $dateFrom,
+      "date_to" => $dateTo,
+    ],
+  ]);
 } catch (Exception $e) {
-    error_log("Error in ads_log_get.php: " . $e->getMessage());
-    json_response([
-        'success' => false,
-        'error' => $e->getMessage(),
-        'message' => 'Failed to fetch ads logs'
-    ], 500);
+  error_log("Error in ads_log_get.php: " . $e->getMessage());
+  json_response(
+    [
+      "success" => false,
+      "error" => $e->getMessage(),
+      "message" => "Failed to fetch ads logs",
+    ],
+    500,
+  );
 }
