@@ -1,21 +1,22 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
 
-interface PageOption {
+interface UserOption {
   id: number;
-  name: string;
-  platform: string;
+  firstName: string;
+  lastName: string;
+  username: string;
 }
 
-interface MultiSelectPageFilterProps {
-  pages: PageOption[];
-  selectedPages: number[];
-  onChange: (selectedPages: number[]) => void;
+interface MultiSelectUserFilterProps {
+  users: UserOption[];
+  selectedUsers: number[];
+  onChange: (selectedUsers: number[]) => void;
 }
 
-const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
-  pages,
-  selectedPages,
+const MultiSelectUserFilter: React.FC<MultiSelectUserFilterProps> = ({
+  users,
+  selectedUsers,
   onChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -36,23 +37,24 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredPages = pages.filter(
-    (page) =>
-      page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      page.platform.toLowerCase().includes(searchTerm.toLowerCase()),
+  const filteredUsers = users.filter(
+    (user) =>
+      user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.username.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const handleTogglePage = (pageId: number) => {
-    if (selectedPages.includes(pageId)) {
-      onChange(selectedPages.filter((id) => id !== pageId));
+  const handleToggleUser = (userId: number) => {
+    if (selectedUsers.includes(userId)) {
+      onChange(selectedUsers.filter((id) => id !== userId));
     } else {
-      onChange([...selectedPages, pageId]);
+      onChange([...selectedUsers, userId]);
     }
   };
 
   const handleSelectAll = () => {
-    const allPageIds = pages.map((page) => page.id);
-    onChange(allPageIds);
+    const allUserIds = users.map((user) => user.id);
+    onChange(allUserIds);
   };
 
   const handleClearAll = () => {
@@ -72,9 +74,9 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
           className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
         >
           <span className="text-gray-900">
-            {selectedPages.length === 0
-              ? "เลือกเพจ..."
-              : `เลือก ${selectedPages.length} เพจ`}
+            {selectedUsers.length === 0
+              ? "เลือกผู้ใช้..."
+              : `เลือก ${selectedUsers.length} ผู้ใช้`}
           </span>
           <ChevronDown
             className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -89,7 +91,7 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
           <div className="p-3 border-b border-gray-200">
             <input
               type="text"
-              placeholder="ค้นหาเพจ..."
+              placeholder="ค้นหาผู้ใช้..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -114,17 +116,17 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
 
           {/* Options list */}
           <div className="max-h-60 overflow-y-auto p-2">
-            {filteredPages.length === 0 ? (
+            {filteredUsers.length === 0 ? (
               <div className="text-center py-4 text-gray-500 text-sm">
-                ไม่พบเพจที่ค้นหา
+                ไม่พบผู้ใช้ที่ค้นหา
               </div>
             ) : (
-              filteredPages.map((page) => {
-                const isSelected = selectedPages.includes(page.id);
+              filteredUsers.map((user) => {
+                const isSelected = selectedUsers.includes(user.id);
                 return (
                   <div
-                    key={page.id}
-                    onClick={() => handleTogglePage(page.id)}
+                    key={user.id}
+                    onClick={() => handleToggleUser(user.id)}
                     className="flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded transition-colors"
                   >
                     {/* Checkbox */}
@@ -142,13 +144,13 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
                       </div>
                     </div>
 
-                    {/* Page info */}
+                    {/* User info */}
                     <div className="flex-1">
                       <div className="font-medium text-gray-900 text-sm">
-                        {page.name}
+                        {user.firstName} {user.lastName}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {page.platform}
+                        @{user.username}
                       </div>
                     </div>
                   </div>
@@ -162,13 +164,13 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
             <div className="text-sm text-gray-600">
               เลือกแล้ว{" "}
               <span className="font-semibold text-gray-900">
-                {selectedPages.length}
+                {selectedUsers.length}
               </span>{" "}
               จาก{" "}
               <span className="font-semibold text-gray-900">
-                {pages.length}
+                {users.length}
               </span>{" "}
-              เพจ
+              ผู้ใช้
             </div>
           </div>
         </div>
@@ -177,4 +179,4 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
   );
 };
 
-export default MultiSelectPageFilter;
+export default MultiSelectUserFilter;

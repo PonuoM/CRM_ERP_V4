@@ -15,6 +15,7 @@ import MarketingDatePicker, {
   DateRange,
 } from "@/components/Dashboard/MarketingDatePicker";
 import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
+import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
 
 // Function to fetch active pages where still_in_list = 1
 async function listActivePages(companyId?: number) {
@@ -70,6 +71,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     end: "",
   });
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
   const [tempEnd, setTempEnd] = useState(dateRange.end);
@@ -716,6 +718,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (dateRange.end) params.set("date_to", dateRange.end);
       if (selectedPages.length > 0) {
         params.set("page_ids", selectedPages.join(","));
+      }
+      if (selectedUsers.length > 0) {
+        params.set("user_ids", selectedUsers.join(","));
       }
 
       const res = await fetch(
@@ -1364,6 +1369,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               </div>
 
               <div className="flex-1">
+                <label className={labelClass}>เลือกเพจ</label>
                 <MultiSelectPageFilter
                   pages={pages.map((page) => ({
                     id: page.id,
@@ -1375,7 +1381,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 />
               </div>
 
-              <div className="">
+              <div className="flex-1">
+                <label className={labelClass}>เลือกผู้ใช้</label>
+                <MultiSelectUserFilter
+                  users={marketingUsersList.map((user) => ({
+                    id: user.id,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    username: user.username,
+                  }))}
+                  selectedUsers={selectedUsers}
+                  onChange={setSelectedUsers}
+                />
+              </div>
+
+              <div className="pb-2">
                 <button
                   onClick={() => loadDashboardData()}
                   disabled={dashboardLoading}

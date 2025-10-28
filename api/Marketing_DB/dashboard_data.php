@@ -18,15 +18,7 @@ try {
   $dateFrom = $_GET["date_from"] ?? null;
   $dateTo = $_GET["date_to"] ?? null;
   $pageIds = $_GET["page_ids"] ?? null;
-
-  // If no page_ids are provided, return empty data (no pages selected)
-  if (!$pageIds) {
-    echo json_encode([
-      "success" => true,
-      "data" => [],
-    ]);
-    exit();
-  }
+  $userIds = $_GET["user_ids"] ?? null;
 
   // Build WHERE conditions with BETWEEN
   $whereConditions = ["1=1"];
@@ -44,7 +36,15 @@ try {
     $params[] = $dateTo;
   }
 
-  // Add page IDs filter
+  // Add page IDs filter - page_ids is required
+  if (!$pageIds) {
+    echo json_encode([
+      "success" => true,
+      "data" => [],
+    ]);
+    exit();
+  }
+
   $pageIdArray = explode(",", $pageIds);
   $pageIdArray = array_map("intval", $pageIdArray);
   $pageIdArray = array_filter($pageIdArray);
@@ -60,6 +60,19 @@ try {
       "data" => [],
     ]);
     exit();
+  }
+
+  // Add user IDs filter
+  if ($userIds) {
+    $userIdArray = explode(",", $userIds);
+    $userIdArray = array_map("intval", $userIdArray);
+    $userIdArray = array_filter($userIdArray);
+
+    if (!empty($userIdArray)) {
+      $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
+      $whereConditions[] = "mal.user_id IN ($placeholders)";
+      $params = array_merge($params, $userIdArray);
+    }
   }
 
   $whereClause = implode(" AND ", $whereConditions);
