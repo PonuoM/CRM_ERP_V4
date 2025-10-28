@@ -66,6 +66,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // States for dashboard
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardView, setDashboardView] = useState<"user" | "page">(
+    "user",
+  );
   const [dateRange, setDateRange] = useState<DateRange>({
     start: "",
     end: "",
@@ -78,6 +81,33 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [datePickerRef, setDatePickerRef] = useState<HTMLDivElement | null>(
     null,
   );
+
+  // Aggregated dashboard data by page
+  const aggregatedByPage = useMemo(() => {
+    if (!Array.isArray(dashboardData) || dashboardData.length === 0) return [];
+    const map = new Map<number, any>();
+    for (const row of dashboardData) {
+      const pid = Number(row.page_id);
+      const prev = map.get(pid);
+      if (prev) {
+        prev.ads_cost += Number(row.ads_cost || 0);
+        prev.impressions += Number(row.impressions || 0);
+        prev.reach += Number(row.reach || 0);
+        prev.clicks += Number(row.clicks || 0);
+      } else {
+        map.set(pid, {
+          page_id: pid,
+          page_name: row.page_name,
+          platform: row.platform,
+          ads_cost: Number(row.ads_cost || 0),
+          impressions: Number(row.impressions || 0),
+          reach: Number(row.reach || 0),
+          clicks: Number(row.clicks || 0),
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [dashboardData]);
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
@@ -1556,6 +1586,34 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             )}
           </div>
 
+          {/* View Mode Toggle */}
+          <div className="flex items-center justify-end mb-3">
+            <div className="inline-flex rounded-md shadow-sm border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setDashboardView("user")}
+                className={`px-3 py-1.5 text-sm ${
+                  dashboardView === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                รายบุคคล
+              </button>
+              <button
+                type="button"
+                onClick={() => setDashboardView("page")}
+                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${
+                  dashboardView === "page"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                รายเพจ
+              </button>
+            </div>
+          </div>
+
           {/* Dashboard Table */}
           {dashboardLoading ? (
             <div className="text-center py-8">
@@ -1577,13 +1635,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {dashboardData.length > 0 ? (
-                    dashboardData.map((row, index) => (
+                  {(dashboardView === "user" ? dashboardData : aggregatedByPage).length > 0 ? (
+                    (dashboardView === "user" ? dashboardData : aggregatedByPage).map((row, index) => (
                       <tr key={index} className="border-b hover:bg-gray-50">
-                        <td className="px-3 py-2">{row.log_date}</td>
+                        <td className="px-3 py-2">
+                          {dashboardView === "user"
+                            ? row.log_date
+                            : `${dateRange.start || ""}${dateRange.start && dateRange.end ? " - " : ""}${dateRange.end || ""}`}
+                        </td>
                         <td className="px-3 py-2">{row.page_name}</td>
                         <td className="px-3 py-2">
-                          {row.first_name} {row.last_name}
+                          {dashboardView === "user"
+                            ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()
+                            : "ทุกคน"}
                         </td>
                         <td className="px-3 py-2">
                           ฿{Number(row.ads_cost || 0).toFixed(0)}
