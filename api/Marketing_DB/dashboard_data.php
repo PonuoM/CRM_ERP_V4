@@ -19,6 +19,15 @@ try {
   $dateTo = $_GET["date_to"] ?? null;
   $pageIds = $_GET["page_ids"] ?? null;
 
+  // If no page_ids are provided, return empty data (no pages selected)
+  if (!$pageIds) {
+    echo json_encode([
+      "success" => true,
+      "data" => [],
+    ]);
+    exit();
+  }
+
   // Build WHERE conditions with BETWEEN
   $whereConditions = ["1=1"];
   $params = [];
@@ -36,16 +45,21 @@ try {
   }
 
   // Add page IDs filter
-  if ($pageIds) {
-    $pageIdArray = explode(",", $pageIds);
-    $pageIdArray = array_map("intval", $pageIdArray);
-    $pageIdArray = array_filter($pageIdArray);
+  $pageIdArray = explode(",", $pageIds);
+  $pageIdArray = array_map("intval", $pageIdArray);
+  $pageIdArray = array_filter($pageIdArray);
 
-    if (!empty($pageIdArray)) {
-      $placeholders = str_repeat("?,", count($pageIdArray) - 1) . "?";
-      $whereConditions[] = "mal.page_id IN ($placeholders)";
-      $params = array_merge($params, $pageIdArray);
-    }
+  if (!empty($pageIdArray)) {
+    $placeholders = str_repeat("?,", count($pageIdArray) - 1) . "?";
+    $whereConditions[] = "mal.page_id IN ($placeholders)";
+    $params = array_merge($params, $pageIdArray);
+  } else {
+    // If page_ids parameter exists but contains no valid IDs, return empty data
+    echo json_encode([
+      "success" => true,
+      "data" => [],
+    ]);
+    exit();
   }
 
   $whereClause = implode(" AND ", $whereConditions);
