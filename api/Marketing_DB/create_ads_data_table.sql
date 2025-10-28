@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS `marketing_ads_log` (
   `page_id` INT NOT NULL,
   `user_id` INT NOT NULL,
   `date` DATE NOT NULL,
-  `ads_cost` DECIMAL(10,2) DEFAULT NULL,
+  `ads_cost` INT DEFAULT NULL,
   `impressions` INT DEFAULT NULL,
   `reach` INT DEFAULT NULL,
   `clicks` INT DEFAULT NULL,
