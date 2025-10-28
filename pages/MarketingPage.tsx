@@ -128,6 +128,30 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Ads history list
   const [adsLogs, setAdsLogs] = useState<any[]>([]);
   const [adsLogsLoading, setAdsLogsLoading] = useState(false);
+  // Map each date to a background color for consistent grouping in tables
+  const adsLogsDateBgMap = useMemo(() => {
+    const palette = [
+      "bg-emerald-50",
+      "bg-blue-50",
+      "bg-yellow-50",
+      "bg-purple-50",
+      "bg-pink-50",
+      "bg-orange-50",
+      "bg-sky-50",
+      "bg-rose-50",
+    ];
+    const map = new Map<string, string>();
+    let idx = 0;
+    for (const log of adsLogs) {
+      const d = (log?.date || log?.log_date || "");
+      if (!d) continue;
+      if (!map.has(d)) {
+        map.set(d, palette[idx % palette.length]);
+        idx++;
+      }
+    }
+    return map;
+  }, [adsLogs]);
 
   // New page form
   const [newPage, setNewPage] = useState<{
@@ -1752,30 +1776,34 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 </thead>
                 <tbody>
                   {adsLogs.length > 0 ? (
-                    adsLogs.map((log: any) => (
-                      <tr key={log.id} className="border-b hover:bg-gray-50">
-                        <td className="px-3 py-2">{log.date || log.log_date}</td>
-                        <td className="px-3 py-2">{log.page_name || pages.find(p => p.id === Number(log.page_id))?.name || log.page_id}</td>
-                        <td className="px-3 py-2">฿{Number(log.ads_cost || 0).toFixed(2)}</td>
-                        <td className="px-3 py-2">{log.impressions ?? 0}</td>
-                        <td className="px-3 py-2">{log.reach ?? 0}</td>
-                        <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                        <td className="px-3 py-2">
-                          <button
-                            className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                            title="แก้ไขรายการนี้"
-                            onClick={() => {
-                              const d = (log.date || log.log_date || "");
-                              if (d) setSelectedDate(d);
+                    adsLogs.map((log: any) => {
+                      const d = (log.date || log.log_date || "");
+                      const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
+                      return (
+                        <tr key={log.id} className={`border-b ${bg} hover:bg-gray-50`}>
+                          <td className="px-3 py-2">{d}</td>
+                          <td className="px-3 py-2">{log.page_name || pages.find(p => p.id === Number(log.page_id))?.name || log.page_id}</td>
+                          <td className="px-3 py-2">฿{Number(log.ads_cost || 0).toFixed(2)}</td>
+                          <td className="px-3 py-2">{log.impressions ?? 0}</td>
+                          <td className="px-3 py-2">{log.reach ?? 0}</td>
+                          <td className="px-3 py-2">{log.clicks ?? 0}</td>
+                          <td className="px-3 py-2">
+                            <button
+                              className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                              title="แก้ไขรายการนี้"
+                              onClick={() => {
+                              const editDate = (log.date || log.log_date || "");
+                              if (editDate) setSelectedDate(editDate);
                               setActiveTab("adsInput");
-                            }}
-                          >
-                            <Pencil className="w-4 h-4" />
-                            แก้ไข
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                              แก้ไข
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td className="px-3 py-6 text-center text-gray-500" colSpan={7}>
