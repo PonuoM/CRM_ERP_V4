@@ -13,6 +13,7 @@ import {
 import MarketingDatePicker, {
   DateRange,
 } from "@/components/Dashboard/MarketingDatePicker";
+import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
 
 // Function to fetch active pages where still_in_list = 1
 async function listActivePages(companyId?: number) {
@@ -67,6 +68,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     start: "",
     end: "",
   });
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
 
   // States for marketing user page management
   const [expandedPages, setExpandedPages] = useState<Set<number>>(new Set());
@@ -686,6 +688,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const params = new URLSearchParams();
       if (dateRange.start) params.set("date_from", dateRange.start);
       if (dateRange.end) params.set("date_to", dateRange.end);
+      if (selectedPages.length > 0) {
+        params.set("page_ids", selectedPages.join(","));
+      }
 
       const res = await fetch(
         `api/Marketing_DB/dashboard_data.php${params.toString() ? `?${params}` : ""}`,
@@ -729,7 +734,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     if (activeTab === "dashboard" && dateRange.start && dateRange.end) {
       loadDashboardData();
     }
-  }, [activeTab, dateRange]);
+  }, [activeTab, dateRange, selectedPages]);
 
   return (
     <div className="p-6 space-y-6">
@@ -1313,6 +1318,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               loading={dashboardLoading}
             />
           </div>
+
+          {/* Page Filter */}
+          <MultiSelectPageFilter
+            pages={pages.map((page) => ({
+              id: page.id,
+              name: page.name,
+              platform: page.platform,
+            }))}
+            selectedPages={selectedPages}
+            onChange={setSelectedPages}
+          />
 
           {/* Dashboard Table */}
           {dashboardLoading ? (
