@@ -1583,7 +1583,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           {row.first_name} {row.last_name}
                         </td>
                         <td className="px-3 py-2">
-                          ฿{Number(row.ads_cost || 0).toFixed(2)}
+                          ฿{Number(row.ads_cost || 0).toFixed(0)}
                         </td>
                         <td className="px-3 py-2">{row.impressions || 0}</td>
                         <td className="px-3 py-2">{row.reach || 0}</td>
