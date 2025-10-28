@@ -61,6 +61,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [pages, setPages] = useState<Page[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
+  // Pages user has access to for filters
+  const [userAccessiblePages, setUserAccessiblePages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
 
   // States for dashboard
@@ -229,14 +231,46 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     notes: "",
   });
 
+  // Load pages with user access info
+  const loadPagesWithUserAccess = async () => {
+    try {
+      const res = await fetch(
+        "api/Marketing_DB/get_pages_with_user_access.php",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: currentUser.id }),
+        },
+      );
+
+      const data = await res.json();
+      if (data.success) {
+        return Array.isArray(data.data.accessible_pages)
+          ? data.data.accessible_pages.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              platform: p.platform,
+              url: p.url ?? undefined,
+              active: Boolean(p.active),
+            }))
+          : [];
+      }
+      return [];
+    } catch (e) {
+      console.error("Failed to load pages with user access:", e);
+      return [];
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
-        const [pg, promo] = await Promise.all([
+        const [pg, promo, userPages] = await Promise.all([
           listActivePages(currentUser.companyId),
           listPromotions(),
+          loadPagesWithUserAccess(),
         ]);
         if (cancelled) return;
         setPages(
@@ -252,6 +286,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             : [],
         );
         setPromotions(Array.isArray(promo) ? promo : []);
+        setUserAccessiblePages(userPages);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1863,6 +1898,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 ? `${currentUser.firstName} ${currentUser.lastName}`
                 : currentUser.username}
             </div>
+            <div className="text-sm text-gray-500">
+              สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
+            </div>
           </div>
 
           {/* Ads History Filters */}
@@ -1894,7 +1932,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <div className="flex-1">
                 <label className={labelClass}>เลือกเพจ</label>
                 <MultiSelectPageFilter
-                  pages={pages.map((page) => ({
+                  pages={userAccessiblePages.map((page) => ({
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
