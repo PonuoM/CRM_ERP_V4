@@ -775,6 +775,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Dashboard data loads only when clicking the search button.
 
+  // Trigger initial load when entering the dashboard tab
+  useEffect(() => {
+    if (activeTab === "dashboard" && dateRange.start && dateRange.end) {
+      loadDashboardData();
+    }
+    // Note: intentionally not depending on dateRange/selectedPages to avoid auto-requests
+  }, [activeTab]);
+
   return (
     <div className="p-6 space-y-6">
       <div>
