@@ -128,6 +128,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Ads history list
   const [adsLogs, setAdsLogs] = useState<any[]>([]);
   const [adsLogsLoading, setAdsLogsLoading] = useState(false);
+  // Pagination for Ads History
+  const [adsHistoryPage, setAdsHistoryPage] = useState(1);
+  const [adsHistoryPageSize, setAdsHistoryPageSize] = useState(10);
+  const totalAdsHistoryPages = useMemo(
+    () => Math.max(1, Math.ceil((adsLogs?.length || 0) / adsHistoryPageSize)),
+    [adsLogs?.length, adsHistoryPageSize],
+  );
+  const paginatedAdsLogs = useMemo(() => {
+    const start = (adsHistoryPage - 1) * adsHistoryPageSize;
+    const end = start + adsHistoryPageSize;
+    return (adsLogs || []).slice(start, end);
+  }, [adsLogs, adsHistoryPage, adsHistoryPageSize]);
+  // Reset to first page when data or page size changes
+  useEffect(() => {
+    setAdsHistoryPage(1);
+  }, [adsLogs, adsHistoryPageSize]);
+
   // Map each date to a background color for consistent grouping in tables
   const adsLogsDateBgMap = useMemo(() => {
     const palette = [
@@ -1776,7 +1793,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 </thead>
                 <tbody>
                   {adsLogs.length > 0 ? (
-                    adsLogs.map((log: any) => {
+                    paginatedAdsLogs.map((log: any) => {
                       const d = (log.date || log.log_date || "");
                       const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
                       return (
@@ -1813,6 +1830,46 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   )}
                 </tbody>
               </table>
+              {adsLogs.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                  <div className="text-sm text-gray-600">
+                    {(() => {
+                      const start = (adsHistoryPage - 1) * adsHistoryPageSize;
+                      const end = Math.min(start + adsHistoryPageSize, adsLogs.length);
+                      return `แสดง ${start + 1}-${end} จาก ${adsLogs.length} รายการ`;
+                    })()}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-700">แถวต่อหน้า</label>
+                    <select
+                      className="border rounded px-2 py-1 text-sm bg-white"
+                      value={adsHistoryPageSize}
+                      onChange={(e) => setAdsHistoryPageSize(Number(e.target.value))}
+                    >
+                      {[10, 20, 50, 100].map((sz) => (
+                        <option key={sz} value={sz}>{sz}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                      onClick={() => setAdsHistoryPage((p) => Math.max(1, p - 1))}
+                      disabled={adsHistoryPage === 1}
+                    >
+                      ก่อนหน้า
+                    </button>
+                    <span className="text-sm text-gray-700">
+                      หน้า {adsHistoryPage} / {totalAdsHistoryPages}
+                    </span>
+                    <button
+                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                      onClick={() => setAdsHistoryPage((p) => Math.min(totalAdsHistoryPages, p + 1))}
+                      disabled={adsHistoryPage === totalAdsHistoryPages}
+                    >
+                      ถัดไป
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
