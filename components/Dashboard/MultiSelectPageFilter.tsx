@@ -65,22 +65,20 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <div className="">
-        {/* Main button */}
-        <button
-          onClick={toggleDropdown}
-          className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
-        >
-          <span className="text-gray-900">
-            {selectedPages.length === 0
-              ? "เลือกเพจ..."
-              : `เลือก ${selectedPages.length} เพจ`}
-          </span>
-          <ChevronDown
-            className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-      </div>
+      {/* Main button */}
+      <button
+        onClick={toggleDropdown}
+        className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+      >
+        <span className="text-gray-900">
+          {selectedPages.length === 0
+            ? "เลือกเพจ..."
+            : `เลือก ${selectedPages.length} เพจ`}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
 
       {/* Dropdown */}
       {isOpen && (

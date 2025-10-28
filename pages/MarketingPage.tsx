@@ -267,6 +267,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     loadMarketingUsers();
   }, []);
 
+  // Set selectedUsers to all marketing users by default
+  useEffect(() => {
+    if (marketingUsersList.length > 0 && selectedUsers.length === 0) {
+      const allUserIds = marketingUsersList.map((user) => user.id);
+      setSelectedUsers(allUserIds);
+    }
+  }, [marketingUsersList]);
+
   // Load user pages from marketing_user_page table
   useEffect(() => {
     loadUserPages();
