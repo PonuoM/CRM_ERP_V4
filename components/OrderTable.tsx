@@ -148,7 +148,16 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                     </td>
                   )}
                   <td className="px-6 py-4 font-mono text-xs text-gray-600">{order.id}</td>
-                  <td className="px-6 py-4 font-medium text-gray-900">{customer ? `${customer.firstName} ${customer.lastName}` : 'N/A'}</td>
+                  <td className="px-6 py-4 font-medium text-gray-900">
+                    {customer ? (
+                      <div>
+                        <div>{`${customer.firstName} ${customer.lastName}`}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {customer.phone} | {customer.address ? `${customer.address.subdistrict} ${customer.address.district} ${customer.address.province} ${customer.address.postalCode}` : ''}
+                        </div>
+                      </div>
+                    ) : 'N/A'}
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{seller ? `${seller.firstName} ${seller.lastName}` : '-'}</td>
                   <td className="px-6 py-4">{new Date(order.deliveryDate).toLocaleDateString('th-TH')}</td>
                   <td className="px-6 py-4 font-semibold">฿{order.totalAmount.toLocaleString()}</td>

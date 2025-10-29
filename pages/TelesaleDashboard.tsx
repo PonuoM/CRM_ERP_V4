@@ -1,7 +1,7 @@
 ﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { User, Customer, CustomerLifecycleStatus, ModalType, Tag, CustomerGrade, Appointment, Activity, ActivityType, CallHistory } from '../types';
+import { User, Customer, CustomerLifecycleStatus, ModalType, Tag, CustomerGrade, Appointment, Activity, ActivityType, CallHistory, Order } from '../types';
 import CustomerTable from '../components/CustomerTable';
-import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, UserPlus, Star, X } from 'lucide-react';
+import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, ShoppingCart, UserPlus, Star, X } from 'lucide-react';
 
 interface TelesaleDashboardProps {
   user: User;
@@ -9,13 +9,14 @@ interface TelesaleDashboardProps {
   appointments?: Appointment[];
   activities?: Activity[];
   calls?: CallHistory[];
+  orders?: Order[];
   onViewCustomer: (customer: Customer) => void;
   openModal: (type: ModalType, data: any) => void;
   systemTags: Tag[];
   setActivePage?: (page: string) => void;
 }
 
-type SubMenu = 'do' | 'expiring' | 'all';
+type SubMenu = 'do' | 'expiring' | 'updates' | 'all';
 
 const DateFilterButton: React.FC<{label: string, value: string, activeValue: string, onClick: (value: string) => void}> = ({ label, value, activeValue, onClick }) => (
     <button 
@@ -72,6 +73,11 @@ const FilterDropdown: React.FC<{ title: string; options: {id: string | number, n
             )}
         </div>
     );
+};
+
+const formatThaiDateTime = (date: Date | undefined | null) => {
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
 // Helper function to calculate days until expiration
@@ -164,8 +170,11 @@ const getDoReason = (customer: Customer, appointments: Appointment[] = [], activ
     return '';
 };
 
+const SUB_MENU_VALUES: SubMenu[] = ['do', 'expiring', 'updates', 'all'];
+const ORDER_UPDATE_LOOKBACK_DAYS = 3;
+
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
-  const { user, customers, appointments, activities, calls, onViewCustomer, openModal, systemTags, setActivePage } = props;
+  const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage } = props;
   
   // Create a unique key for this user's filter state
   const filterStorageKey = `telesale_filters_${user.id}`;
@@ -176,8 +185,11 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       const saved = localStorage.getItem(filterStorageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const savedSubMenu = SUB_MENU_VALUES.includes(parsed.activeSubMenu)
+          ? (parsed.activeSubMenu as SubMenu)
+          : 'do';
         return {
-          activeSubMenu: parsed.activeSubMenu || 'do',
+          activeSubMenu: savedSubMenu,
           activeDatePreset: parsed.activeDatePreset || 'all',
           dateRange: parsed.dateRange || { start: '', end: '' },
           searchTerm: parsed.searchTerm || '',
@@ -266,6 +278,67 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const userCustomers = useMemo(() => {
     return customers.filter(c => c.assignedTo === user.id);
   }, [user.id, customers]);
+
+  const updatesByCustomer = useMemo(() => {
+    const latestByCustomer = new Map<string, Date>();
+    if (!userCustomers.length) return latestByCustomer;
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - ORDER_UPDATE_LOOKBACK_DAYS);
+    const cutoffTime = cutoff.getTime();
+
+    const customerMap = new Map(userCustomers.map((c) => [c.id, c]));
+    const safeOrders = orders ?? [];
+    const safeActivities = activities ?? [];
+    const safeCalls = calls ?? [];
+    const currentUserName = `${user.firstName} ${user.lastName}`.trim().toLowerCase();
+
+    const registerUpdate = (customerId: string, timestamp: Date) => {
+      if (!customerMap.has(customerId)) return;
+      const customer = customerMap.get(customerId)!;
+      if (customer.lifecycleStatus === CustomerLifecycleStatus.New) return;
+      if (Number.isNaN(timestamp.getTime())) return;
+      if (timestamp.getTime() < cutoffTime) return;
+
+      const existing = latestByCustomer.get(customerId);
+      if (!existing || timestamp.getTime() > existing.getTime()) {
+        latestByCustomer.set(customerId, timestamp);
+      }
+    };
+
+    safeOrders.forEach((order) => {
+      const customer = customerMap.get(order.customerId);
+      if (!customer) return;
+      if (!order.orderDate) return;
+      if (order.creatorId === user.id || order.creatorId === customer.assignedTo) return;
+      const orderDate = new Date(order.orderDate);
+      registerUpdate(order.customerId, orderDate);
+    });
+
+    safeActivities.forEach((activity) => {
+      if (activity.type !== ActivityType.OrderCreated) return;
+      const customer = customerMap.get(activity.customerId);
+      if (!customer) return;
+      const actorName = activity.actorName?.trim().toLowerCase() ?? '';
+      if (actorName && actorName === currentUserName) return;
+      const activityDate = new Date(activity.timestamp);
+      registerUpdate(activity.customerId, activityDate);
+    });
+
+    safeCalls.forEach((call) => {
+      const update = latestByCustomer.get(call.customerId);
+      if (!update) return;
+      const callDate = new Date(call.date);
+      if (Number.isNaN(callDate.getTime())) return;
+      if (callDate.getTime() >= update.getTime()) {
+        latestByCustomer.delete(call.customerId);
+      }
+    });
+
+    return latestByCustomer;
+  }, [activities, calls, orders, user.firstName, user.lastName, user.id, userCustomers]);
+
+  const updatesCount = updatesByCustomer.size;
 
   // Save filter state to localStorage whenever it changes
   useEffect(() => {
@@ -393,6 +466,22 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           const daysUntil = getDaysUntilExpiration(c.ownershipExpires);
           return daysUntil <= 5 && daysUntil >= 0;
         });
+        break;
+      case 'updates':
+        baseFiltered = userCustomers
+          .filter((c) => updatesByCustomer.has(c.id))
+          .map((c) => {
+            const latestUpdate = updatesByCustomer.get(c.id);
+            const doReason = latestUpdate
+              ? `มีคำสั่งซื้อใหม่เมื่อ ${formatThaiDateTime(latestUpdate)}`
+              : 'มีคำสั่งซื้อใหม่';
+            return { ...c, doReason } as Customer;
+          })
+          .sort((a, b) => {
+            const timeA = updatesByCustomer.get(a.id)?.getTime() ?? 0;
+            const timeB = updatesByCustomer.get(b.id)?.getTime() ?? 0;
+            return timeB - timeA;
+          });
         break;
       case 'all':
       default:
@@ -545,7 +634,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     }
 
     return filtered;
-  }, [activeSubMenu, userCustomers, appointments, activities, selectedLifecycleStatuses, activeDatePreset, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
+  }, [activeSubMenu, userCustomers, appointments, activities, updatesByCustomer, selectedLifecycleStatuses, activeDatePreset, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
   
   const handleDatePresetClick = (preset: string) => {
     setActiveDatePreset(preset);
@@ -608,6 +697,12 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       icon: Clock,
       count: doCounts.expiring,
     },
+    {
+      id: 'updates',
+      label: 'ลูกค้ามีออเดอร์ใหม่',
+      icon: ShoppingCart,
+      count: updatesCount,
+    },
     { id: 'all', label: 'ลูกค้าทั้งหมด', icon: Users, count: userCustomers.length },
   ];
 
@@ -631,7 +726,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-800">จัดการลูกค้า</h2>
-        <button onClick={() => setActivePage ? setActivePage('สร้างคำสั่งซื้อ') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
+        <button onClick={() => setActivePage ? setActivePage('CreateOrder') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
             <PlusCircle className="w-4 h-4 mr-2" />
             สร้างคำสั่งซื้อ
         </button>
@@ -904,3 +999,4 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 };
 
 export default TelesaleDashboard;
+

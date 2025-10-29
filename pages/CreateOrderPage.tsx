@@ -17,6 +17,8 @@ import {
   Warehouse,
 } from "../types";
 
+import { useRef } from "react";
+
 const emptyAddress: Address = {
   street: "",
   subdistrict: "",
@@ -24,6 +26,40 @@ const emptyAddress: Address = {
   province: "",
   postalCode: "",
 };
+
+interface TransferSlipUpload {
+  id: number;
+  name: string;
+  dataUrl: string;
+}
+
+const sanitizeAddressValue = (value?: string | null): string => {
+  if (value == null) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  if (lower === "undefined" || lower === "null") {
+    return "";
+  }
+  return trimmed;
+};
+
+const normalizeAddress = (address?: Partial<Address> | null): Address => ({
+  street: sanitizeAddressValue(address?.street ?? null),
+  subdistrict: sanitizeAddressValue(address?.subdistrict ?? null),
+  district: sanitizeAddressValue(address?.district ?? null),
+  province: sanitizeAddressValue(address?.province ?? null),
+  postalCode: sanitizeAddressValue(address?.postalCode ?? null),
+});
+
+const sanitizeSavedAddress = (addr: any) => ({
+  ...addr,
+  address: sanitizeAddressValue(addr?.address ?? null),
+  sub_district: sanitizeAddressValue(addr?.sub_district ?? null),
+  district: sanitizeAddressValue(addr?.district ?? null),
+  province: sanitizeAddressValue(addr?.province ?? null),
+  zip_code: sanitizeAddressValue(addr?.zip_code ?? null),
+});
 
 interface CreateOrderPageProps {
   customers: Customer[];
@@ -55,10 +91,24 @@ interface CreateOrderPageProps {
     };
     updateCustomerAddress?: boolean;
     updateCustomerSocials?: boolean;
-  }) => void;
+    slipUploads?: string[];
+  }) => Promise<string | undefined>;
   onCancel: () => void;
   initialData?: { customer: Customer };
 }
+
+type ValidationField =
+  | "customerSelector"
+  | "shippingAddress"
+  | "deliveryDate"
+  | "items"
+  | "paymentMethod"
+  | "transferSlips"
+  | "salesChannel"
+  | "salesChannelPage"
+  | "cod"
+  | "newCustomerFirstName"
+  | "newCustomerPhone";
 
 // Order Summary Component
 const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({
@@ -220,6 +270,63 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
 
+  const [transferSlipUploads, setTransferSlipUploads] = useState<
+    TransferSlipUpload[]
+  >([]);
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () =>
+        reject(reader.error || new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+
+  const handleTransferSlipUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = event.target.files;
+    if (!files) return;
+    const imageFiles = Array.from(files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (imageFiles.length === 0) {
+      event.target.value = "";
+      return;
+    }
+    try {
+      const uploads = await Promise.all(
+        imageFiles.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          return {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            name: file.name,
+            dataUrl,
+          };
+        }),
+      );
+      setTransferSlipUploads((prev) => [...prev, ...uploads]);
+      clearValidationErrorFor("transferSlips");
+      updateOrderData("paymentStatus", PaymentStatus.PendingVerification);
+    } catch (error) {
+      console.error("Failed to load payment slip:", error);
+      alert("Failed to load payment slip file.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removeTransferSlip = (id: number) => {
+    setTransferSlipUploads((prev) => {
+      const next = prev.filter((slip) => slip.id !== id);
+      if (next.length === 0) {
+        updateOrderData("paymentStatus", PaymentStatus.Unpaid);
+      }
+      return next;
+    });
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [numBoxes, setNumBoxes] = useState(1);
   // Product selector modal state
@@ -244,6 +351,73 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [saveNewAddress, setSaveNewAddress] = useState(false);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [profileAddressModified, setProfileAddressModified] = useState(false);
+
+  const [validationError, setValidationError] = useState<ValidationField | null>(null);
+
+  const customerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const newCustomerFirstNameRef = useRef<HTMLInputElement | null>(null);
+  const newCustomerPhoneRef = useRef<HTMLInputElement | null>(null);
+  const shippingAddressSectionRef = useRef<HTMLDivElement | null>(null);
+  const deliveryDateRef = useRef<HTMLInputElement | null>(null);
+  const itemsSectionRef = useRef<HTMLDivElement | null>(null);
+  const paymentMethodRef = useRef<HTMLSelectElement | null>(null);
+  const transferSlipSectionRef = useRef<HTMLDivElement | null>(null);
+  const salesChannelRef = useRef<HTMLSelectElement | null>(null);
+  const salesChannelPageRef = useRef<HTMLSelectElement | null>(null);
+  const codSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const fieldRefs: Record<ValidationField, React.MutableRefObject<any>> = {
+    customerSelector: customerSearchInputRef,
+    shippingAddress: shippingAddressSectionRef,
+    deliveryDate: deliveryDateRef,
+    items: itemsSectionRef,
+    paymentMethod: paymentMethodRef,
+    transferSlips: transferSlipSectionRef,
+    salesChannel: salesChannelRef,
+    salesChannelPage: salesChannelPageRef,
+    cod: codSectionRef,
+    newCustomerFirstName: newCustomerFirstNameRef,
+    newCustomerPhone: newCustomerPhoneRef,
+  };
+
+  const highlightField = (field: ValidationField) => {
+    setValidationError(field);
+    const target = fieldRefs[field]?.current as HTMLElement | null;
+    if (target) {
+      const maybeFocusable = target as unknown as { focus?: () => void };
+      if (typeof maybeFocusable.focus === "function") {
+        maybeFocusable.focus();
+      } else {
+        const fallback = target.querySelector<HTMLElement>(
+          "input, select, textarea, button",
+        );
+        if (fallback && typeof fallback.focus === "function") {
+          fallback.focus();
+        }
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  const clearValidationErrorFor = (...fields: ValidationField[]) => {
+    if (validationError && fields.includes(validationError)) {
+      setValidationError(null);
+    }
+  };
+
+  useEffect(() => {
+    const highlightClasses = ["ring-2", "ring-red-300", "border-red-500"];
+    (Object.entries(fieldRefs) as [ValidationField, React.MutableRefObject<any>][]).forEach(
+      ([key, ref]) => {
+        const el = ref.current as HTMLElement | null;
+        if (!el) return;
+        highlightClasses.forEach((cls) => el.classList.remove(cls));
+        if (validationError === key) {
+          highlightClasses.forEach((cls) => el.classList.add(cls));
+        }
+      },
+    );
+  }, [validationError]);
 
   // Address options for the dropdown
   const [addressOptions, setAddressOptions] = useState<any[]>([]);
@@ -293,6 +467,22 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     () => subTotal + (orderData.shippingCost || 0) - billDiscountAmount,
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
+
+  useEffect(() => {
+    if (
+      orderData.paymentMethod !== PaymentMethod.Transfer &&
+      transferSlipUploads.length > 0
+    ) {
+      setTransferSlipUploads([]);
+      updateOrderData("paymentStatus", PaymentStatus.Unpaid);
+    }
+    if (orderData.paymentMethod !== PaymentMethod.Transfer) {
+      clearValidationErrorFor("transferSlips");
+    }
+    if (orderData.paymentMethod !== PaymentMethod.COD) {
+      clearValidationErrorFor("cod");
+    }
+  }, [orderData.paymentMethod, transferSlipUploads.length, validationError]);
 
   useEffect(() => {
     const province = (shippingAddress.province || "").trim();
@@ -586,7 +776,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         .then((data) => {
           console.log("Customer addresses loaded:", data);
           if (data.success) {
-            setAddressOptions(data.data || []);
+            const normalizedAddresses = Array.isArray(data.data)
+              ? data.data.map(sanitizeSavedAddress)
+              : [];
+            setAddressOptions(normalizedAddresses);
           } else {
             console.error("Failed to load customer addresses:", data.message);
           }
@@ -662,7 +855,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     if (option === "profile" && selectedCustomer?.address) {
       // Use profile address
       setUseProfileAddress(true);
-      setShippingAddress(selectedCustomer.address);
+      setShippingAddress(normalizeAddress(selectedCustomer.address));
       setProfileAddressModified(false); // Reset modification flag when switching to profile
 
       // Find and set the IDs for the profile address
@@ -802,11 +995,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const address = addressOptions.find((a) => a.id === parseInt(option));
       if (address) {
         setShippingAddress({
-          street: address.address || "",
-          subdistrict: address.sub_district || "",
-          district: address.district || "",
-          province: address.province || "",
-          postalCode: address.zip_code || "",
+          street: sanitizeAddressValue(address.address),
+          subdistrict: sanitizeAddressValue(address.sub_district),
+          district: sanitizeAddressValue(address.district),
+          province: sanitizeAddressValue(address.province),
+          postalCode: sanitizeAddressValue(address.zip_code),
         });
         // Reset address selections
         setSelectedProvince(null);
@@ -919,14 +1112,27 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           setSelectedCustomer({
             ...selectedCustomer,
             address: {
-              street: newPrimaryAddress.address,
-              subdistrict: newPrimaryAddress.sub_district,
-              district: newPrimaryAddress.district,
-              province: newPrimaryAddress.province,
-              postalCode: newPrimaryAddress.zip_code,
+              street: sanitizeAddressValue(newPrimaryAddress.address),
+              subdistrict: sanitizeAddressValue(newPrimaryAddress.sub_district),
+              district: sanitizeAddressValue(newPrimaryAddress.district),
+              province: sanitizeAddressValue(newPrimaryAddress.province),
+              postalCode: sanitizeAddressValue(newPrimaryAddress.zip_code),
             },
           });
         }
+
+        setShippingAddress(
+          normalizeAddress({
+            street: newPrimaryAddress.address,
+            subdistrict: newPrimaryAddress.sub_district,
+            district: newPrimaryAddress.district,
+            province: newPrimaryAddress.province,
+            postalCode: newPrimaryAddress.zip_code,
+          }),
+        );
+        setSelectedAddressOption("profile");
+        setUseProfileAddress(true);
+        setProfileAddressModified(false);
 
         // Update the address options to reflect the changes
         if (currentCustomerAddress) {
@@ -935,11 +1141,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             ...prev,
             {
               id: result.oldAddressId || Date.now(), // Use returned ID or generate temp one
-              address: currentCustomerAddress.street || "",
-              sub_district: currentCustomerAddress.subdistrict || "",
-              district: currentCustomerAddress.district || "",
-              province: currentCustomerAddress.province || "",
-              zip_code: currentCustomerAddress.postalCode || "",
+              address: sanitizeAddressValue(currentCustomerAddress.street),
+              sub_district: sanitizeAddressValue(currentCustomerAddress.subdistrict),
+              district: sanitizeAddressValue(currentCustomerAddress.district),
+              province: sanitizeAddressValue(currentCustomerAddress.province),
+              zip_code: sanitizeAddressValue(currentCustomerAddress.postalCode),
             },
           ]);
         }
@@ -1024,7 +1230,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       lastName: apiData.last_name,
       phone: apiData.phone,
       email: apiData.email,
-      province: apiData.province,
+      province: sanitizeAddressValue(apiData.province),
       companyId: apiData.company_id,
       assignedTo: apiData.assigned_to,
       dateAssigned: apiData.date_assigned,
@@ -1038,10 +1244,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       totalCalls: parseInt(apiData.total_calls),
       facebookName: apiData.facebook_name,
       lineId: apiData.line_id,
-      street: apiData.street,
-      subdistrict: apiData.subdistrict,
-      district: apiData.district,
-      postalCode: apiData.postal_code,
+      street: sanitizeAddressValue(apiData.street),
+      subdistrict: sanitizeAddressValue(apiData.subdistrict),
+      district: sanitizeAddressValue(apiData.district),
+      postalCode: sanitizeAddressValue(apiData.postal_code),
       hasSoldBefore: Boolean(apiData.has_sold_before),
       followUpCount: apiData.follow_up_count,
       lastFollowUpDate: apiData.last_follow_up_date,
@@ -1050,11 +1256,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       waitingBasketStartDate: apiData.waiting_basket_start_date,
       followupBonusRemaining: apiData.followup_bonus_remaining,
       address: {
-        street: apiData.street,
-        subdistrict: apiData.subdistrict,
-        district: apiData.district,
-        province: apiData.province,
-        postalCode: apiData.postal_code,
+        street: sanitizeAddressValue(apiData.street),
+        subdistrict: sanitizeAddressValue(apiData.subdistrict),
+        district: sanitizeAddressValue(apiData.district),
+        province: sanitizeAddressValue(apiData.province),
+        postalCode: sanitizeAddressValue(apiData.postal_code),
       },
     };
   };
@@ -1069,6 +1275,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const handleSelectCustomer = async (customer: Customer) => {
+    clearValidationErrorFor("customerSelector");
     setLoadingCustomerData(true);
     try {
       // Fetch fresh customer data from database
@@ -1113,7 +1320,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (customer.address) {
       setUseProfileAddress(true);
-      setShippingAddress(customer.address);
+      setShippingAddress(normalizeAddress(customer.address));
     } else {
       setUseProfileAddress(false);
       setShippingAddress(emptyAddress);
@@ -1121,6 +1328,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const startCreatingNewCustomer = () => {
+    clearValidationErrorFor("customerSelector");
     setIsCreatingNewCustomer(true);
     setSelectedCustomer(null);
     setOrderData((prev) => ({ ...prev, customerId: undefined }));
@@ -1156,12 +1364,22 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const updateOrderData = (field: keyof Order, value: any) => {
+    if (field === "paymentMethod") {
+      clearValidationErrorFor("paymentMethod", "transferSlips", "cod");
+    } else if (field === "deliveryDate") {
+      clearValidationErrorFor("deliveryDate");
+    } else if (field === "items") {
+      clearValidationErrorFor("items");
+    } else if (field === "boxes") {
+      clearValidationErrorFor("cod");
+    }
     setOrderData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleShippingAddressChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
+    clearValidationErrorFor("shippingAddress");
     setShippingAddress((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
@@ -1176,6 +1394,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const handleNewCustomerPhoneChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
+    clearValidationErrorFor("newCustomerPhone");
     const value = e.target.value.replace(/[^0-9]/g, "");
     if (value.length > 10) return;
     setNewCustomerPhone(value);
@@ -1191,17 +1410,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
   const handleSave = async () => {
     const isAddressIncomplete = Object.values(shippingAddress).some(
       (val) => (val as string).trim() === "",
     );
     if (isAddressIncomplete) {
+      highlightField("shippingAddress");
       alert("กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน");
       return;
     }
     if (!orderData.deliveryDate) {
+      highlightField("deliveryDate");
       alert("กรุณาเลือกวันที่จัดส่ง");
       return;
     }
@@ -1210,22 +1432,35 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       orderData.items.length === 0 ||
       orderData.items.every((i) => !i.productName)
     ) {
+      highlightField("items");
       alert("กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ");
       return;
     }
     if (!orderData.paymentMethod) {
+      highlightField("paymentMethod");
       alert("กรุณาเลือกวิธีการชำระเงิน");
       return;
     }
+    if (
+      orderData.paymentMethod === PaymentMethod.Transfer &&
+      transferSlipUploads.length === 0
+    ) {
+      highlightField("transferSlips");
+      alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
+      return;
+    }
     if (!salesChannel) {
+      highlightField("salesChannel");
       alert("กรุณาเลือกช่องทางการสั่งซื้อ");
       return;
     }
     if (salesChannel !== "โทร" && !salesChannelPageId) {
+      highlightField("salesChannelPage");
       alert("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
       return;
     }
     if (orderData.paymentMethod === PaymentMethod.COD && !isCodValid) {
+      highlightField("cod");
       alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
       return;
     }
@@ -1235,9 +1470,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       shippingAddress,
       totalAmount,
       paymentStatus:
-        orderData.paymentMethod === PaymentMethod.Transfer
-          ? PaymentStatus.Unpaid
-          : PaymentStatus.Unpaid,
+        typeof orderData.paymentStatus !== "undefined"
+          ? orderData.paymentStatus
+          : orderData.paymentMethod === PaymentMethod.Transfer &&
+              transferSlipUploads.length > 0
+            ? PaymentStatus.PendingVerification
+            : PaymentStatus.Unpaid,
       orderStatus: OrderStatus.Pending,
       salesChannel: salesChannel,
       // @ts-ignore - backend supports this field; added in schema
@@ -1250,12 +1488,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const payload: Parameters<typeof onSave>[0] = { order: finalOrderData };
 
+    if (transferSlipUploads.length > 0) {
+      (payload as any).slipUploads = transferSlipUploads.map(
+        (slip) => slip.dataUrl,
+      );
+    }
+
     if (isCreatingNewCustomer) {
       if (!newCustomerFirstName.trim() || !newCustomerPhone.trim()) {
+        highlightField("newCustomerFirstName");
         alert("กรุณากรอกชื่อและเบอร์โทรศัพท์สำหรับลูกค้าใหม่");
         return;
       }
       if (newCustomerPhoneError) {
+        highlightField("newCustomerPhone");
         alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${newCustomerPhoneError}`);
         return;
       }
@@ -1266,8 +1512,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         phone: newCustomerPhone,
         facebookName: facebookName,
         lineId: lineId,
-        address: shippingAddress,
-        province: shippingAddress.province,
+        address: normalizeAddress(shippingAddress),
+        province: sanitizeAddressValue(shippingAddress.province),
         assignedTo: null,
         dateAssigned: new Date().toISOString(),
         ownershipExpires: new Date(
@@ -1279,6 +1525,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       };
     } else {
       if (!selectedCustomer) {
+        highlightField("customerSelector");
         alert("กรุณาเลือกลูกค้า");
         return;
       }
@@ -1301,11 +1548,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           // Save new address to customer_address table
           (payload as any).newCustomerAddress = {
             customer_id: selectedCustomer.id,
-            address: shippingAddress.street,
-            province: shippingAddress.province,
-            district: shippingAddress.district,
-            sub_district: shippingAddress.subdistrict,
-            zip_code: shippingAddress.postalCode,
+            address: sanitizeAddressValue(shippingAddress.street),
+            province: sanitizeAddressValue(shippingAddress.province),
+            district: sanitizeAddressValue(shippingAddress.district),
+            sub_district: sanitizeAddressValue(shippingAddress.subdistrict),
+            zip_code: sanitizeAddressValue(shippingAddress.postalCode),
           };
         }
       } else if (selectedAddressOption === "profile") {
@@ -1315,18 +1562,29 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
     }
 
-    onSave(payload);
+    let savedOrderId: string | undefined;
+    try {
+      savedOrderId = await onSave(payload);
+    } catch (error) {
+      console.error("create order failed", error);
+      alert("เกิดข้อผิดพลาดในการบันทึกคำสั่งซื้อ กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
+    if (!savedOrderId) {
+      return;
+    }
 
     // Handle customer address update if checkbox is checked
     if ((payload as any).updateCustomerAddress && selectedCustomer) {
       try {
         const updateData = {
           customer_id: selectedCustomer.id,
-          street: shippingAddress.street,
-          subdistrict: shippingAddress.subdistrict,
-          district: shippingAddress.district,
-          province: shippingAddress.province,
-          postal_code: shippingAddress.postalCode,
+          street: sanitizeAddressValue(shippingAddress.street),
+          subdistrict: sanitizeAddressValue(shippingAddress.subdistrict),
+          district: sanitizeAddressValue(shippingAddress.district),
+          province: sanitizeAddressValue(shippingAddress.province),
+          postal_code: sanitizeAddressValue(shippingAddress.postalCode),
         };
 
         const response = await fetch(
@@ -1351,23 +1609,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               ...selectedCustomer,
               address: {
                 street:
-                  result.data.street || selectedCustomer.address?.street || "",
+                  sanitizeAddressValue(result.data.street) ||
+                  sanitizeAddressValue(selectedCustomer.address?.street),
                 subdistrict:
-                  result.data.subdistrict ||
-                  selectedCustomer.address?.subdistrict ||
-                  "",
+                  sanitizeAddressValue(result.data.subdistrict) ||
+                  sanitizeAddressValue(selectedCustomer.address?.subdistrict),
                 district:
-                  result.data.district ||
-                  selectedCustomer.address?.district ||
-                  "",
+                  sanitizeAddressValue(result.data.district) ||
+                  sanitizeAddressValue(selectedCustomer.address?.district),
                 province:
-                  result.data.province ||
-                  selectedCustomer.address?.province ||
-                  "",
+                  sanitizeAddressValue(result.data.province) ||
+                  sanitizeAddressValue(selectedCustomer.address?.province),
                 postalCode:
-                  result.data.postal_code ||
-                  selectedCustomer.address?.postalCode ||
-                  "",
+                  sanitizeAddressValue(result.data.postal_code) ||
+                  sanitizeAddressValue(selectedCustomer.address?.postalCode),
               },
             };
             setSelectedCustomer(updatedCustomer);
@@ -1473,11 +1728,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         });
     }
 
-    setShowSuccessMessage(true);
-    setTimeout(() => setShowSuccessMessage(false), 3000);
+    setCreatedOrderId(savedOrderId ?? null);
+    setShowSuccessModal(true);
   };
 
   const handleCodBoxAmountChange = (index: number, amount: number) => {
+    clearValidationErrorFor("cod");
     const updatedBoxes = [...(orderData.boxes || [])];
     updatedBoxes[index].codAmount = amount;
     updateOrderData("boxes", updatedBoxes);
@@ -1485,6 +1741,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const divideCodEqually = () => {
     if (numBoxes <= 0 || totalAmount <= 0) return;
+    clearValidationErrorFor("cod");
     const amountPerBox = totalAmount / numBoxes;
     const newBoxes = Array.from({ length: numBoxes }, (_, i) => ({
       boxNumber: i + 1,
@@ -1759,6 +2016,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       discount: 0,
       isFreebie: false,
       boxNumber: 1,
+      productId: p.id,
+      isPromotionParent: false,
     };
     replaceEmptyRowOrAppend(newItem);
     closeProductSelector();
@@ -1894,7 +2153,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           <div className="space-y-6">
             {/* Section 1: Customer Information */}
             {
-              <div className="bg-white rounded-lg border border-gray-300 p-6">
+              <div ref={shippingAddressSectionRef} className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
                   ข้อมูลลูกค้า
                 </h2>
@@ -1906,8 +2165,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </label>
                     <input
                       type="text"
+                      ref={customerSearchInputRef}
                       value={searchTerm}
                       onChange={(e) => {
+                        clearValidationErrorFor("customerSelector");
                         setSearchTerm(e.target.value);
                         setSelectedCustomer(null);
                         setIsCreatingNewCustomer(false);
@@ -1979,10 +2240,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </label>
                               <input
                                 type="text"
+                                ref={newCustomerFirstNameRef}
                                 value={newCustomerFirstName}
-                                onChange={(e) =>
-                                  setNewCustomerFirstName(e.target.value)
-                                }
+                                onChange={(e) => {
+                                  clearValidationErrorFor("newCustomerFirstName");
+                                  setNewCustomerFirstName(e.target.value);
+                                }}
                                 className={commonInputClass}
                               />
                             </div>
@@ -2006,6 +2269,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </label>
                               <input
                                 type="text"
+                                ref={newCustomerPhoneRef}
                                 value={newCustomerPhone}
                                 onChange={handleNewCustomerPhoneChange}
                                 className={commonInputClass}
@@ -2066,11 +2330,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         </label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
+                            ref={salesChannelRef}
                             value={salesChannel}
                             onChange={(e) => {
-                              setSalesChannel(e.target.value);
-                              if (e.target.value !== "Facebook")
+                              clearValidationErrorFor("salesChannel");
+                              const channel = e.target.value;
+                              setSalesChannel(channel);
+                              if (channel !== "Facebook") {
                                 setSalesChannelPageId(null);
+                                clearValidationErrorFor("salesChannelPage");
+                              }
                             }}
                             className={commonInputClass}
                           >
@@ -2082,14 +2351,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           </select>
                           {salesChannel && salesChannel !== "โทร" && (
                             <select
+                              ref={salesChannelPageRef}
                               value={salesChannelPageId ?? ""}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                clearValidationErrorFor("salesChannelPage");
                                 setSalesChannelPageId(
                                   e.target.value
                                     ? Number(e.target.value)
                                     : null,
-                                )
-                              }
+                                );
+                              }}
                               className={commonInputClass}
                             >
                               <option value="">เลือกเพจ</option>
@@ -2157,7 +2428,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
             {/* Section 2: Shipping Address */}
             {(selectedCustomer || isCreatingNewCustomer) && (
-              <div className="bg-white rounded-lg border border-gray-300 p-6">
+              <div ref={itemsSectionRef} className="bg-white rounded-lg border border-gray-300 p-6">
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
                   ที่อยู่จัดส่ง
                 </h2>
@@ -2532,6 +2803,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       <label className={commonLabelClass}>วันที่จัดส่ง</label>
                       <input
                         type="date"
+                        ref={deliveryDateRef}
                         value={orderData.deliveryDate}
                         onChange={(e) =>
                           updateOrderData("deliveryDate", e.target.value)
@@ -3087,6 +3359,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       เลือกวิธีการชำระเงิน
                     </label>
                     <select
+                      ref={paymentMethodRef}
                       value={orderData.paymentMethod ?? ""}
                       onChange={(e) =>
                         updateOrderData(
@@ -3110,14 +3383,57 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
 
                   {orderData.paymentMethod === PaymentMethod.Transfer && (
-                    <div className="p-4 border border-blue-300 rounded-md bg-blue-50 text-sm text-[#0e141b]">
-                      หากยังไม่แนบสลิป ระบบจะย้ายออเดอร์ไปที่แท็บ "รอสลิป"
-                      เพื่ออัปโหลดภายหลัง
+                    <div ref={transferSlipSectionRef} className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50">
+                      <p className="text-sm text-[#0e141b]">
+                        แนบสลิปโอนเงินได้หลายภาพตามต้องการ
+                      </p>
+                      {transferSlipUploads.length > 0 && (
+                        <div className="flex flex-wrap gap-3">
+                          {transferSlipUploads.map((slip) => (
+                            <div
+                              key={slip.id}
+                              className="relative w-24 h-24 border border-blue-200 bg-white rounded-md overflow-hidden group"
+                            >
+                              <img
+                                src={slip.dataUrl}
+                                alt={slip.name || "payment slip"}
+                                className="object-cover w-full h-full"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeTransferSlip(slip.id)}
+                                className="absolute top-1 right-1 bg-white/80 text-red-600 rounded-full px-2 leading-none font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="ลบ"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <label className="flex flex-col items-center justify-center w-full md:w-auto px-4 py-3 border border-dashed border-blue-400 rounded-md bg-white text-sm text-blue-600 font-medium cursor-pointer hover:bg-blue-50">
+                        <span>เลือกไฟล์สลิป</span>
+                        <span className="text-xs text-blue-400 mt-1">
+                          รองรับ .jpg, .jpeg, .png และหลายไฟล์ในครั้งเดียว
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleTransferSlipUpload}
+                        />
+                      </label>
+                      {transferSlipUploads.length === 0 && (
+                        <p className="text-xs text-red-600 font-medium">
+                          กรุณาอัปโหลดสลิปก่อนบันทึกออเดอร์
+                        </p>
+                      )}
                     </div>
                   )}
 
                   {orderData.paymentMethod === PaymentMethod.COD && (
-                    <div className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50">
+                    <div ref={codSectionRef} className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50">
                       <h4 className="font-semibold text-[#0e141b]">
                         รายละเอียดการเก็บเงินปลายทาง
                       </h4>
@@ -3144,9 +3460,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           type="number"
                           min="1"
                           value={numBoxes}
-                          onChange={(e) =>
-                            setNumBoxes(Math.max(1, Number(e.target.value)))
-                          }
+                          onChange={(e) => {
+                            clearValidationErrorFor("cod");
+                            setNumBoxes(Math.max(1, Number(e.target.value)));
+                          }}
                           onFocus={onFocusSelectAll}
                           className={commonInputClass}
                         />
@@ -3285,24 +3602,49 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         </div>
       </div>
 
-      {/* Success Message Popup */}
-      {showSuccessMessage && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center">
-          <svg
-            className="w-5 h-5 mr-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          บันทึกคำสั่งซื้อสำเร็จแล้ว
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-[#0e141b]">
+              สร้างคำสั่งซื้อสำเร็จ
+            </h3>
+            {createdOrderId && (
+              <p className="mt-1 text-sm text-[#4e7397]">
+                หมายเลขคำสั่งซื้อ {createdOrderId}
+              </p>
+            )}
+            <p className="mt-4 text-sm text-[#4e7397]">
+              สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
+            </p>
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  onCancel();
+                }}
+                className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              >
+                กลับสู่หน้าหลัก
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -3310,3 +3652,4 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 };
 
 export default CreateOrderPage;
+

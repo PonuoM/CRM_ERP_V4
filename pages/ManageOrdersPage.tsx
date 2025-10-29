@@ -14,6 +14,7 @@ interface ManageOrdersPageProps {
   users: User[];
   openModal: (type: ModalType, data: Order) => void;
   onProcessOrders: (orderIds: string[]) => void;
+  onCancelOrders: (orderIds: string[]) => void;
 }
 
 const DateFilterButton: React.FC<{label: string, value: string, activeValue: string, onClick: (value: string) => void}> = ({ label, value, activeValue, onClick }) => (
@@ -27,11 +28,11 @@ const DateFilterButton: React.FC<{label: string, value: string, activeValue: str
     </button>
 );
 
-const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, openModal, onProcessOrders }) => {
+const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, openModal, onProcessOrders, onCancelOrders }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = useState<'pending' | 'processed'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'processed'>('pending');
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -68,7 +69,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (saved && typeof saved === 'object') {
         setActiveDatePreset(saved.activeDatePreset ?? 'all');
         setDateRange(saved.dateRange ?? { start: '', end: '' });
-        setActiveTab(saved.activeTab === 'processed' ? 'processed' : 'pending');
+        setActiveTab(saved.activeTab === 'processed' ? 'processed' : saved.activeTab === 'verified' ? 'verified' : 'pending');
         setPayTab(saved.payTab === 'unpaid' || saved.payTab === 'paid' ? saved.payTab : 'all');
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
@@ -131,17 +132,65 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setSelectedIds([]);
   }, [activeTab]);
 
-  const pendingOrders = useMemo(() => orders.filter(o => o.orderStatus === OrderStatus.Pending), [orders]);
+  const pendingOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        if (o.orderStatus !== OrderStatus.Pending) {
+          return false;
+        }
+        if (o.paymentMethod !== PaymentMethod.Transfer) {
+          return false;
+        }
+        // โอนที่ยังไม่ผ่านการตรวจสอบสลิป
+        return (
+          o.paymentStatus === PaymentStatus.Unpaid ||
+          o.paymentStatus === PaymentStatus.PendingVerification
+        );
+      }),
+    [orders],
+  );
   
   const processedOrders = useMemo(() => orders.filter(o => 
+      // แสดงออเดอร์ที่ดำเนินการแล้วทั้งหมด (ไม่ใช่ Pending, Delivered, Cancelled หรือ Returned)
       o.orderStatus !== OrderStatus.Pending &&
       o.orderStatus !== OrderStatus.Delivered && 
       o.orderStatus !== OrderStatus.Cancelled && 
       o.orderStatus !== OrderStatus.Returned
   ), [orders]);
   
+  const awaitingExportOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        if (o.orderStatus !== OrderStatus.Pending) {
+          return false;
+        }
+        // รอดึงข้อมูล: รวม COD, รับสินค้าก่อน และโอนที่ตรวจสอบสลิปผ่านแล้ว
+        if (o.paymentMethod === PaymentMethod.COD) {
+          return true;
+        }
+        if (o.paymentMethod === PaymentMethod.PayAfter) {
+          return true;
+        }
+        if (o.paymentMethod === PaymentMethod.Transfer) {
+          return (
+            o.paymentStatus === PaymentStatus.Verified ||
+            o.paymentStatus === PaymentStatus.Paid
+          );
+        }
+        return false;
+      }),
+    [orders],
+  );
+  
   const displayedOrders = useMemo(() => {
-    const sourceOrders = activeTab === 'pending' ? pendingOrders : processedOrders;
+    let sourceOrders;
+    if (activeTab === 'pending') {
+      sourceOrders = pendingOrders;
+    } else if (activeTab === 'verified') {
+      sourceOrders = awaitingExportOrders;
+    } else {
+      sourceOrders = processedOrders;
+    }
     
     if (activeDatePreset === 'all') {
       return sourceOrders;
@@ -180,7 +229,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 return true;
         }
     });
-  }, [pendingOrders, processedOrders, activeTab, activeDatePreset, dateRange]);
+  }, [pendingOrders, awaitingExportOrders, processedOrders, activeTab, activeDatePreset, dateRange]);
 
   // Apply advanced filters on top of displayedOrders (non-destructive to existing logic)
   const customerById = useMemo(() => {
@@ -222,6 +271,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
     return list;
   }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
+
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (prev.length === 0) return prev;
+      const visibleIds = new Set(finalDisplayedOrders.map(o => o.id));
+      const filtered = prev.filter(id => visibleIds.has(id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [finalDisplayedOrders]);
 
   // Local helpers to map API enums/shape to UI types used by the CSV generator
   const fromApiOrderStatus = (s: any): OrderStatus => {
@@ -538,6 +596,42 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
+  const handleMoveToAwaitingExport = async () => {
+    if (selectedIds.length === 0) return;
+    
+    if (window.confirm(`คุณต้องการย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" ใช่หรือไม่?`)) {
+      try {
+        // อัปเดตสถานะของออเดอร์ที่เลือกเป็น Verified
+        const updatedOrders = selectedIds.map(id => {
+          const order = orders.find(o => o.id === id);
+          if (!order) return null;
+          
+          return {
+            ...order,
+            paymentStatus: PaymentStatus.Verified,
+            verificationInfo: {
+              verifiedBy: user.id,
+              verifiedByName: `${user.firstName} ${user.lastName}`,
+              verifiedAt: new Date().toISOString(),
+            }
+          };
+        }).filter(Boolean) as Order[];
+        
+        // ส่งข้อมูลที่อัปเดตกลับไปยัง parent component
+        onProcessOrders(selectedIds);
+        
+        // แสดงข้อความยืนยัน
+        alert(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
+        
+        // ล้างการเลือก
+        setSelectedIds([]);
+      } catch (error) {
+        console.error('Failed to move orders to awaiting export:', error);
+        alert('เกิดข้อผิดพลาดในการย้ายออเดอร์ กรุณาลองใหม่');
+      }
+    }
+  };
+
   const handleDatePresetClick = (preset: string) => {
     setActiveDatePreset(preset);
     setDateRange({ start: '', end: '' });
@@ -653,14 +747,53 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
             <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
-        {selectedIds.length > 0 && (
+        {activeTab !== 'pending' && (
+          <div className="flex items-center space-x-2">
             <button
-                onClick={handleExportAndProcessSelected}
-                className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm"
+              onClick={handleExportAndProcessSelected}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                <Send size={16} className="mr-2"/>
-                Export และส่งให้คลัง ({selectedIds.length})
+              <Send size={16} className="mr-2" />
+              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : 'ส่งออกข้อมูล'}
             </button>
+          </div>
+        )}
+        {activeTab === 'pending' && (
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                if (selectedIds.length === 0) return;
+                if (window.confirm(`คุณต้องการยกเลิกออเดอร์ ${selectedIds.length} รายการใช่หรือไม่?`)) {
+                  onCancelOrders(selectedIds);
+                }
+              }}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ยกเลิกออเดอร์ ({selectedIds.length})
+            </button>
+            <button
+              onClick={handleMoveToAwaitingExport}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ListChecks size={16} className="mr-2" />
+              ย้ายไปยังรอดึงข้อมูล ({selectedIds.length})
+            </button>
+          </div>
+        )}
+        {activeTab === 'verified' && (
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleExportAndProcessSelected}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send size={16} className="mr-2" />
+              ส่งออกข้อมูลไปคลัง ({selectedIds.length})
+            </button>
+          </div>
         )}
       </div>
       
@@ -776,10 +909,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
           >
             <ListChecks size={16} />
-            <span>ยังไม่ได้ดึงข้อมูล</span>
+            <span>รอตรวจสอบสลิป</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
             }`}>{pendingOrders.length}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('verified')}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'verified'
+                ? 'border-b-2 border-yellow-600 text-yellow-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ListChecks size={16} />
+            <span>รอดึงข้อมูล</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
+            }`}>{awaitingExportOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('processed')}
@@ -790,7 +937,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
           >
             <History size={16} />
-            <span>ดึงข้อมูลแล้ว</span>
+            <span>ดำเนินการแล้ว</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'processed' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
             }`}>{processedOrders.length}</span>
@@ -838,7 +985,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             customers={customers} 
             openModal={openModal}
             users={users}
-            selectable={activeTab === 'pending'}
+            selectable={activeTab === 'pending' || activeTab === 'verified'}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
         />
