@@ -111,6 +111,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           log_date: date,
           page_name: row.page_name,
           platform: row.platform,
+          external_page_id: row.external_page_id,
           ads_cost: Number(row.ads_cost || 0),
           impressions: Number(row.impressions || 0),
           reach: Number(row.reach || 0),
@@ -1883,6 +1884,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <tr>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">Page ID</th>
                     <th className="px-3 py-2 text-left">ผู้ใช้</th>
                     <th className="px-3 py-2 text-left">ค่า Ads</th>
                     <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
@@ -1904,6 +1906,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             : row.log_date || ""}
                         </td>
                         <td className="px-3 py-2">{row.page_name}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">
+                          {row.external_page_id || "-"}
+                        </td>
                         <td className="px-3 py-2">
                           {dashboardView === "user"
                             ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()
