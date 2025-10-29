@@ -1007,7 +1007,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             // Create a map of external page ID to pancake data for quick lookup
             const pancakeDataMap = new Map();
             pancakeResults.forEach((result, index) => {
-              if (result && Array.isArray(result)) {
+              if (result) {
                 pancakeDataMap.set(externalPageIds[index], result);
               }
             });
@@ -1018,14 +1018,25 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 const pancakeData = pancakeDataMap.get(row.external_page_id);
 
                 if (pancakeData) {
-                  const dayData = pancakeData.find(
-                    (item: any) => item.date === row.log_date,
-                  );
-                  if (dayData) {
+                  // Check if it's an error response
+                  if (pancakeData.error) {
                     return {
                       ...row,
-                      pancake_stats: dayData,
+                      pancake_error: pancakeData.message,
                     };
+                  }
+
+                  // Check if it's an array of data
+                  if (Array.isArray(pancakeData)) {
+                    const dayData = pancakeData.find(
+                      (item: any) => item.date === row.log_date,
+                    );
+                    if (dayData) {
+                      return {
+                        ...row,
+                        pancake_stats: dayData,
+                      };
+                    }
                   }
                 }
               }
@@ -1101,8 +1112,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
       const tokenResult = await tokenResponse.json();
       if (!tokenResult.success || !tokenResult.page_access_token) {
-        console.error("Page access token generation failed");
-        return null;
+        console.error(
+          "Page access token generation failed:",
+          tokenResult.message ||
+            tokenResult.errors?.[0]?.message ||
+            "Unknown error",
+        );
+        // Return error information instead of null
+        return {
+          error: true,
+          message:
+            tokenResult.message ||
+            tokenResult.errors?.[0]?.message ||
+            "ไม่สามารถสร้าง Access Token ได้",
+        };
       }
 
       const pageAccessToken = tokenResult.page_access_token;
@@ -1134,7 +1157,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
       if (!statsResult.data || !Array.isArray(statsResult.data)) {
         console.error("Invalid statistics data format");
-        return null;
+        return {
+          error: true,
+          message: "รูปแบบข้อมูลสถิติไม่ถูกต้อง",
+        };
       }
 
       // Group data by date and sum the values
@@ -2104,17 +2130,25 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">{row.impressions || 0}</td>
                         <td className="px-3 py-2">{row.reach || 0}</td>
                         <td className="px-3 py-2">{row.clicks || 0}</td>
-                        <td className="px-3 py-2">
-                          {row.pancake_stats?.new_customer_count || 0}
+                        <td className="px-3 py-2 text-red-600 text-xs">
+                          {row.pancake_error
+                            ? row.pancake_error
+                            : row.pancake_stats?.new_customer_count || 0}
                         </td>
-                        <td className="px-3 py-2">
-                          {row.pancake_stats?.customer_inbox_count || 0}
+                        <td className="px-3 py-2 text-red-600 text-xs">
+                          {row.pancake_error
+                            ? row.pancake_error
+                            : row.pancake_stats?.customer_inbox_count || 0}
                         </td>
-                        <td className="px-3 py-2">
-                          {row.pancake_stats?.customer_comment_count || 0}
+                        <td className="px-3 py-2 text-red-600 text-xs">
+                          {row.pancake_error
+                            ? row.pancake_error
+                            : row.pancake_stats?.customer_comment_count || 0}
                         </td>
-                        <td className="px-3 py-2">
-                          {row.pancake_stats?.phone_number_count || 0}
+                        <td className="px-3 py-2 text-red-600 text-xs">
+                          {row.pancake_error
+                            ? row.pancake_error
+                            : row.pancake_stats?.phone_number_count || 0}
                         </td>
                       </tr>
                     ))
