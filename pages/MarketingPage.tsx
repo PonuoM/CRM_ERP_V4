@@ -2130,26 +2130,29 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">{row.impressions || 0}</td>
                         <td className="px-3 py-2">{row.reach || 0}</td>
                         <td className="px-3 py-2">{row.clicks || 0}</td>
-                        <td className="px-3 py-2 text-red-600 text-xs">
-                          {row.pancake_error
-                            ? row.pancake_error
-                            : row.pancake_stats?.new_customer_count || 0}
-                        </td>
-                        <td className="px-3 py-2 text-red-600 text-xs">
-                          {row.pancake_error
-                            ? row.pancake_error
-                            : row.pancake_stats?.customer_inbox_count || 0}
-                        </td>
-                        <td className="px-3 py-2 text-red-600 text-xs">
-                          {row.pancake_error
-                            ? row.pancake_error
-                            : row.pancake_stats?.customer_comment_count || 0}
-                        </td>
-                        <td className="px-3 py-2 text-red-600 text-xs">
-                          {row.pancake_error
-                            ? row.pancake_error
-                            : row.pancake_stats?.phone_number_count || 0}
-                        </td>
+                        {row.pancake_error ? (
+                          <td
+                            className="px-3 py-2 text-red-600 text-xs"
+                            colSpan={4}
+                          >
+                            {row.pancake_error}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2">
+                              {row.pancake_stats?.new_customer_count || 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.pancake_stats?.customer_inbox_count || 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.pancake_stats?.customer_comment_count || 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.pancake_stats?.phone_number_count || 0}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))
                   ) : (
