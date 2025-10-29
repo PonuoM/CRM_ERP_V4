@@ -73,7 +73,9 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
         <span className="text-gray-900">
           {selectedPages.length === 0
             ? "เลือกเพจ..."
-            : `เลือก ${selectedPages.length} เพจ`}
+            : selectedPages.length === pages.length
+              ? "ทั้งหมด"
+              : `เลือก ${selectedPages.length} เพจ`}
         </span>
         <ChevronDown
           className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}

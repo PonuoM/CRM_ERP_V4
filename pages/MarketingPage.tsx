@@ -148,7 +148,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Pagination for Ads History
   const [adsHistoryPage, setAdsHistoryPage] = useState(1);
   const [adsHistoryPageSize, setAdsHistoryPageSize] = useState(10);
-  // Filters for Ads History
+  // Filters for Ads History - default to show all data
   const [adsHistoryDateRange, setAdsHistoryDateRange] = useState({
     start: "",
     end: "",
@@ -296,6 +296,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         );
         setPromotions(Array.isArray(promo) ? promo : []);
         setUserAccessiblePages(userPages);
+        // Set default filters for ads history to show all data
+        setAdsHistoryDateRange({ start: "", end: "" });
+        setAdsHistorySelectedPages(userPages.map((page: Page) => page.id));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -2027,12 +2030,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     className={
                       adsHistoryDateRange.start && adsHistoryDateRange.end
                         ? "text-gray-900"
-                        : "text-gray-500"
+                        : "text-gray-900 font-medium"
                     }
                   >
                     {adsHistoryDateRange.start && adsHistoryDateRange.end
                       ? `${new Date(adsHistoryDateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(adsHistoryDateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                      : "เลือกช่วงวันที่"}
+                      : "ทั้งหมด"}
                   </span>
                   <Calendar className="w-4 h-4 text-gray-400" />
                 </button>
@@ -2099,6 +2102,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       เลือกช่วงเวลาด่วน:
                     </p>
                     <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          const newRange = { start: "", end: "" };
+                          setAdsHistoryTempStart("");
+                          setAdsHistoryTempEnd("");
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        ทั้งหมด
+                      </button>
                       <button
                         onClick={() => {
                           const now = new Date();
