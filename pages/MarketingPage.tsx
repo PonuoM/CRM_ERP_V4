@@ -91,21 +91,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     null,
   );
 
-  // Aggregated dashboard data by page
+  // Aggregated dashboard data by page and date
   const aggregatedByPage = useMemo(() => {
     if (!Array.isArray(dashboardData) || dashboardData.length === 0) return [];
-    const map = new Map<number, any>();
+    const map = new Map<string, any>();
     for (const row of dashboardData) {
       const pid = Number(row.page_id);
-      const prev = map.get(pid);
+      const date = row.log_date || "";
+      const key = `${pid}_${date}`;
+      const prev = map.get(key);
       if (prev) {
         prev.ads_cost += Number(row.ads_cost || 0);
         prev.impressions += Number(row.impressions || 0);
         prev.reach += Number(row.reach || 0);
         prev.clicks += Number(row.clicks || 0);
       } else {
-        map.set(pid, {
+        map.set(key, {
           page_id: pid,
+          log_date: date,
           page_name: row.page_name,
           platform: row.platform,
           ads_cost: Number(row.ads_cost || 0),
@@ -1898,7 +1901,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">
                           {dashboardView === "user"
                             ? row.log_date
-                            : `${dateRange.start || ""}${dateRange.start && dateRange.end ? " - " : ""}${dateRange.end || ""}`}
+                            : row.log_date || ""}
                         </td>
                         <td className="px-3 py-2">{row.page_name}</td>
                         <td className="px-3 py-2">
