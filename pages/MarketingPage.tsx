@@ -1138,6 +1138,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const until = Math.floor(untilDateTime.getTime() / 1000);
 
       // API Call 2: Get page statistics for the entire date range
+      const selectFields = [
+        "new_customer_count",
+        "phone_number_count",
+        "uniq_phone_number_count",
+        "customer_comment_count",
+        "customer_inbox_count",
+        "page_comment_count",
+        "page_inbox_count",
+        "new_inbox_count",
+        "inbox_interactive_count",
+        "today_uniq_website_referral",
+        "today_website_guest_referral",
+        "order_count",
+        "order_count_per_new_cus",
+        "order_count_per_phone",
+        "new_phone_count_per_new_customer_count",
+      ];
+
       const statsResponse = await fetch(
         `https://pages.fm/api/public_api/v1/pages/${externalPageId}/statistics/pages?` +
           new URLSearchParams({
@@ -1145,6 +1163,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             page_id: externalPageId,
             since: since.toString(),
             until: until.toString(),
+            select_fields: JSON.stringify(selectFields),
           }),
       );
 
@@ -1183,6 +1202,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             today_uniq_website_referral: 0,
             today_website_guest_referral: 0,
             uniq_phone_number_count: 0,
+            order_count: 0,
+            order_count_per_new_cus: 0,
+            order_count_per_phone: 0,
+            new_phone_count_per_new_customer_count: 0,
           };
         }
 
@@ -2100,6 +2123,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <th className="px-3 py-2 text-left">ข้อความ</th>
                     <th className="px-3 py-2 text-left">คอมเมนต์</th>
                     <th className="px-3 py-2 text-left">เบอร์โทร</th>
+                    <th className="px-3 py-2 text-left">ออเดอร์</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2151,6 +2175,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             <td className="px-3 py-2">
                               {row.pancake_stats?.phone_number_count || 0}
                             </td>
+                            <td className="px-3 py-2">
+                              {row.pancake_stats?.order_count || 0}
+                            </td>
                           </>
                         )}
                       </tr>
@@ -2158,7 +2185,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   ) : (
                     <tr>
                       <td
-                        colSpan={12}
+                        colSpan={13}
                         className="text-center py-8 text-gray-500"
                       >
                         ไม่มีข้อมูลในช่วงวันที่ที่เลือก
