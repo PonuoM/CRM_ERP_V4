@@ -2124,7 +2124,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <tr>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">เพจ</th>
-                    <th className="px-3 py-2 text-left">Page ID</th>
                     <th className="px-3 py-2 text-left">ผู้ใช้</th>
                     <th className="px-3 py-2 text-left">ค่า Ads</th>
                     <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
@@ -2151,9 +2150,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             : row.log_date || ""}
                         </td>
                         <td className="px-3 py-2">{row.page_name}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">
-                          {row.external_page_id || "-"}
-                        </td>
                         <td className="px-3 py-2">
                           {dashboardView === "user"
                             ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()
@@ -2196,7 +2192,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   ) : (
                     <tr>
                       <td
-                        colSpan={13}
+                        colSpan={12}
                         className="text-center py-8 text-gray-500"
                       >
                         ไม่มีข้อมูลในช่วงวันที่ที่เลือก
