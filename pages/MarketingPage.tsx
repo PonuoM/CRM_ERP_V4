@@ -986,7 +986,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         setDashboardData(data.data || []);
         setDashboardTotal(data.pagination?.total || 0);
 
-        // Get external page IDs from the response
+        // Get unique external page IDs from the response
         const externalPageIds = [
           ...new Set(
             data.data
@@ -995,7 +995,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           ),
         ];
 
-        // Fetch Pancake data for each external page ID
+        // Fetch Pancake data for each unique external page ID only once
         if (externalPageIds.length > 0) {
           const pancakePromises = externalPageIds.map(
             (externalPageId: string) => getPancakePageData(externalPageId),
@@ -1004,15 +1004,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           try {
             const pancakeResults = await Promise.all(pancakePromises);
 
+            // Create a map of external page ID to pancake data for quick lookup
+            const pancakeDataMap = new Map();
+            pancakeResults.forEach((result, index) => {
+              if (result && Array.isArray(result)) {
+                pancakeDataMap.set(externalPageIds[index], result);
+              }
+            });
+
             // Merge Pancake data with dashboard data
             const updatedData = data.data.map((row: any) => {
               if (row.external_page_id) {
-                const pancakeData = pancakeResults.find(
-                  (result) =>
-                    result &&
-                    Array.isArray(result) &&
-                    result.some((item: any) => item.date === row.log_date),
-                );
+                const pancakeData = pancakeDataMap.get(row.external_page_id);
 
                 if (pancakeData) {
                   const dayData = pancakeData.find(
@@ -1104,14 +1107,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
       const pageAccessToken = tokenResult.page_access_token;
 
-      // Convert date range to Unix timestamps
+      // Convert date range to Unix timestamps using the full selected date range
       const sinceDateTime = new Date(`${dateRange.start}T00:00:00`);
       const untilDateTime = new Date(`${dateRange.end}T23:59:59`);
 
       const since = Math.floor(sinceDateTime.getTime() / 1000);
       const until = Math.floor(untilDateTime.getTime() / 1000);
 
-      // API Call 2: Get page statistics
+      // API Call 2: Get page statistics for the entire date range
       const statsResponse = await fetch(
         `https://pages.fm/api/public_api/v1/pages/${externalPageId}/statistics/pages?` +
           new URLSearchParams({
