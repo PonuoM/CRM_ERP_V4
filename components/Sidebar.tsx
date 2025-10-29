@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { User as UserType, UserRole } from "../types";
 import {
   LayoutDashboard,
@@ -20,7 +20,6 @@ import {
   ChevronDown,
   Phone,
 } from "lucide-react";
-
 interface SidebarProps {
   user: UserType;
   activePage: string;
@@ -39,9 +38,11 @@ const CALLS_OVERVIEW = "Calls Overview";
 const DATA_MGMT = "Data Management";
 const INVENTORY_MGMT = "Inventory Management";
 const REPORTS_MGMT = "Reports Management";
-const PAGE_STATS = "สถิติเพจ";
-const CALL_MGMT = "จัดการการโทร";
-const PROMO_MGMT = "โปรโมชั่น";
+const PAGE_STATS = "Page Stats";
+const PAGE_STATS_OVERVIEW = "Page Performance";
+const PAGE_ENGAGEMENT_STATS = "Engagement Insights";
+const CALL_MGMT = "Call Management";
+const PROMO_MGMT = "Promotions";
 
 const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -52,6 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   permissions,
 }) => {
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     [HOME_GROUP]: true,
   });
@@ -64,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Thai translations (UTF-8)
   const TH: Record<string, string> = {
-    Home: "หน้าหลัก",
+    Home: "หน้าแรก",
     "Data Management": "จัดการข้อมูล",
     "Inventory Management": "จัดการสินค้าคงคลัง",
     "Reports Management": "จัดการรายงาน",
@@ -74,40 +76,43 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Call Management": "จัดการการโทร",
     Promotions: "โปรโมชั่น",
     Marketing: "การตลาด",
-    Users: "ผู้ใช้",
+    Users: "ผู้ใช้งาน",
     Permissions: "สิทธิ์การใช้งาน",
     Products: "สินค้า",
     Teams: "ทีม",
     Team: "ทีม",
-    Pages: "เพจ",
+    Pages: "หน้า",
     Tags: "แท็ก",
-    Orders: "คำสั่งซื้อ",
+    Orders: "การสั่งซื้อ",
     Customers: "ลูกค้า",
+    "Customer Management": "จัดการลูกค้า",
     "Manage Customers": "จัดการลูกค้า",
     "Manage Orders": "จัดการคำสั่งซื้อ",
-    Debt: "ติดตามหนี้",
+    Debt: "การติดตามหนี้",
     Reports: "รายงาน",
-    "Bulk Tracking": "อัปเดตเลขพัสดุจำนวนมาก",
+    "Bulk Tracking": "การติดตามล็อตใหญ่",
     "Export History": "ประวัติการส่งออก",
     "Import Export": "นำเข้า/ส่งออก",
     Share: "แชร์",
-    Settings: "ตั้งค่า",
+    Settings: "การตั้งค่า",
     Search: "ค้นหา",
     Data: "ข้อมูล",
     "Call History": "ประวัติการโทร",
     Companies: "บริษัท",
     Warehouses: "คลังสินค้า",
-    "Warehouse Stock": "สต๊อกคลัง",
-    "Lot Tracking": "ติดตามล็อต",
-    "Warehouse Allocation": "จัดสรรคลัง",
+    "Warehouse Stock": "สต็อกคลัง",
+    "Lot Tracking": "การติดตามล็อต",
+    "Warehouse Allocation": "การจัดสรรคลัง",
     "Call Details": "รายละเอียดการโทร",
     "Dtac Onecall": "Dtac Onecall",
-    "โปรโมชั่นที่กำลังใช้งาน": "โปรโมชั่นที่กำลังใช้งาน",
-    "ประวัติโปรโมชั่น": "ประวัติโปรโมชั่น",
-    "สร้างโปรโมชั่นใหม่": "สร้างโปรโมชั่นใหม่",
-    "หน้าเพจ": "หน้าเพจ",
-    "สถิติการมีส่วนร่วม": "สถิติการมีส่วนร่วม",
+    "Active Promotions": "โปรโมชั่นที่ใช้งาน",
+    "Promotion History": "ประวัติโปรโมชั่น",
+    "Create Promotion": "สร้างโปรโมชั่น",
+    "Engagement Stats": "สถิติการมีส่วนร่วม",
     "Pancake User Mapping": "Pancake User Mapping",
+    "Page Stats": "สถิติหน้า",
+    "Page Performance": "ประสิทธิภาพหน้า",
+    "Engagement Insights": "ข้อมูลเชิงลึกการมีส่วนร่วม",
     "Customer Pools": "กลุ่มลูกค้า",
   };
 
@@ -115,7 +120,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const homeChildren: NavItem[] = [
     ...(canView("home.dashboard")
-      ? ([{ icon: LayoutDashboard, label: "แดชบอร์ด" }] as NavItem[])
+      ? ([{ icon: LayoutDashboard, label: "Dashboard" }] as NavItem[])
       : []),
     ...(canView("home.sales_overview")
       ? ([{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[])
@@ -148,13 +153,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Promotions Management group
   const promoChildren: NavItem[] = [
     ...(canView("promo.active")
-      ? ([{ icon: BarChart2, label: "โปรโมชั่นที่กำลังใช้งาน" }] as NavItem[])
+      ? ([{ icon: BarChart2, label: "Active Promotions" }] as NavItem[])
       : []),
     ...(canView("promo.history")
-      ? ([{ icon: FileText, label: "ประวัติโปรโมชั่น" }] as NavItem[])
+      ? ([{ icon: FileText, label: "Promotion History" }] as NavItem[])
       : []),
     ...(canView("promo.create")
-      ? ([{ icon: FileUp, label: "สร้างโปรโมชั่นใหม่" }] as NavItem[])
+      ? ([{ icon: FileUp, label: "Create Promotion" }] as NavItem[])
       : []),
   ];
   const promoGroup: NavItem = {
@@ -190,9 +195,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const inventoryChildren: NavItem[] = [
-    ...(canView("inventory.products")
-      ? ([{ icon: Package, label: "Products" }] as NavItem[])
-      : []),
     ...(canView("inventory.warehouses")
       ? ([{ icon: Database, label: "Warehouses" }] as NavItem[])
       : []),
@@ -206,7 +208,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       ? ([{ icon: FileText, label: "Warehouse Allocation" }] as NavItem[])
       : []),
     ...(canView("inventory.promotions")
-      ? ([{ icon: BarChart2, label: "โปรโมชั่นที่กำลังใช้งาน" }] as NavItem[])
+      ? ([{ icon: BarChart2, label: "Active Promotions" }] as NavItem[])
       : []),
   ];
   const inventoryGroup: NavItem = {
@@ -232,23 +234,38 @@ const Sidebar: React.FC<SidebarProps> = ({
     children: reportsChildren,
   };
 
+  // Reports group for Backoffice
+  const backofficeReportsChildren: NavItem[] = [
+    ...(canView("nav.reports")
+      ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
+      : []),
+    ...(canView("reports.export_history")
+      ? ([{ icon: FileUp, label: "Export History" }] as NavItem[])
+      : []),
+  ];
+  const backofficeReportsGroup: NavItem = {
+    icon: BarChart2,
+    label: REPORTS_MGMT,
+    children: backofficeReportsChildren,
+  };
+
   // Customers group (dropdown)
   const customersGroup: NavItem = {
     icon: Users,
-    label: "จัดการลูกค้า",
+    label: "Customer Management",
     children: [
+      { icon: Users, label: "Customers" },
       { icon: Users, label: "Manage Customers" },
-      { icon: Users, label: "ตระกร้าลูกค้า" },
-      { icon: Share2, label: "แจกรายชื่อ" },
+      { icon: Share2, label: "Share" },
     ],
   };
   // Fixed customers submenu with clear labels that route correctly
   const customersGroupFixed = {
     icon: Users,
-    label: (customersGroup && (customersGroup as any).label) || "Customers",
+    label: "Customer Management",
     children: [
       { icon: Users, label: "Customers" },
-      { icon: Users, label: "Customer Pools" },
+      { icon: Users, label: "Manage Customers" },
       { icon: Share2, label: "Share" },
     ],
   } as NavItem;
@@ -263,13 +280,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           dataGroup,
           inventoryGroup,
           reportsGroup,
-          
           {
             icon: BarChart2,
             label: PAGE_STATS,
             children: [
-              { icon: FileText, label: "หน้าเพจ" },
-              { icon: FileText, label: "สถิติการมีส่วนร่วม" },
+              { icon: FileText, label: PAGE_STATS_OVERVIEW },
+              { icon: FileText, label: PAGE_ENGAGEMENT_STATS },
             ],
           },
           customersGroupFixed,
@@ -296,7 +312,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           callGroup,
         ];
       case UserRole.Telesale:
-      case UserRole.Supervisor:
+      case UserRole.Supervisor: {
         const telesaleItems: NavItem[] = [
           homeGroup,
           ...(canView("nav.customers")
@@ -310,12 +326,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             : []),
           callGroup,
         ];
-
         if (user.role === UserRole.Supervisor) {
           telesaleItems.push({ icon: Briefcase, label: "Team" });
         }
-
         return telesaleItems;
+      }
       case UserRole.Backoffice:
         return [
           homeGroup,
@@ -325,17 +340,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.debt")
             ? ([{ icon: FileText, label: "Debt" }] as NavItem[])
             : []),
+          inventoryGroup,
           ...(canView("nav.search")
             ? ([{ icon: Search, label: "Search" }] as NavItem[])
             : []),
-          ...(canView("nav.reports")
-            ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
+          ...(canView("nav.reports") || canView("reports.export_history")
+            ? ([backofficeReportsGroup] as NavItem[])
             : []),
           ...(canView("nav.bulk_tracking")
             ? ([{ icon: FileUp, label: "Bulk Tracking" }] as NavItem[])
             : []),
-          inventoryGroup,
-          callGroup,
         ];
       default:
         return [homeGroup];
@@ -460,8 +474,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           <Menu className="w-5 h-5" />
         </button>
       </div>
-      <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-6 mb-2">
-        {isCollapsed ? "" : "เมนู"}
+      
+
+      <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-2 mb-2">
+        {isCollapsed ? "" : "หน้าหลัก"}
       </div>
       <nav className="flex-1 px-4 py-2 space-y-1">
         {navItems.map(renderNavItem)}

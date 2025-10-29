@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { User, Customer, Order, ModalType } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
+
+type OrdersFilterValue = 'all' | 'yes' | 'no';
+type DateRangeFilter = { start: string; end: string };
 
 interface ManageCustomersPageProps {
   allUsers: User[];
@@ -27,6 +30,27 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   // Legacy pagination state (kept for hidden legacy table markup)
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [fName, setFName] = useState<string>('');
+  const [fPhone, setFPhone] = useState<string>('');
+  const [fProvince, setFProvince] = useState<string>('');
+  const [fLifecycle, setFLifecycle] = useState<string>('');
+  const [fBehavioral, setFBehavioral] = useState<string>('');
+  const [fGrade, setFGrade] = useState<string>('');
+  const [fHasOrders, setFHasOrders] = useState<OrdersFilterValue>('all');
+  const [fDateAssigned, setFDateAssigned] = useState<DateRangeFilter>({ start: '', end: '' });
+  const [fOwnership, setFOwnership] = useState<DateRangeFilter>({ start: '', end: '' });
+  const [apSelectedUser, setApSelectedUser] = useState<number | 'all'>('all');
+  const [apName, setApName] = useState<string>('');
+  const [apPhone, setApPhone] = useState<string>('');
+  const [apProvince, setApProvince] = useState<string>('');
+  const [apLifecycle, setApLifecycle] = useState<string>('');
+  const [apBehavioral, setApBehavioral] = useState<string>('');
+  const [apGrade, setApGrade] = useState<string>('');
+  const [apHasOrders, setApHasOrders] = useState<OrdersFilterValue>('all');
+  const [apDateAssigned, setApDateAssigned] = useState<DateRangeFilter>({ start: '', end: '' });
+  const [apOwnership, setApOwnership] = useState<DateRangeFilter>({ start: '', end: '' });
+  const advRef = useRef<HTMLDivElement | null>(null);
 
   // Helper: resolve user name by id (handles null/unknown)
   const resolveUserName = (userId: number | null) => {

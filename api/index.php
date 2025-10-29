@@ -48,6 +48,11 @@ $resource = $parts[0] ?? '';
 $id = $parts[1] ?? null;
 $action = $parts[2] ?? null;
 
+if ($resource === 'notifications' && $action === null && $id !== null) {
+    $action = $id;
+    $id = null;
+}
+
 if ($resource === '' || $resource === 'health') {
     json_response(['ok' => true, 'status' => 'healthy']);
 }
@@ -150,6 +155,9 @@ if ($resource === '' || $resource === 'health') {
         break;
     case 'call_overview':
         handle_call_overview($pdo);
+        break;
+    case 'notifications':
+        // handled separately below to support nested actions like settings/get
         break;
     default:
         json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
@@ -937,6 +945,182 @@ function handle_promotions(PDO $pdo, ?string $id): void {
     }
 }
 
+function format_decimal_quantity($qty): string {
+    return number_format((float)$qty, 2, '.', '');
+}
+
+function ensure_warehouse_matches_company(PDO $pdo, int $warehouseId, ?int $companyId): void {
+    if ($companyId === null) {
+        return;
+    }
+    $stmt = $pdo->prepare('SELECT company_id FROM warehouses WHERE id = ?');
+    $stmt->execute([$warehouseId]);
+    $found = $stmt->fetchColumn();
+    if ($found === false) {
+        throw new RuntimeException('WAREHOUSE_NOT_FOUND');
+    }
+    if ((int)$found !== (int)$companyId) {
+        throw new RuntimeException('WAREHOUSE_COMPANY_MISMATCH');
+    }
+}
+
+function reserve_stock_for_allocation(PDO $pdo, int $warehouseId, int $productId, ?string $lotNumber, int $quantity): void {
+    $sel = $pdo->prepare('SELECT id FROM warehouse_stocks WHERE warehouse_id=? AND product_id=? AND ((lot_number IS NULL AND ? IS NULL) OR lot_number = ?) LIMIT 1 FOR UPDATE');
+    $sel->execute([$warehouseId, $productId, $lotNumber, $lotNumber]);
+    $row = $sel->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        $upd = $pdo->prepare('UPDATE warehouse_stocks SET reserved_quantity = GREATEST(0, reserved_quantity + ?) WHERE id=?');
+        $upd->execute([$quantity, (int)$row['id']]);
+    } else {
+        $ins = $pdo->prepare('INSERT INTO warehouse_stocks (warehouse_id, product_id, lot_number, quantity, reserved_quantity) VALUES (?,?,?,?,?)');
+        $ins->execute([$warehouseId, $productId, $lotNumber, 0, max(0, $quantity)]);
+    }
+}
+
+function release_stock_for_allocation(PDO $pdo, int $warehouseId, int $productId, ?string $lotNumber, int $quantity): void {
+    $stmt = $pdo->prepare('UPDATE warehouse_stocks SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE warehouse_id=? AND product_id=? AND ((lot_number IS NULL AND ? IS NULL) OR lot_number = ?) LIMIT 1');
+    $stmt->execute([$quantity, $warehouseId, $productId, $lotNumber, $lotNumber]);
+}
+
+function release_single_allocation(PDO $pdo, array $allocationRow, string $statusOnRelease = 'PENDING'): ?array {
+    $releasedQty = (int)$allocationRow['allocated_quantity'];
+    $lotNumber = $allocationRow['lot_number'] !== null ? (string)$allocationRow['lot_number'] : null;
+    $warehouseId = $allocationRow['warehouse_id'] !== null ? (int)$allocationRow['warehouse_id'] : null;
+
+    if ($releasedQty > 0 && $lotNumber && $warehouseId) {
+        $pdo->prepare('UPDATE product_lots SET quantity_remaining = quantity_remaining + ? WHERE lot_number = ? AND product_id = ? AND warehouse_id = ?')
+            ->execute([format_decimal_quantity($releasedQty), $lotNumber, (int)$allocationRow['product_id'], $warehouseId]);
+    }
+
+    if ($releasedQty > 0 && $warehouseId) {
+        release_stock_for_allocation($pdo, $warehouseId, (int)$allocationRow['product_id'], $lotNumber, $releasedQty);
+    }
+
+    // Reset allocation fields regardless of released quantity to keep state consistent
+    $pdo->prepare('UPDATE order_item_allocations SET allocated_quantity = 0, lot_number = NULL, warehouse_id = NULL, status = ? WHERE id = ?')
+        ->execute([$statusOnRelease, (int)$allocationRow['id']]);
+
+    if ($releasedQty <= 0 && !$lotNumber) {
+        return null;
+    }
+
+    return [
+        'allocationId' => (int)$allocationRow['id'],
+        'releasedQuantity' => $releasedQty,
+        'lotNumber' => $lotNumber,
+    ];
+}
+
+function allocate_allocation_fifo(PDO $pdo, array $allocationRow, int $warehouseId, ?int $desiredQuantity = null, ?string $preferredLot = null): array {
+    $required = $desiredQuantity !== null ? max(0, (int)$desiredQuantity) : max(0, (int)$allocationRow['required_quantity']);
+    if ($required <= 0) {
+        return [];
+    }
+
+    if ((int)$allocationRow['allocated_quantity'] > 0 && !empty($allocationRow['lot_number'])) {
+        release_single_allocation($pdo, $allocationRow);
+    }
+
+    if ($preferredLot !== null && $preferredLot !== '') {
+        $lotStmt = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' AND quantity_remaining > 0 AND lot_number = ? ORDER BY purchase_date ASC, id ASC FOR UPDATE');
+        $lotStmt->execute([(int)$allocationRow['product_id'], $warehouseId, $preferredLot]);
+    } else {
+        $lotStmt = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' AND quantity_remaining > 0 ORDER BY purchase_date ASC, id ASC FOR UPDATE');
+        $lotStmt->execute([(int)$allocationRow['product_id'], $warehouseId]);
+    }
+    $lots = $lotStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($lots as $lot) {
+        if ((float)$lot['quantity_remaining'] + 1e-6 < $required) {
+            continue;
+        }
+        $qtyDecimal = format_decimal_quantity($required);
+        $updateLot = $pdo->prepare('UPDATE product_lots SET quantity_remaining = quantity_remaining - ? WHERE id = ? AND quantity_remaining >= ?');
+        $updateLot->execute([$qtyDecimal, (int)$lot['id'], $qtyDecimal]);
+        if ($updateLot->rowCount() === 0) {
+            continue;
+        }
+
+        reserve_stock_for_allocation($pdo, $warehouseId, (int)$allocationRow['product_id'], (string)$lot['lot_number'], $required);
+
+        $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
+            ->execute([$warehouseId, (string)$lot['lot_number'], $required, 'ALLOCATED', (int)$allocationRow['id']]);
+
+        return [
+            'allocationId' => (int)$allocationRow['id'],
+            'lotNumber' => (string)$lot['lot_number'],
+            'allocatedQuantity' => $required,
+        ];
+    }
+
+    return [];
+}
+
+function auto_allocate_order(PDO $pdo, string $orderId, int $warehouseId, ?int $companyId = null): array {
+    if ($warehouseId <= 0) {
+        throw new RuntimeException('WAREHOUSE_REQUIRED');
+    }
+
+    ensure_warehouse_matches_company($pdo, $warehouseId, $companyId);
+
+    $stmt = $pdo->prepare('SELECT * FROM order_item_allocations WHERE order_id=? AND status IN (\'PENDING\', \'ALLOCATED\') ORDER BY id FOR UPDATE');
+    $stmt->execute([$orderId]);
+    $allocations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$allocations) {
+        return [];
+    }
+
+    $allocated = [];
+    $failures = [];
+    foreach ($allocations as $allocation) {
+        $required = (int)$allocation['required_quantity'];
+        if ($required <= 0) {
+            continue;
+        }
+        if (strcasecmp((string)$allocation['status'], 'ALLOCATED') === 0 &&
+            (int)$allocation['allocated_quantity'] >= $required &&
+            !empty($allocation['lot_number'])) {
+            continue;
+        }
+        $result = allocate_allocation_fifo($pdo, $allocation, $warehouseId, $required);
+        if ($result) {
+            $allocated[] = $result;
+        } else {
+            $failures[] = [
+                'allocationId' => (int)$allocation['id'],
+                'productId' => (int)$allocation['product_id'],
+                'required' => $required,
+            ];
+        }
+    }
+
+    if ($failures) {
+        $messages = array_map(static function (array $row): string {
+            return $row['productId'] . ':' . $row['required'];
+        }, $failures);
+        throw new RuntimeException('INSUFFICIENT_STOCK ' . implode(',', $messages));
+    }
+
+    return $allocated;
+}
+
+function release_order_allocations(PDO $pdo, string $orderId): array {
+    $stmt = $pdo->prepare('SELECT * FROM order_item_allocations WHERE order_id=? AND allocated_quantity > 0 AND status IN (\'ALLOCATED\', \'PICKED\', \'SHIPPED\') ORDER BY id FOR UPDATE');
+    $stmt->execute([$orderId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) {
+        return [];
+    }
+    $released = [];
+    foreach ($rows as $row) {
+        $info = release_single_allocation($pdo, $row, 'CANCELLED');
+        if ($info) {
+            $released[] = $info;
+        }
+    }
+    return $released;
+}
+
 function handle_orders(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
@@ -1114,33 +1298,51 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 } catch (Throwable $e) { /* ignore and leave slipUrl as-is */ }
             }
 
-            $stmt = $pdo->prepare('UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel) WHERE id=?');
-            $stmt->execute([$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $id]);
-            // If sale succeeded, move customer to Old3Months
-            try {
-                if ((isset($paymentStatus) && strcasecmp((string)$paymentStatus, 'Paid') === 0) ||
-                    (isset($orderStatus) && strcasecmp((string)$orderStatus, 'Delivered') === 0)) {
-                    $custStmt = $pdo->prepare('SELECT customer_id FROM orders WHERE id=?');
-                    $custStmt->execute([$id]);
-                    $customerId = $custStmt->fetchColumn();
-                    if ($customerId) {
-                        $upd = $pdo->prepare('UPDATE customers SET lifecycle_status=? WHERE id=?');
-                        $upd->execute(['Old3Months', $customerId]);
-                    }
-                }
-            } catch (Throwable $e) { /* ignore */ }
+            $allocationSummary = [];
+            $releaseSummary = [];
 
-            // Grant sale quota (+90 cap, bonus=1) only when BOTH Paid and Delivered are satisfied
+            $pdo->beginTransaction();
             try {
-                $st = $pdo->prepare('SELECT payment_status, order_status, customer_id FROM orders WHERE id=?');
-                $st->execute([$id]);
-                $row = $st->fetch();
-                if ($row) {
-                    $ps = (string)$row['payment_status'];
-                    $os = (string)$row['order_status'];
-                    $customerId = (string)$row['customer_id'];
-                    if (strcasecmp($ps, 'Paid') === 0 && strcasecmp($os, 'Delivered') === 0) {
-                        // Update customer's ownership and bonus with clamp to now+90
+                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id FROM orders WHERE id = ? FOR UPDATE');
+                $lockStmt->execute([$id]);
+                $existingOrder = $lockStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$existingOrder) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                }
+
+                $previousStatus = (string)($existingOrder['order_status'] ?? '');
+                $previousPayment = (string)($existingOrder['payment_status'] ?? '');
+                $customerId = $existingOrder['customer_id'] ?? null;
+
+                $stmt = $pdo->prepare('UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel) WHERE id=?');
+                $stmt->execute([$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $id]);
+
+                $orderRowStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id FROM orders WHERE id=?');
+                $orderRowStmt->execute([$id]);
+                $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$updatedOrder) {
+                    throw new RuntimeException('ORDER_RELOAD_FAILED');
+                }
+
+                $newStatus = (string)($updatedOrder['order_status'] ?? $previousStatus);
+                $newPaymentStatus = (string)($updatedOrder['payment_status'] ?? $previousPayment);
+                $customerId = $updatedOrder['customer_id'] ?? $customerId;
+                $warehouseIdForAllocation = $updatedOrder['warehouse_id'] !== null ? (int)$updatedOrder['warehouse_id'] : null;
+                $companyIdForAllocation = $updatedOrder['company_id'] !== null ? (int)$updatedOrder['company_id'] : null;
+
+                try {
+                    if ((isset($paymentStatus) && strcasecmp((string)$paymentStatus, 'Paid') === 0) ||
+                        (isset($orderStatus) && strcasecmp((string)$orderStatus, 'Delivered') === 0)) {
+                        if ($customerId) {
+                            $upd = $pdo->prepare('UPDATE customers SET lifecycle_status=? WHERE id=?');
+                            $upd->execute(['Old3Months', $customerId]);
+                        }
+                    }
+                } catch (Throwable $e) { /* ignore */ }
+
+                try {
+                    if ($customerId && strcasecmp($newPaymentStatus, 'Paid') === 0 && strcasecmp($newStatus, 'Delivered') === 0) {
                         $cst = $pdo->prepare('SELECT ownership_expires FROM customers WHERE id=?');
                         $cst->execute([$customerId]);
                         $cexp = $cst->fetchColumn();
@@ -1152,23 +1354,59 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
                         $u->execute([$newExpiry->format('Y-m-d H:i:s'), $now->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
                     }
+                } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
+
+                if (isset($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
+                    $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE order_id=?');
+                    $del->execute([$id]);
+                    $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, tracking_number) VALUES (?, ?)');
+                    $seen = [];
+                    foreach ($in['trackingNumbers'] as $tnRaw) {
+                        $tn = trim((string)$tnRaw);
+                        if ($tn === '') continue;
+                        if (isset($seen[$tn])) continue;
+                        $seen[$tn] = true;
+                        $ins->execute([$id, $tn]);
+                    }
                 }
-            } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
-            if (isset($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
-                // Replace existing tracking numbers with provided set (deduped)
-                $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE order_id=?');
-                $del->execute([$id]);
-                $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, tracking_number) VALUES (?, ?)');
-                $seen = [];
-                foreach ($in['trackingNumbers'] as $tnRaw) {
-                    $tn = trim((string)$tnRaw);
-                    if ($tn === '') continue;
-                    if (isset($seen[$tn])) continue;
-                    $seen[$tn] = true;
-                    $ins->execute([$id, $tn]);
+
+                if ($orderStatus !== null) {
+                    $normalizedStatus = strtoupper($orderStatus);
+                    if ($normalizedStatus === 'PICKING' && strcasecmp($previousStatus, 'Picking') !== 0) {
+                        if (!$warehouseIdForAllocation) {
+                            throw new RuntimeException('WAREHOUSE_REQUIRED');
+                        }
+                        $allocationSummary = auto_allocate_order($pdo, $id, $warehouseIdForAllocation, $companyIdForAllocation);
+                    } elseif ($normalizedStatus === 'CANCELLED' && strcasecmp($previousStatus, 'Cancelled') !== 0) {
+                        $releaseSummary = release_order_allocations($pdo, $id);
+                    }
                 }
+
+                $pdo->commit();
+
+                $response = ['ok' => true];
+                if (!empty($allocationSummary)) {
+                    $response['autoAllocated'] = $allocationSummary;
+                }
+                if (!empty($releaseSummary)) {
+                    $response['released'] = $releaseSummary;
+                }
+                json_response($response);
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $msg = $e->getMessage();
+                $statusCode = 500;
+                if ($msg === 'WAREHOUSE_REQUIRED' || $msg === 'WAREHOUSE_NOT_FOUND' || $msg === 'WAREHOUSE_COMPANY_MISMATCH') {
+                    $statusCode = 400;
+                } elseif (str_starts_with($msg, 'INSUFFICIENT_STOCK')) {
+                    $statusCode = 409;
+                } elseif ($msg === 'ORDER_RELOAD_FAILED') {
+                    $statusCode = 500;
+                }
+                json_response(['error' => 'ORDER_UPDATE_FAILED', 'message' => $msg], $statusCode);
             }
-            json_response(['ok' => true]);
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -1202,44 +1440,71 @@ function handle_allocations(PDO $pdo, ?string $id, ?string $action): void {
             $in = json_input();
             $warehouseId = $in['warehouseId'] ?? null;
             $lotNumber = $in['lotNumber'] ?? null;
-            $allocatedQty = isset($in['allocatedQuantity']) ? (int)$in['allocatedQuantity'] : null;
+            $allocatedQty = array_key_exists('allocatedQuantity', $in) ? (int)$in['allocatedQuantity'] : null;
             $status = $in['status'] ?? null;
 
-            $set = [];$params = [];
-            if ($warehouseId !== null) { $set[] = 'warehouse_id=?'; $params[] = $warehouseId; }
-            if ($lotNumber !== null) { $set[] = 'lot_number=?'; $params[] = $lotNumber; }
-            if ($allocatedQty !== null) { $set[] = 'allocated_quantity=?'; $params[] = max(0,$allocatedQty); }
-            if ($status !== null) { $set[] = 'status=?'; $params[] = $status; }
-            if (!$set) { json_response(['error' => 'NO_FIELDS'], 400); }
-            $params[] = $id;
-            $sql = 'UPDATE order_item_allocations SET '.implode(',',$set).' WHERE id=?';
             $pdo->beginTransaction();
             try {
-                $upd = $pdo->prepare($sql); $upd->execute($params);
-
-                // Optional: adjust reserved quantity when status moves to ALLOCATED
-                if ($status && strtoupper($status) === 'ALLOCATED' && $warehouseId && $allocatedQty !== null) {
-                    // Ensure a warehouse_stocks row exists and bump reserved_quantity
-                    $sel = $pdo->prepare('SELECT id, reserved_quantity FROM warehouse_stocks WHERE warehouse_id=? AND product_id=? AND ( (lot_number IS NULL AND ? IS NULL) OR lot_number = ? ) LIMIT 1');
-                    // Fetch product via allocation
-                    $getAlloc = $pdo->prepare('SELECT product_id FROM order_item_allocations WHERE id=?');
-                    $getAlloc->execute([$id]);
-                    $prodId = (int)($getAlloc->fetchColumn());
-                    $sel->execute([$warehouseId, $prodId, $lotNumber, $lotNumber]);
-                    $row = $sel->fetch();
-                    if ($row) {
-                        $u = $pdo->prepare('UPDATE warehouse_stocks SET reserved_quantity = GREATEST(0, reserved_quantity + ?) WHERE id=?');
-                        $u->execute([$allocatedQty, $row['id']]);
-                    } else {
-                        $insWs = $pdo->prepare('INSERT INTO warehouse_stocks (warehouse_id, product_id, lot_number, quantity, reserved_quantity) VALUES (?,?,?,?,?)');
-                        $insWs->execute([$warehouseId, $prodId, $lotNumber, 0, max(0,$allocatedQty)]);
-                    }
+                $allocStmt = $pdo->prepare('SELECT * FROM order_item_allocations WHERE id=? FOR UPDATE');
+                $allocStmt->execute([$id]);
+                $allocation = $allocStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$allocation) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'NOT_FOUND'], 404);
                 }
+
+                $requestedStatus = $status !== null ? strtoupper($status) : null;
+                $effectiveWarehouseId = $warehouseId !== null ? (int)$warehouseId : ($allocation['warehouse_id'] !== null ? (int)$allocation['warehouse_id'] : null);
+
+                if ($requestedStatus === 'CANCELLED') {
+                    $releasedInfo = release_single_allocation($pdo, $allocation, 'CANCELLED');
+                    $pdo->commit();
+                    json_response(['ok' => true, 'released' => $releasedInfo]);
+                }
+
+                if ($requestedStatus === 'ALLOCATED') {
+                    if ($effectiveWarehouseId === null) {
+                        throw new RuntimeException('WAREHOUSE_REQUIRED');
+                    }
+                    $desiredQty = $allocatedQty !== null ? max(0, $allocatedQty) : (int)$allocation['required_quantity'];
+                    if ($desiredQty <= 0) {
+                        throw new RuntimeException('INVALID_ALLOCATED_QUANTITY');
+                    }
+                    $preferredLot = ($lotNumber !== null && $lotNumber !== '') ? (string)$lotNumber : null;
+                    $allocationResult = allocate_allocation_fifo($pdo, $allocation, $effectiveWarehouseId, $desiredQty, $preferredLot);
+                    if (!$allocationResult) {
+                        throw new RuntimeException('INSUFFICIENT_STOCK');
+                    }
+                    $pdo->commit();
+                    json_response(['ok' => true, 'autoAllocated' => $allocationResult]);
+                }
+
+                $set = []; $params = [];
+                if ($warehouseId !== null) { $set[] = 'warehouse_id=?'; $params[] = $warehouseId; }
+                if ($lotNumber !== null) { $set[] = 'lot_number=?'; $params[] = $lotNumber; }
+                if ($allocatedQty !== null) { $set[] = 'allocated_quantity=?'; $params[] = max(0, $allocatedQty); }
+                if ($status !== null) { $set[] = 'status=?'; $params[] = $status; }
+                if (!$set) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'NO_FIELDS'], 400);
+                }
+                $params[] = $id;
+                $sql = 'UPDATE order_item_allocations SET '.implode(',', $set).' WHERE id=?';
+                $upd = $pdo->prepare($sql);
+                $upd->execute($params);
+
                 $pdo->commit();
                 json_response(['ok' => true]);
             } catch (Throwable $e) {
                 $pdo->rollBack();
-                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+                $msg = $e->getMessage();
+                $code = 500;
+                if ($msg === 'WAREHOUSE_REQUIRED' || $msg === 'INVALID_ALLOCATED_QUANTITY') {
+                    $code = 400;
+                } elseif (str_starts_with($msg, 'INSUFFICIENT_STOCK')) {
+                    $code = 409;
+                }
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $msg], $code);
             }
             break;
         default:
@@ -2758,3 +3023,373 @@ function handle_call_overview(PDO $pdo): void {
         json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
     }
 }
+
+// =============================================
+// Notification API Endpoints
+// =============================================
+
+// Get notifications for user
+function handle_get_notifications(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $userId = $data['userId'] ?? null;
+    $userRole = $data['userRole'] ?? null;
+    $limit = $data['limit'] ?? 50;
+    $includeRead = !empty($data['includeRead']);
+    
+    if (!$userId || !$userRole) {
+        json_response(['error' => 'MISSING_PARAMETERS'], 400);
+    }
+    
+    try {
+        // Get notifications for user based on role
+        $sql = '
+            SELECT DISTINCT n.*,
+                   COALESCE(nrs.read_at IS NOT NULL, FALSE) AS is_read_by_user
+            FROM notifications n
+            LEFT JOIN notification_roles nr ON n.id = nr.notification_id
+            LEFT JOIN notification_users nu ON n.id = nu.notification_id
+            LEFT JOIN notification_read_status nrs ON n.id = nrs.notification_id AND nrs.user_id = ?
+            WHERE (nr.role = ? OR nu.user_id = ?)';
+        if (!$includeRead) {
+            $sql .= '
+              AND nrs.read_at IS NULL';
+        }
+        $sql .= '
+            ORDER BY n.timestamp DESC
+            LIMIT ?';
+
+        $params = [$userId, $userRole, $userId, $limit];
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $notifications = $stmt->fetchAll();
+        
+        json_response(['success' => true, 'notifications' => $notifications]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Get notification count by category for user
+function handle_get_notification_count(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $userId = $data['userId'] ?? null;
+    $userRole = $data['userRole'] ?? null;
+    
+    if (!$userId || !$userRole) {
+        json_response(['error' => 'MISSING_PARAMETERS'], 400);
+    }
+    
+    try {
+        // Get notification counts by category
+        $stmt = $pdo->prepare('
+            SELECT n.category, COUNT(*) as count
+            FROM notifications n
+            LEFT JOIN notification_roles nr ON n.id = nr.notification_id
+            LEFT JOIN notification_users nu ON n.id = nu.notification_id
+            LEFT JOIN notification_read_status nrs ON n.id = nrs.notification_id AND nrs.user_id = ?
+            WHERE (nr.role = ? OR nu.user_id = ?)
+              AND nrs.read_at IS NULL
+            GROUP BY n.category
+        ');
+        $stmt->execute([$userId, $userRole, $userId]);
+        $counts = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+        
+        json_response(['success' => true, 'counts' => $counts]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Mark notification as read
+function handle_mark_notification_as_read(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $notificationId = $data['notificationId'] ?? null;
+    $userId = $data['userId'] ?? null;
+    
+    if (!$notificationId || !$userId) {
+        json_response(['error' => 'MISSING_PARAMETERS'], 400);
+    }
+    
+    try {
+        // Check if notification exists and user has access
+        $stmt = $pdo->prepare('
+            SELECT n.id
+            FROM notifications n
+            LEFT JOIN notification_roles nr ON n.id = nr.notification_id
+            LEFT JOIN notification_users nu ON n.id = nu.notification_id
+            WHERE n.id = ? AND (nr.role IN (SELECT role FROM users WHERE id = ?) OR nu.user_id = ?)
+        ');
+        $stmt->execute([$notificationId, $userId, $userId]);
+        
+        if (!$stmt->fetch()) {
+            json_response(['error' => 'NOT_FOUND_OR_NO_ACCESS'], 404);
+        }
+        
+        // Mark as read
+        $stmt = $pdo->prepare('
+            INSERT INTO notification_read_status (notification_id, user_id, read_at)
+            VALUES (?, ?, NOW())
+            ON DUPLICATE KEY UPDATE read_at = NOW()
+        ');
+        $stmt->execute([$notificationId, $userId]);
+        
+        json_response(['success' => true]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Mark all notifications as read for user
+function handle_mark_all_notifications_as_read(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $userId = $data['userId'] ?? null;
+    $userRole = $data['userRole'] ?? null;
+    
+    if (!$userId || !$userRole) {
+        json_response(['error' => 'MISSING_PARAMETERS'], 400);
+    }
+    
+    try {
+        // Get all unread notifications for user
+        $stmt = $pdo->prepare('
+            SELECT n.id
+            FROM notifications n
+            LEFT JOIN notification_roles nr ON n.id = nr.notification_id
+            LEFT JOIN notification_users nu ON n.id = nu.notification_id
+            LEFT JOIN notification_read_status nrs ON n.id = nrs.notification_id AND nrs.user_id = ?
+            WHERE (nr.role = ? OR nu.user_id = ?)
+              AND nrs.read_at IS NULL
+        ');
+        $stmt->execute([$userId, $userRole, $userId]);
+        $notificationIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Mark all as read
+        if (!empty($notificationIds)) {
+            $valuePlaceholders = [];
+            $params = [];
+            foreach ($notificationIds as $notificationId) {
+                $valuePlaceholders[] = '(?, ?, NOW())';
+                $params[] = $notificationId;
+                $params[] = $userId;
+            }
+
+            $sql = "
+                INSERT INTO notification_read_status (notification_id, user_id, read_at)
+                VALUES " . implode(',', $valuePlaceholders) . "
+                ON DUPLICATE KEY UPDATE read_at = NOW()
+            ";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+        }
+        
+        json_response(['success' => true, 'count' => count($notificationIds)]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Create new notification
+function handle_create_notification(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $notification = $data['notification'] ?? null;
+    
+    if (!$notification) {
+        json_response(['error' => 'MISSING_NOTIFICATION'], 400);
+    }
+    
+    try {
+        // Generate unique ID if not provided
+        $id = $notification['id'] ?? 'notif_' . uniqid();
+        
+        // Insert notification
+        $stmt = $pdo->prepare('
+            INSERT INTO notifications (
+                id, type, category, title, message, priority,
+                related_id, page_id, page_name, platform,
+                previous_value, current_value, percentage_change,
+                action_url, action_text, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ');
+        $stmt->execute([
+            $id,
+            $notification['type'],
+            $notification['category'],
+            $notification['title'],
+            $notification['message'],
+            $notification['priority'],
+            $notification['relatedId'] ?? null,
+            $notification['pageId'] ?? null,
+            $notification['pageName'] ?? null,
+            $notification['platform'] ?? null,
+            $notification['metrics']['previousValue'] ?? null,
+            $notification['metrics']['currentValue'] ?? null,
+            $notification['metrics']['percentageChange'] ?? null,
+            $notification['actionUrl'] ?? null,
+            $notification['actionText'] ?? null,
+            $notification['metadata'] ? json_encode($notification['metadata']) : null
+        ]);
+        
+        // Add roles
+        if (!empty($notification['forRoles'])) {
+            $stmt = $pdo->prepare('INSERT INTO notification_roles (notification_id, role) VALUES (?, ?)');
+            foreach ($notification['forRoles'] as $role) {
+                $stmt->execute([$id, $role]);
+            }
+        }
+        
+        // Add specific users
+        if (!empty($notification['userId'])) {
+            $stmt = $pdo->prepare('INSERT INTO notification_users (notification_id, user_id) VALUES (?, ?)');
+            $stmt->execute([$id, $notification['userId']]);
+        }
+        
+        // Get the created notification
+        $stmt = $pdo->prepare('SELECT * FROM notifications WHERE id = ?');
+        $stmt->execute([$id]);
+        $createdNotification = $stmt->fetch();
+        
+        json_response(['success' => true, 'notification' => $createdNotification]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Get notification settings for user
+function handle_get_notification_settings(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $userId = $data['userId'] ?? null;
+    
+    if (!$userId) {
+        json_response(['error' => 'MISSING_USER_ID'], 400);
+    }
+    
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM notification_settings WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        $settings = $stmt->fetchAll();
+        
+        json_response(['success' => true, 'settings' => $settings]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Update notification settings
+function handle_update_notification_settings(PDO $pdo): void {
+    if (method() !== 'POST') { json_response(['error' => 'METHOD_NOT_ALLOWED'], 405); }
+    
+    $data = json_decode(file_get_contents('php://input'), true);
+    $settings = $data['settings'] ?? null;
+    
+    if (!$settings || !isset($settings['userId']) || !isset($settings['notificationType'])) {
+        json_response(['error' => 'MISSING_PARAMETERS'], 400);
+    }
+    
+    try {
+        $stmt = $pdo->prepare('
+            INSERT INTO notification_settings (
+                user_id, notification_type, in_app_enabled, email_enabled, 
+                sms_enabled, business_hours_only
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                in_app_enabled = VALUES(in_app_enabled),
+                email_enabled = VALUES(email_enabled),
+                sms_enabled = VALUES(sms_enabled),
+                business_hours_only = VALUES(business_hours_only),
+                updated_at = NOW()
+        ');
+        $stmt->execute([
+            $settings['userId'],
+            $settings['notificationType'],
+            $settings['inAppEnabled'] ?? true,
+            $settings['emailEnabled'] ?? false,
+            $settings['smsEnabled'] ?? false,
+            $settings['businessHoursOnly'] ?? false
+        ]);
+        
+        // Get the updated setting
+        $stmt = $pdo->prepare('
+            SELECT * FROM notification_settings 
+            WHERE user_id = ? AND notification_type = ?
+        ');
+        $stmt->execute([$settings['userId'], $settings['notificationType']]);
+        $updatedSetting = $stmt->fetch();
+        
+        json_response(['success' => true, 'setting' => $updatedSetting]);
+    } catch (Throwable $e) {
+        json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+// Main router for notifications
+if ($resource === 'notifications') {
+    switch ($action) {
+        case 'get':
+            handle_get_notifications($pdo);
+            break;
+        case 'count':
+            handle_get_notification_count($pdo);
+            break;
+        case 'markAsRead':
+            handle_mark_notification_as_read($pdo);
+            break;
+        case 'markAllAsRead':
+            handle_mark_all_notifications_as_read($pdo);
+            break;
+        case 'create':
+            handle_create_notification($pdo);
+            break;
+        case 'settings':
+            if ($parts[3] === 'get') {
+                handle_get_notification_settings($pdo);
+            } elseif ($parts[3] === 'update') {
+                handle_update_notification_settings($pdo);
+            } else {
+                json_response(['error' => 'INVALID_ACTION'], 400);
+            }
+            break;
+        default:
+            json_response(['error' => 'INVALID_ACTION'], 400);
+    }
+}
+
+// Handle POST requests for notifications (for backward compatibility)
+if (method() === 'POST' && isset($_POST['action'])) {
+    switch ($_POST['action']) {
+        case 'getNotifications':
+            handle_get_notifications($pdo);
+            break;
+        case 'getNotificationCount':
+            handle_get_notification_count($pdo);
+            break;
+        case 'markNotificationAsRead':
+            handle_mark_notification_as_read($pdo);
+            break;
+        case 'markAllNotificationsAsRead':
+            handle_mark_all_notifications_as_read($pdo);
+            break;
+        case 'createNotification':
+            handle_create_notification($pdo);
+            break;
+        case 'getNotificationSettings':
+            handle_get_notification_settings($pdo);
+            break;
+        case 'updateNotificationSettings':
+            handle_update_notification_settings($pdo);
+            break;
+    }
+}
+
+?>

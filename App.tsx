@@ -1,8 +1,9 @@
-﻿import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   UserRole,
   User,
   Order,
+  OrderSlip,
   ModalState,
   Customer,
   Product,
@@ -24,6 +25,10 @@ import {
   ActivityType,
   Company,
   Warehouse,
+  LineItem,
+  SalesImportRow,
+  CustomerImportRow,
+  ImportResultSummary,
 } from "./types";
 // Mock data removed - using real database only
 import {
@@ -37,6 +42,7 @@ import {
   listAppointments,
   createCustomer as apiCreateCustomer,
   createOrder as apiCreateOrder,
+  createOrderSlip,
   patchOrder as apiPatchOrder,
   createCall,
   createAppointment,
@@ -82,7 +88,14 @@ import DebtCollectionPage from "./pages/DebtCollectionPage";
 import UserManagementModal from "./components/UserManagementModal";
 import ProductManagementModal from "./components/ProductManagementModal";
 import ConfirmDeleteModal from "./components/ConfirmDeleteModal";
-import { Bell, ChevronsUpDown, Menu } from "lucide-react";
+import {
+  Bell,
+  ChevronsUpDown,
+  Menu,
+  AlertCircle,
+  Clock,
+  Check,
+} from "lucide-react";
 import LogCallModal from "./components/LogCallModal";
 import AppointmentModal from "./components/AppointmentModal";
 import EditCustomerModal from "./components/EditCustomerModal";
@@ -115,6 +128,8 @@ import ManageCustomersPage from "./pages/ManageCustomersPage";
 import CustomerPoolsPage from "./pages/CustomerPoolsPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import OrderAllocationPage from "./pages/OrderAllocationPage";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import notificationService from "./services/notificationService";
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -126,7 +141,7 @@ const App: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const page = urlParams.get("page");
     if (page === "search") return "Search";
-    return "แดชบอร์ด";
+    return "Dashboard";
   };
 
   const shouldHideSidebar = () => {
@@ -157,13 +172,13 @@ const App: React.FC = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([
     {
       id: 1,
-      name: "คลังกรุงเทพ",
+      name: "สำนักงานใหญ่",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
       address: "123 ถนนสุขุมวิท",
       province: "กรุงเทพมหานคร",
       district: "คลองเตย",
-      subdistrict: "คลองเตย",
+      subdistrict: "คลองเตยเหนือ",
       postalCode: "10110",
       phone: "02-123-4567",
       email: "bangkok@alphaseeds.com",
@@ -174,7 +189,7 @@ const App: React.FC = () => {
         "นนทบุรี",
         "ปทุมธานี",
         "สมุทรปราการ",
-        "สมุทรสาคร",
+        "ชลบุรี",
       ],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
@@ -182,25 +197,19 @@ const App: React.FC = () => {
     },
     {
       id: 2,
-      name: "คลังเชียงใหม่",
+      name: "สำนักงานสาขาเชียงใหม่",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
       address: "456 ถนนนิมมานเหมินทร์",
       province: "เชียงใหม่",
       district: "เมืองเชียงใหม่",
-      subdistrict: "ศรีภูมิ",
+      subdistrict: "สุเทพ",
       postalCode: "50200",
       phone: "053-123-456",
       email: "chiangmai@alphaseeds.com",
-      managerName: "สมหญิง รักดี",
+      managerName: "มานี รักษาดี",
       managerPhone: "082-345-6789",
-      responsibleProvinces: [
-        "เชียงใหม่",
-        "เชียงราย",
-        "ลำปาง",
-        "ลำพูน",
-        "แม่ฮ่องสอน",
-      ],
+      responsibleProvinces: ["เชียงใหม่", "ลำปาง", "ลำพูน", "แพร่", "น่าน"],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -741,89 +750,6 @@ const App: React.FC = () => {
     };
   }, []); // Load once on mount
 
-  useEffect(() => {
-    const now = new Date();
-
-    setNotifications((prevNotifications) => {
-      const existingIds = new Set(prevNotifications.map((n) => n.id));
-      const generatedNotifications: Notification[] = [];
-
-      // 1. Pending Verification (for Backoffice)
-      orders.forEach((order) => {
-        if (order.paymentStatus === PaymentStatus.PendingVerification) {
-          const id = `notif-pv-${order.id}`;
-          if (!existingIds.has(id)) {
-            generatedNotifications.push({
-              id,
-              type: NotificationType.PendingVerification,
-              message: `Order ${order.id} needs payment verification.`,
-              timestamp: new Date().toISOString(),
-              read: false,
-              relatedId: order.id,
-              forRoles: [UserRole.Backoffice],
-            });
-          }
-        }
-      });
-
-      // 2. Overdue Payments (for Backoffice)
-      orders.forEach((order) => {
-        const isOverdue =
-          new Date(order.deliveryDate) < now &&
-          ((order.paymentMethod === PaymentMethod.PayAfter &&
-            order.paymentStatus !== PaymentStatus.Paid) ||
-            (order.paymentMethod === PaymentMethod.Transfer &&
-              order.paymentStatus === PaymentStatus.Unpaid));
-        if (isOverdue) {
-          const id = `notif-od-${order.id}`;
-          if (!existingIds.has(id)) {
-            generatedNotifications.push({
-              id,
-              type: NotificationType.OverduePayment,
-              message: `Payment for order ${order.id} is overdue.`,
-              timestamp: new Date().toISOString(),
-              read: false,
-              relatedId: order.id,
-              forRoles: [UserRole.Backoffice],
-            });
-          }
-        }
-      });
-
-      // 3. Expiring Customer Ownership (for Telesale, Supervisor)
-      customers.forEach((customer) => {
-        if (customer.assignedTo) {
-          const expiryDate = new Date(customer.ownershipExpires);
-          const diffDays =
-            (expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24);
-          if (diffDays > 0 && diffDays <= 7) {
-            const id = `notif-exp-${customer.id}`;
-            if (!existingIds.has(id)) {
-              generatedNotifications.push({
-                id,
-                type: NotificationType.ExpiringOwnership,
-                message: `${customer.firstName}'s ownership expires in ${Math.ceil(diffDays)} days.`,
-                timestamp: new Date().toISOString(),
-                read: false,
-                relatedId: customer.id,
-                forRoles: [UserRole.Telesale, UserRole.Supervisor],
-              });
-            }
-          }
-        }
-      });
-
-      if (generatedNotifications.length > 0) {
-        return [...generatedNotifications, ...prevNotifications].sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
-      }
-
-      return prevNotifications;
-    });
-  }, [orders, customers]);
-
   const currentUser = useMemo(() => {
     if (sessionUser) {
       const byId = users.find((u) => u.id === sessionUser.id);
@@ -845,6 +771,40 @@ const App: React.FC = () => {
     }
     return users[0];
   }, [sessionUser, users]);
+
+  useEffect(() => {
+    const userId = currentUser?.id;
+    const userRole = currentUser?.role as UserRole | undefined;
+
+    if (typeof userId !== "number" || !userRole) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchNotifications = async () => {
+      try {
+        const userNotifications = await notificationService.fetchNotifications(
+          userId,
+          userRole,
+          50,
+        );
+        if (isMounted) {
+          setNotifications(userNotifications);
+        }
+      } catch (error) {
+        console.error("Error loading notifications:", error);
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [currentUser?.id, currentUser?.role]);
 
   const viewingCustomer = useMemo(() => {
     if (!viewingCustomerId) return null;
@@ -931,8 +891,11 @@ const App: React.FC = () => {
 
   const visibleNotifications = useMemo(() => {
     return notifications.filter((n) => {
-      const roleMatch = Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
-      const userMatch = typeof (n as any).userId === 'number' && (n as any).userId === currentUser.id;
+      const roleMatch =
+        Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
+      const userMatch =
+        typeof (n as any).userId === "number" &&
+        (n as any).userId === currentUser.id;
       return roleMatch || userMatch;
     });
   }, [notifications, currentUser.role, currentUser.id]);
@@ -945,12 +908,33 @@ const App: React.FC = () => {
     setIsNotificationPanelOpen((prev) => !prev);
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+
+    try {
+      await notificationService.markAsRead(notificationId, currentUser.id);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
     setNotifications((prev) =>
-      prev.map((n) =>
-        n.forRoles.includes(currentUser.role) ? { ...n, read: true } : n,
-      ),
+      prev.filter((n) => {
+        const matchesRole =
+          Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
+        const matchesUser =
+          typeof (n as any).userId === "number" &&
+          (n as any).userId === currentUser.id;
+        return !(matchesRole || matchesUser);
+      }),
     );
+
+    try {
+      await notificationService.markAllAsRead(currentUser.id, currentUser.role);
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+    }
   };
 
   const handleLogout = () => {
@@ -995,7 +979,7 @@ const App: React.FC = () => {
 
   // Clear any transient create-order initial data when leaving the page
   useEffect(() => {
-    if (activePage !== "สร้างคำสั่งซื้อ") setCreateOrderInitialData(null);
+    if (activePage !== "CreateOrder") setCreateOrderInitialData(null);
   }, [activePage]);
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
@@ -1010,7 +994,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
-        description: `เปลี่ยนสถานะออเดอร์ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
+        description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1024,7 +1008,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified,
-        description: `ยืนยันการชำระเงินสำหรับออเดอร์ ${updatedOrder.id}`,
+        description: `ยืนยันการชำระเงินสำเร็จสำหรับคำสั่งซื้อ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1039,7 +1023,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.TrackingAdded,
-        description: `เพิ่ม Tracking [${newTracking.join(", ")}] ในออเดอร์ ${updatedOrder.id}`,
+        description: `เพิ่ม Tracking [${newTracking.join(", ")}] สำหรับคำสั่งซื้อ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1106,7 +1090,7 @@ const App: React.FC = () => {
   };
 
   const handleCancelOrder = async (orderId: string) => {
-    if (window.confirm("คุณต้องการยกเลิกออเดอร์นี้ใช่หรือไม่?")) {
+    if (window.confirm("คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?")) {
       const orderToCancel = orders.find((o) => o.id === orderId);
       if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
         const newActivity: Activity = {
@@ -1114,7 +1098,7 @@ const App: React.FC = () => {
           customerId: orderToCancel.customerId,
           timestamp: new Date().toISOString(),
           type: ActivityType.OrderCancelled,
-          description: `ยกเลิกออเดอร์ ${orderId}`,
+          description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         };
         if (true) {
@@ -1157,7 +1141,7 @@ const App: React.FC = () => {
             customerId: o.customerId,
             timestamp: new Date().toISOString(),
             type: ActivityType.OrderStatusChanged,
-            description: `เปลี่ยนสถานะออเดอร์ ${o.id} จาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
+            description: `อัปเดตสถานะคำสั่งซื้อ ${o.id} จาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
             actorName: `${currentUser.firstName} ${currentUser.lastName}`,
           });
           return { ...o, orderStatus: OrderStatus.Picking };
@@ -1212,7 +1196,7 @@ const App: React.FC = () => {
               customerId: (orderToUpdate as Order).customerId,
               timestamp: new Date().toISOString(),
               type: ActivityType.TrackingAdded,
-              description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับออเดอร์ ${update.orderId}`,
+              description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
             });
 
@@ -1234,7 +1218,7 @@ const App: React.FC = () => {
                 customerId: (orderToUpdate as Order).customerId,
                 timestamp: new Date().toISOString(),
                 type: ActivityType.OrderStatusChanged,
-                description: `เปลี่ยนสถานะออเดอร์ ${update.orderId} จาก '${OrderStatus.Picking}' เป็น '${OrderStatus.Shipping}'`,
+                description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${OrderStatus.Picking}' เป็น '${OrderStatus.Shipping}'`,
                 actorName: `${currentUser.firstName} ${currentUser.lastName}`,
               });
             }
@@ -1291,12 +1275,20 @@ const App: React.FC = () => {
     customerUpdate?: Partial<
       Pick<Customer, "address" | "facebookName" | "lineId">
     >;
-  }) => {
+    slipUploads?: string[];
+  }): Promise<string | undefined> => {
     const {
       order: newOrderData,
       newCustomer: newCustomerData,
       customerUpdate,
+      slipUploads,
     } = payload;
+    const slipUploadsArray = Array.isArray(slipUploads)
+      ? slipUploads.filter(
+          (content) => typeof content === "string" && content.trim() !== "",
+        )
+      : [];
+    let uploadedSlips: OrderSlip[] = [];
     let customerIdForOrder = newOrderData.customerId;
 
     if (newCustomerData && newCustomerData.phone) {
@@ -1306,7 +1298,8 @@ const App: React.FC = () => {
         ...newCustomerData,
         id: newCustomerId,
         companyId: currentUser.companyId,
-        assignedTo: currentUser.role === UserRole.Admin ? (null as any) : currentUser.id,
+        assignedTo:
+          currentUser.role === UserRole.Admin ? (null as any) : currentUser.id,
         dateAssigned: new Date().toISOString(),
         totalPurchases: 0,
         totalCalls: 0,
@@ -1322,7 +1315,8 @@ const App: React.FC = () => {
           email: newCustomer.email,
           province: newCustomer.province,
           companyId: newCustomer.companyId,
-          assignedTo: currentUser.role === UserRole.Admin ? null : currentUser.id,
+          assignedTo:
+            currentUser.role === UserRole.Admin ? null : currentUser.id,
           dateAssigned: newCustomer.dateAssigned,
           dateRegistered: new Date().toISOString(),
           followUpDate: null,
@@ -1343,7 +1337,7 @@ const App: React.FC = () => {
         console.log("Customer created successfully:", newCustomer.id);
       } catch (e) {
         console.error("create customer API failed", e);
-        alert("เกิดข้อผิดพลาดในการสร้างลูกค้าใหม่ กรุณาลองใหม่อีกครั้ง");
+        alert("ไม่สามารถสร้างลูกค้าได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
         return; // Don't proceed with order creation if customer creation fails
       }
       setCustomers((prev) => [newCustomer, ...prev]);
@@ -1371,6 +1365,8 @@ const App: React.FC = () => {
       paymentStatus: newOrderData.paymentStatus || PaymentStatus.Unpaid,
       orderStatus: newOrderData.orderStatus || OrderStatus.Pending,
       trackingNumbers: newOrderData.trackingNumbers || [],
+      slipUrl: undefined,
+      slips: [],
       notes: newOrderData.notes,
       boxes: newOrderData.boxes,
       salesChannel: newOrderData.salesChannel,
@@ -1414,6 +1410,37 @@ const App: React.FC = () => {
         result,
       );
 
+      if (slipUploadsArray.length > 0) {
+        for (const dataUrl of slipUploadsArray) {
+          try {
+            const res: any = await createOrderSlip(newOrder.id, dataUrl);
+            if (res && res.url) {
+              uploadedSlips.push({
+                id: Number(res.id ?? Date.now()),
+                url: String(res.url),
+                createdAt:
+                  typeof res.created_at === "string"
+                    ? res.created_at
+                    : new Date().toISOString(),
+              });
+            }
+          } catch (uploadErr) {
+            console.error("order slip upload failed", uploadErr);
+            alert("ไม่สามารถอัพโหลดสลิปได้ กรุณาตรวจสอบแล้วลองใหม่อีกครั้ง");
+            break;
+          }
+        }
+        if (uploadedSlips.length > 0) {
+          newOrder.slipUrl = uploadedSlips[0].url;
+          newOrder.slips = uploadedSlips;
+          try {
+            await apiPatchOrder(newOrder.id, { slipUrl: newOrder.slipUrl });
+          } catch (patchErr) {
+            console.warn("failed to sync slip url to order", patchErr);
+          }
+        }
+      }
+
       // Refresh orders from API to get the latest data
       try {
         const freshOrders = await listOrders();
@@ -1450,7 +1477,7 @@ const App: React.FC = () => {
           }
         };
 
-        const mappedOrders = Array.isArray(freshOrders)
+        let mappedOrders = Array.isArray(freshOrders)
           ? freshOrders.map((o) => ({
               id: o.id,
               customerId: o.customer_id,
@@ -1486,8 +1513,30 @@ const App: React.FC = () => {
                 typeof o.sales_channel_page_id !== "undefined"
                   ? Number(o.sales_channel_page_id)
                   : undefined,
+              slipUrl:
+                typeof o.slip_url !== "undefined" && o.slip_url !== null
+                  ? String(o.slip_url)
+                  : undefined,
+              slips: Array.isArray(o.slips)
+                ? (o.slips as any[]).map((s) => ({
+                    id: Number(s.id),
+                    url: String(s.url),
+                    createdAt: s.created_at,
+                  }))
+                : undefined,
             }))
           : [];
+        if (uploadedSlips.length > 0) {
+          mappedOrders = mappedOrders.map((order) =>
+            order.id === newOrder.id
+              ? {
+                  ...order,
+                  slipUrl: order.slipUrl ?? uploadedSlips[0].url,
+                  slips: uploadedSlips,
+                }
+              : order,
+          );
+        }
         setOrders(mappedOrders);
         console.log("Orders refreshed from API");
       } catch (refreshError) {
@@ -1497,7 +1546,7 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error("create order API failed", e);
-      alert("เกิดข้อผิดพลาดในการสร้างออเดอร์ กรุณาลองใหม่อีกครั้ง");
+      alert("ไม่สามารถสร้างคำสั่งซื้อได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
       return; // Don't add to local state if API fails
     }
 
@@ -1513,7 +1562,7 @@ const App: React.FC = () => {
           {
             id: notifId,
             type: NotificationType.NewOrderForCustomer,
-            message: `ลูกค้าของคุณมีคำสั่งซื้อใหม่: ${newOrder.id}`,
+            message: `มีคำสั่งซื้อใหม่สำหรับลูกค้าของคุณ: ${newOrder.id}`,
             timestamp: new Date().toISOString(),
             read: false,
             relatedId: newOrder.customerId,
@@ -1531,10 +1580,10 @@ const App: React.FC = () => {
             // Use backend column names to ensure persistence
             is_in_waiting_basket: 1,
             waiting_basket_start_date: new Date().toISOString(),
-            lifecycle_status: 'FollowUp',
+            lifecycle_status: "FollowUp",
           });
         } catch (err) {
-          console.warn('update waiting basket flags failed', err);
+          console.warn("update waiting basket flags failed", err);
         }
         setCustomers((prev) =>
           prev.map((c) =>
@@ -1550,7 +1599,7 @@ const App: React.FC = () => {
         );
       }
     } catch (notifyErr) {
-      console.warn('post-create notify/redistribute failed', notifyErr);
+      console.warn("post-create notify/redistribute failed", notifyErr);
     }
 
     const newActivity: Activity = {
@@ -1558,7 +1607,7 @@ const App: React.FC = () => {
       customerId: newOrder.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.OrderCreated,
-      description: `สร้างออเดอร์ใหม่ ${newOrder.id}`,
+      description: `สร้างคำสั่งซื้อ ${newOrder.id}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     try {
@@ -1576,13 +1625,15 @@ const App: React.FC = () => {
     }
     setActivities((prev) => [newActivity, ...prev]);
 
-    // Update customer lifecycle status when an order is created
-    // If customer is in FollowUp status, transition to Old3Months
+    // Update customer lifecycle status when an order is created.
+    // Keep FollowUp status as the highest priority so outstanding follow-ups are not hidden.
     const customer = customers.find((c) => c.id === customerIdForOrder);
-    if (
+    const shouldTransitionToOld3Months =
       customer &&
-      customer.lifecycleStatus === CustomerLifecycleStatus.FollowUp
-    ) {
+      customer.lifecycleStatus !== CustomerLifecycleStatus.FollowUp &&
+      customer.lifecycleStatus !== CustomerLifecycleStatus.Old3Months;
+
+    if (shouldTransitionToOld3Months) {
       setCustomers((prev) =>
         prev.map((c) =>
           c.id === customerIdForOrder
@@ -1619,7 +1670,7 @@ const App: React.FC = () => {
     }
 
     closeModal();
-    setActivePage("แดชบอร์ด"); // Go back to dashboard after creating
+    return newOrder.id;
   };
 
   const handleUpdateCustomer = async (updatedCustomer: Customer) => {
@@ -1659,7 +1710,7 @@ const App: React.FC = () => {
   const handleTakeCustomer = (customerToTake: Customer) => {
     if (
       window.confirm(
-        `คุณต้องการรับลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" มาดูแลใช่หรือไม่?`,
+        `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
       )
     ) {
       setCustomers((prev) =>
@@ -1796,7 +1847,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to save user via API", e);
-      alert("บันทึกผู้ใช้ไปยังระบบไม่สำเร็จ (API)");
+      alert("ไม่สามารถบันทึกข้อมูลผู้ใช้ได้ (API)");
     }
   };
 
@@ -1807,7 +1858,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to delete user via API", e);
-      alert("ลบผู้ใช้จากระบบไม่สำเร็จ (อาจมีการอ้างอิงข้อมูลอื่น)");
+      alert("ไม่สามารถลบผู้ใช้ได้ (อาจมีข้อมูลที่เกี่ยวข้อง)");
     }
   };
 
@@ -1909,10 +1960,9 @@ const App: React.FC = () => {
             ...c,
             totalCalls: c.totalCalls + 1,
             followUpDate: newFollowUpDate || c.followUpDate,
-            previousLifecycleStatus:
-              newFollowUpDate
-                ? (c.previousLifecycleStatus ?? c.lifecycleStatus)
-                : c.previousLifecycleStatus,
+            previousLifecycleStatus: newFollowUpDate
+              ? (c.previousLifecycleStatus ?? c.lifecycleStatus)
+              : c.previousLifecycleStatus,
             tags: updatedCustomerTags,
           };
 
@@ -1952,9 +2002,11 @@ const App: React.FC = () => {
         id: Math.max(...appointments.map((a) => a.id), 0) + 1,
         customerId: customerId,
         date: newFollowUpDate,
-        title: `โทรติดตามผล (${callLogData.result})`,
-        status: "รอการดำเนินการ",
-        notes: callLogData.notes || `สร้างอัตโนมัติจากการบันทึกการโทร`,
+        title: `ติดตามลูกค้า (${callLogData.result})`,
+        status: "รอดำเนินการ",
+        notes:
+          callLogData.notes ||
+          `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`,
       };
       if (true) {
         try {
@@ -1962,7 +2014,7 @@ const App: React.FC = () => {
             customerId,
             date: newFollowUpDate,
             title: newAppointment.title,
-            status: "รอการดำเนินการ",
+            status: "รอดำเนินการ",
             notes: newAppointment.notes,
           });
         } catch (e) {
@@ -2136,7 +2188,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
       ...appointmentData,
       id: Math.max(...appointments.map((a) => a.id), 0) + 1,
-      status: "รอการดำเนินการ",
+      status: "รอดำเนินการ",
     };
     if (true) {
       try {
@@ -2144,7 +2196,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: "รอการดำเนินการ",
+          status: "รอดำเนินการ",
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -2208,7 +2260,7 @@ const App: React.FC = () => {
       customerId: appointmentData.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `สร้างนัดหมาย: ${appointmentData.title}`,
+      description: `นัดหมาย: ${appointmentData.title}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -2319,7 +2371,9 @@ const App: React.FC = () => {
               const cutoff = new Date();
               cutoff.setDate(cutoff.getDate() - 90);
               const hasRecentOrder = orders.some(
-                (o) => o.customerId === customer.id && new Date(o.orderDate) >= cutoff,
+                (o) =>
+                  o.customerId === customer.id &&
+                  new Date(o.orderDate) >= cutoff,
               );
               if (hasRecentOrder) {
                 newLifecycleStatus = CustomerLifecycleStatus.Old3Months;
@@ -2342,7 +2396,7 @@ const App: React.FC = () => {
       customerId: appointmentToUpdate.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้น`,
+      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -2418,7 +2472,7 @@ const App: React.FC = () => {
       return prev.map((u) => {
         if (u.id === currentUser.id) {
           if (u.customTags.length >= 10) {
-            alert("คุณสร้าง Tag ส่วนตัวได้สูงสุด 10 Tag เท่านั้น");
+            alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
             return u;
           }
           const existingTag = [...systemTags, ...u.customTags].find(
@@ -2442,19 +2496,612 @@ const App: React.FC = () => {
     return newTag;
   };
 
-  const handleImportSales = () => {
-    // This is a placeholder for the complex sales import logic.
-    // In a real application, this would process a file, update customers and orders.
-    console.log("Importing sales...");
-    alert("ฟังก์ชันนำเข้ายอดขายกำลังอยู่ในระหว่างการพัฒนา");
+  const sanitizeValue = (value: string | number | null | undefined) => {
+    if (typeof value === "number") {
+      return String(value).trim();
+    }
+    if (typeof value === "string") {
+      return value.trim();
+    }
+    return "";
   };
 
-  const handleImportCustomers = () => {
-    // This is a placeholder for the customer import logic.
-    console.log("Importing customers...");
-    alert("ฟังก์ชันนำเข้าลูกค้ากำลังอยู่ในระหว่างการพัฒนา");
+  const normalizePhone = (value: string) => value.replace(/\D+/g, "");
+
+  const parseDateToIso = (value?: string) => {
+    const trimmed = sanitizeValue(value);
+    if (!trimmed) return undefined;
+    const direct = new Date(trimmed);
+    if (Number.isFinite(direct.getTime())) {
+      return direct.toISOString();
+    }
+    const asDateOnly = new Date(`${trimmed}T00:00:00`);
+    if (Number.isFinite(asDateOnly.getTime())) {
+      return asDateOnly.toISOString();
+    }
+    return undefined;
   };
 
+  const normalizePaymentMethodValue = (raw?: string): PaymentMethod => {
+    const token = sanitizeValue(raw).toLowerCase();
+    if (token === "cod" || token === "cash on delivery") {
+      return PaymentMethod.COD;
+    }
+    if (token === "payafter" || token === "pay after") {
+      return PaymentMethod.PayAfter;
+    }
+    return PaymentMethod.Transfer;
+  };
+
+  const normalizePaymentStatusValue = (raw?: string): PaymentStatus => {
+    const token = sanitizeValue(raw).toLowerCase();
+    if (token === "paid" || token === "success") {
+      return PaymentStatus.Paid;
+    }
+    if (
+      token === "pending" ||
+      token === "pendingverification" ||
+      token === "pending verification"
+    ) {
+      return PaymentStatus.PendingVerification;
+    }
+    return PaymentStatus.Unpaid;
+  };
+
+  const calculateLineTotal = (row: SalesImportRow) => {
+    const quantity =
+      typeof row.quantity === "number" && Number.isFinite(row.quantity)
+        ? row.quantity
+        : 1;
+    const unitPrice =
+      typeof row.unitPrice === "number" && Number.isFinite(row.unitPrice)
+        ? row.unitPrice
+        : 0;
+    const discount =
+      typeof row.discount === "number" && Number.isFinite(row.discount)
+        ? row.discount
+        : 0;
+    if (
+      typeof row.totalAmount === "number" &&
+      Number.isFinite(row.totalAmount)
+    ) {
+      return row.totalAmount;
+    }
+    return quantity * unitPrice - discount;
+  };
+
+  const ensureCustomerForImport = async (
+    input: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      email?: string;
+      address?: string;
+      subdistrict?: string;
+      district?: string;
+      province?: string;
+      postalCode?: string;
+      caretakerId?: number | null;
+    },
+    summary: ImportResultSummary,
+    notes: string[],
+    processed: Map<string, Customer>,
+  ): Promise<Customer | null> => {
+    const cached = processed.get(input.id);
+    if (cached) return cached;
+
+    const email = sanitizeValue(input.email) || undefined;
+    const firstName = sanitizeValue(input.firstName) || "Customer";
+    const lastName = sanitizeValue(input.lastName);
+    const phone = normalizePhone(input.phone);
+    const street = sanitizeValue(input.address);
+    const subdistrict = sanitizeValue(input.subdistrict);
+    const district = sanitizeValue(input.district);
+    const province = sanitizeValue(input.province);
+    const postalCode = sanitizeValue(input.postalCode);
+
+    let assignedTo: number | null = null;
+    if (
+      typeof input.caretakerId === "number" &&
+      Number.isFinite(input.caretakerId)
+    ) {
+      const exists = companyUsers.some((u) => u.id === input.caretakerId);
+      if (exists) {
+        assignedTo = input.caretakerId;
+      } else {
+        summary.caretakerConflicts += 1;
+        notes.push(
+          `Caretaker ${input.caretakerId} not found for customer ${input.id}`,
+        );
+      }
+    }
+
+    let existing: Customer | undefined = customers.find(
+      (c) => c.id === input.id,
+    );
+    let recordExists = false;
+    try {
+      await apiFetch(`customers/${encodeURIComponent(input.id)}`);
+      recordExists = true;
+    } catch (error) {
+      if ((error as any)?.status !== 404) {
+        notes.push(
+          `Failed to check customer ${input.id}: ${(error as Error).message}`,
+        );
+        return existing ?? null;
+      }
+    }
+
+    const address = {
+      street,
+      subdistrict,
+      district,
+      province,
+      postalCode,
+    };
+
+    if (recordExists) {
+      try {
+        await updateCustomer(input.id, {
+          firstName,
+          lastName,
+          phone,
+          email,
+          province: province || undefined,
+          assignedTo: assignedTo ?? undefined,
+          dateAssigned: assignedTo ? new Date().toISOString() : undefined,
+          address: {
+            street: street || undefined,
+            subdistrict: subdistrict || undefined,
+            district: district || undefined,
+            province: province || undefined,
+            postalCode: postalCode || undefined,
+          },
+        });
+      } catch (error) {
+        notes.push(
+          `Failed to update customer ${input.id}: ${(error as Error).message}`,
+        );
+        return existing ?? null;
+      }
+
+      const updatedCustomer: Customer = existing ?? {
+        id: input.id,
+        firstName,
+        lastName,
+        phone,
+        email,
+        address,
+        province,
+        companyId: currentUser.companyId,
+        assignedTo,
+        dateAssigned: new Date().toISOString(),
+        ownershipExpires: "",
+        lifecycleStatus: CustomerLifecycleStatus.New,
+        behavioralStatus: CustomerBehavioralStatus.Cold,
+        grade: CustomerGrade.C,
+        tags: [],
+        totalPurchases: 0,
+        totalCalls: 0,
+      };
+
+      const mergedCustomer: Customer = {
+        ...updatedCustomer,
+        firstName,
+        lastName,
+        phone,
+        email,
+        address,
+        province,
+        assignedTo,
+      };
+
+      setCustomers((prev) => {
+        if (prev.some((c) => c.id === input.id)) {
+          return prev.map((c) =>
+            c.id === input.id ? { ...c, ...mergedCustomer } : c,
+          );
+        }
+        return [mergedCustomer, ...prev];
+      });
+
+      summary.updatedCustomers += 1;
+      processed.set(input.id, mergedCustomer);
+      return mergedCustomer;
+    }
+
+    try {
+      await apiCreateCustomer({
+        id: input.id,
+        firstName,
+        lastName,
+        phone,
+        email,
+        province,
+        companyId: currentUser.companyId,
+        assignedTo,
+        dateAssigned: assignedTo ? new Date().toISOString() : undefined,
+        address: {
+          street: street || undefined,
+          subdistrict: subdistrict || undefined,
+          district: district || undefined,
+          province: province || undefined,
+          postalCode: postalCode || undefined,
+        },
+      });
+    } catch (error) {
+      notes.push(
+        `Failed to create customer ${input.id}: ${(error as Error).message}`,
+      );
+      return null;
+    }
+
+    const newCustomer: Customer = {
+      id: input.id,
+      firstName,
+      lastName,
+      phone,
+      email,
+      address,
+      province,
+      companyId: currentUser.companyId,
+      assignedTo,
+      dateAssigned: new Date().toISOString(),
+      ownershipExpires: "",
+      lifecycleStatus: CustomerLifecycleStatus.New,
+      behavioralStatus: CustomerBehavioralStatus.Cold,
+      grade: CustomerGrade.C,
+      tags: [],
+      totalPurchases: 0,
+      totalCalls: 0,
+    };
+
+    setCustomers((prev) => {
+      if (prev.some((c) => c.id === input.id)) {
+        return prev.map((c) => (c.id === input.id ? newCustomer : c));
+      }
+      return [newCustomer, ...prev];
+    });
+
+    summary.createdCustomers += 1;
+    processed.set(input.id, newCustomer);
+    return newCustomer;
+  };
+
+  const handleImportSales = async (
+    rows: SalesImportRow[],
+  ): Promise<ImportResultSummary> => {
+    const summary: ImportResultSummary = {
+      totalRows: rows.length,
+      createdCustomers: 0,
+      updatedCustomers: 0,
+      createdOrders: 0,
+      updatedOrders: 0,
+      waitingBasket: 0,
+      caretakerConflicts: 0,
+      notes: [],
+    };
+
+    const processedCustomers = new Map<string, Customer>();
+    const grouped = new Map<
+      string,
+      { rows: SalesImportRow[]; firstIndex: number }
+    >();
+
+    rows.forEach((row, index) => {
+      const orderId = sanitizeValue(row.orderNumber);
+      if (!orderId) {
+        summary.notes.push(`Row ${index + 2}: missing order number, skipped.`);
+        return;
+      }
+      const entry = grouped.get(orderId);
+      if (entry) {
+        entry.rows.push(row);
+      } else {
+        grouped.set(orderId, { rows: [row], firstIndex: index });
+      }
+    });
+
+    for (const [orderId, group] of grouped.entries()) {
+      const { rows: orderRows, firstIndex } = group;
+      const first = orderRows[0];
+      if (!first) continue;
+
+      const rawCustomerId = sanitizeValue(first.customerId);
+      let customerId = rawCustomerId;
+      if (!customerId) {
+        const phoneSeed = normalizePhone(sanitizeValue(first.customerPhone));
+        if (phoneSeed) {
+          customerId = `CUST-${phoneSeed}`;
+        } else {
+          customerId = `CUST-${Date.now()}-${firstIndex}`;
+        }
+      }
+
+      const firstName =
+        sanitizeValue(first.customerFirstName) ||
+        sanitizeValue(first.customerName).split(/\s+/)[0] ||
+        "Customer";
+      const lastName =
+        sanitizeValue(first.customerLastName) ||
+        sanitizeValue(first.customerName).split(/\s+/).slice(1).join(" ");
+
+      const phone = normalizePhone(sanitizeValue(first.customerPhone));
+      if (!phone) {
+        summary.notes.push(
+          `Order ${orderId}: customer phone missing, skipped.`,
+        );
+        continue;
+      }
+
+      const customer = await ensureCustomerForImport(
+        {
+          id: customerId,
+          firstName,
+          lastName,
+          phone,
+          email: sanitizeValue(first.customerEmail),
+          address: sanitizeValue(first.address),
+          subdistrict: sanitizeValue(first.subdistrict),
+          district: sanitizeValue(first.district),
+          province: sanitizeValue(first.province),
+          postalCode: sanitizeValue(first.postalCode),
+          caretakerId:
+            typeof first.caretakerId === "number" &&
+            Number.isFinite(first.caretakerId)
+              ? first.caretakerId
+              : undefined,
+        },
+        summary,
+        summary.notes,
+        processedCustomers,
+      );
+
+      if (!customer) {
+        summary.notes.push(
+          `Order ${orderId}: failed to upsert customer ${customerId}.`,
+        );
+        continue;
+      }
+
+      let orderExists = orders.some((o) => o.id === orderId);
+      if (!orderExists) {
+        try {
+          await apiFetch(`orders/${encodeURIComponent(orderId)}`);
+          orderExists = true;
+        } catch (error) {
+          if ((error as any)?.status !== 404) {
+            summary.notes.push(
+              `Order ${orderId}: lookup failed - ${(error as Error).message}`,
+            );
+            continue;
+          }
+        }
+      }
+
+      if (orderExists) {
+        summary.notes.push(`Order ${orderId} already exists, skipped.`);
+        continue;
+      }
+
+      const orderDateIso =
+        parseDateToIso(first.saleDate) ?? new Date().toISOString();
+      const paymentMethod = normalizePaymentMethodValue(first.paymentMethod);
+      const paymentStatus = normalizePaymentStatusValue(first.paymentStatus);
+      const shippingAddress: Address = {
+        street: sanitizeValue(first.address),
+        subdistrict: sanitizeValue(first.subdistrict),
+        district: sanitizeValue(first.district),
+        province: sanitizeValue(first.province),
+        postalCode: sanitizeValue(first.postalCode),
+      };
+
+      const lineItems = orderRows.map((line, index) => {
+        const productName =
+          sanitizeValue(line.productName) ||
+          sanitizeValue(line.productCode) ||
+          `Item ${index + 1}`;
+        return {
+          id: index + 1,
+          productName,
+          quantity:
+            typeof line.quantity === "number" && Number.isFinite(line.quantity)
+              ? line.quantity
+              : 1,
+          pricePerUnit:
+            typeof line.unitPrice === "number" &&
+            Number.isFinite(line.unitPrice)
+              ? line.unitPrice
+              : 0,
+          discount:
+            typeof line.discount === "number" && Number.isFinite(line.discount)
+              ? line.discount
+              : 0,
+          isFreebie: false,
+          boxNumber: 0,
+          productId: undefined,
+          promotionId: undefined,
+          parentItemId: undefined,
+          isPromotionParent: false,
+        } as LineItem;
+      });
+
+      const payloadItems = lineItems.map((item) => ({
+        id: item.id,
+        productId: item.productId ?? null,
+        productName: item.productName,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit,
+        discount: item.discount,
+        isFreebie: item.isFreebie,
+        boxNumber: item.boxNumber,
+        promotionId: item.promotionId ?? null,
+        parentItemId: item.parentItemId ?? null,
+        isPromotionParent: item.isPromotionParent ?? false,
+      }));
+
+      const totalAmount = orderRows
+        .map(calculateLineTotal)
+        .reduce((sum, value) => sum + value, 0);
+
+      const orderPayload = {
+        id: orderId,
+        customerId: customer.id,
+        companyId: currentUser.companyId,
+        creatorId: currentUser.id,
+        orderDate: orderDateIso,
+        deliveryDate: orderDateIso,
+        shippingAddress,
+        items: payloadItems,
+        shippingCost: 0,
+        billDiscount: 0,
+        totalAmount,
+        paymentMethod,
+        paymentStatus,
+        slipUrl: null,
+        amountPaid:
+          paymentStatus === PaymentStatus.Paid ? totalAmount : undefined,
+        codAmount:
+          paymentMethod === PaymentMethod.COD ? totalAmount : undefined,
+        orderStatus: OrderStatus.Pending,
+        trackingNumbers: [],
+        boxes: [],
+        notes: sanitizeValue(first.notes) || undefined,
+        salesChannel: undefined,
+        salesChannelPageId: undefined,
+        warehouseId: undefined,
+      };
+
+      try {
+        await apiCreateOrder(orderPayload);
+      } catch (error) {
+        summary.notes.push(
+          `Order ${orderId}: creation failed - ${(error as Error).message}`,
+        );
+        continue;
+      }
+
+      const newOrder: Order = {
+        id: orderId,
+        customerId: customer.id,
+        companyId: currentUser.companyId,
+        creatorId: currentUser.id,
+        orderDate: orderDateIso,
+        deliveryDate: orderDateIso,
+        shippingAddress,
+        items: lineItems,
+        shippingCost: 0,
+        billDiscount: 0,
+        totalAmount,
+        paymentMethod,
+        paymentStatus,
+        slipUrl: undefined,
+        amountPaid:
+          paymentStatus === PaymentStatus.Paid ? totalAmount : undefined,
+        codAmount:
+          paymentMethod === PaymentMethod.COD ? totalAmount : undefined,
+        orderStatus: OrderStatus.Pending,
+        trackingNumbers: [],
+        boxes: [],
+        notes: sanitizeValue(first.notes) || undefined,
+        warehouseId: undefined,
+        salesChannel: undefined,
+        salesChannelPageId: undefined,
+        slips: [],
+      };
+
+      setOrders((prev) => [newOrder, ...prev]);
+      summary.createdOrders += 1;
+    }
+
+    return summary;
+  };
+
+  const handleImportCustomers = async (
+    rows: CustomerImportRow[],
+  ): Promise<ImportResultSummary> => {
+    const summary: ImportResultSummary = {
+      totalRows: rows.length,
+      createdCustomers: 0,
+      updatedCustomers: 0,
+      createdOrders: 0,
+      updatedOrders: 0,
+      waitingBasket: 0,
+      caretakerConflicts: 0,
+      notes: [],
+    };
+
+    const processedCustomers = new Map<string, Customer>();
+    let counter = 0;
+    const timestamp = Date.now();
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+
+      let customerId = sanitizeValue(row.customerId);
+      const rawPhone = sanitizeValue(row.phone);
+      const phone = normalizePhone(rawPhone);
+
+      if (!customerId) {
+        if (phone) {
+          customerId = `CUST-${phone}`;
+        } else {
+          customerId = `CUST-IMP-${timestamp}-${counter++}`;
+        }
+      }
+
+      const firstName =
+        sanitizeValue(row.firstName) ||
+        sanitizeValue(row.customerName).split(/\s+/)[0];
+      const lastName =
+        sanitizeValue(row.lastName) ||
+        sanitizeValue(row.customerName).split(/\s+/).slice(1).join(" ");
+
+      if (!firstName) {
+        summary.notes.push(`Row ${rowNumber}: missing first name, skipped.`);
+        continue;
+      }
+
+      if (!phone) {
+        summary.notes.push(`Row ${rowNumber}: missing phone, skipped.`);
+        continue;
+      }
+
+      const caretakerId =
+        typeof row.caretakerId === "number" && Number.isFinite(row.caretakerId)
+          ? row.caretakerId
+          : undefined;
+
+      const customer = await ensureCustomerForImport(
+        {
+          id: customerId,
+          firstName,
+          lastName,
+          phone,
+          email: sanitizeValue(row.email),
+          address: sanitizeValue(row.address),
+          subdistrict: sanitizeValue(row.subdistrict),
+          district: sanitizeValue(row.district),
+          province: sanitizeValue(row.province),
+          postalCode: sanitizeValue(row.postalCode),
+          caretakerId,
+        },
+        summary,
+        summary.notes,
+        processedCustomers,
+      );
+
+      if (!customer) {
+        summary.notes.push(
+          `Row ${rowNumber}: failed to upsert customer ${customerId}.`,
+        );
+      }
+    }
+
+    return summary;
+  };
   const renderPage = () => {
     // If activePage is a main menu (group), show the first child's page or a default
     if (activePage === "Home") {
@@ -2479,7 +3126,7 @@ const App: React.FC = () => {
             customers={companyCustomers}
             orders={companyOrders}
             activities={activities}
-            openModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+            openModal={() => setActivePage("CreateOrder")}
           />
         );
       }
@@ -2488,7 +3135,7 @@ const App: React.FC = () => {
           user={currentUser}
           orders={companyOrders}
           customers={companyCustomers}
-          openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+          openCreateOrderModal={() => setActivePage("CreateOrder")}
         />
       );
     }
@@ -2532,8 +3179,10 @@ const App: React.FC = () => {
           openModal={openModal}
           user={currentUser}
           systemTags={systemTags}
-          ownerName={(function(){
-            const u = companyUsers.find((x)=> x.id === (viewingCustomer as any).assignedTo);
+          ownerName={(function () {
+            const u = companyUsers.find(
+              (x) => x.id === (viewingCustomer as any).assignedTo,
+            );
             return u ? `${u.firstName} ${u.lastName}` : undefined;
           })()}
           onAddTag={handleAddTagToCustomer}
@@ -2559,7 +3208,12 @@ const App: React.FC = () => {
     }
 
     // Page stats (Super Admin): group default or specific page
-    if (activePage === "สถิติเพจ" || activePage === "หน้าเพจ") {
+    if (
+      activePage === "Page Stats" ||
+      activePage === "Page Performance" ||
+      activePage === "Reports" ||
+      activePage === "รายงาน"
+    ) {
       return (
         <PageStatsPage
           orders={companyOrders}
@@ -2568,7 +3222,10 @@ const App: React.FC = () => {
         />
       );
     }
-    if (activePage === "สถิติการมีส่วนร่วม") {
+    if (
+      activePage === "Engagement Insights" ||
+      activePage === "สถิติการมีส่วนร่วม"
+    ) {
       return (
         <EngagementStatsPage
           orders={companyOrders}
@@ -2602,7 +3259,7 @@ const App: React.FC = () => {
             customers={companyCustomers}
             orders={companyOrders}
             activities={activities}
-            openModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+            openModal={() => setActivePage("CreateOrder")}
           />
         );
       }
@@ -2611,7 +3268,7 @@ const App: React.FC = () => {
           user={currentUser}
           orders={companyOrders}
           customers={companyCustomers}
-          openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+          openCreateOrderModal={() => setActivePage("CreateOrder")}
         />
       );
     }
@@ -2659,6 +3316,7 @@ const App: React.FC = () => {
             appointments={appointments}
             activities={activities}
             calls={callHistory}
+            orders={companyOrders}
             onViewCustomer={handleViewCustomer}
             openModal={openModal}
             setActivePage={setActivePage}
@@ -2687,7 +3345,7 @@ const App: React.FC = () => {
         />
       );
     }
-    if (activePage === "Share" || activePage === "แจกรายชื่อ") {
+    if (activePage === "Share" || activePage === "แจกจ่าย") {
       return (
         <CustomerDistributionPage
           allCustomers={companyCustomers}
@@ -2788,7 +3446,7 @@ const App: React.FC = () => {
           customers={companyCustomers}
           orders={companyOrders}
           activities={activities}
-          openModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+          openModal={() => setActivePage("CreateOrder")}
         />
       );
     }
@@ -2833,7 +3491,7 @@ const App: React.FC = () => {
       return <ReportsPage orders={companyOrders} />;
     }
     if (
-      activePage === "รายงานยอดขายสินค้า" ||
+      activePage === "รายงานการขายสินค้า" ||
       activePage === "Product Sales Report"
     ) {
       return (
@@ -2870,9 +3528,12 @@ const App: React.FC = () => {
       );
     }
     if (
+      activePage === "Active Promotions" ||
+      activePage === "Promotion History" ||
+      activePage === "Create Promotion" ||
       activePage === "โปรโมชั่นที่กำลังใช้งาน" ||
       activePage === "ประวัติโปรโมชั่น" ||
-      activePage === "สร้างโปรโมชั่นใหม่"
+      activePage === "สร้างโปรโมชั่น"
     ) {
       return <PromotionsPage />;
     }
@@ -2887,10 +3548,10 @@ const App: React.FC = () => {
                 user={currentUser}
                 orders={companyOrders}
                 customers={companyCustomers}
-                openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openCreateOrderModal={() => setActivePage("CreateOrder")}
               />
             );
-          case "สร้างคำสั่งซื้อ":
+          case "CreateOrder":
             return (
               <CreateOrderPage
                 customers={companyCustomers}
@@ -2903,7 +3564,7 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "เพิ่มรายชื่อลูกค้า":
+          case "เพิ่มลูกค้า":
             return (
               <AddCustomerPage
                 companyUsers={companyUsers}
@@ -2911,14 +3572,14 @@ const App: React.FC = () => {
                 onSave={(customerData, andCreateOrder) => {
                   const newCustomer = handleSaveCustomer(customerData);
                   if (andCreateOrder) {
-                    setActivePage("สร้างคำสั่งซื้อ");
+                    setActivePage("CreateOrder");
                   } else {
                     setActivePage("แดชบอร์ด");
                   }
                 }}
               />
             );
-          case "ระบบแจกลูกค้า":
+          case "แจกจ่าย":
             return (
               <CustomerDistributionPage
                 allCustomers={companyCustomers}
@@ -2944,7 +3605,7 @@ const App: React.FC = () => {
                 allCompanies={companies}
               />
             );
-          case "ค้นหาข้อมูลลูกค้า":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -2954,7 +3615,7 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "นำเข้าและส่งออกข้อมูล":
+          case "นำเข้า/ส่งออกข้อมูล":
             return (
               <ImportExportPage
                 allUsers={companyUsers}
@@ -3008,8 +3669,8 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "คลังลูกค้า":
-          case "ตระกร้าลูกค้า":
+          case "สระว่ายน้ำ":
+          case "Customer Pools":
             return (
               <CustomerPoolsPage
                 users={companyUsers}
@@ -3025,7 +3686,7 @@ const App: React.FC = () => {
                 user={currentUser}
                 orders={companyOrders}
                 customers={companyCustomers}
-                openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openCreateOrderModal={() => setActivePage("CreateOrder")}
               />
             );
         }
@@ -3042,10 +3703,10 @@ const App: React.FC = () => {
                 customers={companyCustomers.filter(
                   (c) => c.assignedTo === currentUser.id,
                 )}
-                openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openCreateOrderModal={() => setActivePage("CreateOrder")}
               />
             );
-          case "สร้างคำสั่งซื้อ":
+          case "CreateOrder":
             return (
               <CreateOrderPage
                 customers={companyCustomers}
@@ -3058,28 +3719,135 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "จัดการคำสั่งซื้อ":
+          case "รายการคำสั่งซื้อ":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
                 orders={companyOrders}
                 customers={companyCustomers}
                 openModal={openModal}
-                title="ยอดขายของฉัน"
+                title="คำสั่งซื้อ"
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "ค้นหาข้อมูลลูกค้า":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
                 orders={companyOrders}
-                users={companyUsers}
+                users={users}
                 currentUser={currentUser}
                 onTakeCustomer={handleTakeCustomer}
               />
             );
+          case "notifications":
+            return (
+              <div className="p-6 bg-[#F5F5F5]">
+                <div className="mb-6">
+                  <h1 className="text-2xl font-bold text-gray-800 mb-2">
+                    การแจ้งเตือน
+                  </h1>
+                  <p className="text-gray-600">
+                    การแจ้งเตือนทั้งหมดที่เกี่ยวข้องกับคุณ
+                  </p>
+                </div>
 
+                <div className="bg-white rounded-lg shadow-sm border">
+                  <div className="p-4 border-b">
+                    <div className="flex items-center">
+                      <Bell className="w-5 h-5 mr-2 text-gray-600" />
+                      <h2 className="text-lg font-semibold text-gray-800">
+                        การแจ้งเตือนล่าสุด
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    {visibleNotifications.length > 0 ? (
+                      <div className="space-y-4">
+                        {visibleNotifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            className={`flex items-start p-4 border rounded-lg ${
+                              !notif.read
+                                ? "bg-blue-50 border-blue-200"
+                                : "bg-white border-gray-200"
+                            }`}
+                          >
+                            <div className="flex-shrink-0 mt-1 mr-3">
+                              {notif.priority === "urgent" && (
+                                <AlertCircle className="w-5 h-5 text-red-500" />
+                              )}
+                              {notif.priority === "high" && (
+                                <AlertCircle className="w-5 h-5 text-orange-500" />
+                              )}
+                              {notif.priority === "medium" && (
+                                <Clock className="w-5 h-5 text-yellow-500" />
+                              )}
+                              {notif.priority === "low" && (
+                                <Check className="w-5 h-5 text-green-500" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-800">
+                                {notif.title}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {notif.message}
+                              </p>
+                              {notif.pageName && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  หน้า: {notif.pageName}{" "}
+                                  {notif.platform && `(${notif.platform})`}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-400 mt-1">
+                                {new Date(notif.timestamp).toLocaleString(
+                                  "th-TH",
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
+                              </p>
+                              {notif.actionUrl && (
+                                <button
+                                  className="text-xs text-blue-600 hover:underline mt-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.location.href = notif.actionUrl;
+                                  }}
+                                >
+                                  {notif.actionText || "ดูรายละเอียด"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center text-sm text-gray-500">
+                        ไม่มีการแจ้งเตือนในขณะนี้
+                      </div>
+                    )}
+                  </div>
+
+                  {visibleNotifications.length > 0 && (
+                    <div className="p-4 border-t">
+                      <button
+                        onClick={handleMarkAllAsRead}
+                        className="w-full text-center text-sm text-blue-600 font-medium hover:bg-blue-50 rounded-md py-2"
+                      >
+                        ทำเครื่องหมายว่าอ่านทั้งหมด
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
           default:
             return (
               <AdminDashboard
@@ -3090,7 +3858,7 @@ const App: React.FC = () => {
                 customers={companyCustomers.filter(
                   (c) => c.assignedTo === currentUser.id,
                 )}
-                openCreateOrderModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openCreateOrderModal={() => setActivePage("CreateOrder")}
               />
             );
         }
@@ -3105,10 +3873,10 @@ const App: React.FC = () => {
                 customers={companyCustomers}
                 orders={companyOrders}
                 activities={activities}
-                openModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openModal={() => setActivePage("CreateOrder")}
               />
             );
-          case "สร้างคำสั่งซื้อ":
+          case "CreateOrder":
             return (
               <CreateOrderPage
                 customers={companyCustomers}
@@ -3121,7 +3889,7 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "จัดการลูกค้า":
+          case "แดชบอร์ดการขาย":
             return (
               <TelesaleDashboard
                 user={currentUser}
@@ -3129,13 +3897,14 @@ const App: React.FC = () => {
                 appointments={appointments}
                 activities={activities}
                 calls={callHistory}
+                orders={companyOrders}
                 onViewCustomer={handleViewCustomer}
                 openModal={openModal}
                 setActivePage={setActivePage}
                 systemTags={systemTags}
               />
             );
-          case "จัดการคำสั่งซื้อ":
+          case "คำสั่งซื้อของฉัน":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
@@ -3145,7 +3914,7 @@ const App: React.FC = () => {
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "ค้นหาข้อมูลลูกค้า":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -3155,7 +3924,7 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "ดูและทีม":
+          case "ทีม":
             return currentUser.role === UserRole.Supervisor ? (
               <SupervisorTeamPage
                 user={currentUser}
@@ -3170,6 +3939,7 @@ const App: React.FC = () => {
                 appointments={appointments}
                 activities={activities}
                 calls={callHistory}
+                orders={companyOrders}
                 onViewCustomer={handleViewCustomer}
                 openModal={openModal}
                 systemTags={systemTags}
@@ -3183,7 +3953,7 @@ const App: React.FC = () => {
                 customers={companyCustomers}
                 orders={companyOrders}
                 activities={activities}
-                openModal={() => setActivePage("สร้างคำสั่งซื้อ")}
+                openModal={() => setActivePage("CreateOrder")}
               />
             );
         }
@@ -3193,6 +3963,28 @@ const App: React.FC = () => {
         return <MarketingPage currentUser={currentUser} />;
 
       case UserRole.Backoffice:
+        if (activePage === "Export History") {
+          return <ExportHistoryPage />;
+        }
+        if (activePage === "Warehouses") {
+          return (
+            <WarehouseManagementPage
+              warehouses={warehouses}
+              companies={companies}
+              currentUser={currentUser}
+              onWarehouseChange={setWarehouses}
+            />
+          );
+        }
+        if (activePage === "Warehouse Stock") {
+          return <WarehouseStockViewPage currentUser={currentUser} />;
+        }
+        if (activePage === "Lot Tracking") {
+          return <LotTrackingPage currentUser={currentUser} />;
+        }
+        if (activePage === "Warehouse Allocation") {
+          return <OrderAllocationPage />;
+        }
         switch (activePage) {
           case "แดชบอร์ด":
             return (
@@ -3203,7 +3995,7 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "จัดการออเดอร์":
+          case "รายการคำสั่งซื้อ":
             return (
               <ManageOrdersPage
                 user={currentUser}
@@ -3214,14 +4006,14 @@ const App: React.FC = () => {
                 onProcessOrders={handleProcessOrders}
               />
             );
-          case "นำเข้า Tracking":
+          case "เพิ่ม Tracking":
             return (
               <BulkTrackingPage
                 orders={companyOrders}
                 onBulkUpdateTracking={handleBulkUpdateTracking}
               />
             );
-          case "ติดตามหนี้":
+          case "ติดหนี้":
             return (
               <DebtCollectionPage
                 user={currentUser}
@@ -3233,44 +4025,22 @@ const App: React.FC = () => {
             );
           case "รายงาน":
             return <ReportsPage orders={companyOrders} />;
-          case "ค้นหาข้อมูลลูกค้า":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
                 orders={companyOrders}
-                users={companyUsers}
-              />
-            );
-          case "Export History":
-            return <ExportHistoryPage />;
-          case "Warehouses":
-            return (
-              <WarehouseManagementPage
-                warehouses={warehouses}
-                companies={companies}
+                users={users}
                 currentUser={currentUser}
-                onWarehouseChange={setWarehouses}
+                onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "Warehouse Stock":
-            return <WarehouseStockViewPage currentUser={currentUser} />;
-          case "Lot Tracking":
-            return <LotTrackingPage currentUser={currentUser} />;
-          case "Warehouse Allocation":
-            return <OrderAllocationPage />;
           default:
-            return (
-              <BackofficeDashboard
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openModal={openModal}
-              />
-            );
+            return <div className="p-6">หน้านี้ไม่พร้อมใช้งาน</div>;
         }
 
       default:
-        return <div className="p-6">กรุณาเลือกบทบาทผู้ใช้</div>;
+        return <div className="p-6">หน้านี้ไม่พร้อมใช้งาน</div>;
     }
   };
 
@@ -3292,7 +4062,7 @@ const App: React.FC = () => {
         );
       case "createOrder":
         // Instead of opening as modal, navigate to the page
-        setActivePage("สร้างคำสั่งซื้อ");
+        setActivePage("CreateOrder");
         setCreateOrderInitialData(modalState.data);
         closeModal();
         return null;
@@ -3436,6 +4206,7 @@ const App: React.FC = () => {
                     Supervisor Telesale
                   </option>
                   <option value={UserRole.Backoffice}>Backoffice</option>
+                  <option value={UserRole.Marketing}>Marketing</option>
                 </select>
                 <ChevronsUpDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               </div>
@@ -3473,6 +4244,14 @@ const App: React.FC = () => {
           notifications={visibleNotifications}
           onClose={() => setIsNotificationPanelOpen(false)}
           onMarkAllAsRead={handleMarkAllAsRead}
+          onMarkAsRead={handleMarkNotificationAsRead}
+          onNotificationClick={(notification) => {
+            // Navigate to notification URL if provided
+            if (notification.actionUrl) {
+              window.location.href = notification.actionUrl;
+            }
+          }}
+          currentUserRole={currentUserRole as UserRole}
         />
       )}
       {renderModal()}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType } from '../types';
+import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole } from '../types';
 import Modal from './Modal';
-import { User, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar } from 'lucide-react';
+import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip } from './OrderTable';
 import { apiFetch, createOrderSlip, deleteOrderSlip } from '../services/api';
 
@@ -11,6 +11,7 @@ interface OrderManagementModalProps {
   activities: Activity[];
   onSave: (updatedOrder: Order) => void;
   onClose: () => void;
+  currentUser?: User;
 }
 
 const InfoCard: React.FC<{ icon: React.ElementType; title: string; children: React.ReactNode }> = ({ icon: Icon, title, children }) => (
@@ -31,10 +32,10 @@ const activityIconMap: Record<ActivityType, React.ElementType> = {
     [ActivityType.OrderCreated]: Package,
     [ActivityType.OrderNoteAdded]: Paperclip,
     // Add other relevant types if needed
-    [ActivityType.Assignment]: User,
-    [ActivityType.GradeChange]: User,
-    [ActivityType.StatusChange]: User,
-    [ActivityType.AppointmentSet]: User,
+    [ActivityType.Assignment]: UserIcon,
+    [ActivityType.GradeChange]: UserIcon,
+    [ActivityType.StatusChange]: UserIcon,
+    [ActivityType.AppointmentSet]: UserIcon,
     [ActivityType.CallLogged]: Phone,
 };
 
@@ -60,8 +61,32 @@ const getRelativeTime = (timestamp: string) => {
     return `${diffInDays} วันที่แล้ว`;
 };
 
-const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose }) => {
+const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser }) => {
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
+  const sanitizeAddressPart = (value?: string | null) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    const lower = trimmed.toLowerCase();
+    if (!trimmed || lower === 'undefined' || lower === 'null') {
+      return '';
+    }
+    return trimmed;
+  };
+  const mergeAddressPart = (incoming: any, previous?: string | null) => {
+    const incomingString =
+      typeof incoming === 'string'
+        ? incoming
+        : incoming == null
+        ? ''
+        : String(incoming);
+    const cleanedIncoming = sanitizeAddressPart(incomingString);
+    if (cleanedIncoming) return cleanedIncoming;
+    return sanitizeAddressPart(previous ?? '');
+  };
+  const canVerifySlip =
+    currentUser?.role === UserRole.Backoffice ||
+    currentUser?.role === UserRole.Admin ||
+    currentUser?.role === UserRole.SuperAdmin;
   const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || null);
   const [slips, setSlips] = useState<{ id: number; url: string }[]>(Array.isArray((order as any).slips) ? (order as any).slips.map((s:any)=>({id:Number(s.id),url:String(s.url)})) : []);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -90,11 +115,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           amountPaid: typeof r.amount_paid !== 'undefined' ? Number(r.amount_paid) : prev.amountPaid,
           codAmount: typeof r.cod_amount !== 'undefined' ? Number(r.cod_amount) : (prev as any).codAmount,
           shippingAddress: {
-            street: r.street || prev.shippingAddress?.street || '',
-            subdistrict: r.subdistrict || prev.shippingAddress?.subdistrict || '',
-            district: r.district || prev.shippingAddress?.district || '',
-            province: r.province || prev.shippingAddress?.province || '',
-            postalCode: r.postal_code || prev.shippingAddress?.postalCode || '',
+            street: mergeAddressPart(r.street, prev.shippingAddress?.street),
+            subdistrict: mergeAddressPart(r.subdistrict, prev.shippingAddress?.subdistrict),
+            district: mergeAddressPart(r.district, prev.shippingAddress?.district),
+            province: mergeAddressPart(r.province, prev.shippingAddress?.province),
+            postalCode: mergeAddressPart(r.postal_code, prev.shippingAddress?.postalCode),
           },
           items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
             id: Number(it.id ?? i + 1),
@@ -129,6 +154,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
         .filter(a => a.description.includes(order.id))
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [activities, order.id]);
+  const slipUploadInputId = useMemo(() => `slip-upload-${order.id}`, [order.id]);
 
   const handleFieldChange = (field: keyof Order, value: any) => {
     setCurrentOrder(prev => ({ ...prev, [field]: value }));
@@ -138,7 +164,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     const inputEl = e.currentTarget as HTMLInputElement | null;
     const files = inputEl?.files ? Array.from(inputEl.files) : [];
     if (!files || files.length === 0) return;
-    for (const file of files) {
+  for (const file of files) {
       await new Promise<void>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = async () => {
@@ -155,17 +181,57 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       });
     }
     if (inputEl) inputEl.value = '';
+    handleFieldChange('paymentStatus', PaymentStatus.PendingVerification);
   };
 
   const removeSlip = () => {
     setSlipPreview(null);
     handleFieldChange('slipUrl', undefined);
+    handleFieldChange('paymentStatus', PaymentStatus.Unpaid);
   };
   const handleDeleteSlip = async (slipId: number) => {
     try {
       await deleteOrderSlip(slipId);
       setSlips(prev => prev.filter(s => s.id !== slipId));
     } catch (e) { console.error('delete slip', e); }
+  };
+
+  const hasTransferSlip = Boolean(slipPreview || currentOrder.slipUrl || slips.length > 0);
+
+  const handleAcceptSlip = () => {
+    const totalAmount = Number(currentOrder.totalAmount || 0);
+    const paidAmount =
+      currentOrder.amountPaid && currentOrder.amountPaid > 0
+        ? currentOrder.amountPaid
+        : totalAmount > 0
+        ? totalAmount
+        : 0;
+    if (paidAmount <= 0) {
+      alert("กรุณาระบุจำนวนเงินที่ได้รับก่อนยืนยันสลิป");
+      return;
+    }
+    
+    // สำหรับ Backoffice: อัปเดตสถานะเป็น Verified แทน Paid
+    // สำหรับ Telesale: อัปเดตสถานะเป็น Paid ตามเดิม
+    const newPaymentStatus = currentUser?.role === UserRole.Backoffice 
+      ? PaymentStatus.Verified 
+      : PaymentStatus.Paid;
+    
+    // เพิ่มข้อมูลผู้ตรวจสอบและเวลา
+    const verificationInfo = {
+      verifiedBy: currentUser?.id,
+      verifiedByName: `${currentUser?.firstName} ${currentUser?.lastName}`,
+      verifiedAt: new Date().toISOString(),
+    };
+    
+    const updated: Order = {
+      ...currentOrder,
+      amountPaid: paidAmount,
+      paymentStatus: newPaymentStatus,
+      verificationInfo: verificationInfo,
+    };
+    setCurrentOrder(updated);
+    onSave(updated);
   };
 
 
@@ -193,8 +259,31 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     onSave(currentOrder);
   };
   
-  const formatAddress = (address: Address) => {
-      return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
+  const formatAddress = (address?: Address | null) => {
+      const sanitize = (value?: string | null) => {
+          if (!value) return '';
+          const trimmed = value.trim();
+          const lower = trimmed.toLowerCase();
+          if (!trimmed || lower === 'undefined' || lower === 'null') {
+              return '';
+          }
+          return trimmed;
+      };
+
+      const street = sanitize(address?.street);
+      const subdistrict = sanitize(address?.subdistrict);
+      const district = sanitize(address?.district);
+      const province = sanitize(address?.province);
+      const postalCode = sanitize(address?.postalCode);
+
+      const parts: string[] = [];
+      if (street) parts.push(street);
+      if (subdistrict) parts.push(`ต.${subdistrict}`);
+      if (district) parts.push(`อ.${district}`);
+      if (province) parts.push(`จ.${province}`);
+      if (postalCode) parts.push(postalCode);
+
+      return parts.length > 0 ? parts.join(' ') : '-';
   }
   
   const remainingBalance = useMemo(() => {
@@ -231,11 +320,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           </div>
         </InfoCard>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <InfoCard icon={User} title="ข้อมูลลูกค้า">
-                <p className="font-semibold text-gray-800">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
-                <p className="text-gray-600 flex items-center mt-1"><Phone size={12} className="mr-2"/>{customer?.phone}</p>
-                <p className="text-gray-600 flex items-start mt-1"><MapPin size={12} className="mr-2 mt-0.5"/>{formatAddress(order.shippingAddress)}</p>
-            </InfoCard>
+        <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+            <p className="font-semibold text-gray-800">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
+            <p className="text-gray-600 flex items-center mt-1"><Phone size={12} className="mr-2"/>{customer?.phone}</p>
+            <p className="text-gray-600 flex items-start mt-1"><MapPin size={12} className="mr-2 mt-0.5"/>{formatAddress(currentOrder.shippingAddress)}</p>
+        </InfoCard>
 
             <InfoCard icon={Package} title="รายการสินค้า">
                  <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
@@ -261,13 +350,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod)}
             </div>
             <div className="flex items-center justify-between mb-2 text-xs">
-                <span className="text-gray-500">Amount status</span>
-                <span className={`px-2 py-0.5 rounded-full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'}`}>{derivedAmountStatus}</span>
+                <span className="text-gray-500">สถานะการชำระ</span>
+                <span className={`px-2 py-0.5 rounded-full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'}`}>{derivedAmountStatus === 'Paid' ? 'ชำระแล้ว' : derivedAmountStatus === 'Unpaid' ? 'ยังไม่ชำระ' : derivedAmountStatus === 'Partial' ? 'ชำระบางส่วน' : 'ชำระเกิน'}</span>
             </div>
             {(order.paymentMethod === PaymentMethod.Transfer || order.paymentMethod === PaymentMethod.COD) && (
                 <div className="space-y-2">
                     <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Amount received</label>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">จำนวนเงินที่ได้รับ</label>
                         <input
                           type="number"
                           inputMode="decimal"
@@ -278,14 +367,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                         />
                     </div>
                     <div className="flex justify-between font-semibold text-xs">
-                        <span className="text-gray-600">Difference</span>
+                        <span className="text-gray-600">คงเหลือ</span>
                         <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? `-${remainingBalance.toLocaleString()}` : `+${Math.abs(remainingBalance).toLocaleString()}`)}</span>
                     </div>
                 </div>
             )}
             
             {order.paymentMethod === PaymentMethod.Transfer && (
-                <div className="space-y-2">
+                <>
+                    <div className="space-y-2">
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
                         {(slipPreview || currentOrder.slipUrl) ? (
@@ -297,16 +387,42 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                 </div>
                             </div>
                         ) : (
-                             <div className="flex items-center space-x-2">
-                                <label htmlFor="slip-upload" className="cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center">
-                                    <Image size={16} className="mr-2"/>
-                                    เลือกไฟล์รูปภาพ
-                                </label>
-                                <input id="slip-upload" type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
-                            </div>
+                            <p className="text-xs text-gray-400">ยังไม่มีหลักฐานการชำระเงิน</p>
                         )}
+                        <div className="flex items-center space-x-2 mt-2">
+                            <label htmlFor={slipUploadInputId} className="cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center">
+                                <Image size={16} className="mr-2"/>
+                                อัปโหลดสลิปเพิ่มเติม
+                            </label>
+                            <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+                        </div>
                     </div>
                 </div>
+                
+                {/* แสดงข้อมูลการตรวจสอบสลิป */}
+                {currentOrder.verificationInfo && (
+                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
+                        <div className="text-xs text-green-700 space-y-1">
+                            <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
+                            <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
+                        </div>
+                    </div>
+                )}
+                {canVerifySlip &&
+                  currentOrder.paymentMethod === PaymentMethod.Transfer &&
+                  hasTransferSlip &&
+                  currentOrder.paymentStatus !== PaymentStatus.Paid && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleAcceptSlip}
+                      className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      ยืนยันสลิป
+                    </button>
+                  </div>
+                )}
+                </>
             )}
             
             {order.paymentMethod === PaymentMethod.PayAfter && currentOrder.paymentStatus !== PaymentStatus.Paid && (
@@ -436,6 +552,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 };
 
 export default OrderManagementModal;
+
+
 
 
 

@@ -1,6 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Warehouse } from '../types';
-import { listAllocations, updateAllocation, listOrders, listWarehouses, listCustomers } from '@/services/api';
+import {
+  listAllocations,
+  updateAllocation,
+  listOrders,
+  listWarehouses,
+  listCustomers,
+  listProductLots,
+  ProductLot,
+} from '@/services/api';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 type Allocation = {
@@ -18,6 +26,12 @@ type Allocation = {
   status: 'PENDING' | 'ALLOCATED' | 'PICKED' | 'SHIPPED' | 'CANCELLED';
 };
 
+type PendingAllocationState = {
+  warehouseId?: number | null;
+  lotNumber?: string;
+  quantity?: number;
+};
+
 const OrderAllocationPage: React.FC = () => {
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([] as any);
@@ -26,6 +40,131 @@ const OrderAllocationPage: React.FC = () => {
   const [status, setStatus] = useState<'PENDING'|'ALLOCATED'|'PICKED'|'SHIPPED'|'CANCELLED'>('PENDING');
   const [loading, setLoading] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [lotOptions, setLotOptions] = useState<Record<string, ProductLot[]>>({});
+  const [lotLoadingMap, setLotLoadingMap] = useState<Record<string, boolean>>({});
+  const [pendingAllocations, setPendingAllocations] = useState<Record<number, PendingAllocationState>>({});
+  const [selectedAllocIds, setSelectedAllocIds] = useState<Set<number>>(new Set());
+  const [orderWarehouseValues, setOrderWarehouseValues] = useState<Record<string, number | null>>({});
+  const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
+  const pendingLotFetch = useRef<Set<string>>(new Set());
+
+  const makeLotKey = (productId: number, warehouseId?: number | null) =>
+    `${productId}-${warehouseId ?? 'none'}`;
+
+  const loadLots = useCallback(
+    async (productId: number, warehouseId?: number | null, force = false) => {
+      if (!warehouseId) return;
+      const key = makeLotKey(productId, warehouseId);
+      if (!force && lotOptions[key] !== undefined) return;
+      if (pendingLotFetch.current.has(key)) return;
+      pendingLotFetch.current.add(key);
+      setLotLoadingMap((prev) => ({ ...prev, [key]: true }));
+      try {
+        const lots = await listProductLots({
+          warehouseId,
+          productId,
+          status: 'Active',
+        });
+        const filtered = lots.filter(
+          (lot) => Number(lot.quantity_remaining) > 0,
+        );
+        setLotOptions((prev) => ({ ...prev, [key]: filtered }));
+      } catch (error) {
+        console.error('Failed to load product lots', error);
+        setLotOptions((prev) => ({ ...prev, [key]: [] }));
+      } finally {
+        pendingLotFetch.current.delete(key);
+        setLotLoadingMap((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      }
+    },
+    [lotOptions],
+  );
+
+  const updatePendingAllocation = useCallback(
+    (allocationId: number, updates: Partial<PendingAllocationState>) => {
+      setPendingAllocations((prev) => {
+        const next = { ...prev };
+        const current = next[allocationId] ?? {};
+        const merged: PendingAllocationState = { ...current, ...updates };
+        if (updates.warehouseId !== undefined && updates.warehouseId !== null) {
+          merged.lotNumber = '__AUTO__';
+        } else if (Object.prototype.hasOwnProperty.call(updates, 'warehouseId')) {
+          delete merged.lotNumber;
+        }
+        const cleaned: PendingAllocationState = {};
+        if (merged.warehouseId !== undefined) cleaned.warehouseId = merged.warehouseId;
+        if (merged.lotNumber !== undefined) cleaned.lotNumber = merged.lotNumber;
+        if (merged.quantity !== undefined) cleaned.quantity = merged.quantity;
+        if (Object.keys(cleaned).length === 0) {
+          delete next[allocationId];
+        } else {
+          next[allocationId] = cleaned;
+        }
+        return next;
+      });
+      setSelectedAllocIds((prev) => {
+        const next = new Set(prev);
+        next.add(allocationId);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleAllocationSelection = useCallback((allocationId: number) => {
+    setSelectedAllocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(allocationId)) {
+        next.delete(allocationId);
+      } else {
+        next.add(allocationId);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAllocationItems = useCallback((allocationIds: number[], selected: boolean) => {
+    setSelectedAllocIds((prev) => {
+      const next = new Set(prev);
+      allocationIds.forEach((id) => {
+        if (selected) {
+          next.add(id);
+        } else {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  const clearPendingForItems = useCallback((allocationIds: number[]) => {
+    setPendingAllocations((prev) => {
+      const next = { ...prev };
+      allocationIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+  }, []);
+
+  const setOrderWarehouseOverride = useCallback(
+    (orderId: string, warehouseId?: number | null) => {
+      setOrderWarehouseValues((prev) => {
+        const next = { ...prev };
+        if (warehouseId === undefined || warehouseId === null) {
+          delete next[orderId];
+        } else {
+          next[orderId] = warehouseId;
+        }
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => { (async () => {
     try {
@@ -42,6 +181,14 @@ const OrderAllocationPage: React.FC = () => {
       setAllocations(as as any);
     } finally { setLoading(false); }
   })(); }, [status]);
+
+  useEffect(() => {
+    allocations.forEach((a) => {
+      if (a.warehouse_id) {
+        loadLots(a.product_id, a.warehouse_id);
+      }
+    });
+  }, [allocations, loadLots]);
 
   const orderMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -70,20 +217,23 @@ const OrderAllocationPage: React.FC = () => {
 
   const getWarehouseName = (id?: number | null) => warehouses.find(w => w.id === id)?.name || (id ? `คลัง ${id}` : '-');
 
-  const handleAllocate = async (row: Allocation, patch: Partial<{ warehouse_id: number; lot_number?: string; allocated_quantity?: number; status?: string }>) => {
-    const payload: any = {};
-    if (patch.warehouse_id !== undefined) payload.warehouseId = patch.warehouse_id;
-    // Only include lotNumber if it's explicitly provided (not empty or "-")
-    if (patch.lot_number !== undefined && patch.lot_number && patch.lot_number !== '-') {
-      payload.lotNumber = patch.lot_number;
-    }
-    // If lot number is not provided or is "-", don't include it in the payload
-    // This will trigger automatic FIFO lot assignment in the backend
-    if (patch.allocated_quantity !== undefined) payload.allocatedQuantity = patch.allocated_quantity;
-    if (patch.status !== undefined) payload.status = patch.status;
-    await updateAllocation(row.id, payload);
-    const refreshed = await listAllocations({ status });
-    setAllocations(refreshed as any);
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString();
+  };
+
+  const formatLotLabel = (lot: ProductLot) => {
+    const qtyNumber = Number(lot.quantity_remaining);
+    const qtyLabel = Number.isNaN(qtyNumber)
+      ? String(lot.quantity_remaining)
+      : qtyNumber.toLocaleString();
+    const expiryPart = lot.expiry_date
+      ? `, expire ${formatDate(lot.expiry_date)}`
+      : '';
+    return `${lot.lot_number} (qty ${qtyLabel}, received ${formatDate(lot.purchase_date)}${expiryPart})`;
   };
 
   const remaining = (a: Allocation) => Math.max(0, a.required_quantity - a.allocated_quantity);
@@ -103,6 +253,17 @@ const OrderAllocationPage: React.FC = () => {
       const order = orderMap.get(String(orderId));
       const customer = order ? customerMap.get(String(order.customer_id)) : null;
       const suggested = suggestWarehouseId(orderId);
+      const pendingWarehouseValues = items
+        .map((item) => pendingAllocations[item.id]?.warehouseId)
+        .filter((value): value is number => typeof value === 'number');
+      const uniformPendingWarehouse = pendingWarehouseValues.length > 0 && pendingWarehouseValues.every((value) => value === pendingWarehouseValues[0])
+        ? pendingWarehouseValues[0]
+        : undefined;
+      const orderWarehouseValue = Object.prototype.hasOwnProperty.call(orderWarehouseValues, orderId)
+        ? orderWarehouseValues[orderId]
+        : undefined;
+      const orderLevelWarehouse = orderWarehouseValue ?? uniformPendingWarehouse ?? order?.warehouse_id ?? (items.find((item) => item.warehouse_id != null)?.warehouse_id ?? null) ?? suggested ?? null;
+      const headerSelectValue = orderLevelWarehouse != null ? String(orderLevelWarehouse) : '';
       
       // Calculate totals for the order
       const totalRequired = items.reduce((sum, item) => sum + item.required_quantity, 0);
@@ -118,10 +279,30 @@ const OrderAllocationPage: React.FC = () => {
         totalRequired,
         totalAllocated,
         isFullyAllocated,
-        isExpanded: expandedOrders.has(orderId)
+        isExpanded: expandedOrders.has(orderId),
+        orderWarehouseValue: orderLevelWarehouse,
+        headerWarehouseSelectValue: headerSelectValue,
       };
     });
-  }, [allocations, orderMap, customerMap, expandedOrders]);
+  }, [allocations, orderMap, customerMap, expandedOrders, orderWarehouseValues, pendingAllocations]);
+
+  useEffect(() => {
+    ordersWithAllocations.forEach(({ items, suggested, isExpanded, orderWarehouseValue }) => {
+      if (!isExpanded) return;
+      items.forEach((item) => {
+        const pending = pendingAllocations[item.id];
+        const targetWarehouse =
+          pending?.warehouseId ??
+          item.warehouse_id ??
+          orderWarehouseValue ??
+          suggested ??
+          null;
+        if (targetWarehouse) {
+          loadLots(item.product_id, targetWarehouse);
+        }
+      });
+    });
+  }, [ordersWithAllocations, loadLots, pendingAllocations]);
 
   const toggleOrderExpansion = (orderId: string) => {
     setExpandedOrders(prev => {
@@ -135,29 +316,90 @@ const OrderAllocationPage: React.FC = () => {
     });
   };
 
-  // Function to allocate all items in an order to the same warehouse
-  const handleAllocateOrder = async (orderData: any, warehouseId: number) => {
+  // Function to allocate all items in an order to the same warehouse (pending selection)
+  const handleAllocateOrder = (orderData: any, warehouseId?: number) => {
     const { orderId, items } = orderData;
-    
+    const allocationIds = items.map((item) => item.id);
+
+    if (warehouseId === undefined) {
+      setOrderWarehouseOverride(orderId, undefined);
+      clearPendingForItems(allocationIds);
+      selectAllocationItems(allocationIds, false);
+      return;
+    }
+
+    setOrderWarehouseOverride(orderId, warehouseId);
+    setPendingAllocations((prev) => {
+      const next = { ...prev };
+      items.forEach((item: Allocation) => {
+        const current = next[item.id] ?? {};
+        next[item.id] = { ...current, warehouseId, lotNumber: '__AUTO__' };
+      });
+      return next;
+    });
+    selectAllocationItems(allocationIds, true);
+    items.forEach((item: Allocation) => {
+      loadLots(item.product_id, warehouseId, true);
+    });
+  };
+
+  const handleConfirmSelected = async (orderData: any) => {
+    const { orderId, items, order, suggested, orderWarehouseValue } = orderData;
+    const selectedItems = items.filter((item) => selectedAllocIds.has(item.id));
+    if (!selectedItems.length) return;
+
+    setConfirmingOrderId(orderId);
     try {
-      // Update all items in the order
-      for (const item of items) {
-        const defaultQty = remaining(item);
-        // Don't include lot_number to trigger automatic FIFO assignment
-        await handleAllocate(item, {
-          warehouse_id: warehouseId,
-          allocated_quantity: defaultQty,
-          status: 'ALLOCATED'
-        });
+      for (const item of selectedItems) {
+        const pending = pendingAllocations[item.id] ?? {};
+        const warehouseId =
+          pending.warehouseId ??
+          item.warehouse_id ??
+          (orderWarehouseValue ?? order?.warehouse_id ?? null) ??
+          suggested ??
+          null;
+        if (!warehouseId) {
+          console.warn('Missing warehouse for allocation', item.id);
+          continue;
+        }
+        const quantity =
+          pending.quantity ??
+          (item.allocated_quantity > 0 ? item.allocated_quantity : item.required_quantity);
+        const lotChoice = pending.lotNumber ?? (item.lot_number ?? '__AUTO__');
+
+        const payload: any = {
+          warehouseId,
+          allocatedQuantity: quantity,
+          status: 'ALLOCATED',
+        };
+        if (lotChoice !== '__AUTO__') {
+          payload.lotNumber = lotChoice;
+        }
+
+        await updateAllocation(item.id, payload);
       }
-      
-      // Refresh the allocations
+
       const refreshed = await listAllocations({ status });
       setAllocations(refreshed as any);
+
+      const affectedIds = selectedItems.map((item: Allocation) => item.id);
+      clearPendingForItems(affectedIds);
+      selectAllocationItems(affectedIds, false);
+      setOrderWarehouseOverride(orderId, undefined);
     } catch (error) {
-      console.error('Failed to allocate order:', error);
-      alert('เกิดข้อผิดพลาดในการจัดสรรออเดอร์');
+      console.error('Failed to confirm allocations', error);
+      alert('ยืนยันการจัดสรรไม่สำเร็จ');
+    } finally {
+      setConfirmingOrderId(null);
     }
+  };
+
+  const handleResetSelections = (orderData: any) => {
+    const { orderId, items } = orderData;
+    const allocationIds = items.map((item) => item.id);
+    clearPendingForItems(allocationIds);
+    selectAllocationItems(allocationIds, false);
+    setOrderWarehouseOverride(orderId, undefined);
   };
 
   return (
@@ -190,7 +432,7 @@ const OrderAllocationPage: React.FC = () => {
             ) : ordersWithAllocations.length === 0 ? (
               <tr><td className="p-3" colSpan={6}>ไม่พบรายการ</td></tr>
             ) : ordersWithAllocations.map(orderData => {
-              const { orderId, order, customer, suggested, items, totalRequired, totalAllocated, isFullyAllocated, isExpanded } = orderData;
+              const { orderId, order, customer, suggested, items, totalRequired, totalAllocated, isFullyAllocated, isExpanded, orderWarehouseValue, headerWarehouseSelectValue } = orderData;
               
               return (
                 <React.Fragment key={orderId}>
@@ -233,15 +475,14 @@ const OrderAllocationPage: React.FC = () => {
                     <td className="p-2 align-top">
                       <div className="flex items-center gap-1">
                         <select
-                          value={String(items[0]?.warehouse_id ?? suggested ?? '')}
+                          value={headerWarehouseSelectValue}
                           onChange={e => {
-                            if (e.target.value) {
-                              handleAllocateOrder(orderData, Number(e.target.value));
-                            }
+                            const value = e.target.value;
+                            handleAllocateOrder(orderData, value ? Number(value) : undefined);
                           }}
                           className="border rounded px-2 py-1 min-w-[160px]"
                         >
-                          <option value="">เลือกคลัง...</option>
+                          <option value="">เลือกคลัง</option>
                           {warehouses.map(w => (
                             <option key={w.id} value={w.id}>{w.name}</option>
                           ))}
@@ -255,8 +496,10 @@ const OrderAllocationPage: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => {
-                            const warehouseId = suggested || items[0]?.warehouse_id || (warehouses.length > 0 ? warehouses[0].id : null);
-                            if (warehouseId) {
+                            const warehouseId =
+                              orderWarehouseValue ??
+                              (headerWarehouseSelectValue ? Number(headerWarehouseSelectValue) : null);
+                            if (warehouseId != null) {
                               handleAllocateOrder(orderData, warehouseId);
                             } else {
                               alert('กรุณาเลือกคลังสินค้า');
@@ -278,13 +521,39 @@ const OrderAllocationPage: React.FC = () => {
                           <h4 className="font-medium text-sm mb-2">รายละเอียดสินค้าในออเดอร์</h4>
                           <div className="space-y-2">
                             {items.map(item => {
-                              const defaultQty = remaining(item);
+                              const pending = pendingAllocations[item.id] ?? {};
+                              const quantityValue =
+                                pending.quantity !== undefined
+                                  ? pending.quantity
+                                  : item.allocated_quantity > 0
+                                    ? item.allocated_quantity
+                                    : item.required_quantity;
+                              const resolvedWarehouseId =
+                                pending.warehouseId ??
+                                item.warehouse_id ??
+                                orderLevelWarehouse ??
+                                suggested ??
+                                null;
+                              const warehouseSelectValue = resolvedWarehouseId != null ? String(resolvedWarehouseId) : '';
+                              const lotKeyForItem = resolvedWarehouseId ? makeLotKey(item.product_id, resolvedWarehouseId) : '';
+                              const lots = lotKeyForItem ? lotOptions[lotKeyForItem] : undefined;
+                              const lotsLoading = lotKeyForItem ? !!lotLoadingMap[lotKeyForItem] : false;
+                              const lotSelectValue = pending.lotNumber ?? (item.lot_number ?? '__AUTO__');
+                              const isSelected = selectedAllocIds.has(item.id);
                               return (
                                 <div key={item.id} className="flex items-center gap-3 bg-white p-2 rounded border">
                                   <div className="flex-1">
-                                    <div className="text-sm font-medium">
-                                      {(item as any).product_name || `สินค้า #${item.product_id}`}
-                                      {item.is_freebie && <span className="ml-2 text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded">ของแถม</span>}
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                        checked={isSelected}
+                                        onChange={() => toggleAllocationSelection(item.id)}
+                                      />
+                                      <div className="text-sm font-medium">
+                                        {(item as any).product_name || `สินค้า #${item.product_id}`}
+                                        {item.is_freebie && <span className="ml-2 text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded">ของแถม</span>}
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="text-sm text-gray-600 w-16 text-center">
@@ -295,37 +564,116 @@ const OrderAllocationPage: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <select
-                                      value={String((item.warehouse_id ?? suggested ?? ''))}
-                                      onChange={e => handleAllocate(item, { warehouse_id: e.target.value ? Number(e.target.value) : (undefined as any) })}
+                                      value={warehouseSelectValue}
+                                      onChange={e => {
+                                        const value = e.target.value;
+                                        const newWarehouseId = value ? Number(value) : undefined;
+                                        updatePendingAllocation(item.id, { warehouseId: newWarehouseId });
+                                        if (newWarehouseId !== undefined) {
+                                          loadLots(item.product_id, newWarehouseId, true);
+                                        }
+                                      }}
                                       className="border rounded px-2 py-1 min-w-[120px] text-xs"
                                     >
-                                      <option value="">ไม่ระบุ</option>
+                                      <option value="">เลือกคลัง</option>
                                       {warehouses.map(w => (
                                         <option key={w.id} value={w.id}>{w.name}</option>
                                       ))}
                                     </select>
                                   </div>
-                                  <div>
-                                    <input type="text" defaultValue={item.lot_number || ''} placeholder="ระบุ Lot (เว้นว่างสำหรับ FIFO)"
-                                      onBlur={e => handleAllocate(item, { lot_number: e.target.value })}
-                                      className="border rounded px-2 py-1 w-20 text-xs" />
+                                  <div className="flex items-center gap-2">
+                                    <select
+                                      value={lotSelectValue}
+                                      disabled={!resolvedWarehouseId}
+                                      onFocus={() => {
+                                        if (resolvedWarehouseId) {
+                                          loadLots(item.product_id, resolvedWarehouseId);
+                                        }
+                                      }}
+                                      onChange={e => {
+                                        updatePendingAllocation(item.id, { lotNumber: e.target.value });
+                                      }}
+                                      className="border rounded px-2 py-1 min-w-[220px] text-xs"
+                                    >
+                                      <option value="__AUTO__">
+                                        {resolvedWarehouseId
+                                          ? lotsLoading
+                                            ? "กำลังโหลด.."
+                                            : "Auto (FIFO)"
+                                          : "เลือกคลังก่อน"}
+                                      </option>
+                                      {lots?.map(lot => (
+                                        <option key={lot.id} value={lot.lot_number}>
+                                          {formatLotLabel(lot)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (resolvedWarehouseId) {
+                                          loadLots(item.product_id, resolvedWarehouseId, true);
+                                        }
+                                      }}
+                                      disabled={!resolvedWarehouseId}
+                                      className="px-2 py-1 border rounded text-xs text-blue-600 disabled:opacity-50"
+                                    >
+                                      โหลดใหม่
+                                    </button>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <input type="number" min={0} defaultValue={defaultQty}
-                                      onBlur={e => {
-                                        const v = Number(e.target.value || 0);
-                                        if (v >= 0) handleAllocate(item, { allocated_quantity: v });
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={quantityValue}
+                                      onChange={e => {
+                                        const value = e.target.value;
+                                        if (value === '') {
+                                          updatePendingAllocation(item.id, { quantity: undefined });
+                                        } else {
+                                          updatePendingAllocation(item.id, { quantity: Number(value) });
+                                        }
                                       }}
-                                      className="border rounded px-2 py-1 w-16 text-xs" />
+                                      className="border rounded px-2 py-1 w-16 text-xs"
+                                    />
                                     <button
-                                      onClick={() => handleAllocate(item, { allocated_quantity: defaultQty, status: 'ALLOCATED' })}
-                                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs">
-                                      จัดสรร
+                                      type="button"
+                                      onClick={() => updatePendingAllocation(item.id, { lotNumber: '__AUTO__' })}
+                                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs"
+                                    >
+                                      ตั้งค่า Auto FIFO
                                     </button>
                                   </div>
                                 </div>
                               );
                             })}
+                          <div className="flex items-center justify-between mt-4">
+                            <span className="text-xs text-gray-500">เลือกแถวและกดยืนยันเพื่อบันทึกการจัดสรร</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => selectAllocationItems(items.map((item) => item.id), true)}
+                                className="px-2 py-1 border rounded text-xs text-gray-600"
+                              >
+                                เลือกทั้งหมด
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleResetSelections(orderData)}
+                                className="px-2 py-1 border rounded text-xs text-gray-600"
+                              >
+                                ล้างค่า
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmSelected(orderData)}
+                                disabled={confirmingOrderId === orderId || !items.some((item) => selectedAllocIds.has(item.id))}
+                                className="px-3 py-1 bg-blue-600 text-white rounded text-xs disabled:opacity-50"
+                              >
+                                {confirmingOrderId === orderId ? 'กำลังยืนยัน...' : 'ยืนยันการจัดสรร'}
+                              </button>
+                            </div>
+                          </div>
                           </div>
                         </div>
                       </td>

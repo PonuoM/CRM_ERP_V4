@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { Company, Warehouse, User, Customer, Order } from '@/types';
+import {
+  Company,
+  Warehouse,
+  User,
+  Customer,
+  Order,
+  SalesImportRow,
+  CustomerImportRow,
+  ImportResultSummary
+} from '@/types';
 import CompanyManagementPage from './CompanyManagementPage';
 import WarehouseManagementPage from './WarehouseManagementPage';
 import { Building2, Warehouse as WarehouseIcon, Users, Package, ShoppingCart } from 'lucide-react';
@@ -8,8 +17,8 @@ interface DataManagementPageProps {
   allUsers: User[];
   allCustomers: Customer[];
   allOrders: Order[];
-  onImportSales?: (data: any) => void;
-  onImportCustomers?: (data: any) => void;
+  onImportSales?: (rows: SalesImportRow[]) => ImportResultSummary | Promise<ImportResultSummary | void> | void;
+  onImportCustomers?: (rows: CustomerImportRow[]) => ImportResultSummary | Promise<ImportResultSummary | void> | void;
 }
 
 const DataManagementPage: React.FC<DataManagementPageProps> = ({

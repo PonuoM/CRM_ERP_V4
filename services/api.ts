@@ -608,15 +608,29 @@ export async function getProductTotalStock(productId: number) {
   return apiFetch(`products/${productId}/total_stock`);
 }
 
+export interface ProductLot {
+  id: number;
+  lot_number: string;
+  product_id: number;
+  warehouse_id: number;
+  purchase_date: string;
+  expiry_date: string | null;
+  quantity_received: number;
+  quantity_remaining: number;
+  unit_cost: number;
+  status: string;
+  notes?: string | null;
+}
+
 export async function listProductLots(params?: {
   warehouseId?: number;
   productId?: number;
   status?: string;
   lotNumber?: string;
-}) {
+}): Promise<ProductLot[]> {
   const qs = new URLSearchParams();
-  if (params?.warehouseId) qs.set("warehouseId", String(params.warehouseId));
-  if (params?.productId) qs.set("productId", String(params.productId));
+  if (params?.warehouseId != null) qs.set("warehouseId", String(params.warehouseId));
+  if (params?.productId != null) qs.set("productId", String(params.productId));
   if (params?.status) qs.set("status", params.status);
   if (params?.lotNumber) qs.set("lotNumber", params.lotNumber);
   const query = qs.toString();
