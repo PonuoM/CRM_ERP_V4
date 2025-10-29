@@ -1645,7 +1645,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   >
                     {dateRange.start && dateRange.end
                       ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                      : "เลือกช่วงวันที่"}
+                      : "ทั้งหมด"}
                   </span>
                   <Calendar className="w-4 h-4 text-gray-400" />
                 </button>
@@ -1726,6 +1726,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       เลือกช่วงเวลาด่วน:
                     </p>
                     <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          const newRange = { start: "", end: "" };
+                          setTempStart("");
+                          setTempEnd("");
+                          setDateRange(newRange);
+                          setDatePickerOpen(false);
+                        }}
+                        className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
+                      >
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        ทั้งหมด
+                      </button>
                       <button
                         onClick={() => {
                           const now = new Date();
@@ -1813,10 +1826,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
                     <button
                       onClick={() => {
-                        if (tempStart && tempEnd) {
-                          setDateRange({ start: tempStart, end: tempEnd });
-                          setDatePickerOpen(false);
-                        }
+                        setDateRange({ start: tempStart, end: tempEnd });
+                        setDatePickerOpen(false);
                       }}
                       className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                     >
@@ -2107,6 +2118,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           const newRange = { start: "", end: "" };
                           setAdsHistoryTempStart("");
                           setAdsHistoryTempEnd("");
+                          setAdsHistoryDateRange(newRange);
+                          setAdsHistoryDatePickerOpen(false);
                         }}
                         className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
                       >
@@ -2200,13 +2213,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
                     <button
                       onClick={() => {
-                        if (adsHistoryTempStart && adsHistoryTempEnd) {
-                          setAdsHistoryDateRange({
-                            start: adsHistoryTempStart,
-                            end: adsHistoryTempEnd,
-                          });
-                          setAdsHistoryDatePickerOpen(false);
-                        }
+                        setAdsHistoryDateRange({
+                          start: adsHistoryTempStart,
+                          end: adsHistoryTempEnd,
+                        });
+                        setAdsHistoryDatePickerOpen(false);
                       }}
                       className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                     >
