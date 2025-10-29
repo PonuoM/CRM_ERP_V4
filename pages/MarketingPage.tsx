@@ -105,7 +105,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         prev.impressions += Number(row.impressions || 0);
         prev.reach += Number(row.reach || 0);
         prev.clicks += Number(row.clicks || 0);
+
+        // Aggregate Pancake statistics
+        if (row.pancake_stats) {
+          for (const [field, value] of Object.entries(row.pancake_stats)) {
+            if (field !== "date" && typeof value === "number") {
+              prev.pancake_stats[field] =
+                (prev.pancake_stats[field] || 0) + value;
+            }
+          }
+        }
       } else {
+        const pancakeStats = row.pancake_stats ? { ...row.pancake_stats } : {};
         map.set(key, {
           page_id: pid,
           log_date: date,
@@ -116,6 +127,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           impressions: Number(row.impressions || 0),
           reach: Number(row.reach || 0),
           clicks: Number(row.clicks || 0),
+          pancake_error: row.pancake_error,
+          pancake_stats: pancakeStats,
         });
       }
     }
