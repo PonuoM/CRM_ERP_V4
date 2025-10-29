@@ -106,14 +106,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         prev.reach += Number(row.reach || 0);
         prev.clicks += Number(row.clicks || 0);
 
-        // Aggregate Pancake statistics
-        if (row.pancake_stats) {
-          for (const [field, value] of Object.entries(row.pancake_stats)) {
-            if (field !== "date" && typeof value === "number") {
-              prev.pancake_stats[field] =
-                (prev.pancake_stats[field] || 0) + value;
-            }
-          }
+        // Don't sum Pancake statistics - use the first non-empty Pancake data
+        if (row.pancake_stats && !prev.pancake_stats) {
+          prev.pancake_stats = { ...row.pancake_stats };
+        }
+        if (row.pancake_error && !prev.pancake_error) {
+          prev.pancake_error = row.pancake_error;
         }
       } else {
         const pancakeStats = row.pancake_stats ? { ...row.pancake_stats } : {};
