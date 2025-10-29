@@ -450,21 +450,17 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       </button>
 
       {/* Onecall Login Sidebar */}
-      <div
-        className={`fixed inset-0 z-50 ${sidebarOpen ? "" : "pointer-events-none"}`}
-      >
-        <div
-          className={`fixed inset-0 z-50 ${sidebarOpen ? "" : "pointer-events-none"}`}
-        >
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50">
           {/* Backdrop */}
           <div
-            className={`absolute inset-0 bg-black bg-opacity-50 transition-opacity ${sidebarOpen ? "opacity-100" : "opacity-0"}`}
+            className="absolute inset-0 bg-black bg-opacity-50 transition-opacity opacity-100"
             onClick={() => setSidebarOpen(false)}
           />
 
           {/* Sidebar */}
           <div
-            className={`absolute right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform ${sidebarOpen ? "translate-x-0" : "translate-x-full"} overflow-y-auto`}
+            className={`absolute right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform translate-x-0 overflow-y-auto`}
           >
             {/* Sidebar Header */}
             <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
@@ -670,7 +666,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 };

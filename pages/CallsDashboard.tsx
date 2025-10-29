@@ -27,32 +27,73 @@ const authenticateOneCall = async () => {
   const loginUrl =
     "/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true";
 
-  // Get credentials from environment variables (in React, these would be from .env file)
-  const username = (import.meta as any).env.VITE_USERNAME_ONECALL || "";
-  const password = (import.meta as any).env.VITE_PASSWORD_ONECALL || "";
-
-  if (!username || !password) {
-    return {
-      success: false,
-      error: "Username or password not found in environment variables",
-    };
-  }
-
-  // Remove quotes from username and password if present
-  const cleanUsername = username.replace(/^"|"$/g, "");
-  const cleanPassword = password.replace(/^"|"$/g, "");
-
-  // Create auth string and encode it (Postman Basic Auth style)
-  const authString = `${cleanUsername}:${cleanPassword}`;
-  const base64Auth = btoa(authString);
-
-  // Create headers with Authorization header (Postman style)
-  const headers = {
-    Accept: "application/json",
-    Authorization: `Basic ${base64Auth}`,
-  };
-
   try {
+    // Get current user from localStorage
+    const sessionUserStr = localStorage.getItem("sessionUser");
+    if (!sessionUserStr) {
+      return {
+        success: false,
+        error: "No session user found",
+      };
+    }
+
+    const sessionUser = JSON.parse(sessionUserStr);
+    const companyId = sessionUser.company_id;
+
+    // Get credentials from env table
+    const usernameKey = `ONECALL_USERNAME_${companyId}`;
+    const passwordKey = `ONECALL_PASSWORD_${companyId}`;
+
+    const [usernameRes, passwordRes] = await Promise.all([
+      fetch(`api/Marketing_DB/get_env.php?key=${usernameKey}`, {
+        headers: { "Content-Type": "application/json" },
+      }),
+      fetch(`api/Marketing_DB/get_env.php?key=${passwordKey}`, {
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+
+    if (!usernameRes.ok || !passwordRes.ok) {
+      return {
+        success: false,
+        error: "Failed to fetch OneCall credentials from database",
+      };
+    }
+
+    const usernameData = await usernameRes.json();
+    const passwordData = await passwordRes.json();
+
+    if (!usernameData.success || !passwordData.success) {
+      return {
+        success: false,
+        error: "OneCall credentials not found in database",
+      };
+    }
+
+    const username = usernameData.value;
+    const password = passwordData.value;
+
+    if (!username || !password) {
+      return {
+        success: false,
+        error: "OneCall credentials are empty",
+      };
+    }
+
+    // Remove quotes from username and password if present
+    const cleanUsername = username.replace(/^"|"$/g, "");
+    const cleanPassword = password.replace(/^"|"$/g, "");
+
+    // Create auth string and encode it (Postman Basic Auth style)
+    const authString = `${cleanUsername}:${cleanPassword}`;
+    const base64Auth = btoa(authString);
+
+    // Create headers with Authorization header (Postman style)
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Basic ${base64Auth}`,
+    };
+
     const response = await fetch(loginUrl, {
       method: "POST",
       headers: headers,
@@ -96,9 +137,10 @@ const authenticateOneCall = async () => {
       http_code: httpCode,
     };
   } catch (error) {
+    console.error("Error in authenticateOneCall:", error);
     return {
       success: false,
-      error: error.message || "Failed to fetch",
+      error: error.message || "Authentication failed",
     };
   }
 };
