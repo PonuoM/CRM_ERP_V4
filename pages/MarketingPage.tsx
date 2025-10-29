@@ -2124,7 +2124,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <tr>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">เพจ</th>
-                    <th className="px-3 py-2 text-left">ผู้ใช้</th>
+                    {dashboardView === "user" && (
+                      <th className="px-3 py-2 text-left">ผู้ใช้</th>
+                    )}
                     <th className="px-3 py-2 text-left">ค่า Ads</th>
                     <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
                     <th className="px-3 py-2 text-left">การเข้าถึง</th>
@@ -2150,11 +2152,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             : row.log_date || ""}
                         </td>
                         <td className="px-3 py-2">{row.page_name}</td>
-                        <td className="px-3 py-2">
-                          {dashboardView === "user"
-                            ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()
-                            : "ทุกคน"}
-                        </td>
+                        {dashboardView === "user" && (
+                          <td className="px-3 py-2">
+                            {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           ฿{Number(row.ads_cost || 0).toFixed(0)}
                         </td>
