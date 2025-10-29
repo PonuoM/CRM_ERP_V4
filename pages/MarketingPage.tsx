@@ -985,6 +985,55 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (data.success) {
         setDashboardData(data.data || []);
         setDashboardTotal(data.pagination?.total || 0);
+
+        // Get external page IDs from the response
+        const externalPageIds = [
+          ...new Set(
+            data.data
+              .filter((row: any) => row.external_page_id)
+              .map((row: any) => row.external_page_id),
+          ),
+        ];
+
+        // Fetch Pancake data for each external page ID
+        if (externalPageIds.length > 0) {
+          const pancakePromises = externalPageIds.map(
+            (externalPageId: string) => getPancakePageData(externalPageId),
+          );
+
+          try {
+            const pancakeResults = await Promise.all(pancakePromises);
+
+            // Merge Pancake data with dashboard data
+            const updatedData = data.data.map((row: any) => {
+              if (row.external_page_id) {
+                const pancakeData = pancakeResults.find(
+                  (result) =>
+                    result &&
+                    Array.isArray(result) &&
+                    result.some((item: any) => item.date === row.log_date),
+                );
+
+                if (pancakeData) {
+                  const dayData = pancakeData.find(
+                    (item: any) => item.date === row.log_date,
+                  );
+                  if (dayData) {
+                    return {
+                      ...row,
+                      pancake_stats: dayData,
+                    };
+                  }
+                }
+              }
+              return row;
+            });
+
+            setDashboardData(updatedData);
+          } catch (error) {
+            console.error("Error fetching Pancake data:", error);
+          }
+        }
       } else {
         setDashboardData([]);
         setDashboardTotal(0);
@@ -996,6 +1045,134 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       setDashboardTotal(0);
     } finally {
       setDashboardLoading(false);
+    }
+  };
+
+  // Function to get Pancake page data
+  const getPancakePageData = async (externalPageId: string) => {
+    try {
+      // Get current user from localStorage
+      const sessionUserStr = localStorage.getItem("sessionUser");
+      if (!sessionUserStr) {
+        console.error("No session user found");
+        return null;
+      }
+
+      const sessionUser = JSON.parse(sessionUserStr);
+      const companyId = sessionUser.company_id;
+
+      // Get access token from env table
+      const tokenKey = `ACCESS_TOKEN_PANCAKE_${companyId}`;
+      const tokenRes = await fetch(
+        `api/Marketing_DB/get_env.php?key=${tokenKey}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+
+      if (!tokenRes.ok) {
+        console.error("Failed to get access token from env");
+        return null;
+      }
+
+      const tokenData = await tokenRes.json();
+      if (!tokenData.success || !tokenData.value) {
+        console.error("Access token not found");
+        return null;
+      }
+
+      const accessToken = tokenData.value;
+
+      // API Call 1: Generate page access token
+      const tokenResponse = await fetch(
+        `https://pages.fm/api/v1/pages/${externalPageId}/generate_page_access_token?access_token=${accessToken}`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (!tokenResponse.ok) {
+        console.error("Failed to generate page access token");
+        return null;
+      }
+
+      const tokenResult = await tokenResponse.json();
+      if (!tokenResult.success || !tokenResult.page_access_token) {
+        console.error("Page access token generation failed");
+        return null;
+      }
+
+      const pageAccessToken = tokenResult.page_access_token;
+
+      // Convert date range to Unix timestamps
+      const sinceDateTime = new Date(`${dateRange.start}T00:00:00`);
+      const untilDateTime = new Date(`${dateRange.end}T23:59:59`);
+
+      const since = Math.floor(sinceDateTime.getTime() / 1000);
+      const until = Math.floor(untilDateTime.getTime() / 1000);
+
+      // API Call 2: Get page statistics
+      const statsResponse = await fetch(
+        `https://pages.fm/api/public_api/v1/pages/${externalPageId}/statistics/pages?` +
+          new URLSearchParams({
+            page_access_token: pageAccessToken,
+            page_id: externalPageId,
+            since: since.toString(),
+            until: until.toString(),
+          }),
+      );
+
+      if (!statsResponse.ok) {
+        console.error("Failed to get page statistics");
+        return null;
+      }
+
+      const statsResult = await statsResponse.json();
+
+      if (!statsResult.data || !Array.isArray(statsResult.data)) {
+        console.error("Invalid statistics data format");
+        return null;
+      }
+
+      // Group data by date and sum the values
+      const dailyStats: { [date: string]: any } = {};
+
+      statsResult.data.forEach((item: any) => {
+        const date = item.hour.split("T")[0]; // Get date part from ISO datetime
+
+        if (!dailyStats[date]) {
+          dailyStats[date] = {
+            date: date,
+            new_customer_count: 0,
+            customer_inbox_count: 0,
+            customer_comment_count: 0,
+            page_inbox_count: 0,
+            page_comment_count: 0,
+            phone_number_count: 0,
+            inbox_interactive_count: 0,
+            new_inbox_count: 0,
+            today_uniq_website_referral: 0,
+            today_website_guest_referral: 0,
+            uniq_phone_number_count: 0,
+          };
+        }
+
+        // Sum values for the same date
+        Object.keys(dailyStats[date]).forEach((key) => {
+          if (key !== "date" && typeof item[key] === "number") {
+            dailyStats[date][key] += item[key];
+          }
+        });
+      });
+
+      // Convert to array and sort by date
+      return Object.values(dailyStats).sort(
+        (a: any, b: any) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime(),
+      );
+    } catch (error) {
+      console.error("Error in getPancakePageData:", error);
+      return null;
     }
   };
 
@@ -1890,6 +2067,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
                     <th className="px-3 py-2 text-left">การเข้าถึง</th>
                     <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                    <th className="px-3 py-2 text-left">ลูกค้าใหม่</th>
+                    <th className="px-3 py-2 text-left">ข้อความ</th>
+                    <th className="px-3 py-2 text-left">คอมเมนต์</th>
+                    <th className="px-3 py-2 text-left">เบอร์โทร</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1920,12 +2101,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">{row.impressions || 0}</td>
                         <td className="px-3 py-2">{row.reach || 0}</td>
                         <td className="px-3 py-2">{row.clicks || 0}</td>
+                        <td className="px-3 py-2">
+                          {row.pancake_stats?.new_customer_count || 0}
+                        </td>
+                        <td className="px-3 py-2">
+                          {row.pancake_stats?.customer_inbox_count || 0}
+                        </td>
+                        <td className="px-3 py-2">
+                          {row.pancake_stats?.customer_comment_count || 0}
+                        </td>
+                        <td className="px-3 py-2">
+                          {row.pancake_stats?.phone_number_count || 0}
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={12}
                         className="text-center py-8 text-gray-500"
                       >
                         ไม่มีข้อมูลในช่วงวันที่ที่เลือก
