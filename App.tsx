@@ -227,6 +227,13 @@ const App: React.FC = () => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
     useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordError, setPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [rolePermissions, setRolePermissions] = useState<Record<
     string,
     { view?: boolean; use?: boolean }
@@ -940,6 +947,65 @@ const App: React.FC = () => {
       await notificationService.markAllAsRead(currentUser.id, currentUser.role);
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    setIsChangingPassword(true);
+
+    try {
+      // Validate form
+      if (
+        !passwordForm.currentPassword ||
+        !passwordForm.newPassword ||
+        !passwordForm.confirmPassword
+      ) {
+        setPasswordError("กรุณากรอกข้อมูลให้ครบถ้วน");
+        return;
+      }
+
+      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+        setPasswordError("รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน");
+        return;
+      }
+
+      // Password length validation removed - no minimum length requirement
+
+      // Call API to change password
+      const response = await fetch("/api/change_password.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+          confirmPassword: passwordForm.confirmPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.ok) {
+        // Success
+        alert("เปลี่ยนรหัสผ่านสำเร็จ");
+        setIsChangePasswordModalOpen(false);
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+      } else {
+        // Error
+        setPasswordError(result.error || "เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน");
+      }
+    } catch (error) {
+      console.error("Error changing password:", error);
+      setPasswordError("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -4683,11 +4749,14 @@ const App: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  // TODO: Implement password change logic
-                  alert("ฟังก์ชันเปลี่ยนรหัสผ่านจะถูกเพิ่มในอนาคต");
-                  setIsChangePasswordModalOpen(false);
+                  handleChangePassword();
                 }}
               >
+                {passwordError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                    {passwordError}
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4695,6 +4764,13 @@ const App: React.FC = () => {
                     </label>
                     <input
                       type="password"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) =>
+                        setPasswordForm((prev) => ({
+                          ...prev,
+                          currentPassword: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       required
                     />
@@ -4706,6 +4782,13 @@ const App: React.FC = () => {
                     </label>
                     <input
                       type="password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) =>
+                        setPasswordForm((prev) => ({
+                          ...prev,
+                          newPassword: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       required
                     />
@@ -4717,6 +4800,13 @@ const App: React.FC = () => {
                     </label>
                     <input
                       type="password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordForm((prev) => ({
+                          ...prev,
+                          confirmPassword: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       required
                     />
@@ -4726,16 +4816,28 @@ const App: React.FC = () => {
                 <div className="flex justify-end space-x-3 mt-6">
                   <button
                     type="button"
-                    onClick={() => setIsChangePasswordModalOpen(false)}
+                    onClick={() => {
+                      setIsChangePasswordModalOpen(false);
+                      setPasswordError("");
+                      setPasswordForm({
+                        currentPassword: "",
+                        newPassword: "",
+                        confirmPassword: "",
+                      });
+                    }}
                     className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                    disabled={isChangingPassword}
                   >
                     ยกเลิก
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+                    className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isChangingPassword}
                   >
-                    เปลี่ยนรหัสผ่าน
+                    {isChangingPassword
+                      ? "กำลังเปลี่ยนรหัสผ่าน..."
+                      : "เปลี่ยนรหัสผ่าน"}
                   </button>
                 </div>
               </form>
