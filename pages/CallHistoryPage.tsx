@@ -397,70 +397,6 @@ const getRecordingsData = async (currentUser?: User) => {
 };
 
 // Function to export recordings data to CSV
-const exportToCSV = (data: any) => {
-  if (!data || !data.objects || data.objects.length === 0) {
-    alert("ไม่มีข้อมูลสำหรับส่งออก");
-    return;
-  }
-
-  // Create CSV content
-  const headers = [
-    "ID",
-    "Datetime",
-    "Duration",
-    "Agent",
-    "Direction",
-    "Status",
-    "Customer",
-    "Customer Phone",
-  ];
-  const rows = data.objects.map((recording: any) => {
-    // Format datetime with timezone adjustment
-    const date = new Date(recording.timestamp);
-    date.setHours(date.getHours() + 7);
-    const formattedDate = date.toLocaleString("th-TH", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-
-    return [
-      recording.id,
-      formattedDate,
-      recording.duration || "",
-      recording.localParty || "",
-      recording.direction === "IN" ? "รับสาย" : "โทรออก",
-      "ได้คุย",
-      "Unknown",
-      recording.remoteParty || "",
-    ];
-  });
-
-  // Create CSV content
-  const csvContent = [
-    headers.join(","),
-    ...rows.map((row) => row.join(",")),
-  ].join("\n");
-
-  // Create a blob and download link
-  const blob = new Blob(["\ufeff" + csvContent], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute(
-    "download",
-    `recordings_${new Date().toISOString().split("T")[0]}.csv`,
-  );
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
 
 // TypeScript types for datetime state management
 interface DateTimeRange {
@@ -491,6 +427,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string>("");
+  const [exportProgress, setExportProgress] = useState<{
+    current: number;
+    total: number;
+    message: string;
+  } | null>(null);
   const [searchedAgent, setSearchedAgent] = useState("");
 
   // Pagination state
@@ -763,6 +704,332 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         .catch((error) => {
           alert("ไม่สามารถเล่นเสียงต่อได้: " + error.message);
         });
+    }
+  };
+
+  // Function to export all recordings data across all pages for export
+  const exportAllRecordingsData = async () => {
+    try {
+      setIsDataLoading(true);
+
+      // Use current filter settings
+      const params: any = {
+        baseUrl: "/onecall/orktrack/rest/recordings",
+        range: "custom",
+        sort: "",
+        page: 1,
+        pagesize: 1000, // Large page size for export
+        maxresults: -1,
+        includetags: true,
+        includemetadata: true,
+        includeprograms: true,
+      };
+
+      // Set date range based on current filter
+      if (datetimeRange.start && datetimeRange.end) {
+        // Parse datetimeRange.start to Date object and adjust timezone (-7 hours)
+        const startDate = new Date(datetimeRange.start);
+        startDate.setHours(startDate.getHours() - 7);
+        // Format as YYYYMMDD_HHMMSS
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, "0");
+        const day = String(startDate.getDate()).padStart(2, "0");
+        const hours = String(startDate.getHours()).padStart(2, "0");
+        const minutes = String(startDate.getMinutes()).padStart(2, "0");
+        const seconds = String(startDate.getSeconds()).padStart(2, "0");
+        params.startdate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+
+        // Parse datetimeRange.end to Date object and adjust timezone (-7 hours)
+        const endDate = new Date(datetimeRange.end);
+        endDate.setHours(endDate.getHours() - 7);
+        const endYear = endDate.getFullYear();
+        const endMonth = String(endDate.getMonth() + 1).padStart(2, "0");
+        const endDay = String(endDate.getDate()).padStart(2, "0");
+        const endHours = String(endDate.getHours()).padStart(2, "0");
+        const endMinutes = String(endDate.getMinutes()).padStart(2, "0");
+        const endSeconds = String(endDate.getSeconds()).padStart(2, "0");
+        params.enddate = `${endYear}${endMonth}${endDay}_${endHours}${endMinutes}${endSeconds}`;
+      } else {
+        // Default to today's date at midnight (00:00:00) minus 7 hours
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        startDate.setHours(startDate.getHours() - 7);
+
+        // Format as YYYYMMDD_HHMMSS
+        const year = startDate.getFullYear();
+        const month = String(startDate.getMonth() + 1).padStart(2, "0");
+        const day = String(startDate.getDate()).padStart(2, "0");
+        const hours = String(startDate.getHours()).padStart(2, "0");
+        const minutes = String(startDate.getMinutes()).padStart(2, "0");
+        const seconds = String(startDate.getSeconds()).padStart(2, "0");
+        params.startdate = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      }
+
+      // Add status filter
+      if (status !== "all") {
+        params.status = status;
+      }
+
+      // Add direction filter
+      if (direction !== "all") {
+        params.direction = direction;
+      }
+
+      // Handle phone filters
+      const hasCustomerPhone = qCustomerPhone && qCustomerPhone.trim() !== "";
+      const hasSelectedAgent = selectedAgent && selectedAgent.trim() !== "";
+
+      const formatPhoneToPlus66 = (phone: string) => {
+        const digitsOnly = phone.replace(/\D/g, "");
+        if (digitsOnly.startsWith("0")) {
+          return "+66" + digitsOnly.substring(1);
+        } else if (digitsOnly.startsWith("66")) {
+          return "+" + digitsOnly;
+        } else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
+          return phone;
+        } else {
+          return "+66" + digitsOnly;
+        }
+      };
+
+      if (
+        (hasCustomerPhone && !hasSelectedAgent) ||
+        (!hasCustomerPhone && hasSelectedAgent)
+      ) {
+        const phone = hasCustomerPhone ? qCustomerPhone : selectedAgent;
+        if (phone) {
+          params.party = formatPhoneToPlus66(phone);
+        }
+      } else if (hasCustomerPhone && hasSelectedAgent) {
+        const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
+        const formattedAgentPhone = formatPhoneToPlus66(selectedAgent);
+
+        const params1 = { ...params };
+        params1.localparty = formattedAgentPhone;
+        params1.remoteparty = formattedCustomerPhone;
+        delete params1.party;
+
+        const params2 = { ...params };
+        params2.party = formattedCustomerPhone;
+
+        return { params: [params1, params2], isDualRequest: true };
+      }
+
+      return { params: [params], isDualRequest: false };
+    } catch (error) {
+      console.error("Error preparing export parameters:", error);
+      return { params: [], isDualRequest: false };
+    }
+  };
+
+  // Function to fetch data from API with pagination
+  const fetchAllPages = async (params: any): Promise<any[]> => {
+    const authResult = await authenticateOneCall();
+
+    if (!authResult.success || !authResult.token) {
+      throw new Error("Authentication failed");
+    }
+
+    const allObjects: any[] = [];
+    let currentPage = 1;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      setExportProgress({
+        current: allObjects.length,
+        total: 0,
+        message: `กำลังโหลดข้อมูลหน้า ${currentPage}...`,
+      });
+
+      const queryParams = new URLSearchParams();
+      queryParams.append("range", params.range);
+      queryParams.append("startdate", params.startdate);
+      queryParams.append("enddate", params.enddate);
+      queryParams.append("sort", params.sort);
+      queryParams.append("page", currentPage.toString());
+      queryParams.append("pagesize", pageSize.toString());
+      queryParams.append("maxresults", params.maxresults.toString());
+      queryParams.append("includetags", params.includetags.toString());
+      queryParams.append("includemetadata", params.includemetadata.toString());
+      queryParams.append("includeprograms", params.includeprograms.toString());
+
+      // Add party parameter if it exists
+      if (params.party) {
+        queryParams.append("party", params.party);
+      }
+
+      // Add localparty and remoteparty if they exist
+      if (params.localparty) {
+        queryParams.append("localparty", params.localparty);
+      }
+      if (params.remoteparty) {
+        queryParams.append("remoteparty", params.remoteparty);
+      }
+
+      // Add status and direction filters
+      if (params.status) {
+        queryParams.append("status", params.status);
+      }
+      if (params.direction) {
+        queryParams.append("direction", params.direction);
+      }
+
+      const apiUrl = `${params.baseUrl}?${queryParams.toString()}`;
+
+      const headers = {
+        Authorization: authResult.token,
+        Accept: "application/json",
+      };
+
+      const response = await fetch(apiUrl, {
+        method: "GET",
+        headers: headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+
+      if (responseData.objects) {
+        allObjects.push(...responseData.objects);
+
+        // Update progress
+        setExportProgress({
+          current: allObjects.length,
+          total: responseData.resultCount || 0,
+          message: `กำลังโหลดข้อมูลหน้า ${currentPage} (${allObjects.length} รายการ)...`,
+        });
+
+        // Check if there are more pages
+        if (
+          responseData.nextPageUri &&
+          responseData.nextPageUri.trim() !== ""
+        ) {
+          currentPage++;
+        } else {
+          hasMore = false;
+        }
+
+        // Also check limitReached
+        if (responseData.limitReached) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allObjects;
+  };
+
+  // Main export function
+  const exportAllToCSV = async () => {
+    try {
+      setIsDataLoading(true);
+      setExportProgress(null);
+
+      const exportParams = await exportAllRecordingsData();
+
+      if (!exportParams.params || exportParams.params.length === 0) {
+        alert("ไม่สามารถสร้างพารามิเตอร์สำหรับส่งออกได้");
+        return;
+      }
+
+      let allObjects: any[] = [];
+
+      if (exportParams.isDualRequest) {
+        // Fetch data for both parameter sets and merge
+        const [data1, data2] = await Promise.all([
+          fetchAllPages(exportParams.params[0]),
+          fetchAllPages(exportParams.params[1]),
+        ]);
+
+        // Combine results and remove duplicates
+        allObjects = [...data1, ...data2];
+        const uniqueObjects = allObjects.filter(
+          (obj, index, self) =>
+            index === self.findIndex((t) => t.id === obj.id),
+        );
+        allObjects = uniqueObjects;
+      } else {
+        // Single request
+        allObjects = await fetchAllPages(exportParams.params[0]);
+      }
+
+      if (allObjects.length === 0) {
+        alert("ไม่มีข้อมูลสำหรับส่งออก");
+        return;
+      }
+
+      setExportProgress({
+        current: 0,
+        total: allObjects.length,
+        message: "กำลังสร้างไฟล์ CSV...",
+      });
+
+      // Create CSV content
+      const headers = [
+        "ID",
+        "Datetime",
+        "Duration",
+        "Agent",
+        "Direction",
+        "Status",
+        "Customer",
+        "Customer Phone",
+      ];
+      const rows = allObjects.map((recording: any) => {
+        const date = new Date(recording.timestamp);
+        date.setHours(date.getHours() + 7);
+        const formattedDate = date.toLocaleString("th-TH", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        });
+
+        return [
+          recording.id,
+          formattedDate,
+          recording.duration || "",
+          recording.localParty || "",
+          recording.direction === "IN" ? "รับสาย" : "โทรออก",
+          "ได้คุย",
+          "Unknown",
+          recording.remoteParty || "",
+        ];
+      });
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
+
+      const blob = new Blob(["\ufeff" + csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `recordings_all_${new Date().toISOString().split("T")[0]}.csv`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      alert("เกิดข้อผิดพลาดในการส่งออกข้อมูล: " + error.message);
+    } finally {
+      setIsDataLoading(false);
+      setExportProgress(null);
     }
   };
 
@@ -2665,19 +2932,21 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                   </svg>
                   ล้างค่า
                 </button>
-                <button
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                  onClick={() => exportToCSV(recordingsData)}
-                  disabled={!recordingsData || isLoading}
-                >
-                  <Phone className="w-4 h-4" />
-                  ส่งออก CSV
-                </button>
+                {/* Export CSV Button */}
+                <div className="flex gap-2">
+                  <button
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                    onClick={exportAllToCSV}
+                    disabled={isDataLoading}
+                  >
+                    <Phone className="w-4 h-4" />
+                    ส่งออก CSV
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Employee Call Overview Table (removed)
+            {/* Employee Call Overview Table (removed)
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -2767,515 +3036,564 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         </div>
 
 */}
-          {/* Results Summary */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {isLoading || isDataLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                  <span>กำลังโหลดข้อมูล...</span>
+            {/* Results Summary */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                {isLoading || isDataLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                    <span>กำลังโหลดข้อมูล...</span>
+                  </div>
+                ) : isSearchLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                    <span>กำลังค้นหาข้อมูล...</span>
+                  </div>
+                ) : (
+                  <span>
+                    พบข้อมูลทั้งหมด{" "}
+                    <span className="font-semibold text-gray-800">
+                      {totalResults}
+                    </span>{" "}
+                    รายการ
+                  </span>
+                )}
+              </div>
+              {recordingsData && recordingsData.objects && (
+                <div className="text-xs text-gray-500">
+                  Recordings: {recordingsData.objects.length} items
                 </div>
-              ) : isSearchLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                  <span>กำลังค้นหาข้อมูล...</span>
-                </div>
-              ) : (
-                <span>
-                  พบข้อมูลทั้งหมด{" "}
-                  <span className="font-semibold text-gray-800">
-                    {totalResults}
-                  </span>{" "}
-                  รายการ
-                </span>
               )}
             </div>
-            {recordingsData && recordingsData.objects && (
-              <div className="text-xs text-gray-500">
-                Recordings: {recordingsData.objects.length} items
-              </div>
-            )}
-          </div>
 
-          {/* Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      ID
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
-                      Datetime
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Duration
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      พนักงานขาย
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      เบอร์ต้นทาง
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Direction
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      เบอร์ปลายทาง
-                    </th>
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      สถานะ
-                    </th>
-                    <th className="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {isDataLoading || isSearchLoading ? (
+            {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <td colSpan={9} className="py-12 text-center">
-                        <div className="flex flex-col items-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
-                          <p className="text-gray-500 text-sm font-medium">
-                            {isSearchLoading
-                              ? "กำลังค้นหาข้อมูล..."
-                              : "กำลังดึงข้อมูลบันทึกการโทร..."}
-                          </p>
-                        </div>
-                      </td>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        ID
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                        Datetime
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Duration
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        พนักงานขาย
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        เบอร์ต้นทาง
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Direction
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        เบอร์ปลายทาง
+                      </th>
+                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        สถานะ
+                      </th>
+                      <th className="py-3 px-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider"></th>
                     </tr>
-                  ) : (
-                    <>
-                      {filteredRecordings.map((recording: any) => {
-                        // Direction icon based on recording.direction
-                        const dirIcon =
-                          recording.direction === "IN" ? (
-                            <PhoneIncoming className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <PhoneOutgoing className="w-4 h-4 text-red-500" />
-                          );
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {isDataLoading || isSearchLoading ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center">
+                          <div className="flex flex-col items-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
+                            <p className="text-gray-500 text-sm font-medium">
+                              {isSearchLoading
+                                ? "กำลังค้นหาข้อมูล..."
+                                : "กำลังดึงข้อมูลบันทึกการโทร..."}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <>
+                        {filteredRecordings.map((recording: any) => {
+                          // Direction icon based on recording.direction
+                          const dirIcon =
+                            recording.direction === "IN" ? (
+                              <PhoneIncoming className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <PhoneOutgoing className="w-4 h-4 text-red-500" />
+                            );
 
-                        const dirText =
-                          recording.direction === "IN" ? "รับสาย" : "โทรออก";
+                          const dirText =
+                            recording.direction === "IN" ? "รับสาย" : "โทรออก";
 
-                        // Determine status based on duration
-                        const getStatus = (duration: number) => {
-                          if (duration <= 40) {
-                            return {
-                              text: "ไม่ได้คุย",
-                              className: "text-red-600 bg-red-100",
-                            };
-                          } else {
-                            return {
-                              text: "ได้คุย",
-                              className: "text-green-600 bg-green-100",
-                            };
-                          }
-                        };
-
-                        const status = getStatus(recording.duration || 0);
-
-                        // Get agent name based on phone number matching
-                        const getAgentName = () => {
-                          // Format phone numbers for comparison
-                          const formatPhone = (phone: string) => {
-                            if (!phone) return "";
-                            // Remove any non-digit characters
-                            const digitsOnly = phone.replace(/\D/g, "");
-                            // If it starts with 66, remove it
-                            if (digitsOnly.startsWith("66")) {
-                              return digitsOnly.substring(2);
+                          // Determine status based on duration
+                          const getStatus = (duration: number) => {
+                            if (duration <= 40) {
+                              return {
+                                text: "ไม่ได้คุย",
+                                className: "text-red-600 bg-red-100",
+                              };
+                            } else {
+                              return {
+                                text: "ได้คุย",
+                                className: "text-green-600 bg-green-100",
+                              };
                             }
-                            // If it starts with 0, remove it
-                            if (digitsOnly.startsWith("0")) {
-                              return digitsOnly.substring(1);
-                            }
-                            return digitsOnly;
                           };
 
-                          const localParty = formatPhone(
-                            recording.localParty || "",
-                          );
-                          const remoteParty = formatPhone(
-                            recording.remoteParty || "",
-                          );
+                          const status = getStatus(recording.duration || 0);
 
-                          // Check if local party matches any supervisor or telesale
-                          let matchedUser = users.find(
-                            (user) =>
-                              (user.role === UserRole.Supervisor ||
-                                user.role === UserRole.Telesale) &&
-                              formatPhone(user.phone || "") === localParty,
-                          );
+                          // Get agent name based on phone number matching
+                          const getAgentName = () => {
+                            // Format phone numbers for comparison
+                            const formatPhone = (phone: string) => {
+                              if (!phone) return "";
+                              // Remove any non-digit characters
+                              const digitsOnly = phone.replace(/\D/g, "");
+                              // If it starts with 66, remove it
+                              if (digitsOnly.startsWith("66")) {
+                                return digitsOnly.substring(2);
+                              }
+                              // If it starts with 0, remove it
+                              if (digitsOnly.startsWith("0")) {
+                                return digitsOnly.substring(1);
+                              }
+                              return digitsOnly;
+                            };
 
-                          // If not found in local party, check remote party
-                          if (!matchedUser) {
-                            matchedUser = users.find(
+                            const localParty = formatPhone(
+                              recording.localParty || "",
+                            );
+                            const remoteParty = formatPhone(
+                              recording.remoteParty || "",
+                            );
+
+                            // Check if local party matches any supervisor or telesale
+                            let matchedUser = users.find(
                               (user) =>
                                 (user.role === UserRole.Supervisor ||
                                   user.role === UserRole.Telesale) &&
-                                formatPhone(user.phone || "") === remoteParty,
+                                formatPhone(user.phone || "") === localParty,
                             );
-                          }
 
-                          // Return the first name if found, otherwise 'Unknown'
-                          return matchedUser
-                            ? matchedUser.firstName
-                            : "Unknown";
-                        };
+                            // If not found in local party, check remote party
+                            if (!matchedUser) {
+                              matchedUser = users.find(
+                                (user) =>
+                                  (user.role === UserRole.Supervisor ||
+                                    user.role === UserRole.Telesale) &&
+                                  formatPhone(user.phone || "") === remoteParty,
+                              );
+                            }
 
-                        const agentName = getAgentName();
+                            // Return the first name if found, otherwise 'Unknown'
+                            return matchedUser
+                              ? matchedUser.firstName
+                              : "Unknown";
+                          };
 
-                        return (
-                          <tr
-                            key={recording.id}
-                            className="hover:bg-gray-50 transition-colors"
-                          >
-                            <td className="py-3 px-4 text-sm text-gray-600 font-medium">
-                              {recording.id}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-800 whitespace-normal">
-                              {formatDate(recording.timestamp)}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
-                              {recording.duration || "-"}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-800">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                                  <UserIcon className="w-3 h-3 text-blue-600" />
+                          const agentName = getAgentName();
+
+                          return (
+                            <tr
+                              key={recording.id}
+                              className="hover:bg-gray-50 transition-colors"
+                            >
+                              <td className="py-3 px-4 text-sm text-gray-600 font-medium">
+                                {recording.id}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-800 whitespace-normal">
+                                {formatDate(recording.timestamp)}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-600">
+                                {recording.duration || "-"}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-800">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <UserIcon className="w-3 h-3 text-blue-600" />
+                                  </div>
+                                  {agentName}
                                 </div>
-                                {agentName}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
-                              {recording.localParty || "-"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                {dirIcon}
-                                <span className="text-sm text-gray-600">
-                                  {dirText}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
-                              {recording.remoteParty || "-"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${status.className}`}
-                              >
-                                {status.text}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <div className="min-w-[250px] flex items-center gap-2">
-                                <button
-                                  className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
-                                  onClick={() =>
-                                    downloadRecording(
-                                      recording.recordingURL,
-                                      recording.id,
-                                    )
-                                  }
-                                  title="ดาวน์โหลดไฟล์เสียง"
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-600">
+                                {recording.localParty || "-"}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  {dirIcon}
+                                  <span className="text-sm text-gray-600">
+                                    {dirText}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-600">
+                                {recording.remoteParty || "-"}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${status.className}`}
                                 >
-                                  <Download className="w-4 h-4" />
-                                </button>
-                                <div className="flex-1 min-w-[200px]">
-                                  {activeAudios.has(recording.id) ||
-                                  currentPlayingId === recording.id ? (
-                                    <div className="w-full">
-                                      {/* Show loading if this specific audio is loading */}
-                                      {currentPlayingId === recording.id &&
-                                      isAudioLoading ? (
-                                        <div className="flex items-center justify-center py-2">
-                                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
-                                          <span className="text-xs text-gray-600">
-                                            กำลังโหลด...
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <button
-                                              className="text-blue-700 hover:text-blue-900"
-                                              onClick={() => {
-                                                // If this is the currently playing audio, toggle play/pause
-                                                if (
-                                                  currentPlayingId ===
-                                                  recording.id
-                                                ) {
-                                                  if (isPlaying) {
-                                                    pauseAudio();
-                                                  } else {
-                                                    resumeAudio();
-                                                  }
-                                                } else {
-                                                  // If another audio is playing, pause it first
-                                                  if (
-                                                    currentPlayingId !== null &&
-                                                    isPlaying
-                                                  ) {
-                                                    pauseAudio();
-                                                  }
-                                                  // Then play this audio
-                                                  playRecording(
-                                                    recording.recordingURL,
-                                                    recording.id,
-                                                  );
-                                                }
-                                              }}
-                                            >
-                                              {currentPlayingId ===
-                                                recording.id && isPlaying ? (
-                                                <Pause className="w-4 h-4" />
-                                              ) : (
-                                                <Play className="w-4 h-4" />
-                                              )}
-                                            </button>
-                                            <input
-                                              type="range"
-                                              min="0"
-                                              max={duration || 0}
-                                              value={
-                                                currentPlayingId ===
-                                                recording.id
-                                                  ? currentTime
-                                                  : pausedAudios.get(
-                                                      recording.id,
-                                                    ) || 0
-                                              }
-                                              onChange={
-                                                currentPlayingId ===
-                                                recording.id
-                                                  ? handleSliderChange
-                                                  : (e) => {
-                                                      // Update paused position for non-currently playing audios
-                                                      const newTime =
-                                                        parseFloat(
-                                                          e.target.value,
-                                                        );
-                                                      setPausedAudios((prev) =>
-                                                        new Map(prev).set(
-                                                          recording.id,
-                                                          newTime,
-                                                        ),
-                                                      );
-                                                    }
-                                              }
-                                              className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
-                                              style={{
-                                                background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${((currentPlayingId === recording.id ? currentTime : pausedAudios.get(recording.id) || 0) / (duration || 1)) * 100}%, #DBEAFE ${((currentPlayingId === recording.id ? currentTime : pausedAudios.get(recording.id) || 0) / (duration || 1)) * 100}%, #DBEAFE 100%)`,
-                                              }}
-                                            />
-                                          </div>
-                                          <div className="flex justify-start">
+                                  {status.text}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="min-w-[250px] flex items-center gap-2">
+                                  <button
+                                    className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
+                                    onClick={() =>
+                                      downloadRecording(
+                                        recording.recordingURL,
+                                        recording.id,
+                                      )
+                                    }
+                                    title="ดาวน์โหลดไฟล์เสียง"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                  <div className="flex-1 min-w-[200px]">
+                                    {activeAudios.has(recording.id) ||
+                                    currentPlayingId === recording.id ? (
+                                      <div className="w-full">
+                                        {/* Show loading if this specific audio is loading */}
+                                        {currentPlayingId === recording.id &&
+                                        isAudioLoading ? (
+                                          <div className="flex items-center justify-center py-2">
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
                                             <span className="text-xs text-gray-600">
-                                              {formatTime(
-                                                currentPlayingId ===
-                                                  recording.id
-                                                  ? currentTime
-                                                  : pausedAudios.get(
-                                                      recording.id,
-                                                    ) || 0,
-                                              )}
+                                              กำลังโหลด...
                                             </span>
                                           </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <button
-                                      className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
-                                      onClick={() =>
-                                        playRecording(
-                                          recording.recordingURL,
-                                          recording.id,
-                                        )
-                                      }
-                                    >
-                                      <Phone className="w-3 h-3 mr-1" />
-                                      เล่นเสียง
-                                    </button>
-                                  )}
+                                        ) : (
+                                          <>
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <button
+                                                className="text-blue-700 hover:text-blue-900"
+                                                onClick={() => {
+                                                  // If this is the currently playing audio, toggle play/pause
+                                                  if (
+                                                    currentPlayingId ===
+                                                    recording.id
+                                                  ) {
+                                                    if (isPlaying) {
+                                                      pauseAudio();
+                                                    } else {
+                                                      resumeAudio();
+                                                    }
+                                                  } else {
+                                                    // If another audio is playing, pause it first
+                                                    if (
+                                                      currentPlayingId !==
+                                                        null &&
+                                                      isPlaying
+                                                    ) {
+                                                      pauseAudio();
+                                                    }
+                                                    // Then play this audio
+                                                    playRecording(
+                                                      recording.recordingURL,
+                                                      recording.id,
+                                                    );
+                                                  }
+                                                }}
+                                              >
+                                                {currentPlayingId ===
+                                                  recording.id && isPlaying ? (
+                                                  <Pause className="w-4 h-4" />
+                                                ) : (
+                                                  <Play className="w-4 h-4" />
+                                                )}
+                                              </button>
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max={duration || 0}
+                                                value={
+                                                  currentPlayingId ===
+                                                  recording.id
+                                                    ? currentTime
+                                                    : pausedAudios.get(
+                                                        recording.id,
+                                                      ) || 0
+                                                }
+                                                onChange={
+                                                  currentPlayingId ===
+                                                  recording.id
+                                                    ? handleSliderChange
+                                                    : (e) => {
+                                                        // Update paused position for non-currently playing audios
+                                                        const newTime =
+                                                          parseFloat(
+                                                            e.target.value,
+                                                          );
+                                                        setPausedAudios(
+                                                          (prev) =>
+                                                            new Map(prev).set(
+                                                              recording.id,
+                                                              newTime,
+                                                            ),
+                                                        );
+                                                      }
+                                                }
+                                                className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                                                style={{
+                                                  background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${((currentPlayingId === recording.id ? currentTime : pausedAudios.get(recording.id) || 0) / (duration || 1)) * 100}%, #DBEAFE ${((currentPlayingId === recording.id ? currentTime : pausedAudios.get(recording.id) || 0) / (duration || 1)) * 100}%, #DBEAFE 100%)`,
+                                                }}
+                                              />
+                                            </div>
+                                            <div className="flex justify-start">
+                                              <span className="text-xs text-gray-600">
+                                                {formatTime(
+                                                  currentPlayingId ===
+                                                    recording.id
+                                                    ? currentTime
+                                                    : pausedAudios.get(
+                                                        recording.id,
+                                                      ) || 0,
+                                                )}
+                                              </span>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <button
+                                        className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors w-full justify-center"
+                                        onClick={() =>
+                                          playRecording(
+                                            recording.recordingURL,
+                                            recording.id,
+                                          )
+                                        }
+                                      >
+                                        <Phone className="w-3 h-3 mr-1" />
+                                        เล่นเสียง
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredRecordings.length === 0 && (
+                          <tr>
+                            <td colSpan={9} className="py-12 text-center">
+                              <div className="flex flex-col items-center">
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                                  <Search className="w-6 h-6 text-gray-400" />
+                                </div>
+                                <p className="text-gray-500 text-sm font-medium">
+                                  ไม่พบข้อมูล
+                                </p>
+                                <p className="text-gray-400 text-xs mt-1">
+                                  ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม
+                                  "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร
+                                </p>
                               </div>
                             </td>
                           </tr>
-                        );
-                      })}
-                      {filteredRecordings.length === 0 && (
-                        <tr>
-                          <td colSpan={9} className="py-12 text-center">
-                            <div className="flex flex-col items-center">
-                              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                                <Search className="w-6 h-6 text-gray-400" />
-                              </div>
-                              <p className="text-gray-500 text-sm font-medium">
-                                ไม่พบข้อมูล
-                              </p>
-                              <p className="text-gray-400 text-xs mt-1">
-                                ลองปรับเปลี่ยนเงื่อนไขการค้นหาหรือกดปุ่ม
-                                "ดึงข้อมูล" เพื่อโหลดข้อมูลการโทร
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        )}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Pagination Controls */}
-            {totalResults > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mt-6">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>แสดงหน้า</span>
-                    <span className="font-semibold">{currentPage}</span>
-                    <span>จากทั้งหมด</span>
-                    <span className="font-semibold">
-                      {Math.ceil(totalResults / pageSize)}
-                    </span>
-                    <span>หน้า</span>
-                    <span className="mx-2">|</span>
-                    <span>แสดง</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) =>
-                        handlePageSizeChange(parseInt(e.target.value))
-                      }
-                      className="border border-gray-300 rounded px-2 py-1 text-sm"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <span>รายการต่อหน้า</span>
-                    <span className="mx-2">|</span>
-                    <span>ทั้งหมด</span>
-                    <span className="font-semibold">{totalResults}</span>
-                    <span>รายการ</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={fetchPrevPage}
-                      disabled={
-                        !prevPageUri || currentPage <= 1 || isSearchLoading
-                      }
-                      className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+              {/* Pagination Controls */}
+              {totalResults > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6 mt-6">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <span>แสดงหน้า</span>
+                      <span className="font-semibold">{currentPage}</span>
+                      <span>จากทั้งหมด</span>
+                      <span className="font-semibold">
+                        {Math.ceil(totalResults / pageSize)}
+                      </span>
+                      <span>หน้า</span>
+                      <span className="mx-2">|</span>
+                      <span>แสดง</span>
+                      <select
+                        value={pageSize}
+                        onChange={(e) =>
+                          handlePageSizeChange(parseInt(e.target.value))
+                        }
+                        className="border border-gray-300 rounded px-2 py-1 text-sm"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 19l-7-7 7-7"
-                        />
-                      </svg>
-                    </button>
-
-                    <div className="flex items-center gap-1">
-                      {/* Generate page numbers */}
-                      {(() => {
-                        const totalPages = Math.ceil(totalResults / pageSize);
-                        const maxVisiblePages = 5;
-
-                        // If there are no pages or only one page, don't show pagination
-                        if (totalPages <= 1) return null;
-
-                        // Calculate the range of page numbers to show
-                        let startPage = Math.max(
-                          1,
-                          currentPage - Math.floor(maxVisiblePages / 2),
-                        );
-                        let endPage = Math.min(
-                          totalPages,
-                          startPage + maxVisiblePages - 1,
-                        );
-
-                        // Adjust if we're at the end
-                        if (endPage - startPage < maxVisiblePages - 1) {
-                          startPage = Math.max(
-                            1,
-                            endPage - maxVisiblePages + 1,
-                          );
-                        }
-
-                        // Create array of page numbers to show
-                        const pageNumbers = [];
-                        for (let i = startPage; i <= endPage; i++) {
-                          pageNumbers.push(i);
-                        }
-
-                        return pageNumbers.map((pageNum) => (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            disabled={isSearchLoading}
-                            className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
-                              currentPage === pageNum
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed"
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        ));
-                      })()}
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span>รายการต่อหน้า</span>
+                      <span className="mx-2">|</span>
+                      <span>ทั้งหมด</span>
+                      <span className="font-semibold">{totalResults}</span>
+                      <span>รายการ</span>
                     </div>
 
-                    <button
-                      onClick={fetchNextPage}
-                      disabled={!nextPageUri || limitReached || isSearchLoading}
-                      className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={fetchPrevPage}
+                        disabled={
+                          !prevPageUri || currentPage <= 1 || isSearchLoading
+                        }
+                        className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 19l-7-7 7-7"
+                          />
+                        </svg>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {/* Generate page numbers */}
+                        {(() => {
+                          const totalPages = Math.ceil(totalResults / pageSize);
+                          const maxVisiblePages = 5;
+
+                          // If there are no pages or only one page, don't show pagination
+                          if (totalPages <= 1) return null;
+
+                          // Calculate the range of page numbers to show
+                          let startPage = Math.max(
+                            1,
+                            currentPage - Math.floor(maxVisiblePages / 2),
+                          );
+                          let endPage = Math.min(
+                            totalPages,
+                            startPage + maxVisiblePages - 1,
+                          );
+
+                          // Adjust if we're at the end
+                          if (endPage - startPage < maxVisiblePages - 1) {
+                            startPage = Math.max(
+                              1,
+                              endPage - maxVisiblePages + 1,
+                            );
+                          }
+
+                          // Create array of page numbers to show
+                          const pageNumbers = [];
+                          for (let i = startPage; i <= endPage; i++) {
+                            pageNumbers.push(i);
+                          }
+
+                          return pageNumbers.map((pageNum) => (
+                            <button
+                              key={pageNum}
+                              onClick={() => handlePageChange(pageNum)}
+                              disabled={isSearchLoading}
+                              className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
+                                currentPage === pageNum
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          ));
+                        })()}
+                      </div>
+
+                      <button
+                        onClick={fetchNextPage}
+                        disabled={
+                          !nextPageUri || limitReached || isSearchLoading
+                        }
+                        className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+
+          {/* Onecall Login Sidebar Component */}
+          <OnecallLoginSidebar
+            currentUser={currentUser}
+            onLogin={(username, password) => {
+              console.log("Onecall login successful in CallHistoryPage:", {
+                username: username,
+                password: "***",
+              });
+              // You can add additional logic here after successful login
+              // For example, update access token, refresh data, etc.
+              alert("เข้าสู่ระบบ Onecall สำเร็จ");
+            }}
+          />
         </div>
 
-        {/* Onecall Login Sidebar Component */}
-        <OnecallLoginSidebar
-          currentUser={currentUser}
-          onLogin={(username, password) => {
-            console.log("Onecall login successful in CallHistoryPage:", {
-              username: username,
-              password: "***",
-            });
-            // You can add additional logic here after successful login
-            // For example, update access token, refresh data, etc.
-            alert("เข้าสู่ระบบ Onecall สำเร็จ");
-          }}
-        />
+        {/* Export Progress Modal */}
+        {exportProgress && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mb-4"></div>
+                <h3 className="text-lg font-semibold mb-2 text-gray-700">
+                  กำลังส่งออกข้อมูล
+                </h3>
+                <p className="text-gray-600 text-center mb-1">
+                  {exportProgress.message}
+                </p>
+                {exportProgress.total > 0 && (
+                  <p className="text-sm text-gray-500">
+                    {exportProgress.current} / {exportProgress.total} รายการ
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Export Progress Modal */}
+      {exportProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex flex-col items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mb-4"></div>
+              <h3 className="text-lg font-semibold mb-2 text-gray-700">
+                กำลังส่งออกข้อมูล
+              </h3>
+              <p className="text-gray-600 text-center mb-1">
+                {exportProgress.message}
+              </p>
+              {exportProgress.total > 0 && (
+                <p className="text-sm text-gray-500">
+                  {exportProgress.current} / {exportProgress.total} รายการ
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
