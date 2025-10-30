@@ -1322,16 +1322,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               บันทึก Ads
             </button>
             <button
-              onClick={() => setActiveTab("userManagement")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "userManagement"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              จัดการผู้ใช้การตลาด-เพจ
-            </button>
-            <button
               onClick={() => setActiveTab("adsInput")}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === "adsInput"
@@ -1350,6 +1340,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               }`}
             >
               ประวัติการกรอก Ads
+            </button>
+            <button
+              onClick={() => setActiveTab("userManagement")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "userManagement"
+                  ? "border-emerald-500 text-emerald-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              จัดการผู้ใช้การตลาด-เพจ
             </button>
           </nav>
         </div>
