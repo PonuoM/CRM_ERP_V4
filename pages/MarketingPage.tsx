@@ -1341,8 +1341,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             >
               ประวัติการกรอก Ads
             </button>
-            {(currentUser.role === "SuperAdmin" ||
-              currentUser.role === "AdminControl") && (
+            {(currentUser.role === "Super Admin" ||
+              currentUser.role === "Admin Control") && (
               <button
                 onClick={() => setActiveTab("userManagement")}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${

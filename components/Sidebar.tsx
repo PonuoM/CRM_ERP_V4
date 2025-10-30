@@ -53,7 +53,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   permissions,
 }) => {
-
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     [HOME_GROUP]: true,
   });
@@ -288,6 +287,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               { icon: FileText, label: PAGE_ENGAGEMENT_STATS },
             ],
           },
+          { icon: BarChart2, label: "Marketing" },
           customersGroupFixed,
           callGroup,
           { icon: Settings, label: "Settings" },
@@ -299,6 +299,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           { icon: Share2, label: "Share" },
           { icon: Settings, label: "Settings" },
           callGroup,
+          { icon: BarChart2, label: "Marketing" },
         ];
       case UserRole.Admin:
         return [
@@ -359,11 +360,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   const navItems = getNavItems();
   // Ensure 'Pancake User Mapping' appears under the single 'PAGE_STATS' group only
   try {
-    const statsGroup = navItems.find((it) => it.label === PAGE_STATS && Array.isArray((it as any).children)) as any;
+    const statsGroup = navItems.find(
+      (it) => it.label === PAGE_STATS && Array.isArray((it as any).children),
+    ) as any;
     if (statsGroup && Array.isArray(statsGroup.children)) {
-      const exists = statsGroup.children.some((c: any) => c && c.label === "Pancake User Mapping");
+      const exists = statsGroup.children.some(
+        (c: any) => c && c.label === "Pancake User Mapping",
+      );
       if (!exists) {
-        statsGroup.children.push({ icon: Users, label: "Pancake User Mapping" });
+        statsGroup.children.push({
+          icon: Users,
+          label: "Pancake User Mapping",
+        });
       }
     }
   } catch {}
@@ -474,7 +482,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           <Menu className="w-5 h-5" />
         </button>
       </div>
-      
 
       <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-2 mb-2">
         {isCollapsed ? "" : "หน้าหลัก"}

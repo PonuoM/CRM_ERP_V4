@@ -4081,17 +4081,9 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "สระว่ายน้ำ":
-          case "Customer Pools":
-            return (
-              <CustomerPoolsPage
-                users={companyUsers}
-                customers={companyCustomers}
-                currentUser={currentUser}
-                onViewCustomer={handleViewCustomer}
-                openModal={openModal}
-              />
-            );
+
+          case "Marketing":
+            return <MarketingPage currentUser={currentUser} />;
           default:
             return (
               <AdminDashboard
