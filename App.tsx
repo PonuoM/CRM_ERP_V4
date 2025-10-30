@@ -95,6 +95,9 @@ import {
   AlertCircle,
   Clock,
   Check,
+  Key,
+  LogOut,
+  ChevronDown,
 } from "lucide-react";
 import LogCallModal from "./components/LogCallModal";
 import AppointmentModal from "./components/AppointmentModal";
@@ -221,6 +224,9 @@ const App: React.FC = () => {
   );
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
+    useState(false);
   const [rolePermissions, setRolePermissions] = useState<Record<
     string,
     { view?: boolean; use?: boolean }
@@ -2555,8 +2561,7 @@ const App: React.FC = () => {
       const lower = reference.toLowerCase();
       matchedUser = companyUsers.find((u) => {
         const usernameMatch =
-          typeof u.username === "string" &&
-          u.username.toLowerCase() === lower;
+          typeof u.username === "string" && u.username.toLowerCase() === lower;
         if (usernameMatch) return true;
 
         const fullName = `${u.firstName ?? ""} ${u.lastName ?? ""}`
@@ -2596,8 +2601,7 @@ const App: React.FC = () => {
         adjusted.getUTCDate(),
       )}T${pad(adjusted.getUTCHours())}:${pad(adjusted.getUTCMinutes())}:${pad(
         adjusted.getUTCSeconds(),
-      )}` +
-      `${sign}${pad(hoursOffset)}:${pad(minutesOffset)}`
+      )}` + `${sign}${pad(hoursOffset)}:${pad(minutesOffset)}`
     );
   };
 
@@ -2690,9 +2694,7 @@ const App: React.FC = () => {
     }
   };
 
-  const normalizeGradeValue = (
-    raw?: string,
-  ): CustomerGrade | undefined => {
+  const normalizeGradeValue = (raw?: string): CustomerGrade | undefined => {
     const token = sanitizeValue(raw).toUpperCase();
     if (!token) return undefined;
     switch (token) {
@@ -2844,7 +2846,9 @@ const App: React.FC = () => {
     const dateAssignedIso =
       assignedTo !== null ? toThaiIsoString(now) : undefined;
     const defaultDateRegistered =
-      assignedTo !== null ? dateAssignedIso ?? toThaiIsoString(now) : undefined;
+      assignedTo !== null
+        ? (dateAssignedIso ?? toThaiIsoString(now))
+        : undefined;
     const resolvedDateRegistered =
       input.dateRegistered ?? existing?.dateRegistered ?? defaultDateRegistered;
 
@@ -2868,14 +2872,13 @@ const App: React.FC = () => {
       existing?.behavioralStatus ??
       CustomerBehavioralStatus.Cold;
 
-    const resolvedGrade =
-      input.grade ?? existing?.grade ?? CustomerGrade.C;
+    const resolvedGrade = input.grade ?? existing?.grade ?? CustomerGrade.C;
 
     const resolvedTotalPurchases =
       typeof input.totalPurchases === "number" &&
       Number.isFinite(input.totalPurchases)
         ? input.totalPurchases
-        : existing?.totalPurchases ?? 0;
+        : (existing?.totalPurchases ?? 0);
 
     const address = {
       street,
@@ -2952,28 +2955,26 @@ const App: React.FC = () => {
         return existing ?? null;
       }
 
-      const baseCustomer: Customer =
-        existing ??
-        {
-          id: input.id,
-          firstName,
-          lastName,
-          phone,
-          email,
-          address,
-          province,
-          companyId: currentUser.companyId,
-          assignedTo,
-          dateAssigned: dateAssignedIso ?? toThaiIsoString(now),
-          dateRegistered: resolvedDateRegistered,
-          ownershipExpires: resolvedOwnershipExpires,
-          lifecycleStatus: resolvedLifecycleStatus,
-          behavioralStatus: resolvedBehavioralStatus,
-          grade: resolvedGrade,
-          tags: [],
-          totalPurchases: resolvedTotalPurchases,
-          totalCalls: 0,
-        };
+      const baseCustomer: Customer = existing ?? {
+        id: input.id,
+        firstName,
+        lastName,
+        phone,
+        email,
+        address,
+        province,
+        companyId: currentUser.companyId,
+        assignedTo,
+        dateAssigned: dateAssignedIso ?? toThaiIsoString(now),
+        dateRegistered: resolvedDateRegistered,
+        ownershipExpires: resolvedOwnershipExpires,
+        lifecycleStatus: resolvedLifecycleStatus,
+        behavioralStatus: resolvedBehavioralStatus,
+        grade: resolvedGrade,
+        tags: [],
+        totalPurchases: resolvedTotalPurchases,
+        totalCalls: 0,
+      };
 
       const mergedCustomer: Customer = {
         ...baseCustomer,
@@ -3148,10 +3149,8 @@ const App: React.FC = () => {
         continue;
       }
 
-      const {
-        id: resolvedCaretakerId,
-        reference: resolvedCaretakerRef,
-      } = normalizeCaretakerIdentifier(first.caretakerId);
+      const { id: resolvedCaretakerId, reference: resolvedCaretakerRef } =
+        normalizeCaretakerIdentifier(first.caretakerId);
 
       const customer = await ensureCustomerForImport(
         {
@@ -3396,10 +3395,8 @@ const App: React.FC = () => {
         continue;
       }
 
-      const {
-        id: resolvedCaretakerId,
-        reference: resolvedCaretakerRef,
-      } = normalizeCaretakerIdentifier(row.caretakerId);
+      const { id: resolvedCaretakerId, reference: resolvedCaretakerRef } =
+        normalizeCaretakerIdentifier(row.caretakerId);
 
       const dateRegisteredIso = parseDateToIso(row.dateRegistered);
       const ownershipExpiresIso = parseDateToIso(row.ownershipExpires);
@@ -4572,14 +4569,59 @@ const App: React.FC = () => {
                   )}
                 </button>
               </div>
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
-                  {currentUser.firstName.charAt(0)}
-                </div>
-                <div className="hidden md:block">
-                  <p className="font-semibold text-sm text-gray-800">{`${currentUser.firstName} ${currentUser.lastName}`}</p>
-                  <p className="text-xs text-gray-500">{currentUser.role}</p>
-                </div>
+              <div className="relative">
+                <button
+                  onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                  className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                    {currentUser.firstName.charAt(0)}
+                  </div>
+                  <div className="hidden md:block">
+                    <p className="font-semibold text-sm text-gray-800">{`${currentUser.firstName} ${currentUser.lastName}`}</p>
+                    <p className="text-xs text-gray-500">{currentUser.role}</p>
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-gray-500 transition-transform ${
+                      isUserDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* User Dropdown Menu */}
+                {isUserDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setIsChangePasswordModalOpen(true);
+                        setIsUserDropdownOpen(false);
+                      }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Key className="w-4 h-4 mr-2 text-gray-500" />
+                      เปลี่ยนรหัสผ่าน
+                    </button>
+                    <button
+                      onClick={() => {
+                        // TODO: Implement logout functionality
+                        alert("ฟังก์ชัน logout จะถูกเพิ่มในอนาคต");
+                        setIsUserDropdownOpen(false);
+                      }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 mr-2 text-gray-500" />
+                      ออกจากระบบ
+                    </button>
+                  </div>
+                )}
+
+                {/* Close dropdown when clicking outside */}
+                {isUserDropdownOpen && (
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsUserDropdownOpen(false)}
+                  />
+                )}
               </div>
             </div>
           </header>
@@ -4604,6 +4646,103 @@ const App: React.FC = () => {
         />
       )}
       {renderModal()}
+
+      {/* Change Password Modal */}
+      {isChangePasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setIsChangePasswordModalOpen(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                เปลี่ยนรหัสผ่าน
+              </h3>
+              <button
+                onClick={() => setIsChangePasswordModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  // TODO: Implement password change logic
+                  alert("ฟังก์ชันเปลี่ยนรหัสผ่านจะถูกเพิ่มในอนาคต");
+                  setIsChangePasswordModalOpen(false);
+                }}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      รหัสผ่านปัจจุบัน
+                    </label>
+                    <input
+                      type="password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      รหัสผ่านใหม่
+                    </label>
+                    <input
+                      type="password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      ยืนยันรหัสผ่านใหม่
+                    </label>
+                    <input
+                      type="password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setIsChangePasswordModalOpen(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    เปลี่ยนรหัสผ่าน
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

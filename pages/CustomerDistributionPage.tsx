@@ -139,9 +139,7 @@ const normalizeApiCustomer = (api: any): Customer => {
           const name = raw?.name ?? "";
           const type =
             raw?.type === TagType.System ? TagType.System : TagType.User;
-          return Number.isFinite(id) && name
-            ? { id, name, type }
-            : undefined;
+          return Number.isFinite(id) && name ? { id, name, type } : undefined;
         })
         .filter((tag): tag is Tag => Boolean(tag))
     : [];
@@ -239,10 +237,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   }, [allUsers]);
 
   const adminUserIds = useMemo(
-    () =>
-      allUsers
-        .filter((u) => u.role === UserRole.Admin)
-        .map((u) => u.id),
+    () => allUsers.filter((u) => u.role === UserRole.Admin).map((u) => u.id),
     [allUsers],
   );
 
@@ -329,8 +324,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       const isAssignedToAdmin =
         typeof assignedId === "number" && adminUserIds.includes(assignedId);
       const eligibleAssignment =
-        assignedId === null ||
-        (poolSource === "new_sale" && isAssignedToAdmin);
+        assignedId === null || (poolSource === "new_sale" && isAssignedToAdmin);
 
       return (
         eligibleAssignment &&
@@ -339,7 +333,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       );
     });
 
-    // à¸à¸£à¸­à¸‡à¸•à¸²à¸¡à¸›à¸£à¸°à¹€à¸ à¸—à¸¥à¸¹à¸à¸„à¹‰à¸²
+    // กรองตามประเภทลูกค้า
     switch (customerType) {
       case "new":
         customers = customers.filter((c) => c.isNewCustomer === true);
@@ -348,25 +342,25 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         customers = customers.filter((c) => c.isRepeatCustomer === true);
         break;
       case "prospect":
-        customers = customers.filter((c) => !c.firstOrderDate); // à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸¢à¸±à¸‡à¹„à¸¡à¹ˆà¹€à¸„à¸¢à¸‹à¸·à¹‰à¸­
+        customers = customers.filter((c) => !c.firstOrderDate); // ลูกค้าที่ยังไม่เคยซื้อ
         break;
       case "all":
       default:
-        // à¹„à¸¡à¹ˆà¸à¸£à¸­à¸‡
+        // ไม่กรอง
         break;
     }
 
-    // à¸à¸£à¸­à¸‡à¸•à¸²à¸¡à¸Šà¹ˆà¸§à¸‡à¹€à¸§à¸¥à¸²à¸à¸²à¸£à¸‹à¸·à¹‰à¸­à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸ (à¹à¸—à¸™à¸à¸²à¸£à¸¡à¸­à¸šà¸«à¸¡à¸²à¸¢)
+    // กรองตามช่วงเวลาการซื้อครั้งแรก (แทนการมอบหมาย)
     if (activeDatePreset !== "all" && customerType !== "prospect") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       customers = customers.filter((customer) => {
-        // à¹ƒà¸Šà¹‰ firstOrderDate à¹à¸—à¸™ dateAssigned
+        // ใช้ firstOrderDate แทน dateAssigned
         const orderDate = customer.firstOrderDate
           ? new Date(customer.firstOrderDate)
           : null;
-        if (!orderDate) return false; // à¸–à¹‰à¸²à¹„à¸¡à¹ˆà¸¡à¸µ firstOrderDate à¹ƒà¸«à¹‰à¸‚à¹‰à¸²à¸¡
+        if (!orderDate) return false; // ถ้าไม่มี firstOrderDate ให้ข้าม
 
         orderDate.setHours(0, 0, 0, 0);
 
@@ -409,7 +403,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         );
         break;
       case "backlog":
-        // à¹à¸ˆà¸à¸¢à¹‰à¸­à¸™à¸«à¸¥à¸±à¸‡ - à¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸žà¸´à¹ˆà¸¡ logic à¸žà¸´à¹€à¸¨à¸©à¹„à¸”à¹‰à¸—à¸µà¹ˆà¸™à¸µà¹ˆ
+        // แจกย้อนหลัง - สามารถเพิ่ม logic พิเศษได้ที่นี่
         if (excludeGradeAPlus) {
           customers = customers.filter(
             (c) =>
@@ -446,7 +440,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const count = parseInt(countStr, 10);
     if (!isNaN(count) && count > availableCustomers.length) {
       setDistributionCountError(
-        `à¸ˆà¸³à¸™à¸§à¸™à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹à¸ˆà¸ (${count}) à¸¡à¸²à¸à¸à¸§à¹ˆà¸²à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹à¸ˆà¸ (${availableCustomers.length})`,
+        `จำนวนที่ต้องการแจก (${count}) มากกว่าลูกค้าที่พร้อมแจก (${availableCustomers.length})`,
       );
     } else {
       setDistributionCountError("");
@@ -476,7 +470,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const handleGeneratePreview = () => {
     const count = parseInt(distributionCount, 10);
     if (isNaN(count) || count <= 0) {
-      alert("à¸à¸£à¸¸à¸“à¸²à¹ƒà¸ªà¹ˆà¸ˆà¸³à¸™à¸§à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹à¸ˆà¸à¹ƒà¸«à¹‰à¸–à¸¹à¸à¸•à¹‰à¸­à¸‡");
+      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
     if (count > availableCustomers.length) {
@@ -484,7 +478,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       return;
     }
     if (selectedAgentIds.length === 0) {
-      alert("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸žà¸™à¸±à¸à¸‡à¸²à¸™à¹€à¸›à¹‰à¸²à¸«à¸¡à¸²à¸¢");
+      alert("กรุณาเลือกพนักงานเป้าหมาย");
       return;
     }
 
@@ -523,7 +517,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         customerPool.forEach((c) =>
           skipped.push({
             customer: c,
-            reason: "à¹€à¸„à¸¢à¸­à¸¢à¸¹à¹ˆà¸à¸±à¸šà¸žà¸™à¸±à¸à¸‡à¸²à¸™à¸—à¸¸à¸à¸„à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸à¹à¸¥à¹‰à¸§",
+            reason: "เคยอยู่กับพนักงานทุกคนที่เลือกแล้ว",
           }),
         );
         break;
@@ -542,12 +536,12 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       previewAssignments as PreviewAssignments,
     ).flat().length;
     if (totalToAssign === 0) {
-      alert("à¸à¸£à¸¸à¸“à¸²à¸ªà¸£à¹‰à¸²à¸‡à¸£à¸²à¸¢à¸à¸²à¸£à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹à¸ˆà¸à¸à¹ˆà¸­à¸™");
+      alert("กรุณาสร้างรายการที่ต้องการแจกก่อน");
       return;
     }
 
     if (
-      !window.confirm(`à¸¢à¸·à¸™à¸¢à¸±à¸™à¸à¸²à¸£à¹à¸ˆà¸à¸¥à¸¹à¸à¸„à¹‰à¸²à¸ˆà¸³à¸™à¸§à¸™ ${totalToAssign} à¸£à¸²à¸¢à¸à¸²à¸£à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`)
+      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${totalToAssign} รายการหรือไม่?`)
     ) {
       return;
     }
@@ -578,7 +572,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     if (updatePromises.length === 0) {
-      alert("à¹„à¸¡à¹ˆà¸žà¸šà¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹à¸ˆà¸ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
+      alert("ไม่พบลูกค้าที่ต้องการแจก กรุณาตรวจสอบอีกครั้ง");
       return;
     }
 
@@ -625,7 +619,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       setSelectedAgentIds([]);
     } catch (error) {
       console.error("Failed to distribute customers", error);
-      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸šà¸±à¸™à¸—à¸¶à¸à¸à¸²à¸£à¹à¸ˆà¸à¸¥à¸¹à¸à¸„à¹‰à¸²à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
+      alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setSavingDistribution(false);
     }
@@ -651,10 +645,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   };
 
   const datePresets = [
-    { label: "à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”", value: "all" },
-    { label: "à¸§à¸±à¸™à¸™à¸µà¹‰", value: "today" },
-    { label: "3 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”", value: "3days" },
-    { label: "7 à¸§à¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”", value: "7days" },
+    { label: "ทั้งหมด", value: "all" },
+    { label: "วันนี้", value: "today" },
+    { label: "3 วันล่าสุด", value: "3days" },
+    { label: "7 วันล่าสุด", value: "7days" },
   ];
 
   // Preview Modal Component
@@ -668,7 +662,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-800 flex items-center">
                 <Info className="mr-2 text-blue-600" size={24} />
-                3. à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡à¸à¸²à¸£à¹à¸ˆà¸
+                3. ตัวอย่างการแจก
               </h3>
               <button
                 onClick={() => setShowPreviewModal(false)}
@@ -695,7 +689,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             <div className="grid grid-cols-1 gap-6">
               <div>
                 <h4 className="font-semibold mb-2">
-                  à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸°à¸–à¸¹à¸à¹à¸ˆà¸ (
+                  รายชื่อที่จะถูกแจก (
                   {
                     Object.values(
                       previewAssignments as PreviewAssignments,
@@ -720,7 +714,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                                 ? `${agent.firstName} ${agent.lastName}`
                                 : ""}{" "}
                               <span className="font-normal text-gray-500">
-                                ({customers.length} à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­)
+                                ({customers.length} รายชื่อ)
                               </span>
                             </p>
                             <div className="max-h-64 overflow-y-auto pr-2">
@@ -741,7 +735,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
               </div>
               <div>
                 <h4 className="font-semibold mb-2 text-yellow-700">
-                  à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸°à¸–à¸¹à¸à¸‚à¹‰à¸²à¸¡ ({skippedCustomers.length})
+                  รายชื่อที่จะถูกข้าม ({skippedCustomers.length})
                 </h4>
                 {skippedCustomers.length > 0 ? (
                   <div className="space-y-2">
@@ -750,20 +744,20 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                       className="w-full bg-yellow-50 border border-yellow-200 rounded-lg p-4 hover:bg-yellow-100 transition-colors"
                     >
                       <p className="text-sm font-medium text-yellow-800">
-                        à¸”à¸¹à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸°à¸–à¸¹à¸à¸‚à¹‰à¸²à¸¡ ({skippedCustomers.length} à¸£à¸²à¸¢à¸à¸²à¸£)
+                        ดูรายชื่อที่จะถูกข้าม ({skippedCustomers.length} รายการ)
                       </p>
                       <p className="text-xs text-yellow-600 mt-1">
-                        à¸„à¸¥à¸´à¸à¹€à¸žà¸·à¹ˆà¸­à¸”à¸¹à¸£à¸²à¸¢à¸¥à¸°à¹€à¸­à¸µà¸¢à¸”
+                        คลิกเพื่อดูรายละเอียด
                       </p>
                     </button>
                     <div className="text-xs text-gray-500">
-                      à¹€à¸«à¸•à¸¸à¸œà¸¥à¸«à¸¥à¸±à¸: à¸¥à¸¹à¸à¸„à¹‰à¸²à¹€à¸„à¸¢à¸­à¸¢à¸¹à¹ˆà¸à¸±à¸šà¸žà¸™à¸±à¸à¸‡à¸²à¸™à¸—à¸¸à¸à¸„à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸à¹à¸¥à¹‰à¸§
+                      เหตุผลหลัก: ลูกค้าเคยอยู่กับพนักงานทุกคนที่เลือกแล้ว
                     </div>
                   </div>
                 ) : (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                     <p className="text-sm text-green-800">
-                      à¹„à¸¡à¹ˆà¸¡à¸µà¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸°à¸–à¸¹à¸à¸‚à¹‰à¸²à¸¡
+                      ไม่มีรายชื่อที่จะถูกข้าม
                     </p>
                   </div>
                 )}
@@ -779,7 +773,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-green-100"
               >
                 <PlayCircle size={20} className="mr-2" />
-                {savingDistribution ? "à¸à¸³à¸¥à¸±à¸‡à¸šà¸±à¸™à¸—à¸¶à¸..." : "à¹€à¸£à¸´à¹ˆà¸¡à¹à¸ˆà¸à¸¥à¸¹à¸à¸„à¹‰à¸²"}
+                {savingDistribution ? "กำลังบันทึก..." : "เริ่มแจกลูกค้า"}
               </button>
             </div>
           </div>
@@ -799,7 +793,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-800 flex items-center">
                 <AlertTriangle className="mr-2 text-yellow-600" size={24} />
-                à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸—à¸µà¹ˆà¸ˆà¸°à¸–à¸¹à¸à¸‚à¹‰à¸²à¸¡ ({skippedCustomers.length} à¸£à¸²à¸¢à¸à¸²à¸£)
+                รายชื่อที่จะถูกข้าม ({skippedCustomers.length} รายการ)
               </h3>
               <button
                 onClick={() => setShowSkippedModal(false)}
@@ -825,7 +819,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           <div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)]">
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-4">
-                à¸¥à¸¹à¸à¸„à¹‰à¸²à¹€à¸«à¸¥à¹ˆà¸²à¸™à¸µà¹‰à¸ˆà¸°à¸–à¸¹à¸à¸‚à¹‰à¸²à¸¡à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸à¹€à¸„à¸¢à¸­à¸¢à¸¹à¹ˆà¸à¸±à¸šà¸žà¸™à¸±à¸à¸‡à¸²à¸™à¸—à¸¸à¸à¸„à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸à¹à¸¥à¹‰à¸§
+                ลูกค้าเหล่านี้จะถูกข้ามเนื่องจากเคยอยู่กับพนักงานทุกคนที่เลือกแล้ว
               </p>
             </div>
 
@@ -864,7 +858,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 onClick={() => setShowSkippedModal(false)}
                 className="bg-gray-100 text-gray-700 font-medium text-sm rounded-md py-2 px-6 hover:bg-gray-200 transition-colors"
               >
-                à¸›à¸´à¸”
+                ปิด
               </button>
             </div>
           </div>
@@ -879,12 +873,12 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         <div className="p-6 bg-white rounded-lg shadow-sm border">
           <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
             <ListChecks className="mr-2" />
-            1. à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸²à¸à¸²à¸£à¹à¸ˆà¸
+            1. ตั้งค่าการแจก
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                à¸ªà¸–à¸²à¸™à¸°à¸«à¸¥à¸±à¸‡à¹à¸ˆà¸
+                สถานะหลังแจก
               </label>
               <select
                 value={targetStatus}
@@ -919,7 +913,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   htmlFor="grade-a-mode"
                   className="ml-2 text-sm text-gray-700"
                 >
-                  à¹à¸ˆà¸à¹€à¸à¸£à¸” A/A+ à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™
+                  แจกเกรด A/A+ เท่านั้น
                 </label>
               </div>
             </div>
@@ -935,7 +929,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
               >
-                à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+                ทั้งหมด
               </button>
               <button
                 onClick={() => {
@@ -945,7 +939,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "new_sale" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
               >
-                à¹€à¸žà¸´à¹ˆà¸‡à¸‚à¸²à¸¢ (Admin)
+                เพิ่งขาย (Admin)
               </button>
               <button
                 onClick={() => {
@@ -955,7 +949,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "waiting_return" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
               >
-                à¸„à¸·à¸™à¸ˆà¸²à¸à¸•à¸°à¸à¸£à¹‰à¸²
+                คืนจากตะกร้า
               </button>
               <button
                 onClick={() => {
@@ -965,15 +959,15 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "stock" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
               >
-                à¸ªà¸•à¹‡à¸­à¸à¸£à¸­à¹à¸ˆà¸
+                สต็อกรอแจก
               </button>
               {loadingPool && poolSource !== "all" && (
-                <span className="text-xs text-gray-500 ml-2">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”...</span>
+                <span className="text-xs text-gray-500 ml-2">กำลังโหลด...</span>
               )}
             </div>
           </div>
 
-          {/* à¸ªà¹ˆà¸§à¸™à¹€à¸¥à¸·à¸­à¸à¸›à¸£à¸°à¹€à¸ à¸—à¸¥à¸¹à¸à¸„à¹‰à¸² */}
+          {/* ส่วนเลือกประเภทลูกค้า */}
           {false && (
             <div className="mt-4 pt-4 border-t">
               <div className="mb-4"></div>
@@ -986,7 +980,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 <div className="flex items-center mr-4">
                   <Calendar size={16} className="text-gray-500 mr-2" />
                   <span className="text-sm font-medium text-gray-700">
-                    à¸§à¸±à¸™à¸—à¸µà¹ˆà¸¥à¸¹à¸à¸„à¹‰à¸²à¸‹à¸·à¹‰à¸­à¸„à¸£à¸±à¹‰à¸‡à¹à¸£à¸:
+                    วันที่ลูกค้าซื้อครั้งแรก:
                   </span>
                 </div>
                 {datePresets.map((preset) => (
@@ -1007,7 +1001,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     className="p-1 border border-gray-300 rounded-md text-sm bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
                     style={{ colorScheme: "light" }}
                   />
-                  <span className="text-gray-500 text-sm">à¸–à¸¶à¸‡</span>
+                  <span className="text-gray-500 text-sm">ถึง</span>
                   <input
                     type="date"
                     name="end"
@@ -1025,34 +1019,28 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         <div className="p-6 bg-white rounded-lg shadow-sm border">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-700 flex items-center">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
                 <UserCheck className="mr-2" />
-                2. à¹€à¸¥à¸·à¸­à¸à¸žà¸™à¸±à¸à¸‡à¸²à¸™à¹€à¸›à¹‰à¸²à¸«à¸¡à¸²à¸¢
+                2. เลือกพนักงานเป้าหมาย
               </h3>
               <div className="mt-1 space-y-1">
-                <p className="text-lg font-semibold text-green-700">
-                  à¸¡à¸µà¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸žà¸£à¹‰à¸­à¸¡à¹à¸ˆà¸:{" "}
-                  <span className="text-2xl font-bold text-green-600">
+                <p className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
+                  มีรายชื่อพร้อมแจก:{" "}
+                  <span className="text-3xl font-extrabold text-green-700">
                     {availableCustomers.length}
                   </span>{" "}
-                  à¸£à¸²à¸¢à¸à¸²à¸£
+                  รายการ
                 </p>
                 <div className="text-xs text-gray-400">
                   <div>
-                    à¹à¸«à¸¥à¹ˆà¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥:{" "}
+                    แหล่งข้อมูล:{" "}
                     {poolSource === "all"
-                      ? "à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”"
+                      ? "ทั้งหมด"
                       : poolSource === "new_sale"
-                        ? "à¹€à¸žà¸´à¹ˆà¸‡à¸‚à¸²à¸¢ (Admin)"
+                        ? "เพิ่งขาย (Admin)"
                         : poolSource === "waiting_return"
-                          ? "à¸„à¸·à¸™à¸ˆà¸²à¸à¸•à¸°à¸à¸£à¹‰à¸²"
-                          : "à¸ªà¸•à¹‡à¸­à¸à¸£à¸­à¹à¸ˆà¸"}
-                  </div>
-                  <div>
-                    à¹‚à¸«à¸¡à¸”à¸à¸²à¸£à¹à¸ˆà¸:{" "}
-                    {activeTab === "gradeA"
-                      ? "à¹€à¸à¸£à¸” A/A+ à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™"
-                      : "à¹à¸ˆà¸à¹à¸šà¸šà¹€à¸‰à¸¥à¸µà¹ˆà¸¢ (à¸£à¸²à¸¢à¸§à¸±à¸™)"}
+                          ? "คืนจากตะกร้า"
+                          : "สต็อกรอแจก"}
                   </div>
                 </div>
                 {distributionCountError && (
@@ -1064,7 +1052,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             </div>
             <div className="flex flex-col items-end gap-2">
               <label className="block text-sm font-medium text-gray-700 text-right">
-                à¸ˆà¸³à¸™à¸§à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¹à¸ˆà¸
+                จำนวนลูกค้าที่ต้องการแจก
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -1072,7 +1060,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   value={distributionCount}
                   onChange={handleDistributionCountChange}
                   className="w-44 md:w-48 p-2 border border-gray-300 rounded-md text-right bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  placeholder="à¹€à¸Šà¹ˆà¸™ 100"
+                  placeholder="เช่น 100"
                   style={{ colorScheme: "light" }}
                 />
                 <button
@@ -1086,7 +1074,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 md:px-6 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500"
                 >
                   <BarChart size={16} className="mr-2" />
-                  à¸”à¸¹à¸•à¸±à¸§à¸­à¸¢à¹ˆà¸²à¸‡à¸à¹ˆà¸­à¸™à¹à¸ˆà¸
+                  ดูตัวอย่างก่อนแจก
                 </button>
               </div>
             </div>
@@ -1107,8 +1095,8 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                       className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
                     />
                   </th>
-                  <th className="px-6 py-3">à¸žà¸™à¸±à¸à¸‡à¸²à¸™</th>
-                  <th className="px-6 py-3 text-center">à¸¥à¸¹à¸à¸„à¹‰à¸²à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”</th>
+                  <th className="px-6 py-3">พนักงาน</th>
+                  <th className="px-6 py-3 text-center">ลูกค้าทั้งหมด</th>
                   {gradeOrder.map((grade) => (
                     <th key={grade} className="px-2 py-3 text-center">
                       {grade}
@@ -1155,7 +1143,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">à¸£à¸°à¸šà¸šà¹à¸ˆà¸à¸¥à¸¹à¸à¸„à¹‰à¸²</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">ระบบแจกลูกค้า</h2>
       {/* moved below into Step 1 card */}
       {false && (
         <div className="flex items-center gap-2 mb-4">
@@ -1163,28 +1151,28 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             onClick={() => setPoolSource("all")}
             className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
           >
-            à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+            ทั้งหมด
           </button>
           <button
             onClick={() => setPoolSource("new_sale")}
             className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "new_sale" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
           >
-            à¹€à¸žà¸´à¹ˆà¸‡à¸‚à¸²à¸¢ (Admin)
+            เพิ่งขาย (Admin)
           </button>
           <button
             onClick={() => setPoolSource("waiting_return")}
             className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "waiting_return" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
           >
-            à¸„à¸·à¸™à¸ˆà¸²à¸à¸•à¸°à¸à¸£à¹‰à¸²
+            คืนจากตะกร้า
           </button>
           <button
             onClick={() => setPoolSource("stock")}
             className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "stock" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
           >
-            à¸ªà¸•à¹‡à¸­à¸à¸£à¸­à¹à¸ˆà¸
+            สต็อกรอแจก
           </button>
           {loadingPool && poolSource !== "all" && (
-            <span className="text-xs text-gray-500 ml-2">à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸”...</span>
+            <span className="text-xs text-gray-500 ml-2">กำลังโหลด...</span>
           )}
         </div>
       )}
@@ -1194,11 +1182,11 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           <Check size={24} className="text-green-600" />
           <div>
             <p className="font-semibold text-green-800">
-              à¹à¸ˆà¸à¸ˆà¹ˆà¸²à¸¢à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­à¸ªà¸³à¹€à¸£à¹‡à¸ˆ!
+              แจกจ่ายรายชื่อสำเร็จ!
             </p>
             <p className="text-sm text-green-700">
-              à¹à¸ˆà¸à¸ªà¸³à¹€à¸£à¹‡à¸ˆ {distributionResult.success} à¸£à¸²à¸¢à¸à¸²à¸£, à¸‚à¹‰à¸²à¸¡{" "}
-              {distributionResult.skipped} à¸£à¸²à¸¢à¸à¸²à¸£
+              แจกสำเร็จ {distributionResult.success} รายการ, ข้าม{" "}
+              {distributionResult.skipped} รายการ
             </p>
           </div>
         </div>
@@ -1206,17 +1194,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">à¸•à¸°à¸à¸£à¹‰à¸²à¸£à¸­à¹à¸ˆà¸</p>
+          <p className="text-xs text-gray-500 mb-1">ตะกร้ารอแจก</p>
           <p className="text-xl font-bold text-blue-600">{toDistributeCount}</p>
         </div>
         <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">à¸•à¸°à¸à¸£à¹‰à¸²à¸žà¸±à¸à¸£à¸²à¸¢à¸Šà¸·à¹ˆà¸­</p>
+          <p className="text-xs text-gray-500 mb-1">ตะกร้าพักรายชื่อ</p>
           <p className="text-xl font-bold text-amber-600">
             {waitingBasketCount}
           </p>
         </div>
         <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">à¸•à¸°à¸à¸£à¹‰à¸²à¸šà¸¥à¹‡à¸­à¸„</p>
+          <p className="text-xs text-gray-500 mb-1">ตะกร้าบล็อค</p>
           <p className="text-xl font-bold text-red-600">{blockedCount}</p>
         </div>
       </div>
