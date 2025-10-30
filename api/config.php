@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Bangkok');
 // Database configuration
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv('DB_HOST') ?: '127.0.0.1';

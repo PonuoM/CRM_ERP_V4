@@ -84,6 +84,17 @@ SET @ddl := IF(@col_exists = 0,
 );
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- Add bucket_type generated column for direct access to the bucket logic
+SET @col_exists := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'bucket_type'
+);
+SET @ddl := IF(@col_exists = 0,
+  'ALTER TABLE customers ADD COLUMN bucket_type VARCHAR(16) GENERATED ALWAYS AS (CASE WHEN COALESCE(is_blocked,0)=1 THEN ''blocked'' WHEN COALESCE(is_in_waiting_basket,0)=1 THEN ''waiting'' WHEN assigned_to IS NULL THEN ''ready'' ELSE ''assigned'' END) STORED',
+  'SELECT 1'
+);
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- Add waiting_basket_start_date if missing
 SET @col_exists := (
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS

@@ -272,7 +272,7 @@ export interface SalesImportRow {
   discount?: number;
   totalAmount?: number;
   salespersonId?: number;
-  caretakerId?: number;
+  caretakerId?: number | string;
   paymentMethod?: string;
   paymentStatus?: string;
   notes?: string;
@@ -292,8 +292,14 @@ export interface CustomerImportRow {
   address?: string;
   businessType?: string;
   source?: string;
-  caretakerId?: number;
+  caretakerId?: number | string;
   notes?: string;
+  dateRegistered?: string;
+  ownershipExpires?: string;
+  lifecycleStatus?: string;
+  behavioralStatus?: string;
+  grade?: string;
+  totalPurchases?: number;
 }
 
 export interface ImportResultSummary {

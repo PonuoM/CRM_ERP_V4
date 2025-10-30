@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, User, UserRole, CustomerGrade, CustomerLifecycleStatus } from '../types';
 import { Users, Check, AlertTriangle, Info, ListChecks, History, Award, PlayCircle, BarChart, UserCheck, RefreshCw, Calendar } from 'lucide-react';
-import { listCustomersBySource } from '@/services/api';
+import { listCustomersBySource, updateCustomer } from '@/services/api';
 
 interface CustomerDistributionPageProps {
     allCustomers: Customer[];
@@ -52,6 +52,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
     const [skippedCustomers, setSkippedCustomers] = useState<SkippedCustomer[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [distributionResult, setDistributionResult] = useState<{ success: number, skipped: number } | null>(null);
+    const [savingDistribution, setSavingDistribution] = useState(false);
 
     const telesaleAgents = useMemo(() => {
         return allUsers.filter(u => u.role === UserRole.Telesale || u.role === UserRole.Supervisor);
@@ -259,47 +260,88 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
         setDistributionResult(null);
     };
 
-    const handleExecuteDistribution = () => {
+    const handleExecuteDistribution = async () => {
         const totalToAssign = Object.values(previewAssignments).flat().length;
         if (totalToAssign === 0) {
-            alert('ไม่มีรายชื่อสำหรับแจกจ่าย');
+            alert('กรุณาสร้างรายการที่ต้องการแจกก่อน');
             return;
         }
 
-        if (window.confirm(`ยืนยันการแจกจ่ายรายชื่อ ${totalToAssign} รายการ?`)) {
-            const ninetyDaysFromNow = new Date();
-            ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
+        if (!window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${totalToAssign} รายการหรือไม่?`)) {
+            return;
+        }
 
-            setCustomers(prevCustomers => {
-                return prevCustomers.map(customer => {
+        const now = new Date();
+        const assignmentTimestamp = now.toISOString();
+        const ownershipDeadline = new Date(now.getTime());
+        ownershipDeadline.setDate(ownershipDeadline.getDate() + 90);
+        const ownershipExpires = ownershipDeadline.toISOString();
+
+        const updatePromises: Promise<unknown>[] = [];
+        for (const agentIdStr in previewAssignments) {
+            const agentId = parseInt(agentIdStr, 10);
+            const customers = previewAssignments[agentId];
+            if (!Array.isArray(customers)) continue;
+            customers.forEach(customer => {
+                updatePromises.push(
+                    updateCustomer(String(customer.id), {
+                        assignedTo: agentId,
+                        lifecycleStatus: targetStatus,
+                        dateAssigned: assignmentTimestamp,
+                        ownershipExpires,
+                        is_in_waiting_basket: 0,
+                        is_blocked: 0,
+                    })
+                );
+            });
+        }
+
+        if (updatePromises.length === 0) {
+            alert('ไม่พบลูกค้าที่ต้องการแจก กรุณาตรวจสอบอีกครั้ง');
+            return;
+        }
+
+        setSavingDistribution(true);
+        try {
+            await Promise.all(updatePromises);
+
+            const applyAssignments = (customers: Customer[]) => {
+                return customers.map(customer => {
                     for (const agentIdStr in previewAssignments) {
                         const agentId = parseInt(agentIdStr, 10);
                         const assignedCustomers = previewAssignments[agentId];
-                        if (assignedCustomers.some(c => c.id === customer.id)) {
+                        if (Array.isArray(assignedCustomers) && assignedCustomers.some(c => c.id === customer.id)) {
                             return {
                                 ...customer,
                                 assignedTo: agentId,
                                 lifecycleStatus: targetStatus,
-                                dateAssigned: new Date().toISOString(),
-                                ownershipExpires: ninetyDaysFromNow.toISOString(),
+                                dateAssigned: assignmentTimestamp,
+                                ownershipExpires,
                                 assignmentHistory: [...(customer.assignmentHistory || []), agentId],
                             };
                         }
                     }
                     return customer;
                 });
-            });
+            };
 
-            setDistributionResult({ success: totalToAssign, skipped: skippedCustomers.length });
-            // Reset UI
+            setCustomers(prevCustomers => applyAssignments(prevCustomers));
+            setPoolCustomers(prev => (prev.length ? applyAssignments(prev) : prev));
+
+            const skippedCount = skippedCustomers.length;
+            setDistributionResult({ success: totalToAssign, skipped: skippedCount });
             setShowPreview(false);
             setPreviewAssignments({});
             setSkippedCustomers([]);
             setDistributionCount('');
             setSelectedAgentIds([]);
+        } catch (error) {
+            console.error('Failed to distribute customers', error);
+            alert('ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง');
+        } finally {
+            setSavingDistribution(false);
         }
     };
-
     const handleDatePresetClick = (preset: string) => {
         setActiveDatePreset(preset);
         setDateRange({ start: '', end: '' });
@@ -462,16 +504,26 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                                 <p className="text-sm text-red-600 mt-1">{distributionCountError}</p>
                             )}
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1 text-right">จำนวนลูกค้าที่ต้องการแจก</label>
-                            <input 
-                                type="number" 
-                                value={distributionCount} 
-                                onChange={handleDistributionCountChange}
-                                className="w-48 p-2 border border-gray-300 rounded-md text-right bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
-                                placeholder="เช่น 100" 
-                                style={{ colorScheme: 'light' }}
-                            />
+                        <div className="flex flex-col items-end gap-2">
+                            <label className="block text-sm font-medium text-gray-700 text-right">จำนวนลูกค้าที่ต้องการแจก</label>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="number" 
+                                    value={distributionCount} 
+                                    onChange={handleDistributionCountChange}
+                                    className="w-44 md:w-48 p-2 border border-gray-300 rounded-md text-right bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
+                                    placeholder="เช่น 100" 
+                                    style={{ colorScheme: 'light' }}
+                                />
+                                <button 
+                                    onClick={handleGeneratePreview} 
+                                    disabled={!distributionCount || selectedAgentIds.length === 0 || !!distributionCountError || savingDistribution} 
+                                    className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 md:px-6 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500"
+                                >
+                                    <BarChart size={16} className="mr-2"/>
+                                    ดูตัวอย่างก่อนแจก
+                                </button>
+                            </div>
                         </div>
                     </div>
                     
@@ -524,13 +576,6 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                     </div>
                 </div>
 
-                <div className="flex justify-center">
-                     <button onClick={handleGeneratePreview} disabled={!distributionCount || selectedAgentIds.length === 0 || !!distributionCountError} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-6 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500">
-                        <BarChart size={16} className="mr-2"/>
-                        ดูตัวอย่างก่อนแจก
-                    </button>
-                </div>
-
                 {showPreview && (
                     <div className="p-6 bg-white rounded-lg shadow-sm border">
                         <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center"><Info className="mr-2" />3. ตัวอย่างการแจก</h3>
@@ -567,10 +612,15 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({ all
                             </div>
                         </div>
                         <div className="flex justify-center mt-6">
-                             <button onClick={handleExecuteDistribution} className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm">
+                             <button
+                                onClick={handleExecuteDistribution}
+                                disabled={savingDistribution}
+                                className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-green-100"
+                            >
                                 <PlayCircle size={20} className="mr-2"/>
-                                ยืนยันการแจก
+                                {savingDistribution ? 'กำลังบันทึก...' : 'เริ่มแจกลูกค้า'}
                             </button>
+
                         </div>
                     </div>
                 )}

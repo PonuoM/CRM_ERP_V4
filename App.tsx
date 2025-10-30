@@ -2496,8 +2496,8 @@ const App: React.FC = () => {
     return newTag;
   };
 
-  const sanitizeValue = (value: string | number | null | undefined) => {
-    if (typeof value === "number") {
+  const sanitizeValue = (value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
       return String(value).trim();
     }
     if (typeof value === "string") {
@@ -2506,20 +2506,167 @@ const App: React.FC = () => {
     return "";
   };
 
+  const normalizeCaretakerIdentifier = (
+    raw: unknown,
+  ): { id: number | null; reference: string | null } => {
+    if (raw == null) {
+      return { id: null, reference: null };
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      return { id: raw, reference: String(raw) };
+    }
+    const reference = sanitizeValue(raw);
+    if (!reference) {
+      return { id: null, reference: null };
+    }
+    if (/^-?\d+$/.test(reference)) {
+      const parsed = Number.parseInt(reference, 10);
+      if (Number.isFinite(parsed)) {
+        return { id: parsed, reference };
+      }
+    }
+    const matchedUser = companyUsers.find(
+      (u) => u.username.toLowerCase() === reference.toLowerCase(),
+    );
+    if (matchedUser) {
+      return { id: matchedUser.id, reference };
+    }
+    return { id: null, reference };
+  };
+
   const normalizePhone = (value: string) => value.replace(/\D+/g, "");
+
+  const THAI_OFFSET_MINUTES = 7 * 60;
+
+  const toThaiIsoString = (date: Date) => {
+    const offsetMinutes = THAI_OFFSET_MINUTES;
+    const adjusted = new Date(date.getTime() + offsetMinutes * 60 * 1000);
+    const pad = (num: number) => String(num).padStart(2, "0");
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const absOffset = Math.abs(offsetMinutes);
+    const hoursOffset = Math.floor(absOffset / 60);
+    const minutesOffset = absOffset % 60;
+
+    return (
+      `${adjusted.getUTCFullYear()}-${pad(adjusted.getUTCMonth() + 1)}-${pad(
+        adjusted.getUTCDate(),
+      )}T${pad(adjusted.getUTCHours())}:${pad(adjusted.getUTCMinutes())}:${pad(
+        adjusted.getUTCSeconds(),
+      )}` +
+      `${sign}${pad(hoursOffset)}:${pad(minutesOffset)}`
+    );
+  };
 
   const parseDateToIso = (value?: string) => {
     const trimmed = sanitizeValue(value);
     if (!trimmed) return undefined;
     const direct = new Date(trimmed);
     if (Number.isFinite(direct.getTime())) {
-      return direct.toISOString();
+      return toThaiIsoString(direct);
     }
     const asDateOnly = new Date(`${trimmed}T00:00:00`);
     if (Number.isFinite(asDateOnly.getTime())) {
-      return asDateOnly.toISOString();
+      return toThaiIsoString(asDateOnly);
     }
     return undefined;
+  };
+
+  const addDays = (date: Date, days: number) => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  };
+
+  const determineLifecycleStatusForImport = (
+    hasAssignedCaretaker: boolean,
+    dateRegisteredIso?: string,
+  ): CustomerLifecycleStatus => {
+    if (hasAssignedCaretaker && dateRegisteredIso) {
+      const registeredAt = new Date(dateRegisteredIso);
+      const now = new Date();
+      const diffMs = now.getTime() - registeredAt.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      if (diffDays >= 90) {
+        return CustomerLifecycleStatus.Old3Months;
+      }
+    }
+    return CustomerLifecycleStatus.New;
+  };
+
+  const normalizeLifecycleStatusValue = (
+    raw?: string,
+  ): CustomerLifecycleStatus | undefined => {
+    const token = sanitizeValue(raw).toLowerCase();
+    if (!token) return undefined;
+    switch (token) {
+      case "new":
+        return CustomerLifecycleStatus.New;
+      case "old":
+        return CustomerLifecycleStatus.Old;
+      case "followup":
+      case "follow-up":
+      case "follow up":
+        return CustomerLifecycleStatus.FollowUp;
+      case "old3months":
+      case "old3month":
+      case "old_3months":
+      case "old_3_months":
+      case "old-3-months":
+      case "old90days":
+      case "old90":
+      case "90days":
+        return CustomerLifecycleStatus.Old3Months;
+      case "dailydistribution":
+      case "daily_distribution":
+      case "daily-distribution":
+      case "daily":
+        return CustomerLifecycleStatus.DailyDistribution;
+      default:
+        return undefined;
+    }
+  };
+
+  const normalizeBehavioralStatusValue = (
+    raw?: string,
+  ): CustomerBehavioralStatus | undefined => {
+    const token = sanitizeValue(raw).toLowerCase();
+    if (!token) return undefined;
+    switch (token) {
+      case "hot":
+        return CustomerBehavioralStatus.Hot;
+      case "warm":
+        return CustomerBehavioralStatus.Warm;
+      case "cold":
+        return CustomerBehavioralStatus.Cold;
+      case "frozen":
+      case "freeze":
+        return CustomerBehavioralStatus.Frozen;
+      default:
+        return undefined;
+    }
+  };
+
+  const normalizeGradeValue = (
+    raw?: string,
+  ): CustomerGrade | undefined => {
+    const token = sanitizeValue(raw).toUpperCase();
+    if (!token) return undefined;
+    switch (token) {
+      case "A+":
+      case "A_PLUS":
+      case "A-PLUS":
+        return CustomerGrade.APlus;
+      case "A":
+        return CustomerGrade.A;
+      case "B":
+        return CustomerGrade.B;
+      case "C":
+        return CustomerGrade.C;
+      case "D":
+        return CustomerGrade.D;
+      default:
+        return undefined;
+    }
   };
 
   const normalizePaymentMethodValue = (raw?: string): PaymentMethod => {
@@ -2583,6 +2730,13 @@ const App: React.FC = () => {
       province?: string;
       postalCode?: string;
       caretakerId?: number | null;
+      caretakerRef?: string | null;
+      dateRegistered?: string;
+      ownershipExpires?: string;
+      lifecycleStatus?: CustomerLifecycleStatus;
+      behavioralStatus?: CustomerBehavioralStatus;
+      grade?: CustomerGrade;
+      totalPurchases?: number;
     },
     summary: ImportResultSummary,
     notes: string[],
@@ -2601,7 +2755,10 @@ const App: React.FC = () => {
     const province = sanitizeValue(input.province);
     const postalCode = sanitizeValue(input.postalCode);
 
+    const now = new Date();
+
     let assignedTo: number | null = null;
+    let caretakerMatched = false;
     if (
       typeof input.caretakerId === "number" &&
       Number.isFinite(input.caretakerId)
@@ -2609,12 +2766,19 @@ const App: React.FC = () => {
       const exists = companyUsers.some((u) => u.id === input.caretakerId);
       if (exists) {
         assignedTo = input.caretakerId;
+        caretakerMatched = true;
       } else {
         summary.caretakerConflicts += 1;
-        notes.push(
-          `Caretaker ${input.caretakerId} not found for customer ${input.id}`,
-        );
+        const ref =
+          sanitizeValue(input.caretakerRef ?? input.caretakerId) ||
+          String(input.caretakerId);
+        notes.push(`Caretaker ${ref} not found for customer ${input.id}`);
       }
+    } else if (input.caretakerRef) {
+      summary.caretakerConflicts += 1;
+      notes.push(
+        `Caretaker ${input.caretakerRef} not found for customer ${input.id}`,
+      );
     }
 
     let existing: Customer | undefined = customers.find(
@@ -2633,6 +2797,42 @@ const App: React.FC = () => {
       }
     }
 
+    const dateAssignedIso =
+      assignedTo !== null ? toThaiIsoString(now) : undefined;
+    const defaultDateRegistered =
+      assignedTo !== null ? dateAssignedIso ?? toThaiIsoString(now) : undefined;
+    const resolvedDateRegistered =
+      input.dateRegistered ?? existing?.dateRegistered ?? defaultDateRegistered;
+
+    const defaultOwnershipExpires =
+      assignedTo !== null ? toThaiIsoString(addDays(now, 90)) : "";
+    const resolvedOwnershipExpires =
+      input.ownershipExpires ??
+      existing?.ownershipExpires ??
+      defaultOwnershipExpires;
+
+    const resolvedLifecycleStatus =
+      input.lifecycleStatus ??
+      existing?.lifecycleStatus ??
+      determineLifecycleStatusForImport(
+        caretakerMatched,
+        resolvedDateRegistered,
+      );
+
+    const resolvedBehavioralStatus =
+      input.behavioralStatus ??
+      existing?.behavioralStatus ??
+      CustomerBehavioralStatus.Cold;
+
+    const resolvedGrade =
+      input.grade ?? existing?.grade ?? CustomerGrade.C;
+
+    const resolvedTotalPurchases =
+      typeof input.totalPurchases === "number" &&
+      Number.isFinite(input.totalPurchases)
+        ? input.totalPurchases
+        : existing?.totalPurchases ?? 0;
+
     const address = {
       street,
       subdistrict,
@@ -2642,23 +2842,65 @@ const App: React.FC = () => {
     };
 
     if (recordExists) {
-      try {
-        await updateCustomer(input.id, {
-          firstName,
-          lastName,
-          phone,
-          email,
+      const updatePayload: any = {
+        firstName,
+        lastName,
+        phone,
+        email,
+        province: province || undefined,
+        address: {
+          street: street || undefined,
+          subdistrict: subdistrict || undefined,
+          district: district || undefined,
           province: province || undefined,
-          assignedTo: assignedTo ?? undefined,
-          dateAssigned: assignedTo ? new Date().toISOString() : undefined,
-          address: {
-            street: street || undefined,
-            subdistrict: subdistrict || undefined,
-            district: district || undefined,
-            province: province || undefined,
-            postalCode: postalCode || undefined,
-          },
-        });
+          postalCode: postalCode || undefined,
+        },
+      };
+
+      if (assignedTo !== null) {
+        updatePayload.assignedTo = assignedTo;
+        if (dateAssignedIso) {
+          updatePayload.dateAssigned = dateAssignedIso;
+        }
+      }
+
+      if (input.dateRegistered) {
+        updatePayload.dateRegistered = resolvedDateRegistered;
+      } else if (!existing?.dateRegistered && resolvedDateRegistered) {
+        updatePayload.dateRegistered = resolvedDateRegistered;
+      }
+
+      if (input.ownershipExpires) {
+        updatePayload.ownershipExpires = resolvedOwnershipExpires;
+      } else if (!existing?.ownershipExpires && assignedTo !== null) {
+        updatePayload.ownershipExpires = resolvedOwnershipExpires;
+      }
+
+      if (input.lifecycleStatus) {
+        updatePayload.lifecycleStatus = resolvedLifecycleStatus;
+      }
+
+      if (input.behavioralStatus) {
+        updatePayload.behavioralStatus = resolvedBehavioralStatus;
+      } else if (!existing?.behavioralStatus) {
+        updatePayload.behavioralStatus = resolvedBehavioralStatus;
+      }
+
+      if (input.grade) {
+        updatePayload.grade = resolvedGrade;
+      } else if (!existing?.grade) {
+        updatePayload.grade = resolvedGrade;
+      }
+
+      if (
+        typeof input.totalPurchases === "number" &&
+        Number.isFinite(input.totalPurchases)
+      ) {
+        updatePayload.totalPurchases = resolvedTotalPurchases;
+      }
+
+      try {
+        await updateCustomer(input.id, updatePayload);
       } catch (error) {
         notes.push(
           `Failed to update customer ${input.id}: ${(error as Error).message}`,
@@ -2666,28 +2908,31 @@ const App: React.FC = () => {
         return existing ?? null;
       }
 
-      const updatedCustomer: Customer = existing ?? {
-        id: input.id,
-        firstName,
-        lastName,
-        phone,
-        email,
-        address,
-        province,
-        companyId: currentUser.companyId,
-        assignedTo,
-        dateAssigned: new Date().toISOString(),
-        ownershipExpires: "",
-        lifecycleStatus: CustomerLifecycleStatus.New,
-        behavioralStatus: CustomerBehavioralStatus.Cold,
-        grade: CustomerGrade.C,
-        tags: [],
-        totalPurchases: 0,
-        totalCalls: 0,
-      };
+      const baseCustomer: Customer =
+        existing ??
+        {
+          id: input.id,
+          firstName,
+          lastName,
+          phone,
+          email,
+          address,
+          province,
+          companyId: currentUser.companyId,
+          assignedTo,
+          dateAssigned: dateAssignedIso ?? toThaiIsoString(now),
+          dateRegistered: resolvedDateRegistered,
+          ownershipExpires: resolvedOwnershipExpires,
+          lifecycleStatus: resolvedLifecycleStatus,
+          behavioralStatus: resolvedBehavioralStatus,
+          grade: resolvedGrade,
+          tags: [],
+          totalPurchases: resolvedTotalPurchases,
+          totalCalls: 0,
+        };
 
       const mergedCustomer: Customer = {
-        ...updatedCustomer,
+        ...baseCustomer,
         firstName,
         lastName,
         phone,
@@ -2695,6 +2940,14 @@ const App: React.FC = () => {
         address,
         province,
         assignedTo,
+        dateAssigned: dateAssignedIso ?? baseCustomer.dateAssigned,
+        dateRegistered: resolvedDateRegistered ?? baseCustomer.dateRegistered,
+        ownershipExpires:
+          resolvedOwnershipExpires || baseCustomer.ownershipExpires,
+        lifecycleStatus: resolvedLifecycleStatus,
+        behavioralStatus: resolvedBehavioralStatus,
+        grade: resolvedGrade,
+        totalPurchases: resolvedTotalPurchases,
       };
 
       setCustomers((prev) => {
@@ -2711,25 +2964,40 @@ const App: React.FC = () => {
       return mergedCustomer;
     }
 
+    const createPayload: any = {
+      id: input.id,
+      firstName,
+      lastName,
+      phone,
+      email,
+      province,
+      companyId: currentUser.companyId,
+      assignedTo,
+      address: {
+        street: street || undefined,
+        subdistrict: subdistrict || undefined,
+        district: district || undefined,
+        province: province || undefined,
+        postalCode: postalCode || undefined,
+      },
+    };
+
+    if (assignedTo !== null && dateAssignedIso) {
+      createPayload.dateAssigned = dateAssignedIso;
+    }
+    if (resolvedDateRegistered) {
+      createPayload.dateRegistered = resolvedDateRegistered;
+    }
+    if (resolvedOwnershipExpires) {
+      createPayload.ownershipExpires = resolvedOwnershipExpires;
+    }
+    createPayload.lifecycleStatus = resolvedLifecycleStatus;
+    createPayload.behavioralStatus = resolvedBehavioralStatus;
+    createPayload.grade = resolvedGrade;
+    createPayload.totalPurchases = resolvedTotalPurchases;
+
     try {
-      await apiCreateCustomer({
-        id: input.id,
-        firstName,
-        lastName,
-        phone,
-        email,
-        province,
-        companyId: currentUser.companyId,
-        assignedTo,
-        dateAssigned: assignedTo ? new Date().toISOString() : undefined,
-        address: {
-          street: street || undefined,
-          subdistrict: subdistrict || undefined,
-          district: district || undefined,
-          province: province || undefined,
-          postalCode: postalCode || undefined,
-        },
-      });
+      await apiCreateCustomer(createPayload);
     } catch (error) {
       notes.push(
         `Failed to create customer ${input.id}: ${(error as Error).message}`,
@@ -2747,13 +3015,14 @@ const App: React.FC = () => {
       province,
       companyId: currentUser.companyId,
       assignedTo,
-      dateAssigned: new Date().toISOString(),
-      ownershipExpires: "",
-      lifecycleStatus: CustomerLifecycleStatus.New,
-      behavioralStatus: CustomerBehavioralStatus.Cold,
-      grade: CustomerGrade.C,
+      dateAssigned: dateAssignedIso ?? toThaiIsoString(now),
+      dateRegistered: resolvedDateRegistered,
+      ownershipExpires: resolvedOwnershipExpires,
+      lifecycleStatus: resolvedLifecycleStatus,
+      behavioralStatus: resolvedBehavioralStatus,
+      grade: resolvedGrade,
       tags: [],
-      totalPurchases: 0,
+      totalPurchases: resolvedTotalPurchases,
       totalCalls: 0,
     };
 
@@ -2835,6 +3104,11 @@ const App: React.FC = () => {
         continue;
       }
 
+      const {
+        id: resolvedCaretakerId,
+        reference: resolvedCaretakerRef,
+      } = normalizeCaretakerIdentifier(first.caretakerId);
+
       const customer = await ensureCustomerForImport(
         {
           id: customerId,
@@ -2847,11 +3121,8 @@ const App: React.FC = () => {
           district: sanitizeValue(first.district),
           province: sanitizeValue(first.province),
           postalCode: sanitizeValue(first.postalCode),
-          caretakerId:
-            typeof first.caretakerId === "number" &&
-            Number.isFinite(first.caretakerId)
-              ? first.caretakerId
-              : undefined,
+          caretakerId: resolvedCaretakerId ?? undefined,
+          caretakerRef: resolvedCaretakerRef ?? undefined,
         },
         summary,
         summary.notes,
@@ -2886,7 +3157,7 @@ const App: React.FC = () => {
       }
 
       const orderDateIso =
-        parseDateToIso(first.saleDate) ?? new Date().toISOString();
+        parseDateToIso(first.saleDate) ?? toThaiIsoString(new Date());
       const paymentMethod = normalizePaymentMethodValue(first.paymentMethod);
       const paymentStatus = normalizePaymentStatusValue(first.paymentStatus);
       const shippingAddress: Address = {
@@ -3069,9 +3340,24 @@ const App: React.FC = () => {
         continue;
       }
 
-      const caretakerId =
-        typeof row.caretakerId === "number" && Number.isFinite(row.caretakerId)
-          ? row.caretakerId
+      const {
+        id: resolvedCaretakerId,
+        reference: resolvedCaretakerRef,
+      } = normalizeCaretakerIdentifier(row.caretakerId);
+
+      const dateRegisteredIso = parseDateToIso(row.dateRegistered);
+      const ownershipExpiresIso = parseDateToIso(row.ownershipExpires);
+      const lifecycleStatus = normalizeLifecycleStatusValue(
+        row.lifecycleStatus,
+      );
+      const behavioralStatus = normalizeBehavioralStatusValue(
+        row.behavioralStatus,
+      );
+      const grade = normalizeGradeValue(row.grade);
+      const totalPurchases =
+        typeof row.totalPurchases === "number" &&
+        Number.isFinite(row.totalPurchases)
+          ? row.totalPurchases
           : undefined;
 
       const customer = await ensureCustomerForImport(
@@ -3086,7 +3372,14 @@ const App: React.FC = () => {
           district: sanitizeValue(row.district),
           province: sanitizeValue(row.province),
           postalCode: sanitizeValue(row.postalCode),
-          caretakerId,
+          caretakerId: resolvedCaretakerId ?? undefined,
+          caretakerRef: resolvedCaretakerRef ?? undefined,
+          dateRegistered: dateRegisteredIso,
+          ownershipExpires: ownershipExpiresIso,
+          lifecycleStatus,
+          behavioralStatus,
+          grade,
+          totalPurchases,
         },
         summary,
         summary.notes,
