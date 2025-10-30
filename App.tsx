@@ -2534,6 +2534,50 @@ const App: React.FC = () => {
     return { id: null, reference };
   };
 
+  const resolveSalespersonForImport = (
+    raw: unknown,
+  ): { id: number; matched: boolean; reference?: string } => {
+    const reference = sanitizeValue(raw);
+    if (!reference) {
+      return { id: currentUser.id, matched: false };
+    }
+
+    let matchedUser: User | undefined;
+
+    if (/^-?\d+$/.test(reference)) {
+      const parsed = Number.parseInt(reference, 10);
+      if (Number.isFinite(parsed)) {
+        matchedUser = companyUsers.find((u) => u.id === parsed);
+      }
+    }
+
+    if (!matchedUser) {
+      const lower = reference.toLowerCase();
+      matchedUser = companyUsers.find((u) => {
+        const usernameMatch =
+          typeof u.username === "string" &&
+          u.username.toLowerCase() === lower;
+        if (usernameMatch) return true;
+
+        const fullName = `${u.firstName ?? ""} ${u.lastName ?? ""}`
+          .trim()
+          .toLowerCase();
+        if (fullName && fullName === lower) return true;
+
+        const reversedName = `${u.lastName ?? ""} ${u.firstName ?? ""}`
+          .trim()
+          .toLowerCase();
+        return !!reversedName && reversedName === lower;
+      });
+    }
+
+    if (matchedUser) {
+      return { id: matchedUser.id, matched: true, reference };
+    }
+
+    return { id: currentUser.id, matched: false, reference };
+  };
+
   const normalizePhone = (value: string) => value.replace(/\D+/g, "");
 
   const THAI_OFFSET_MINUTES = 7 * 60;
@@ -3168,6 +3212,18 @@ const App: React.FC = () => {
         postalCode: sanitizeValue(first.postalCode),
       };
 
+      const {
+        id: resolvedCreatorId,
+        matched: salespersonMatched,
+        reference: salespersonReference,
+      } = resolveSalespersonForImport(first.salespersonId);
+
+      if (!salespersonMatched && salespersonReference) {
+        summary.notes.push(
+          `Order ${orderId}: ผู้ขาย ${salespersonReference} ไม่พบในระบบ ใช้ ${currentUser.username} แทน.`,
+        );
+      }
+
       const lineItems = orderRows.map((line, index) => {
         const productName =
           sanitizeValue(line.productName) ||
@@ -3220,7 +3276,7 @@ const App: React.FC = () => {
         id: orderId,
         customerId: customer.id,
         companyId: currentUser.companyId,
-        creatorId: currentUser.id,
+        creatorId: resolvedCreatorId,
         orderDate: orderDateIso,
         deliveryDate: orderDateIso,
         shippingAddress,
@@ -3257,7 +3313,7 @@ const App: React.FC = () => {
         id: orderId,
         customerId: customer.id,
         companyId: currentUser.companyId,
-        creatorId: currentUser.id,
+        creatorId: resolvedCreatorId,
         orderDate: orderDateIso,
         deliveryDate: orderDateIso,
         shippingAddress,
