@@ -500,7 +500,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
                              . "WHERE COALESCE(c.is_blocked,0) = 0\n"
                              . "  AND c.is_in_waiting_basket = 1\n"
                              . "  AND c.waiting_basket_start_date IS NOT NULL\n"
-                             . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30";
+                             . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30\n"
+                             . "  AND c.assigned_to IS NULL";
                         if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
                         if ($q !== '') {
                             $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
@@ -510,8 +511,17 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     } else { // stock
                         $sql = "SELECT c.* FROM customers c\n"
                              . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                             . "  AND c.lifecycle_status = 'DailyDistribution'\n"
-                             . "  AND c.assigned_to IS NULL";
+                             . "  AND c.assigned_to IS NULL\n"
+                             . "  AND COALESCE(c.is_in_waiting_basket,0) = 0\n"
+                             . "  AND NOT EXISTS (\n"
+                             . "        SELECT 1 FROM orders o\n"
+                             . "        LEFT JOIN users u ON u.id = o.creator_id\n"
+                             . "        WHERE o.customer_id = c.id\n"
+                             . "          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
+                             . "          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
+                             . "          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?\n"
+                             . "  )";
+                        $params[] = max(0, $freshDays);
                         if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
                         if ($q !== '') {
                             $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
