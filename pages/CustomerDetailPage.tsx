@@ -896,8 +896,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                                       items[index + 1];
                                                     return (
                                                       !nextItem ||
-                                                      nextItem.parentItemId !==
-                                                        item.parentItemId
+                                                      nextItem.promotionId !==
+                                                        item.promotionId
                                                     );
                                                   })()) ||
                                                 isLastInPromotion;
@@ -936,7 +936,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
                                                   >
-                                                    {isChild || isFreebie
+                                                    {isFreebie
                                                       ? "—"
                                                       : formatCurrency(
                                                           item.pricePerUnit,
@@ -945,7 +945,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
                                                   >
-                                                    {isChild || isFreebie
+                                                    {isFreebie
                                                       ? "—"
                                                       : formatCurrency(
                                                           item.discount,
@@ -954,11 +954,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right font-medium text-gray-800`}
                                                   >
-                                                    {isChild || isFreebie ? (
+                                                    {isChild ? (
+                                                      <div>
+                                                        {formatCurrency(net)}
+                                                        <div className="text-[10px] text-gray-500 italic">
+                                                          รวมในชุด
+                                                        </div>
+                                                      </div>
+                                                    ) : isFreebie ? (
                                                       <span className="text-[10px] text-gray-500 italic">
-                                                        {isFreebie
-                                                          ? "ของแถม"
-                                                          : "รวมในชุด"}
+                                                        ของแถม
                                                       </span>
                                                     ) : (
                                                       <div>
@@ -984,12 +989,20 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                               </td>
                                               <td className="px-3 py-2 text-right font-semibold text-gray-900">
                                                 {formatCurrency(
-                                                  items.reduce(
-                                                    (sum, item) =>
-                                                      sum +
-                                                      calculateLineNet(item),
-                                                    0,
-                                                  ),
+                                                  items.reduce((sum, item) => {
+                                                    // เพิ่มเฉพาะ promotion parent และ regular items (ไม่รวมสินค้าลูกใน promotion)
+                                                    if (
+                                                      item.isPromotionParent ||
+                                                      (!item.isPromotionParent &&
+                                                        !item.promotionId)
+                                                    ) {
+                                                      return (
+                                                        sum +
+                                                        calculateLineNet(item)
+                                                      );
+                                                    }
+                                                    return sum;
+                                                  }, 0),
                                                 )}
                                               </td>
                                             </tr>
