@@ -7,11 +7,34 @@ import PageIconFront from "@/components/PageIconFront";
 // Function to sync pages from pages.fm API to database
 const syncPagesWithDatabase = async (currentUser?: User) => {
   try {
-    const accessToken =
-      (import.meta as any).env.VITE_PANCAKE_ACCESS_TOKEN || "";
+    // Get access token from database env table using existing env_manager.php
+    let accessToken = "";
+
+    if (currentUser?.companyId) {
+      try {
+        const response = await fetch(
+          `api/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          accessToken = data.value || "";
+        }
+      } catch (error) {
+        console.error("Failed to get access token from database:", error);
+      }
+    }
 
     if (!accessToken) {
-      console.error("ACCESS_TOKEN not found in environment variables");
+      console.error(
+        "ACCESS_TOKEN not found in database for company:",
+        currentUser?.companyId,
+      );
       return { success: false, error: "ACCESS_TOKEN not found" };
     }
 
@@ -55,7 +78,8 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
             is_activated: page.is_activated,
             category: page.is_activated ? "activated" : "inactivated",
             user_count: userCount,
-            users: page.users || [], // Store the users array for display
+            users: page.users || [], // Store users array for display
+            page_type: "pancake", // Set page_type to 'pancake' for pages.fm sync
           };
         });
 
