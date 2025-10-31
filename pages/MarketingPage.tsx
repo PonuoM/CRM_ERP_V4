@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Calendar, Pencil } from "lucide-react";
+import { Calendar, Pencil, Download } from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
@@ -90,6 +90,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [datePickerRef, setDatePickerRef] = useState<HTMLDivElement | null>(
     null,
   );
+
+  // Export modal states
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportDateRange, setExportDateRange] = useState({
+    start: "",
+    end: "",
+  });
+  const [exportSelectedPages, setExportSelectedPages] = useState<number[]>([]);
+  const [exportTempStart, setExportTempStart] = useState("");
+  const [exportTempEnd, setExportTempEnd] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   // Aggregated dashboard data by page and date
   const aggregatedByPage = useMemo(() => {
@@ -1872,6 +1883,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 แดชบอร์ดข้อมูล Ads
               </h3>
             </div>
+            <button
+              onClick={() => {
+                setExportModalOpen(true);
+                setExportDateRange(dateRange);
+                setExportSelectedPages(selectedPages);
+                setExportTempStart(dateRange.start);
+                setExportTempEnd(dateRange.end);
+              }}
+              className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              ส่งออก CSV
+            </button>
           </div>
 
           {/* Marketing Date Range Picker and Page Filter */}
@@ -2286,6 +2310,122 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             </div>
           )}
         </section>
+      )}
+
+      {/* Export CSV Modal */}
+      {exportModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                ส่งออกข้อมูล CSV
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className={labelClass}>วันที่เริ่มต้น</label>
+                  <input
+                    type="date"
+                    value={exportTempStart}
+                    onChange={(e) => setExportTempStart(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>วันที่สิ้นสุด</label>
+                  <input
+                    type="date"
+                    value={exportTempEnd}
+                    onChange={(e) => setExportTempEnd(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>เลือกเพจ</label>
+                  <MultiSelectPageFilter
+                    pages={pages.map((page) => ({
+                      id: page.id,
+                      name: page.name,
+                      platform: page.platform,
+                    }))}
+                    selectedPages={exportSelectedPages}
+                    onChange={setExportSelectedPages}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setExportModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  disabled={exporting}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={async () => {
+                    setExporting(true);
+                    try {
+                      const params = new URLSearchParams();
+                      if (exportTempStart)
+                        params.set("date_from", exportTempStart);
+                      if (exportTempEnd) params.set("date_to", exportTempEnd);
+                      if (exportSelectedPages.length > 0) {
+                        params.set("page_ids", exportSelectedPages.join(","));
+                      }
+
+                      const response = await fetch(
+                        `api/Marketing_DB/ads_log_export_csv.php?${params}`,
+                      );
+
+                      if (!response.ok) {
+                        throw new Error("Export failed");
+                      }
+
+                      // Get the filename from the response headers or create a default one
+                      const contentDisposition = response.headers.get(
+                        "content-disposition",
+                      );
+                      let filename = "marketing_ads_log.csv";
+                      if (contentDisposition) {
+                        const filenameMatch =
+                          contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (filenameMatch) {
+                          filename = filenameMatch[1];
+                        }
+                      }
+
+                      // Create blob and download
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      window.URL.revokeObjectURL(url);
+
+                      setExportModalOpen(false);
+                    } catch (error) {
+                      console.error("Export error:", error);
+                      alert("การส่งออกข้อมูลล้มเหลว กรุณาลองใหม่");
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  disabled={exporting}
+                >
+                  <Download className="w-4 h-4" />
+                  {exporting ? "กำลังส่งออก..." : "ยืนยันและดาวน์โหลด"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Ads History Tab */}
