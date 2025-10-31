@@ -1,0 +1,20 @@
+-- Add sample page type environment variables to env table
+-- These will be used to display page types in the management interface
+
+-- Common page types
+INSERT INTO env (key, value, created_at, updated_at) VALUES
+('PAGE_TYPE_BUSINESS', 'ธุรกิจ', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_PERSONAL', 'ส่วนตัว', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_FAN', 'แฟนเพจ', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_SHOP', 'ร้านค้า', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_COMMUNITY', 'ชุมชุม', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_ENTERTAINMENT', 'บันเทิง', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_EDUCATION', 'การศึกษา', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_NEWS', 'ข่าวสาร', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PAGE_TYPE_BLOG', 'บล็อก', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON DUPLICATE KEY UPDATE
+value = VALUES(value),
+updated_at = CURRENT_TIMESTAMP;
+
+-- Show inserted data for verification
+SELECT * FROM env WHERE key LIKE 'PAGE_TYPE_%' ORDER BY key;

@@ -321,6 +321,81 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [newPageUrl, setNewPageUrl] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
 
+  // Page types state
+  const [pageTypes, setPageTypes] = useState<{ [key: string]: string }>({});
+  const [loadingPageTypes, setLoadingPageTypes] = useState(false);
+
+  // Fetch page types from env
+  const fetchPageTypes = async () => {
+    setLoadingPageTypes(true);
+    try {
+      const response = await fetch("api/Page_DB/env_manager.php");
+      if (response.ok) {
+        const envVars = await response.json();
+        const types: { [key: string]: string } = {};
+
+        // Extract page type keys and values (e.g., PAGE_TYPE_BUSINESS, PAGE_TYPE_PERSONAL, etc.)
+        envVars.forEach((envVar: any) => {
+          if (envVar.key && envVar.key.startsWith("PAGE_TYPE_")) {
+            const typeKey = envVar.key.replace("PAGE_TYPE_", "");
+            types[typeKey] = envVar.value || typeKey;
+          }
+        });
+
+        setPageTypes(types);
+      }
+    } catch (error) {
+      console.error("Error fetching page types:", error);
+    } finally {
+      setLoadingPageTypes(false);
+    }
+  };
+
+  // PageTypeDisplay component
+  const PageTypeDisplay: React.FC<{ pageType?: string | null }> = ({
+    pageType,
+  }) => {
+    if (!pageType) {
+      return <span className="text-gray-400">-</span>;
+    }
+
+    // If page_type is 'pancake', show 'Pancake'
+    if (pageType === "pancake") {
+      return (
+        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+          Pancake
+        </span>
+      );
+    }
+
+    // For other types, try to find a display name from env
+    const displayName = pageTypes[pageType] || pageType;
+
+    // Set color based on type
+    const getColorClass = (type: string) => {
+      switch (type.toLowerCase()) {
+        case "business":
+          return "bg-purple-100 text-purple-700";
+        case "personal":
+          return "bg-green-100 text-green-700";
+        case "fan":
+          return "bg-yellow-100 text-yellow-700";
+        case "shop":
+          return "bg-orange-100 text-orange-700";
+        default:
+          return "bg-gray-100 text-gray-700";
+      }
+    };
+
+    return (
+      <span
+        className={`px-2 py-1 text-xs rounded-full ${getColorClass(pageType)}`}
+      >
+        {displayName}
+      </span>
+    );
+  };
+
   // Fetch pages from API
   const fetchPages = async () => {
     setLoading(true);
@@ -343,6 +418,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
   useEffect(() => {
     fetchPages();
+    fetchPageTypes();
   }, [currentUser?.companyId]);
 
   // Filter pages based on still_in_list
@@ -518,6 +594,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
           <thead className="text-left text-gray-500">
             <tr>
               <th className="py-2 px-3 font-medium">ชื่อเพจ</th>
+              <th className="py-2 px-3 font-medium">ประเภทเพจ</th>
               <th className="py-2 px-3 font-medium">URL</th>
               <th className="py-2 px-3 font-medium">สถานะ</th>
               <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
@@ -530,6 +607,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                 <td className="py-2 px-3 flex items-center gap-2">
                   <PageIconFront platform={p.platform || "unknown"} />
                   {p.name}
+                </td>
+                <td className="py-2 px-3">
+                  <PageTypeDisplay pageType={p.page_type} />
                 </td>
                 <td className="py-2 px-3">
                   {p.url ? (
@@ -692,6 +772,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                 <thead className="text-left text-gray-500">
                   <tr>
                     <th className="py-2 px-3 font-medium">ชื่อเพจ</th>
+                    <th className="py-2 px-3 font-medium">ประเภทเพจ</th>
                     <th className="py-2 px-3 font-medium">URL</th>
                     <th className="py-2 px-3 font-medium">สถานะ</th>
                     <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
@@ -704,6 +785,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       <td className="py-2 px-3 flex items-center gap-2">
                         <PageIconFront platform={p.platform || "facebook"} />
                         {p.name}
+                      </td>
+                      <td className="py-2 px-3">
+                        <PageTypeDisplay pageType={p.page_type} />
                       </td>
                       <td className="py-2 px-3">
                         {p.url ? (
