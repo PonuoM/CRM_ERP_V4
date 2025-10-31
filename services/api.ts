@@ -277,6 +277,10 @@ export async function listOrders() {
   return apiFetch("orders");
 }
 
+export async function getOrder(id: string) {
+  return apiFetch(`orders/${encodeURIComponent(id)}`);
+}
+
 export async function listAppointments(customerId?: string) {
   const qs = new URLSearchParams();
   if (customerId) qs.set("customerId", customerId);
@@ -386,6 +390,17 @@ export async function listActivities(customerId?: string) {
   const qs = new URLSearchParams();
   if (customerId) qs.set("customerId", customerId);
   return apiFetch(`activities${customerId ? `?${qs}` : ""}`);
+}
+
+export async function listCustomerLogs(
+  customerId?: string,
+  opts?: { limit?: number },
+) {
+  const qs = new URLSearchParams();
+  if (customerId) qs.set("customerId", customerId);
+  if (opts?.limit != null) qs.set("limit", String(opts.limit));
+  const query = qs.toString();
+  return apiFetch(`customer_logs${query ? `?${query}` : ""}`);
 }
 
 export async function createActivity(payload: any) {

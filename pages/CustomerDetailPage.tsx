@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
-import { Customer, Order, CallHistory, Appointment, ModalType, User, Tag, Activity, ActivityType, TagType } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Customer, Order, CallHistory, Appointment, ModalType, User, Tag, TagType, CustomerLog, LineItem } from '../types';
 // FIX: Add 'X', 'Repeat', 'Paperclip' icons to the import from 'lucide-react'.
-import { ArrowLeft, Phone, Edit, MessageSquare, ShoppingCart, Check, Flame, Tag as TagIcon, Plus, Calendar, List, Truck, Briefcase, Facebook, MoreHorizontal, UserCheck, BarChart, XCircle, X, ChevronLeft, ChevronRight, Repeat, Paperclip, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Phone, Edit, MessageSquare, ShoppingCart, Check, Flame, Tag as TagIcon, Plus, Calendar, Briefcase, Facebook, MoreHorizontal, X, ChevronLeft, ChevronRight, ShieldAlert, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { getStatusChip, getPaymentStatusChip } from '../components/OrderTable';
-import { createCustomerBlock } from '../services/api';
+import { createCustomerBlock, listCustomerLogs, getOrder } from '../services/api';
+import {
+    actionLabels,
+    parseCustomerLogRow,
+    summarizeCustomerLogChanges,
+} from '../utils/customerLogs';
 
 interface CustomerDetailPageProps {
   customer: Customer;
   orders: Order[];
   callHistory: CallHistory[];
   appointments: Appointment[];
-  activities: Activity[];
   user: User;
+  allUsers: User[];
   systemTags: Tag[];
   onClose: () => void;
   openModal: (type: ModalType, data?: any) => void;
@@ -19,8 +24,8 @@ interface CustomerDetailPageProps {
   onRemoveTag: (customerId: string, tagId: number) => void;
   onCreateUserTag: (tagName: string) => Tag | null;
   onCompleteAppointment?: (appointmentId: number) => void;
-  setActivePage?: (page: string) => void;
   ownerName?: string;
+  onStartCreateOrder?: (customer: Customer) => void;
 }
 
 type ActiveTab = 'calls' | 'appointments' | 'orders';
@@ -33,14 +38,127 @@ const InfoItem: React.FC<{ label: string; value?: string | number; children?: Re
 );
 
 const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
-    const { customer, orders, callHistory, appointments, activities, user, systemTags, onClose, openModal, onAddTag, onRemoveTag, onCreateUserTag, setActivePage } = props;
+    const { customer, orders, callHistory, appointments, user, allUsers, systemTags, onClose, openModal, onAddTag, onRemoveTag, onCreateUserTag, onStartCreateOrder } = props;
     const [activeTab, setActiveTab] = useState<ActiveTab>('calls');
     const [newTagName, setNewTagName] = useState('');
+    const [activityLogs, setActivityLogs] = useState<CustomerLog[]>([]);
+    const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+    const [activityLogsError, setActivityLogsError] = useState<string | null>(null);
 
     const [callHistoryPage, setCallHistoryPage] = useState(1);
     const [appointmentsPage, setAppointmentsPage] = useState(1);
     const [ordersPage, setOrdersPage] = useState(1);
     const ITEMS_PER_PAGE = 8;
+    const [orderDetails, setOrderDetails] = useState<Record<string, { items: LineItem[]; loading: boolean; error?: string }>>({});
+    const [expandedOrderIds, setExpandedOrderIds] = useState<string[]>([]);
+
+    const usersById = useMemo(() => {
+        const map = new Map<number, User>();
+        allUsers.forEach(userItem => {
+            map.set(userItem.id, userItem);
+        });
+        return map;
+    }, [allUsers]);
+
+    const formatCurrency = (value: number) =>
+        `฿${Number(value || 0).toLocaleString('th-TH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+
+    const calculateLineNet = (item: LineItem) => {
+        const hasParent =
+            typeof item.parentItemId !== 'undefined' && item.parentItemId !== null;
+        if (hasParent || item.isFreebie) {
+            return 0;
+        }
+        const quantity = Number(item.quantity ?? 0);
+        const price = Number(item.pricePerUnit ?? 0);
+        const discount = Number(item.discount ?? 0);
+        if (quantity <= 0 || price <= 0) return 0;
+        const base = quantity * price - discount;
+        return base > 0 ? base : 0;
+    };
+
+    const mapApiOrderItems = (items: any[]): LineItem[] =>
+        Array.isArray(items)
+            ? items.map((it: any, index: number) => ({
+                  id: Number(it.id ?? index + 1),
+                  productName: String(it.product_name ?? it.productName ?? `สินค้า ${index + 1}`),
+                  quantity: Number(it.quantity ?? 0),
+                  pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
+                  discount: Number(it.discount ?? 0),
+                  isFreebie: Boolean(it.is_freebie ?? it.isFreebie ?? 0),
+                  boxNumber: Number(it.box_number ?? it.boxNumber ?? 0),
+                  productId:
+                      typeof it.product_id !== 'undefined' && it.product_id !== null
+                          ? Number(it.product_id)
+                          : undefined,
+                  promotionId:
+                      typeof it.promotion_id !== 'undefined' && it.promotion_id !== null
+                          ? Number(it.promotion_id)
+                          : undefined,
+                  parentItemId:
+                      typeof it.parent_item_id !== 'undefined' && it.parent_item_id !== null
+                          ? Number(it.parent_item_id)
+                          : undefined,
+                  isPromotionParent: Boolean(it.is_promotion_parent ?? it.isPromotionParent ?? 0),
+              }))
+            : [];
+
+    const handleToggleOrderDetails = (orderId: string) => {
+        const wasExpanded = expandedOrderIds.includes(orderId);
+        setExpandedOrderIds((prev) =>
+            prev.includes(orderId)
+                ? prev.filter((id) => id !== orderId)
+                : [...prev, orderId],
+        );
+
+        if (wasExpanded) {
+            return;
+        }
+
+        const current = orderDetails[orderId];
+        if (current?.loading) {
+            return;
+        }
+        if (current && current.items.length > 0 && !current.error) {
+            return;
+        }
+
+        setOrderDetails((prev) => ({
+            ...prev,
+            [orderId]: {
+                items: current?.items ?? [],
+                loading: true,
+                error: undefined,
+            },
+        }));
+
+        getOrder(orderId)
+            .then((response: any) => {
+                const mappedItems = mapApiOrderItems(response?.items ?? []);
+                setOrderDetails((prev) => ({
+                    ...prev,
+                    [orderId]: {
+                        items: mappedItems,
+                        loading: false,
+                        error: undefined,
+                    },
+                }));
+            })
+            .catch((error) => {
+                console.error('Failed to load order details', error);
+                setOrderDetails((prev) => ({
+                    ...prev,
+                    [orderId]: {
+                        items: [],
+                        loading: false,
+                        error: 'ไม่สามารถโหลดรายละเอียดสินค้าได้',
+                    },
+                }));
+            });
+    };
 
     const getRemainingTime = (expiryDate: string) => {
         const now = new Date();
@@ -55,8 +173,6 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         if (!address || !address.street) return '-';
         return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
     }
-
-    const sortedActivities = activities.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     const handleAddTag = () => {
         if (!newTagName.trim()) return;
@@ -94,25 +210,59 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         return `${diffInDays} วันที่แล้ว`;
     };
     
-    // FIX: activityIconMap is missing some properties from ActivityType and has an incorrect one.
-    const activityIconMap: Record<ActivityType, React.ElementType> = {
-        [ActivityType.Assignment]: UserCheck,
-        [ActivityType.GradeChange]: BarChart,
-        [ActivityType.StatusChange]: Flame,
-        [ActivityType.OrderCreated]: ShoppingCart,
-        [ActivityType.AppointmentSet]: Calendar,
-        [ActivityType.CallLogged]: Phone,
-        [ActivityType.OrderCancelled]: XCircle,
-        [ActivityType.TrackingAdded]: Truck,
-        [ActivityType.PaymentVerified]: Check,
-        [ActivityType.OrderStatusChanged]: Repeat,
-        [ActivityType.OrderNoteAdded]: Paperclip,
+    useEffect(() => {
+        let cancelled = false;
+        setActivityLogsLoading(true);
+        setActivityLogsError(null);
+
+        listCustomerLogs(customer.id, { limit: 50 })
+            .then((rows) => {
+                if (cancelled) return;
+                const normalized = Array.isArray(rows)
+                    ? rows.map((row: any) => parseCustomerLogRow(row))
+                    : [];
+                setActivityLogs(normalized);
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                console.error('Failed to load customer logs', error);
+                setActivityLogs([]);
+                setActivityLogsError('ไม่สามารถโหลดกิจกรรมล่าสุดได้');
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setActivityLogsLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [customer.id]);
+
+    const actionIcons: Record<CustomerLog['actionType'], React.ElementType> = {
+        create: Plus,
+        update: Edit,
+        delete: Trash2,
     };
 
-    const ActivityIcon = ({type}: {type: ActivityType}) => {
-        const Icon = activityIconMap[type] || MoreHorizontal;
-        return <Icon className="w-4 h-4 text-gray-500" />
-    }
+    const ActivityIcon = ({ action }: { action: CustomerLog['actionType'] }) => {
+        const Icon = actionIcons[action] || MoreHorizontal;
+        return <Icon className="w-4 h-4 text-gray-500" />;
+    };
+
+    const logEntries = useMemo(
+        () =>
+            activityLogs
+                .map((log) => ({
+                    log,
+                    summaries: summarizeCustomerLogChanges(log, usersById),
+                }))
+                .filter((entry) => entry.summaries.length > 0),
+        [activityLogs, usersById],
+    );
+
+    const recentLogEntries = useMemo(() => logEntries.slice(0, 5), [logEntries]);
 
     const Paginator: React.FC<{currentPage: number, totalPages: number, onPageChange: (page: number) => void}> = ({currentPage, totalPages, onPageChange}) => {
         if (totalPages <= 1) return null;
@@ -165,7 +315,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 <div className="flex items-center space-x-2">
                     <button onClick={() => openModal('logCall', customer)} className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-green-200"><Phone size={16} className="mr-2"/>บันทึกการโทร</button>
                     <button onClick={() => openModal('addAppointment', customer)} className="bg-cyan-100 text-cyan-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-cyan-200"><Calendar size={16} className="mr-2"/>นัดหมาย</button>
-                    <button onClick={() => setActivePage ? setActivePage('CreateOrder') : openModal('createOrder', { customer })} className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"><ShoppingCart size={16} className="mr-2"/>สร้างคำสั่งซื้อ</button>
+                    <button
+                      onClick={() => {
+                        if (onStartCreateOrder) {
+                          onStartCreateOrder(customer);
+                        } else {
+                          openModal("createOrder", { customer });
+                        }
+                      }}
+                      className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"
+                    >
+                      <ShoppingCart size={16} className="mr-2" />
+                      สร้างคำสั่งซื้อ
+                    </button>
                     <button onClick={() => openModal('editCustomer', customer)} className="bg-slate-700 text-white py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-slate-800"><Edit size={16} className="mr-2"/>แก้ไข</button>
                     <button
                         onClick={async () => {
@@ -267,11 +429,151 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                         <Paginator currentPage={appointmentsPage} totalPages={totalAppointmentPages} onPageChange={setAppointmentsPage} />
                                     </>
                                 )}
-                                 {activeTab === 'orders' && (
+                                {activeTab === 'orders' && (
                                     <>
                                         <table className="w-full text-xs text-left">
-                                            <thead className="text-gray-500"><tr><th className="py-2 px-2">OrderID</th><th className="py-2 px-2">วันที่สั่ง</th><th className="py-2 px-2">ยอดรวม</th><th className="py-2 px-2">ชำระเงิน</th><th className="py-2 px-2">สถานะ</th></tr></thead>
-                                            <tbody className="text-gray-700">{paginatedOrders.map(o => (<tr key={o.id} className="border-b last:border-0"><td className="py-2 px-2 font-mono">{o.id}</td><td className="py-2 px-2">{new Date(o.orderDate).toLocaleDateString('th-TH')}</td><td className="py-2 px-2">฿{o.totalAmount.toLocaleString()}</td><td className="py-2 px-2">{getPaymentStatusChip(o.paymentStatus, o.paymentMethod)}</td><td className="py-2 px-2">{getStatusChip(o.orderStatus)}</td></tr>))}</tbody>
+                                            <thead className="text-gray-500">
+                                                <tr>
+                                                    <th className="py-2 px-2">OrderID</th>
+                                                    <th className="py-2 px-2">วันที่สั่ง</th>
+                                                    <th className="py-2 px-2">ผู้ขาย</th>
+                                                    <th className="py-2 px-2 text-right">ยอดรวม</th>
+                                                    <th className="py-2 px-2">ชำระเงิน</th>
+                                                    <th className="py-2 px-2">สถานะ</th>
+                                                    <th className="py-2 px-2">รายละเอียดสินค้า</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="text-gray-700">
+                                                {paginatedOrders.map((o) => {
+                                                    const seller = o.creatorId ? usersById.get(o.creatorId) : undefined;
+                                                    const sellerName = seller
+                                                        ? `${seller.firstName} ${seller.lastName}`
+                                                        : o.creatorId
+                                                            ? `ID ${o.creatorId}`
+                                                            : 'ไม่ระบุ';
+                                                    const detail = orderDetails[o.id];
+                                                    const isExpanded = expandedOrderIds.includes(o.id);
+                                                    const items = detail?.items ?? [];
+                                                    const itemCount = items.length;
+                                                    const loading = detail?.loading;
+                                                    const error = detail?.error;
+                                                    return (
+                                                        <React.Fragment key={o.id}>
+                                                            <tr className="border-b last:border-0">
+                                                                <td className="py-2 px-2 font-mono">{o.id}</td>
+                                                                <td className="py-2 px-2">
+                                                                    {new Date(o.orderDate).toLocaleDateString('th-TH')}
+                                                                </td>
+                                                                <td className="py-2 px-2">{sellerName}</td>
+                                                                <td className="py-2 px-2 text-right">
+                                                                    {formatCurrency(o.totalAmount)}
+                                                                </td>
+                                                                <td className="py-2 px-2">
+                                                                    {getPaymentStatusChip(o.paymentStatus, o.paymentMethod)}
+                                                                </td>
+                                                                <td className="py-2 px-2">{getStatusChip(o.orderStatus)}</td>
+                                                                <td className="py-2 px-2">
+                                                                    <button
+                                                                        onClick={() => handleToggleOrderDetails(o.id)}
+                                                                        className="inline-flex items-center text-xs text-blue-600 hover:underline"
+                                                                    >
+                                                                        {isExpanded ? (
+                                                                            <ChevronUp size={14} className="mr-1" />
+                                                                        ) : (
+                                                                            <ChevronDown size={14} className="mr-1" />
+                                                                        )}
+                                                                        {isExpanded ? 'ซ่อนสินค้า' : 'ดูสินค้า'}
+                                                                        {itemCount > 0 && !loading ? ` (${itemCount})` : ''}
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr className="bg-gray-50">
+                                                                    <td colSpan={7} className="px-4 py-3">
+                                                                        {loading ? (
+                                                                            <div className="text-xs text-gray-500">
+                                                                                กำลังโหลดรายละเอียดสินค้า...
+                                                                            </div>
+                                                                        ) : error ? (
+                                                                            <div className="text-xs text-red-600">{error}</div>
+                                                                        ) : items.length === 0 ? (
+                                                                            <div className="text-xs text-gray-500">
+                                                                                ไม่พบรายการสินค้า
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="overflow-x-auto">
+                                                                                <table className="w-full text-xs text-left">
+                                                                                    <thead className="text-gray-500 bg-white">
+                                                                                        <tr>
+                                                                                            <th className="px-3 py-2">สินค้า</th>
+                                                                                            <th className="px-3 py-2 text-right">จำนวน</th>
+                                                                                            <th className="px-3 py-2 text-right">ราคาต่อหน่วย</th>
+                                                                                            <th className="px-3 py-2 text-right">ส่วนลด</th>
+                                                                                            <th className="px-3 py-2 text-right">ยอดสุทธิ</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody className="text-gray-700">
+                                                                                        {items.map((item) => {
+                                                                                            const isChild = typeof item.parentItemId !== 'undefined';
+                                                                                            const isFreebie = Boolean(item.isFreebie);
+                                                                                            const net = calculateLineNet(item);
+                                                                                            return (
+                                                                                                <tr key={item.id} className="border-b last:border-0">
+                                                                                                    <td className="px-3 py-2">
+                                                                                                        <span className="font-medium text-gray-800">
+                                                                                                            {item.productName || `สินค้า ${item.id}`}
+                                                                                                        </span>
+                                                                                                        {item.isPromotionParent && (
+                                                                                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px]">
+                                                                                                                ชุดโปรโมชั่น
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {isFreebie && (
+                                                                                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px]">
+                                                                                                                ของแถม
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </td>
+                                                                                                    <td className="px-3 py-2 text-right">
+                                                                                                        {item.quantity.toLocaleString('th-TH')}
+                                                                                                    </td>
+                                                                                                    <td className="px-3 py-2 text-right">
+                                                                                                        {isChild || isFreebie ? '—' : formatCurrency(item.pricePerUnit)}
+                                                                                                    </td>
+                                                                                                    <td className="px-3 py-2 text-right">
+                                                                                                        {isChild || isFreebie ? '—' : formatCurrency(item.discount)}
+                                                                                                    </td>
+                                                                                                    <td className="px-3 py-2 text-right font-medium text-gray-800">
+                                                                                                        {isChild || isFreebie ? (
+                                                                                                            <span className="text-[10px] text-gray-500 italic">
+                                                                                                                {isFreebie ? 'ของแถม' : 'รวมในชุด'}
+                                                                                                            </span>
+                                                                                                        ) : (
+                                                                                                            formatCurrency(net)
+                                                                                                        )}
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                            );
+                                                                                        })}
+                                                                                        <tr className="bg-white">
+                                                                                            <td colSpan={4} className="px-3 py-2 text-right font-semibold text-gray-700">
+                                                                                                ยอดรวมสินค้า
+                                                                                            </td>
+                                                                                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                                                                                {formatCurrency(items.reduce((sum, item) => sum + calculateLineNet(item), 0))}
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
                                         </table>
                                         <Paginator currentPage={ordersPage} totalPages={totalOrderPages} onPageChange={setOrdersPage} />
                                     </>
@@ -290,7 +592,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                             <div><p className="text-2xl font-bold text-blue-600">฿{customer.totalPurchases.toLocaleString()}</p><p className="text-xs text-gray-500">ยอดซื้อรวม</p></div>
                             <div><p className="text-2xl font-bold text-blue-600">{customer.totalCalls}</p><p className="text-xs text-gray-500">การโทร</p></div>
                             <div><p className="text-2xl font-bold text-blue-600">{appointments.length}</p><p className="text-xs text-gray-500">นัดหมาย</p></div>
-                            <div><p className="text-2xl font-bold text-blue-600">{activities.length}</p><p className="text-xs text-gray-500">กิจกรรม</p></div>
+                            <div><p className="text-2xl font-bold text-blue-600">{logEntries.length}</p><p className="text-xs text-gray-500">กิจกรรม</p></div>
                             <div><p className={`text-2xl font-bold ${getRemainingTime(customer.ownershipExpires).color}`}>{getRemainingTime(customer.ownershipExpires).text}</p><p className="text-xs text-gray-500">เวลาคงเหลือ</p></div>
                         </div>
                     </div>
@@ -313,25 +615,69 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
                     <div className="bg-white p-4 rounded-lg shadow-sm border">
                         <h3 className="font-semibold mb-2 text-gray-700">กิจกรรมล่าสุด</h3>
-                        <div className="space-y-4">
-                            {sortedActivities.slice(0, 5).map(activity => (
-                                <div key={activity.id} className="flex">
-                                    <div className="flex-shrink-0 w-8 text-center">
-                                        <div className="mx-auto w-px h-6 bg-gray-200"></div>
-                                        <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
-                                            <ActivityIcon type={activity.type}/>
-                                        </div>
-                                    </div>
-                                    <div className="ml-2">
-                                        <p className="text-xs text-gray-700">{activity.description}</p>
-                                        <p className="text-xs text-gray-400 mt-0.5">{activity.actorName} • {getRelativeTime(activity.timestamp)}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        {activities.length > 5 && (
-                             <div className="mt-4 text-center">
-                                <button onClick={() => openModal('viewAllActivities', customer)} className="text-xs text-blue-600 font-semibold hover:underline">ดูเพิ่มเติม</button>
+                        {activityLogsLoading && (
+                            <div className="text-sm text-gray-500">กำลังโหลดกิจกรรม...</div>
+                        )}
+                        {!activityLogsLoading && activityLogsError && (
+                            <div className="text-sm text-red-600">{activityLogsError}</div>
+                        )}
+                        {!activityLogsLoading && !activityLogsError && recentLogEntries.length === 0 && (
+                            <div className="text-sm text-gray-500">ยังไม่มีกิจกรรม</div>
+                        )}
+                        {!activityLogsLoading && !activityLogsError && recentLogEntries.length > 0 && (
+                            <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                                <table className="w-full text-xs text-left border border-gray-100 rounded-md overflow-hidden">
+                                    <thead className="bg-gray-50 text-gray-600 uppercase text-[11px]">
+                                        <tr>
+                                            <th className="px-3 py-2">เวลา</th>
+                                            <th className="px-3 py-2">กิจกรรม</th>
+                                            <th className="px-3 py-2">รายละเอียด</th>
+                                            <th className="px-3 py-2">ผู้ทำ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {recentLogEntries.map(({ log, summaries }) => {
+                                            return (
+                                                <tr key={log.id} className="align-top">
+                                                    <td className="px-3 py-3 whitespace-nowrap text-[11px] text-gray-500">
+                                                        <div className="font-medium text-gray-700">
+                                                            {new Date(log.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                                                        </div>
+                                                        <div>{getRelativeTime(log.createdAt)}</div>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-gray-700">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
+                                                                <ActivityIcon action={log.actionType} />
+                                                            </div>
+                                                            <span className="font-semibold text-gray-800">
+                                                                {actionLabels[log.actionType] ?? log.actionType}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-gray-600">
+                                                        <div className="space-y-1">
+                                                            {summaries.map((line, idx) => (
+                                                                <div key={`${log.id}-summary-${idx}`} className="flex text-[11px] leading-snug">
+                                                                    <span className="mr-1 text-gray-400">•</span>
+                                                                    <span>{line}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-gray-600 whitespace-nowrap text-[11px]">
+                                                        {log.createdByName ? log.createdByName : 'ระบบ'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        {logEntries.length > 5 && !activityLogsLoading && !activityLogsError && (
+                            <div className="mt-3 text-center">
+                                <button onClick={() => openModal('viewAllActivities', { customer, logs: logEntries.map((entry) => entry.log) })} className="text-xs text-blue-600 font-semibold hover:underline">ดูเพิ่มเติม</button>
                             </div>
                         )}
                     </div>

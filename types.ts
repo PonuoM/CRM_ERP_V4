@@ -507,6 +507,21 @@ export interface Activity {
   actorName: string; // Name of the user who performed the action
 }
 
+export interface CustomerLog {
+  id: number;
+  customerId: string;
+  actionType: "create" | "update" | "delete";
+  bucketType?: string | null;
+  lifecycleStatus?: CustomerLifecycleStatus | null;
+  assignedTo?: number | null;
+  oldValues?: Record<string, unknown> | null;
+  newValues?: Record<string, unknown> | null;
+  changedFields?: string[] | null;
+  createdBy?: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
 export type ModalType =
   | "manageOrder"
   | "logCall"
