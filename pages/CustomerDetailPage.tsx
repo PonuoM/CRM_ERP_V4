@@ -142,29 +142,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return base > 0 ? base : 0;
   };
 
-  // ฟังก์ชันสำหรับกำหนดสีพื้นหลังแบบไดนามิกตาม parent_item_id
-  const getPromotionColor = (parentItemId: number | null): string => {
-    if (!parentItemId) return "";
-
-    // สร้างสีแบบไดนามิกจาก parent_item_id
-    const colors = [
-      "bg-orange-50",
-      "bg-blue-50",
-      "bg-green-50",
-      "bg-yellow-50",
-      "bg-purple-50",
-      "bg-pink-50",
-      "bg-indigo-50",
-      "bg-red-50",
-      "bg-gray-50",
-      "bg-cyan-50",
-      "bg-emerald-50",
-      "bg-violet-50",
-    ];
-
-    // ใช้ parent_item_id ในการสุ่มสีเพื่อให้ได้สีเดียวกันสำหรับทุกรายการในโปรโมชั่นเดียวกัน
-    const colorIndex = parentItemId % colors.length;
-    return colors[colorIndex];
+  // ฟังก์ชันสำหรับนับจำนวนโปรโมชั่นในออเดอร์
+  const countPromotions = (items: LineItem[]): number => {
+    return items.filter((item) => item.isPromotionParent).length;
   };
 
   const mapApiOrderItems = (items: any[]): LineItem[] => {
@@ -930,7 +910,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                               return (
                                                 <tr
                                                   key={item.id}
-                                                  className={`border-b last:border-0 ${isPromotionSubtotal ? getPromotionColor(item.parentItemId) : isChild ? getPromotionColor(item.parentItemId) : ""}`}
+                                                  className={`border-b last:border-0 ${item.isPromotionParent || isChild ? "bg-orange-50" : ""}`}
                                                 >
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"}`}
