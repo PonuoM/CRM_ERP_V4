@@ -101,6 +101,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [exportTempStart, setExportTempStart] = useState("");
   const [exportTempEnd, setExportTempEnd] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [exportDatePickerOpen, setExportDatePickerOpen] = useState(false);
+  const exportDatePickerRef = useRef<HTMLDivElement>(null);
 
   // Aggregated dashboard data by page and date
   const aggregatedByPage = useMemo(() => {
@@ -214,6 +216,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         !adsHistoryDatePickerRef.current.contains(event.target as Node)
       ) {
         setAdsHistoryDatePickerOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Handle clicks outside export date dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        exportDatePickerRef.current &&
+        !exportDatePickerRef.current.contains(event.target as Node)
+      ) {
+        setExportDatePickerOpen(false);
       }
     };
 
@@ -2323,23 +2340,182 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
               <div className="space-y-4">
                 <div>
-                  <label className={labelClass}>วันที่เริ่มต้น</label>
-                  <input
-                    type="date"
-                    value={exportTempStart}
-                    onChange={(e) => setExportTempStart(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
+                  <label className={labelClass}>เลือกช่วงวันที่</label>
+                  <div className="relative">
+                    <button
+                      onClick={() =>
+                        setExportDatePickerOpen(!exportDatePickerOpen)
+                      }
+                      className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                    >
+                      <span
+                        className={
+                          exportTempStart && exportTempEnd
+                            ? "text-gray-900"
+                            : "text-gray-500"
+                        }
+                      >
+                        {exportTempStart && exportTempEnd
+                          ? `${new Date(exportTempStart + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(exportTempEnd + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                          : "ทั้งหมด"}
+                      </span>
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                    </button>
 
-                <div>
-                  <label className={labelClass}>วันที่สิ้นสุด</label>
-                  <input
-                    type="date"
-                    value={exportTempEnd}
-                    onChange={(e) => setExportTempEnd(e.target.value)}
-                    className={inputClass}
-                  />
+                    {/* Export Date Picker Dropdown */}
+                    {exportDatePickerOpen && (
+                      <div
+                        className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                        ref={exportDatePickerRef}
+                      >
+                        <div className="p-4">
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">
+                                วันที่เริ่มต้น
+                              </label>
+                              <input
+                                type="date"
+                                value={exportTempStart}
+                                onChange={(e) =>
+                                  setExportTempStart(e.target.value)
+                                }
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 mb-1 block">
+                                วันที่สิ้นสุด
+                              </label>
+                              <input
+                                type="date"
+                                value={exportTempEnd}
+                                onChange={(e) =>
+                                  setExportTempEnd(e.target.value)
+                                }
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="border-t border-gray-100 pt-3">
+                            <p className="text-xs font-medium text-gray-700 mb-2">
+                              เลือกช่วงเวลาด่วน:
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => {
+                                  setExportTempStart("");
+                                  setExportTempEnd("");
+                                  setExportDatePickerOpen(false);
+                                }}
+                                className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
+                              >
+                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                ทั้งหมด
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const now = new Date();
+                                  const dayOfWeek = now.getDay();
+                                  const startDate = new Date(now);
+                                  startDate.setDate(now.getDate() - dayOfWeek);
+                                  const endDate = new Date(startDate);
+                                  endDate.setDate(startDate.getDate() + 6);
+                                  setExportTempStart(
+                                    startDate.toISOString().slice(0, 10),
+                                  );
+                                  setExportTempEnd(
+                                    endDate.toISOString().slice(0, 10),
+                                  );
+                                }}
+                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                              >
+                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                อาทิตย์นี้
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const now = new Date();
+                                  const startDate = new Date(
+                                    now.getFullYear(),
+                                    now.getMonth(),
+                                    1,
+                                  );
+                                  const endDate = new Date(
+                                    now.getFullYear(),
+                                    now.getMonth() + 1,
+                                    0,
+                                  );
+                                  setExportTempStart(
+                                    startDate.toISOString().slice(0, 10),
+                                  );
+                                  setExportTempEnd(
+                                    endDate.toISOString().slice(0, 10),
+                                  );
+                                }}
+                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                              >
+                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                เดือนนี้
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const now = new Date();
+                                  const startDate = new Date(now);
+                                  startDate.setDate(now.getDate() - 6);
+                                  const endDate = new Date(now);
+                                  setExportTempStart(
+                                    startDate.toISOString().slice(0, 10),
+                                  );
+                                  setExportTempEnd(
+                                    endDate.toISOString().slice(0, 10),
+                                  );
+                                }}
+                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                              >
+                                <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                                7 วันล่าสุด
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const now = new Date();
+                                  const startDate = new Date(now);
+                                  startDate.setDate(now.getDate() - 29);
+                                  const endDate = new Date(now);
+                                  setExportTempStart(
+                                    startDate.toISOString().slice(0, 10),
+                                  );
+                                  setExportTempEnd(
+                                    endDate.toISOString().slice(0, 10),
+                                  );
+                                }}
+                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                              >
+                                <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                                30 วันล่าสุด
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                            <button
+                              onClick={() => {
+                                setExportDateRange({
+                                  start: exportTempStart,
+                                  end: exportTempEnd,
+                                });
+                                setExportDatePickerOpen(false);
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                            >
+                              ตกลง
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
