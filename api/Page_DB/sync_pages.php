@@ -73,8 +73,9 @@ try {
     }
   }
 
-  // First, set all existing pages to still_in_list = 0
-  $resetSQL = "UPDATE pages SET still_in_list = 0 WHERE company_id = ?";
+  // First, set only pancake pages to still_in_list = 0
+  $resetSQL =
+    "UPDATE pages SET still_in_list = 0 WHERE company_id = ? AND page_type = 'pancake'";
   $resetStmt = $pdo->prepare($resetSQL);
   $resetStmt->execute([$companyId]);
 
