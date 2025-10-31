@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   UserRole,
   User,
@@ -134,18 +134,23 @@ import PromotionsPage from "./pages/PromotionsPage";
 import OrderAllocationPage from "./pages/OrderAllocationPage";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 import notificationService from "./services/notificationService";
+import usePersistentState from "./utils/usePersistentState";
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
     UserRole.Telesale,
   );
 
+  const resolvePageFromParam = useCallback((value: string | null) => {
+    if (!value || value.length === 0) return "Dashboard";
+    if (value === "search") return "Search";
+    return value;
+  }, []);
+
   // Check URL parameter for initial page and sidebar visibility
   const getInitialPage = () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const page = urlParams.get("page");
-    if (page === "search") return "Search";
-    return "Dashboard";
+    return resolvePageFromParam(urlParams.get("page"));
   };
 
   const shouldHideSidebar = () => {
@@ -153,8 +158,14 @@ const App: React.FC = () => {
     return urlParams.get("nosidebar") === "true";
   };
 
-  const [activePage, setActivePage] = useState<string>(getInitialPage());
-  const [hideSidebar, setHideSidebar] = useState<boolean>(shouldHideSidebar());
+  const [activePage, setActivePage] = usePersistentState<string>(
+    "ui.activePage",
+    getInitialPage(),
+  );
+  const [hideSidebar, setHideSidebar] = usePersistentState<boolean>(
+    "ui.hideSidebar",
+    shouldHideSidebar(),
+  );
   const [modalState, setModalState] = useState<ModalState>({
     type: null,
     data: null,
@@ -239,6 +250,69 @@ const App: React.FC = () => {
     string,
     { view?: boolean; use?: boolean }
   > | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.has("page")) {
+      const nextPage = resolvePageFromParam(params.get("page"));
+      setActivePage((prev) => (prev === nextPage ? prev : nextPage));
+    }
+
+    if (params.has("nosidebar")) {
+      const shouldHide = params.get("nosidebar") === "true";
+      setHideSidebar((prev) => (prev === shouldHide ? prev : shouldHide));
+    }
+  }, [resolvePageFromParam, setActivePage, setHideSidebar]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+
+    const nextPageParam =
+      !activePage || activePage === "Dashboard" ? null : activePage;
+    if (nextPageParam) {
+      params.set("page", nextPageParam);
+    } else {
+      params.delete("page");
+    }
+
+    if (hideSidebar) {
+      params.set("nosidebar", "true");
+    } else {
+      params.delete("nosidebar");
+    }
+
+    const nextSearch = params.toString();
+    const currentSearch = window.location.search.startsWith("?")
+      ? window.location.search.slice(1)
+      : window.location.search;
+
+    if (nextSearch !== currentSearch) {
+      const nextUrl = `${url.pathname}${
+        nextSearch ? `?${nextSearch}` : ""
+      }${url.hash}`;
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, [activePage, hideSidebar]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const nextPage = resolvePageFromParam(params.get("page"));
+      const shouldHide = params.get("nosidebar") === "true";
+
+      setActivePage((prev) => (prev === nextPage ? prev : nextPage));
+      setHideSidebar((prev) => (prev === shouldHide ? prev : shouldHide));
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [resolvePageFromParam, setActivePage, setHideSidebar]);
 
   // Session user from LoginPage
   const [sessionUser, setSessionUser] = useState<any | null>(() => {

@@ -2,6 +2,7 @@
 import { Customer, ModalType, Tag, TagType } from "../types";
 import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
+import usePersistentState from "@/utils/usePersistentState";
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -10,7 +11,19 @@ interface CustomerTableProps {
   pageSizeOptions?: number[];
   showCallNotes?: boolean;
   hideGrade?: boolean;
+  storageKey?: string;
 }
+
+const NOOP_STORAGE: Storage = {
+  get length() {
+    return 0;
+  },
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+};
 
 const lifecycleLabel = (code: string) =>
   (
@@ -39,26 +52,58 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     pageSizeOptions = [5, 10, 20, 50],
     showCallNotes = false,
     hideGrade = false,
+    storageKey,
   } = props;
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(pageSizeOptions[0] ?? 10);
+  const defaultItemsPerPage = pageSizeOptions[0] ?? 10;
+  const persistenceBaseKey = storageKey
+    ? `customerTable:${storageKey}`
+    : null;
+
+  const [itemsPerPage, setItemsPerPage] = usePersistentState<number>(
+    persistenceBaseKey ? `${persistenceBaseKey}:perPage` : "__customer_table:perPage",
+    defaultItemsPerPage,
+    { storage: persistenceBaseKey ? undefined : NOOP_STORAGE },
+  );
+  const [currentPage, setCurrentPage] = usePersistentState<number>(
+    persistenceBaseKey ? `${persistenceBaseKey}:page` : "__customer_table:page",
+    1,
+    { storage: persistenceBaseKey ? undefined : NOOP_STORAGE },
+  );
 
   // Calculate pagination
+  const safeItemsPerPage =
+    itemsPerPage && itemsPerPage > 0 ? itemsPerPage : defaultItemsPerPage;
   const totalItems = customers.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
+  const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = (effectivePage - 1) * safeItemsPerPage;
+  const endIndex = startIndex + safeItemsPerPage;
   const currentCustomers = customers.slice(startIndex, endIndex);
 
-  // Reset to first page when customers change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [customers]);
+    if (!pageSizeOptions.includes(itemsPerPage)) {
+      const fallback = pageSizeOptions[0] ?? defaultItemsPerPage;
+      setItemsPerPage(fallback);
+      setCurrentPage(1);
+    }
+  }, [itemsPerPage, pageSizeOptions, defaultItemsPerPage, setItemsPerPage, setCurrentPage]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => {
+      const maxPage = Math.max(
+        1,
+        Math.ceil(customers.length / safeItemsPerPage),
+      );
+      if (!Number.isFinite(prev) || prev < 1) return 1;
+      return prev > maxPage ? maxPage : prev;
+    });
+  }, [customers.length, safeItemsPerPage, setCurrentPage]);
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    const maxPage = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
+    const nextPage = Math.min(Math.max(page, 1), maxPage);
+    setCurrentPage(nextPage);
   };
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {

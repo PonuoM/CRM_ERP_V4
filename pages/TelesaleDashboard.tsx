@@ -255,11 +255,17 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
   // Advanced filters state
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [sortBy, setSortBy] = useState("system");
-  const [sortByExpiry, setSortByExpiry] = useState(""); // "desc" or "asc"
-  const [hideTodayCalls, setHideTodayCalls] = useState(false);
-  const [hideTodayCallsRangeEnabled, setHideTodayCallsRangeEnabled] = useState(false);
-  const [hideTodayCallsRange, setHideTodayCallsRange] = useState({ start: "", end: "" });
+  const [sortBy, setSortBy] = useState(savedState.sortBy || "system");
+  const [sortByExpiry, setSortByExpiry] = useState(savedState.sortByExpiry || "");
+  const [hideTodayCalls, setHideTodayCalls] = useState(
+    savedState.hideTodayCalls ?? false,
+  );
+  const [hideTodayCallsRangeEnabled, setHideTodayCallsRangeEnabled] = useState(
+    savedState.hideTodayCallsRangeEnabled ?? false,
+  );
+  const [hideTodayCallsRange, setHideTodayCallsRange] = useState(
+    savedState.hideTodayCallsRange || { start: "", end: "" },
+  );
   const advRef = useRef<HTMLDivElement | null>(null);
 
   // Click outside to collapse advanced filters
@@ -993,6 +999,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         openModal={openModal}
         showCallNotes={activeSubMenu === 'all'}
         hideGrade={true}
+        storageKey={`telesale:${user.id}`}
       />
     </div>
   );
