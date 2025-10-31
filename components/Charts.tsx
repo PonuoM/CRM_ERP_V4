@@ -30,18 +30,17 @@ export const MonthlyOrdersChart: React.FC = () => {
     legend: { show: false },
   };
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-md font-semibold text-gray-700">
-          สรุปคำสั่งซื้อรายเดือน
-        </h3>
-      </div>
-      <div className="w-full overflow-hidden">
+    <div className="bg-white p-2 pt-0 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
+      <div
+        className="w-full overflow-hidden"
+        style={{ maxWidth: "100%", width: "100%" }}
+      >
         <ReactApexChart
           options={options}
           series={series}
           type="line"
           height={250}
+          width="100%"
         />
       </div>
     </div>

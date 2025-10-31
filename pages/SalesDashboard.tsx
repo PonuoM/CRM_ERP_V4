@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Order, Customer } from "@/types";
 import {
   DollarSign,
@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Users as UsersIcon,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
@@ -28,7 +29,8 @@ const legendStyles = `
     flex-shrink: 0 !important;
   }
   .apexcharts-canvas {
-    overflow: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 `;
 
@@ -43,6 +45,23 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [year, setYear] = useState<string>(() =>
     String(new Date().getFullYear()),
   );
+  const [chartKey, setChartKey] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Function to refresh the chart
+  const refreshChart = () => {
+    setIsRefreshing(true);
+    setChartKey((prev) => prev + 1);
+    // Simulate refresh delay and reset loading state
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 500);
+  };
+
+  // Auto-refresh chart when page loads or when orders data changes
+  useEffect(() => {
+    refreshChart();
+  }, [orders]);
 
   const { monthlySales, monthlyOrders, customersCount, performancePct } =
     useMemo(() => {
@@ -155,8 +174,29 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
 
         {/* Charts/sections (placeholders for layout) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="block">
-            <MonthlyOrdersChart />
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-md font-semibold text-gray-700">
+                สรุปคำสั่งซื้อรายเดือน
+              </h3>
+              <button
+                onClick={refreshChart}
+                disabled={isRefreshing}
+                className={`p-2 rounded-md transition-colors ${
+                  isRefreshing
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                }`}
+                title={isRefreshing ? "กำลังรีเฟรช..." : "รีเฟรชกราฟ"}
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+              </button>
+            </div>
+            <div className="w-full">
+              <MonthlyOrdersChart key={chartKey} />
+            </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
             <h3 className="text-md font-semibold text-gray-700 mb-4">
