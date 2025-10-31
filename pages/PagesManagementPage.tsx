@@ -400,12 +400,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const fetchPages = async () => {
     setLoading(true);
     try {
-      const pagesData = await listPages(currentUser?.companyId);
-      setItems(pagesData);
-      console.log("Fetched pages:", pagesData);
+      // Fetch all pages (not filtered by company_id)
+      const allPagesData = await listPages();
+      setItems(allPagesData);
+      console.log("Fetched all pages:", allPagesData);
       console.log(
         "Pages with still_in_list = 0:",
-        pagesData.filter((p) => p.still_in_list === 0),
+        allPagesData.filter((p) => p.still_in_list === 0),
       );
     } catch (error) {
       console.error("Error fetching pages:", error);
@@ -422,21 +423,45 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   }, [currentUser?.companyId]);
 
   // Filter pages based on still_in_list
-  const visiblePages = useMemo(() => {
-    const filtered = items.filter((p) => p.still_in_list !== 0);
-    console.log("Visible pages:", filtered);
-    return filtered;
-  }, [items]);
-
-  const hiddenPages = useMemo(() => {
-    const filtered = items.filter((p) => p.still_in_list === 0);
+  const hiddenPagesForCompany = useMemo(() => {
+    const filtered = items.filter(
+      (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
+    );
     console.log("Hidden pages:", filtered);
     return filtered;
-  }, [items]);
+  }, [items, currentUser?.companyId]);
+
+  // Filter pages based on current user's company_id
+  const pagesForCurrentCompany = useMemo(() => {
+    const filteredByCompany = items.filter(
+      (p) => p.company_id === currentUser?.companyId,
+    );
+    console.log(
+      "All pages for company:",
+      currentUser?.companyId,
+      "count:",
+      filteredByCompany.length,
+    );
+    return filteredByCompany;
+  }, [items, currentUser?.companyId]);
+
+  // Filter visible pages (still_in_list = 1) for current company
+  const visiblePagesForCompany = useMemo(() => {
+    return pagesForCurrentCompany.filter((p) => p.still_in_list !== 0);
+  }, [pagesForCurrentCompany]);
+
+  // Filter hidden pages (still_in_list = 0) for current company
+  const hiddenPages = useMemo(() => {
+    const filtered = items.filter(
+      (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
+    );
+    console.log("Hidden pages:", filtered);
+    return filtered;
+  }, [items, currentUser?.companyId]);
 
   const filtered = useMemo(() => {
     const k = keyword.toLowerCase();
-    let filteredPages = visiblePages.filter(
+    let filteredPages = visiblePagesForCompany.filter(
       (p) =>
         (!k || p.name.toLowerCase().includes(k)) &&
         (status === "all" || (status === "active" ? p.active : !p.active)),
@@ -453,7 +478,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     });
 
     return filteredPages;
-  }, [visiblePages, keyword, status]);
+  }, [pagesForCurrentCompany, keyword, status]);
 
   return (
     <div className="p-6">
@@ -548,7 +573,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             <p className="text-sm text-gray-600">
               จำนวนเพจที่แสดง:{" "}
               <span className="font-semibold text-gray-800">
-                {visiblePages.length}
+                {visiblePagesForCompany.length}
               </span>{" "}
               เพจ
               {loading && (
