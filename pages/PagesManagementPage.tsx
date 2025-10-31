@@ -322,6 +322,11 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [newPageUrl, setNewPageUrl] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
 
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [pageToDelete, setPageToDelete] = useState<Page | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // Page types state
   const [pageTypes, setPageTypes] = useState<{ [key: string]: string }>({});
   const [loadingPageTypes, setLoadingPageTypes] = useState(false);
@@ -644,7 +649,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <th className="py-2 px-3 font-medium">URL</th>
               <th className="py-2 px-3 font-medium">สถานะ</th>
               <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
-              <th className="py-2 px-3 font-medium"></th>
+              <th className="py-2 px-3 font-medium text-center">จัดการ</th>
+              <th className="py-2 px-3 font-medium text-center">ลบ</th>
             </tr>
           </thead>
           <tbody>
@@ -672,18 +678,64 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   )}
                 </td>
                 <td className="py-2 px-3">
-                  <span
-                    className={
-                      p.active
-                        ? "text-green-600 font-medium"
-                        : "text-red-600 font-medium"
-                    }
-                  >
-                    {p.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
-                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={p.active}
+                      onChange={async () => {
+                        try {
+                          const response = await fetch(
+                            "api/Marketing_DB/toggle_page_status.php",
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                page_id: p.id,
+                                active: p.active ? 0 : 1,
+                                company_id: currentUser?.companyId,
+                              }),
+                            },
+                          );
+
+                          const data = await response.json();
+
+                          if (!response.ok || !data.success) {
+                            throw new Error(
+                              data.error || "Failed to update page status",
+                            );
+                          }
+
+                          // Update the page in the list
+                          setItems((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, active: !p.active } : x,
+                            ),
+                          );
+
+                          // Show success message
+                          alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
+                        } catch (error) {
+                          console.error("Error updating page status:", error);
+                          alert(
+                            "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
+                              (error instanceof Error
+                                ? error.message
+                                : "Unknown error"),
+                          );
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span className="ml-3 text-sm font-medium text-gray-700">
+                      {p.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
+                    </span>
+                  </label>
                 </td>
                 <td className="py-2 px-3">{p.user_count || 0} คน</td>
-                <td className="py-2 px-3 text-right">
+                <td className="py-2 px-3 text-center">
                   <ManagePageButton
                     page={p}
                     onSaved={(updatedPage) =>
@@ -695,11 +747,25 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                     }
                   />
                 </td>
+                <td className="py-2 px-3 text-center">
+                  {p.page_type === "manual" && (
+                    <button
+                      className="px-2 py-1 bg-red-100 text-red-600 text-xs rounded hover:bg-red-200"
+                      onClick={() => {
+                        setPageToDelete(p);
+                        setDeleteModalOpen(true);
+                      }}
+                      title="ลบเพจ"
+                    >
+                      ลบ
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr className="border-t">
-                <td colSpan={5} className="py-6 text-center text-gray-500">
+                <td colSpan={7} className="py-6 text-center text-gray-500">
                   ไม่พบข้อมูล
                 </td>
               </tr>
@@ -827,6 +893,82 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
           </Modal>
         )}
 
+        {/* Delete Page Modal */}
+        {deleteModalOpen && pageToDelete && (
+          <Modal
+            title="ยืนยันการลบเพจ"
+            onClose={() => setDeleteModalOpen(false)}
+          >
+            <div className="space-y-4">
+              <div className="text-sm text-gray-600">
+                คุณแน่ใจหรือไม่ว่าต้องการลบเพจ{" "}
+                <strong>"{pageToDelete.name}"</strong>?
+              </div>
+              <div className="text-xs text-red-600 bg-red-50 p-3 rounded">
+                ⚠️ การดำเนินการนี้ไม่สามารถย้อนกลับได้
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                  onClick={() => setDeleteModalOpen(false)}
+                  disabled={deleteLoading}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  className="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
+                  onClick={async () => {
+                    setDeleteLoading(true);
+                    try {
+                      const response = await fetch(
+                        "api/Marketing_DB/delete_page.php",
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            page_id: pageToDelete.id,
+                            company_id: currentUser?.companyId,
+                          }),
+                        },
+                      );
+
+                      const data = await response.json();
+
+                      if (!response.ok || !data.success) {
+                        throw new Error(data.error || "Failed to delete page");
+                      }
+
+                      // Refresh pages list
+                      fetchPages();
+
+                      // Close modal
+                      setDeleteModalOpen(false);
+                      setPageToDelete(null);
+
+                      alert("ลบเพจสำเร็จ");
+                    } catch (error) {
+                      console.error("Error deleting page:", error);
+                      alert(
+                        "เกิดข้อผิดพลาดในการลบเพจ: " +
+                          (error instanceof Error
+                            ? error.message
+                            : "Unknown error"),
+                      );
+                    } finally {
+                      setDeleteLoading(false);
+                    }
+                  }}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? "กำลังลบ..." : "ลบ"}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
         {/* Hidden Pages Section */}
         {showHiddenPages && hiddenPages.length > 0 && (
           <div className="border-t">
@@ -842,7 +984,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                     <th className="py-2 px-3 font-medium">URL</th>
                     <th className="py-2 px-3 font-medium">สถานะ</th>
                     <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
-                    <th className="py-2 px-3 font-medium"></th>
+                    <th className="py-2 px-3 font-medium text-center">
+                      จัดการ
+                    </th>
+                    <th className="py-2 px-3 font-medium text-center">ลบ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -870,18 +1015,72 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                         )}
                       </td>
                       <td className="py-2 px-3">
-                        <span
-                          className={
-                            p.active
-                              ? "text-green-600 font-medium"
-                              : "text-red-600 font-medium"
-                          }
-                        >
-                          {p.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
-                        </span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={p.active}
+                            onChange={async () => {
+                              try {
+                                const response = await fetch(
+                                  "api/Marketing_DB/toggle_page_status.php",
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                      page_id: p.id,
+                                      active: p.active ? 0 : 1,
+                                      company_id: currentUser?.companyId,
+                                    }),
+                                  },
+                                );
+
+                                const data = await response.json();
+
+                                if (!response.ok || !data.success) {
+                                  throw new Error(
+                                    data.error ||
+                                      "Failed to update page status",
+                                  );
+                                }
+
+                                // Update the page in the list
+                                setItems((prev) =>
+                                  prev.map((x) =>
+                                    x.id === p.id
+                                      ? { ...x, active: !p.active }
+                                      : x,
+                                  ),
+                                );
+
+                                // Show success message
+                                alert(
+                                  `อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`,
+                                );
+                              } catch (error) {
+                                console.error(
+                                  "Error updating page status:",
+                                  error,
+                                );
+                                alert(
+                                  "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
+                                    (error instanceof Error
+                                      ? error.message
+                                      : "Unknown error"),
+                                );
+                              }
+                            }}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          <span className="ml-3 text-sm font-medium text-gray-700">
+                            {p.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
+                          </span>
+                        </label>
                       </td>
                       <td className="py-2 px-3">{p.user_count || 0} คน</td>
-                      <td className="py-2 px-3 text-right">
+                      <td className="py-2 px-3 text-center">
                         <ManagePageButton
                           page={p}
                           onSaved={(updatedPage) =>
@@ -892,6 +1091,20 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                             )
                           }
                         />
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {p.page_type === "manual" && (
+                          <button
+                            className="px-2 py-1 bg-red-100 text-red-600 text-xs rounded hover:bg-red-200"
+                            onClick={() => {
+                              setPageToDelete(p);
+                              setDeleteModalOpen(true);
+                            }}
+                            title="ลบเพจ"
+                          >
+                            ลบ
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
