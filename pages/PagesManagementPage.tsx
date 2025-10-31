@@ -308,6 +308,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [keyword, setKeyword] = useState("");
   const [team, setTeam] = useState("all");
   const [status, setStatus] = useState("all");
+  const [pageType, setPageType] = useState("all");
   const [items, setItems] = useState<Page[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
@@ -464,7 +465,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     let filteredPages = visiblePagesForCompany.filter(
       (p) =>
         (!k || p.name.toLowerCase().includes(k)) &&
-        (status === "all" || (status === "active" ? p.active : !p.active)),
+        (status === "all" || (status === "active" ? p.active : !p.active)) &&
+        (pageType === "all" || p.page_type === pageType),
     );
 
     // Sort by active status (active pages first)
@@ -478,14 +480,14 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     });
 
     return filteredPages;
-  }, [pagesForCurrentCompany, keyword, status]);
+  }, [pagesForCurrentCompany, keyword, status, pageType]);
 
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">เพจ</h2>
 
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">คำค้น</label>
             <input
@@ -517,7 +519,33 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <option value="inactive">ไม่ใช้งาน</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              ประเภทเพจ
+            </label>
+            <select
+              value={pageType}
+              onChange={(e) => setPageType(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="all">ทั้งหมด</option>
+              <option value="pancake">Pancake</option>
+              <option value="manual">เพจที่เพิ่มเอง</option>
+              {Object.entries(pageTypes).map(([key, value]) => (
+                <option key={key} value={key}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-end space-x-2">
+            <button
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700"
+              onClick={() => setAddPageModalOpen(true)}
+            >
+              <span className="text-lg">+</span>
+              เพิ่มเพจ
+            </button>
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm disabled:opacity-50"
               onClick={async () => {
@@ -590,13 +618,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               )}
             </p>
             <div className="flex space-x-2">
-              <button
-                className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 flex items-center gap-1"
-                onClick={() => setAddPageModalOpen(true)}
-              >
-                <span className="text-lg">+</span>
-                เพิ่มเพจ
-              </button>
               <button
                 className="px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded hover:bg-blue-200"
                 onClick={() => fetchPages()}
