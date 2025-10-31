@@ -142,6 +142,31 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return base > 0 ? base : 0;
   };
 
+  // ฟังก์ชันสำหรับกำหนดสีพื้นหลังแบบไดนามิกตาม parent_item_id
+  const getPromotionColor = (parentItemId: number | null): string => {
+    if (!parentItemId) return "";
+
+    // สร้างสีแบบไดนามิกจาก parent_item_id
+    const colors = [
+      "bg-orange-50",
+      "bg-blue-50",
+      "bg-green-50",
+      "bg-yellow-50",
+      "bg-purple-50",
+      "bg-pink-50",
+      "bg-indigo-50",
+      "bg-red-50",
+      "bg-gray-50",
+      "bg-cyan-50",
+      "bg-emerald-50",
+      "bg-violet-50",
+    ];
+
+    // ใช้ parent_item_id ในการสุ่มสีเพื่อให้ได้สีเดียวกันสำหรับทุกรายการในโปรโมชั่นเดียวกัน
+    const colorIndex = parentItemId % colors.length;
+    return colors[colorIndex];
+  };
+
   const mapApiOrderItems = (items: any[]): LineItem[] => {
     if (!Array.isArray(items)) return [];
 
@@ -190,11 +215,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       sortedItems.push(parent);
       processedItemIds.add(parent.id);
 
-      // ค้นหาสินค้าลูกทั้งหมดของสินค้าหลักนี้ (ใช้ promotionId แทน parentItemId)
+      // ค้นหาสินค้าลูกทั้งหมดของสินค้าหลักนี้ (ใช้ parentItemId)
       const children = mappedItems
         .filter(
           (child) =>
-            child.promotionId === parent.promotionId &&
+            child.parentItemId === parent.id &&
             !child.isPromotionParent &&
             child.id !== parent.id,
         )
@@ -209,7 +234,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
     // เพิ่มสินค้าทั่วไปที่ไม่ใช่ส่วนของโปรโมชั่น
     const regularItems = mappedItems
-      .filter((item) => !item.isPromotionParent && !item.promotionId)
+      .filter((item) => !item.isPromotionParent && !item.parentItemId)
       .sort((a, b) => a.id - b.id);
 
     regularItems.forEach((item) => {
@@ -221,7 +246,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
     // จัดการกับสินค้าลูกที่ไม่มีสินค้าหลัก (กรณีข้อมูลไม่สมบูรณ์)
     const orphanedChildren = mappedItems
-      .filter((item) => item.promotionId && !processedItemIds.has(item.id))
+      .filter((item) => item.parentItemId && !processedItemIds.has(item.id))
       .sort((a, b) => a.id - b.id);
 
     sortedItems.push(...orphanedChildren);
@@ -866,7 +891,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                           <tbody className="text-gray-700">
                                             {items.map((item, index) => {
                                               const isChild =
-                                                item.promotionId != null &&
+                                                item.parentItemId != null &&
                                                 !item.isPromotionParent;
                                               const isFreebie = Boolean(
                                                 item.isFreebie,
@@ -896,8 +921,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                                       items[index + 1];
                                                     return (
                                                       !nextItem ||
-                                                      nextItem.promotionId !==
-                                                        item.promotionId
+                                                      nextItem.parentItemId !==
+                                                        item.parentItemId
                                                     );
                                                   })()) ||
                                                 isLastInPromotion;
@@ -905,7 +930,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                               return (
                                                 <tr
                                                   key={item.id}
-                                                  className={`border-b last:border-0 ${isPromotionSubtotal ? "bg-orange-50" : isChild ? "bg-orange-50" : ""}`}
+                                                  className={`border-b last:border-0 ${isPromotionSubtotal ? getPromotionColor(item.parentItemId) : isChild ? getPromotionColor(item.parentItemId) : ""}`}
                                                 >
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"}`}
