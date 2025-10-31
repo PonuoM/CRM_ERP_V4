@@ -752,13 +752,28 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
                     setAddPageLoading(true);
                     try {
-                      const created = await createPage({
-                        name: newPageName.trim(),
-                        platform: newPagePlatform,
-                        url: newPageUrl.trim() || undefined,
-                        companyId: currentUser.companyId,
-                        active: true,
-                      });
+                      // Call the new insert_manual_page API
+                      const response = await fetch(
+                        "api/Marketing_DB/insert_manual_page.php",
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            name: newPageName.trim(),
+                            platform: newPagePlatform,
+                            url: newPageUrl.trim() || null,
+                            company_id: currentUser.companyId,
+                          }),
+                        },
+                      );
+
+                      const data = await response.json();
+
+                      if (!response.ok || !data.success) {
+                        throw new Error(data.error || "Failed to create page");
+                      }
 
                       // Refresh pages list
                       fetchPages();
@@ -772,7 +787,12 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       alert("เพิ่มเพจสำเร็จ");
                     } catch (error) {
                       console.error("Error creating page:", error);
-                      alert("เกิดข้อผิดพลาดในการเพิ่มเพจ");
+                      alert(
+                        "เกิดข้อผิดพลาดในการเพิ่มเพจ: " +
+                          (error instanceof Error
+                            ? error.message
+                            : "Unknown error"),
+                      );
                     } finally {
                       setAddPageLoading(false);
                     }
