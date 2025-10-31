@@ -130,6 +130,9 @@ if ($resource === '' || $resource === 'health') {
     case 'activities':
         handle_activities($pdo, $id);
         break;
+    case 'customer_logs':
+        handle_customer_logs($pdo, $id);
+        break;
     case 'do_dashboard':
         handle_do_dashboard($pdo);
         break;
@@ -2026,6 +2029,47 @@ function handle_activities(PDO $pdo, ?string $id): void {
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
+}
+
+function handle_customer_logs(PDO $pdo, ?string $id): void {
+    if (method() !== 'GET') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        return;
+    }
+
+    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+    if ($limit <= 0) {
+        $limit = 50;
+    } elseif ($limit > 200) {
+        $limit = 200;
+    }
+
+    if ($id) {
+        $stmt = $pdo->prepare(
+            'SELECT cl.*, CONCAT(u.first_name, " ", u.last_name) AS created_by_name
+             FROM customer_logs cl
+             LEFT JOIN users u ON cl.created_by = u.id
+             WHERE cl.id = ?'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+        return;
+    }
+
+    $customerId = $_GET['customerId'] ?? null;
+    $params = [];
+    $sql = 'SELECT cl.*, CONCAT(u.first_name, " ", u.last_name) AS created_by_name
+            FROM customer_logs cl
+            LEFT JOIN users u ON cl.created_by = u.id';
+    if ($customerId) {
+        $sql .= ' WHERE cl.customer_id = ?';
+        $params[] = $customerId;
+    }
+    $sql .= ' ORDER BY cl.created_at DESC LIMIT ' . $limit;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    json_response($stmt->fetchAll());
 }
 
 function handle_do_dashboard(PDO $pdo): void {

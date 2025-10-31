@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Oct 27, 2025 at 09:30 AM
+-- Generation Time: Oct 31, 2025 at 03:49 AM
 -- Server version: 8.0.17
 -- PHP Version: 7.3.10
 
@@ -323,7 +323,26 @@ INSERT INTO `activities` (`id`, `customer_id`, `timestamp`, `type`, `description
 (109, 'CUS-003', '2025-10-27 06:48:33', 'order_status_changed', 'เปลี่ยนสถานะออเดอร์ ORD-1759130412537 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
 (110, 'CUS-003', '2025-10-27 06:48:33', 'order_status_changed', 'เปลี่ยนสถานะออเดอร์ ORD-1759130412537 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
 (111, 'CUS-003', '2025-10-27 06:48:33', 'order_status_changed', 'เปลี่ยนสถานะออเดอร์ ORD-1760950639386 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
-(112, 'CUS-002', '2025-10-27 06:48:33', 'order_status_changed', 'เปลี่ยนสถานะออเดอร์ ORD-1761281352625 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice');
+(112, 'CUS-002', '2025-10-27 06:48:33', 'order_status_changed', 'เปลี่ยนสถานะออเดอร์ ORD-1761281352625 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
+(113, 'CUST-001', '2025-10-28 03:26:48', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761622007989', 'Somsri Telesale'),
+(114, 'CUST-001', '2025-10-28 03:27:34', 'order_status_changed', 'อัปเดตสถานะคำสั่งซื้อ ORD-1761622007989 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
+(115, 'CUST-001', '2025-10-28 03:27:34', 'order_status_changed', 'อัปเดตสถานะคำสั่งซื้อ ORD-1761622007989 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
+(116, 'CUST-001', '2025-10-28 03:27:34', 'order_status_changed', 'อัปเดตสถานะคำสั่งซื้อ ORD-1761622007989 จาก \'Pending\' เป็น \'Picking\'', 'Sommai Backoffice'),
+(117, 'CUS-004', '2025-10-28 03:39:48', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761622787497', 'Somsri Telesale'),
+(118, 'CUS-003', '2025-10-28 03:41:10', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761622870309', 'Somsri Telesale'),
+(119, 'CUST-001', '2025-10-28 04:20:59', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761625258789', 'Somsri Telesale'),
+(120, 'CUST-001', '2025-10-28 04:24:11', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761625451361', 'Somsri Telesale'),
+(121, 'CUST-001', '2025-10-28 04:32:55', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761625974435', 'Somsri Telesale'),
+(122, 'CUS-002', '2025-10-28 05:25:22', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761629121525', 'Somsri Telesale'),
+(123, 'CUST-001', '2025-10-28 07:27:06', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761636425498', 'Somchai Admin'),
+(124, 'CUST-001', '2025-10-28 08:50:11', 'call_logged', 'บันทึกการโทร: สินค้ายังไม่หมด', 'Somsri Telesale'),
+(125, 'CUS-954564646', '2025-10-28 08:50:29', 'call_logged', 'บันทึกการโทร: สินค้ายังไม่หมด', 'Somsri Telesale'),
+(126, 'CUS-954564646', '2025-10-28 09:02:48', 'appointment_set', 'นัดหมาย \"โทรติดตามผล (สินค้ายังไม่หมด)\" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว', 'Somsri Telesale'),
+(127, 'CUS-954564646', '2025-10-28 09:02:49', 'appointment_set', 'นัดหมาย \"โทรติดตามผล (ใช้แล้วไม่เห็นผล)\" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว', 'Somsri Telesale'),
+(128, 'CUS-004', '2025-10-28 09:02:56', 'call_logged', 'บันทึกการโทร: สินค้ายังไม่หมด', 'Somsri Telesale'),
+(129, 'CUS-004', '2025-10-28 09:03:07', 'appointment_set', 'นัดหมาย \"โทรติดตามผล (สินค้ายังไม่หมด)\" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว', 'Somsri Telesale'),
+(130, 'CUST-001', '2025-10-28 09:04:04', 'order_created', 'สร้างคำสั่งซื้อ ORD-1761642243789', 'Somchai Admin'),
+(131, 'CUST-001', '2025-10-28 09:04:23', 'call_logged', 'บันทึกการโทร: สินค้ายังไม่หมด', 'Somsri Telesale');
 
 -- --------------------------------------------------------
 
@@ -8943,9 +8962,9 @@ INSERT INTO `appointments` (`id`, `customer_id`, `date`, `title`, `status`, `not
 (10, 'CUS-002', '2025-10-08 21:50:00', 'โทรติดตามผล (ใช้แล้วไม่เห็นผล)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
 (11, 'CUS-001', '2025-10-11 22:30:00', 'ทดสอบ', 'เสร็จสิ้น', NULL),
 (12, 'CUS-005', '2025-10-10 09:21:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
-(13, 'CUS-954564646', '2025-10-08 10:14:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'รอดำเนินการ', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
-(14, 'CUS-954564646', '2025-10-25 10:16:00', 'โทรติดตามผล (ใช้แล้วไม่เห็นผล)', 'รอดำเนินการ', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
-(15, 'CUS-004', '2025-10-12 10:38:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'รอดำเนินการ', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
+(13, 'CUS-954564646', '2025-10-08 10:14:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
+(14, 'CUS-954564646', '2025-10-25 10:16:00', 'โทรติดตามผล (ใช้แล้วไม่เห็นผล)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
+(15, 'CUS-004', '2025-10-12 10:38:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
 (16, 'CUS-002', '2025-10-10 10:52:00', 'โทรติดตามผล (สินค้ายังไม่หมด)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
 (17, 'CUS-005', '2025-10-12 11:31:00', 'โทรติดตามผล (ได้คุย)', 'เสร็จสิ้น', 'ทดสอบ'),
 (18, 'CUS-005', '2025-10-11 11:33:00', 'โทรติดตามผล (เลิกทำสวน)', 'เสร็จสิ้น', 'สร้างอัตโนมัติจากการบันทึกการโทร'),
@@ -9000,7 +9019,11 @@ INSERT INTO `call_history` (`id`, `customer_id`, `date`, `caller`, `status`, `re
 (20, 'CUS-952513121', '2025-09-29 05:41:13', 'Somsri Telesale', 'รับสาย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 1),
 (21, 'CUS-002', '2025-09-29 09:47:06', 'Somsri Telesale', 'รับสาย', 'ใช้แล้วไม่เห็นผล', NULL, NULL, NULL, 0),
 (22, 'CUS-005', '2025-09-29 10:00:43', 'Somsri Telesale', 'รับสาย', 'ใช้แล้วไม่เห็นผล', NULL, NULL, NULL, 4),
-(23, 'CUS-952513121', '2025-09-29 10:01:18', 'Somsri Telesale', 'ได้คุย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 2);
+(23, 'CUS-952513121', '2025-09-29 10:01:18', 'Somsri Telesale', 'ได้คุย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 2),
+(24, 'CUST-001', '2025-10-28 08:50:11', 'Somsri Telesale', 'รับสาย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 1),
+(25, 'CUS-954564646', '2025-10-28 08:50:29', 'Somsri Telesale', 'รับสาย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 1),
+(26, 'CUS-004', '2025-10-28 09:02:56', 'Somsri Telesale', 'รับสาย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 1),
+(27, 'CUST-001', '2025-10-28 09:04:23', 'Somsri Telesale', 'รับสาย', 'สินค้ายังไม่หมด', NULL, NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -9069,7 +9092,8 @@ CREATE TABLE `customers` (
   `last_order_date` datetime DEFAULT NULL,
   `order_count` int(11) DEFAULT '0',
   `is_new_customer` tinyint(1) DEFAULT '0',
-  `is_repeat_customer` tinyint(1) DEFAULT '0'
+  `is_repeat_customer` tinyint(1) DEFAULT '0',
+  `bucket_type` varchar(16) GENERATED ALWAYS AS ((case when (coalesce(`is_blocked`,0) = 1) then _utf8mb4'blocked' when (coalesce(`is_in_waiting_basket`,0) = 1) then _utf8mb4'waiting' when (`assigned_to` is null) then _utf8mb4'ready' else _utf8mb4'assigned' end)) STORED
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -9077,18 +9101,161 @@ CREATE TABLE `customers` (
 --
 
 INSERT INTO `customers` (`id`, `first_name`, `last_name`, `phone`, `email`, `province`, `company_id`, `assigned_to`, `date_assigned`, `date_registered`, `follow_up_date`, `ownership_expires`, `lifecycle_status`, `behavioral_status`, `grade`, `total_purchases`, `total_calls`, `facebook_name`, `line_id`, `street`, `subdistrict`, `district`, `postal_code`, `has_sold_before`, `follow_up_count`, `last_follow_up_date`, `last_sale_date`, `is_in_waiting_basket`, `waiting_basket_start_date`, `followup_bonus_remaining`, `is_blocked`, `first_order_date`, `last_order_date`, `order_count`, `is_new_customer`, `is_repeat_customer`) VALUES
-('CUS-001', 'สมชาย', 'ใจดี', '0812345678', 'somchai@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:09', NULL, '2025-10-11 22:30:00', '2025-12-28 10:36:28', 'Old', 'Hot', 'A', '0.00', 1, 'Somchai Jaidee', 'somchai01', '123 ถนนสุขุมวิท', 'คลองตัน', 'วัฒนา', '10110', 0, 1, '2025-09-27 15:30:09', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
-('CUS-002', 'สมหญิง', 'รักดี', '0823456789', 'somying@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-09-30 16:47:00', '2025-12-28 03:52:59', 'Old3Months', 'Warm', 'B', '1500.00', 6, 'Somying Rakdee', 'somying02', '33/10 ภูริคลอง 7', 'คูคต', 'ลำลูกกา', '12130', 0, 1, '2025-09-29 03:52:59', NULL, 0, NULL, 1, 0, '2025-10-17 03:14:36', '2025-10-20 07:30:41', 5, 0, 1),
-('CUS-003', 'วิชัย', 'เก่งมาก', '0834567890', 'wichai@email.com', 'นนทบุรี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-01 21:30:00', '2025-12-28 13:59:46', 'Old3Months', 'Cold', 'C', '800.00', 2, 'Wichai Kengmak', 'wichai03', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', '11000', 1, 0, '2025-09-29 05:45:10', '2025-09-29 07:57:55', 0, NULL, 1, 0, '2025-09-29 07:20:13', '2025-10-20 08:59:55', 7, 0, 1),
-('CUS-004', 'มาลี', 'สวยงาม', '0845678901', 'malee@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', NULL, '2025-10-12 10:38:00', '2025-12-28 03:38:27', 'FollowUp', 'Hot', 'A+', '0.00', 1, 'Malee Suayngam', 'malee04', '321 ถนนรังสิต', 'คลองหนึ่ง', 'คลองหลวง', '12120', 0, 1, '2025-09-29 03:38:27', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
-('CUS-005', 'ประเสริฐ', 'ดีมาก', '0856789012', 'prasert@email.com', 'สมุทรปราการ', 1, NULL, '2025-09-27 21:00:28', NULL, '2025-10-02 17:00:00', '2025-11-01 21:03:36', 'FollowUp', 'Warm', 'B', '2200.00', 7, 'Prasert Deemak', 'prasert05', '654 ถนนสุขุมวิท', 'บางนา', 'บางนา', '10260', 0, 0, NULL, NULL, 0, NULL, 0, 1, NULL, NULL, 0, 0, 0),
-('CUS-100000001', 'Mana', 'Jaidee', '0812345678', 'mana.j@example.com', 'Bangkok', 1, 2, '2025-09-17 10:31:32', '2025-09-12 10:31:32', '2025-09-24 23:54:00', '2025-12-11 10:31:32', 'Old3Months', 'Hot', 'B', '5850.00', 18, 'Mana Jaidee', 'mana.j', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', '10110', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-21 10:31:32', '2025-10-17 05:25:53', 3, 0, 1),
-('CUS-952141254', 'มาเรีย', 'สิกา', '0952141254', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:14:03', '2025-09-24 08:14:03', NULL, '2025-10-24 08:14:03', 'New', 'Warm', 'D', '0.00', 0, 'อิอิ', '', '33/10', 'ออเงิน', 'สายไหม', '12120', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 14:57:51', '2025-09-24 14:57:51', 1, 1, 0),
-('CUS-952513121', 'มานี', 'พี่มานะ', '0952513121', NULL, 'ปทุมธานี', 1, 2, '2025-09-22 03:58:57', '2025-09-22 03:58:57', '2025-10-03 17:01:00', '2025-10-22 03:58:57', 'Old3Months', 'Warm', 'D', '0.00', 2, 'mana jaidee', 'manaza007', '33/10', 'ลำลูกกา', 'ลำลูกกา', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-22 03:58:57', '2025-09-23 03:32:36', 2, 0, 1),
+('CUS-001', 'สมชาย', 'ใจดี', '0812345678', 'somchai@email.com', 'กรุงเทพ', 1, 2, '2025-09-27 21:00:09', '2025-09-27 21:00:09', '2025-10-11 22:30:00', '2025-12-28 10:36:28', 'Old', 'Hot', 'A', '0.00', 1, 'Somchai Jaidee', 'somchai01', '123 ถนนสุขุมวิท', 'คลองตัน', 'วัฒนา', '10110', 0, 1, '2025-09-27 15:30:09', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUS-002', 'สมหญิง', 'รักดี', '0823456789', 'somying@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', '2025-09-27 21:00:28', '2025-09-30 16:47:00', '2025-12-28 03:52:59', 'Old3Months', 'Warm', 'B', '13640.00', 6, 'Somying Rakdee', 'somying02', '33/10 ภูริคลอง 7', 'คูคต', 'ลำลูกกา', '12130', 0, 1, '2025-09-29 03:52:59', NULL, 0, NULL, 1, 0, '2025-10-17 03:14:36', '2025-10-20 07:30:41', 5, 0, 1),
+('CUS-003', 'วิชัย', 'เก่งมาก', '0834567890', 'wichai@email.com', 'นนทบุรี', 1, 2, '2025-09-27 21:00:28', '2025-09-27 21:00:28', '2025-10-01 21:30:00', '2025-12-28 13:59:46', 'Old3Months', 'Cold', 'C', '6430.00', 2, 'Wichai Kengmak', 'wichai03', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', '11000', 1, 0, '2025-09-29 05:45:10', '2025-09-29 07:57:55', 0, NULL, 1, 0, '2025-09-29 07:20:13', '2025-10-20 08:59:55', 7, 0, 1),
+('CUS-004', 'มาลี', 'สวยงาม', '0845678901', 'malee@email.com', 'ปทุมธานี', 1, 2, '2025-09-27 21:00:28', '2025-09-27 21:00:28', '2025-10-12 10:38:00', '2025-12-28 03:38:27', 'Old3Months', 'Hot', 'A+', '600.00', 2, 'Malee Suayngam', 'malee04', '321 ถนนรังสิต', 'คลองหนึ่ง', 'คลองหลวง', '12120', 0, 1, '2025-09-29 03:38:27', NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUS-005', 'ประเสริฐ', 'ดีมาก', '0856789012', 'prasert@email.com', 'สมุทรปราการ', 1, NULL, '2025-09-27 21:00:28', '2025-09-27 21:00:28', '2025-10-02 17:00:00', '2025-11-01 21:03:36', 'FollowUp', 'Warm', 'B', '0.00', 7, 'Prasert Deemak', 'prasert05', '654 ถนนสุขุมวิท', 'บางนา', 'บางนา', '10260', 0, 0, NULL, NULL, 0, NULL, 0, 1, NULL, NULL, 0, 0, 0),
+('CUS-100000001', 'Mana', 'Jaidee', '0812345678', 'mana.j@example.com', 'Bangkok', 1, 2, '2025-09-17 10:31:32', '2025-09-12 10:31:32', '2025-09-24 23:54:00', '2025-12-11 10:31:32', 'Old3Months', 'Hot', 'B', '7320.00', 18, 'Mana Jaidee', 'mana.j', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', '10110', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-21 10:31:32', '2025-10-17 05:25:53', 3, 0, 1),
+('CUS-952141254', 'มาเรีย', 'สิกา', '0952141254', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:14:03', '2025-09-24 08:14:03', NULL, '2025-10-24 08:14:03', 'New', 'Warm', 'D', '500.00', 0, 'อิอิ', '', '33/10', 'ออเงิน', 'สายไหม', '12120', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 14:57:51', '2025-09-24 14:57:51', 1, 1, 0),
+('CUS-952513121', 'มานี', 'พี่มานะ', '0952513121', NULL, 'ปทุมธานี', 1, 2, '2025-09-22 03:58:57', '2025-09-22 03:58:57', '2025-10-03 17:01:00', '2025-10-22 03:58:57', 'Old3Months', 'Warm', 'D', '620.00', 2, 'mana jaidee', 'manaza007', '33/10', 'ลำลูกกา', 'ลำลูกกา', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-22 03:58:57', '2025-09-23 03:32:36', 2, 0, 1),
 ('CUS-952519797', 'พิมพ์พิกา', 'ณ ระนอง', '0952519797', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:06:52', '2025-09-24 08:06:52', NULL, '2025-10-24 08:06:52', 'New', 'Warm', 'D', '0.00', 0, 'pimmy', 'ก็มาดิค๊าบ', '31/10', 'ออเงิน', 'สายไหม', '10210', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
-('CUS-954564646', 'มาโนช', 'ศรีบุญเรือง', '0954564646', NULL, 'กรุงเทพ', 1, 2, '2025-09-22 05:24:32', '2025-09-22 05:24:32', '2025-10-25 10:16:00', '2025-12-28 10:36:28', 'FollowUp', 'Warm', 'D', '0.00', 4, 'maNos', 'Manosza', '214', 'สายไหม', 'ออเงิน', '12150', 0, 2, '2025-09-29 03:16:37', NULL, 0, NULL, 1, 0, '2025-09-23 03:25:56', '2025-09-23 03:35:12', 3, 0, 1),
-('CUS-958844578', 'มนัส', 'บุญจำนง', '0958844578', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:52:21', '2025-09-24 08:52:21', NULL, '2025-10-24 08:52:21', 'New', 'Warm', 'D', '0.00', 0, 'manus', '', '32/458', 'ออเงิน', 'สายไหม', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 08:52:21', '2025-10-17 02:47:28', 2, 0, 1),
-('CUST-001', 'บริษัท', 'เอ็กแซมเพิล จำกัด', '26789000', 'info@example.co.th', 'กรุงเทพมหานคร', 1, 2, '2025-10-27 04:58:03', '2025-10-27 04:58:03', NULL, '2025-11-26 04:58:03', 'New', 'Hot', 'C', '4500.00', 0, NULL, NULL, '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', '10330', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0);
+('CUS-954564646', 'มาโนช', 'ศรีบุญเรือง', '0954564646', NULL, 'กรุงเทพ', 1, 2, '2025-09-22 05:24:32', '2025-09-22 05:24:32', '2025-10-25 10:16:00', '2025-12-28 10:36:28', 'Old3Months', 'Warm', 'D', '600.00', 5, 'maNos', 'Manosza', '214', 'สายไหม', 'ออเงิน', '12150', 0, 2, '2025-09-29 03:16:37', NULL, 0, NULL, 1, 0, '2025-09-23 03:25:56', '2025-09-23 03:35:12', 3, 0, 1),
+('CUS-958844578', 'มนัส', 'บุญจำนง', '0958844578', NULL, 'กรุงเทพ', 1, 1, '2025-09-24 08:52:21', '2025-09-24 08:52:21', NULL, '2025-10-24 08:52:21', 'New', 'Warm', 'D', '1625.00', 0, 'manus', '', '32/458', 'ออเงิน', 'สายไหม', '12150', 0, 0, NULL, NULL, 0, NULL, 1, 0, '2025-09-24 08:52:21', '2025-10-17 02:47:28', 2, 0, 1),
+('CUST-001', 'บริษัท', 'เอ็กแซมเพิล จำกัด', '26789000', 'info@example.co.th', 'กรุงเทพมหานคร', 1, 2, '2025-10-27 04:58:03', '2025-10-27 04:58:03', NULL, '2025-11-26 04:58:03', 'Old', 'Hot', 'C', '2000.00', 2, 'บริษัท เอ็กแซมเพิล จำกัด', '', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', '10330', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-001', 'สมชาย', 'สุขใจ', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-29 04:20:47', '2025-10-29 03:50:19', NULL, '2025-11-28 03:50:19', NULL, 'Cold', 'D', '1000.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-002', 'สมหญิง', 'ชิงกาเบล', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-29 04:24:32', '2025-10-29 04:24:32', NULL, '2026-01-27 07:36:47', 'DailyDistribution', 'Cold', 'D', '400.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-003', 'สมปอง', 'คลองสามวา', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-29 07:42:04', '2025-10-29 07:42:04', NULL, '2026-01-27 07:42:43', 'New', 'Cold', 'D', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-005', 'สมหมาย', 'ตายแล้วนะ', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-29 09:37:13', NULL, NULL, NULL, NULL, NULL, NULL, '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-006', 'สมหมาย', 'ตายแล้วนะ', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-29 09:39:01', NULL, NULL, NULL, NULL, NULL, NULL, '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-007', 'สมหมวก', 'สวกตูด', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 09:34:19', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-008', 'สมเสร็จ', 'เสม็ดเสร็จฉัน', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 09:35:23', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-009', 'สมแล้ว1', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 09:50:10', '2025-10-30 09:50:10', NULL, '2026-01-28 09:50:10', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-010', 'สมแล้ว2', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 09:51:59', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-011', 'สมแล้ว3', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 09:51:59', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-012', 'สมแล้ว4', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 03:23:33', NULL, NULL, '2026-01-28 03:23:33', 'DailyDistribution', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-013', 'สมแล้ว5', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 09:51:59', '2025-10-30 09:51:59', NULL, '2026-01-28 09:51:59', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-014', 'สมแล้ว6', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 09:52:00', '2025-10-30 09:52:00', NULL, '2026-01-28 09:52:00', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-015', 'สมแล้ว7', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 09:52:00', '2025-10-30 09:52:00', NULL, '2026-01-28 09:52:00', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-016', 'สมแล้ว8', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 09:52:00', '2025-10-30 09:52:00', NULL, '2026-01-28 09:52:00', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-017', 'สมแล้ว9', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 09:52:00', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-018', 'สมแล้ว10', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 12:56:35', '2025-10-30 12:56:35', NULL, '2026-01-28 12:56:35', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-019', 'สมแล้ว11', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, 2, '2025-10-30 12:56:35', '2025-10-30 12:56:35', NULL, '2026-01-28 12:56:35', 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-020', 'สมแล้ว12', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:35', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-021', 'สมแล้ว13', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:35', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-022', 'สมแล้ว14', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:35', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-023', 'สมแล้ว15', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:35', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-024', 'สมแล้ว16', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:36', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-025', 'สมแล้ว17', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:36', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0),
+('CUST-TH-026', 'สมแล้ว18', 'นะมึง', '891234567', 'somchai@example.com', 'กรุงเทพมหานคร', 1, NULL, '2025-10-30 12:56:36', NULL, NULL, NULL, 'New', 'Cold', 'C', '0.00', 0, NULL, NULL, '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', '10230', 0, 0, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, 0, 0, 0);
+
+--
+-- Triggers `customers`
+--
+DELIMITER $$
+CREATE TRIGGER `customer_after_insert` AFTER INSERT ON `customers` FOR EACH ROW BEGIN
+    INSERT INTO customer_logs (
+        customer_id,
+        bucket_type,
+        lifecycle_status,
+        assigned_to,
+        action_type,
+        new_values,
+        changed_fields,
+        created_by
+    ) VALUES (
+        NEW.id,
+        NEW.bucket_type,
+        NEW.lifecycle_status,
+        NEW.assigned_to,
+        'create',
+        JSON_OBJECT(
+            'bucket_type', NEW.bucket_type,
+            'lifecycle_status', NEW.lifecycle_status,
+            'assigned_to', NEW.assigned_to,
+            'first_name', NEW.first_name,
+            'last_name', NEW.last_name,
+            'email', NEW.email
+        ),
+        JSON_ARRAY('bucket_type', 'lifecycle_status', 'assigned_to'),
+        NEW.assigned_to
+    );
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `customer_after_update` AFTER UPDATE ON `customers` FOR EACH ROW BEGIN
+    DECLARE has_changes BOOLEAN DEFAULT FALSE;
+    DECLARE changed_fields_json JSON;
+
+    -- เช็คว่ามีการเปลี่ยนแปลงฟิลด์ที่สนใจหรือไม่
+    SET has_changes = (
+        OLD.bucket_type <> NEW.bucket_type OR
+        OLD.lifecycle_status <> NEW.lifecycle_status OR
+        OLD.assigned_to <> NEW.assigned_to
+    );
+
+    IF has_changes THEN
+        INSERT INTO customer_logs (
+            customer_id,
+            bucket_type,
+            lifecycle_status,
+            assigned_to,
+            action_type,
+            old_values,
+            new_values,
+            changed_fields,
+            created_by
+        ) VALUES (
+            NEW.id,
+            NEW.bucket_type,
+            NEW.lifecycle_status,
+            NEW.assigned_to,
+            'update',
+            JSON_OBJECT(
+                'bucket_type', OLD.bucket_type,
+                'lifecycle_status', OLD.lifecycle_status,
+                'assigned_to', OLD.assigned_to
+            ),
+            JSON_OBJECT(
+                'bucket_type', NEW.bucket_type,
+                'lifecycle_status', NEW.lifecycle_status,
+                'assigned_to', NEW.assigned_to
+            ),
+            JSON_ARRAY(
+                CASE WHEN OLD.bucket_type <> NEW.bucket_type THEN 'bucket_type' END,
+                CASE WHEN OLD.lifecycle_status <> NEW.lifecycle_status THEN 'lifecycle_status' END,
+                CASE WHEN OLD.assigned_to <> NEW.assigned_to THEN 'assigned_to' END
+            ),
+            NEW.assigned_to
+        );
+    END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `customer_before_delete` BEFORE DELETE ON `customers` FOR EACH ROW BEGIN
+    INSERT INTO customer_logs (
+        customer_id,
+        bucket_type,
+        lifecycle_status,
+        assigned_to,
+        action_type,
+        old_values,
+        new_values,
+        changed_fields,
+        created_by
+    ) VALUES (
+        OLD.id,
+        OLD.bucket_type,
+        OLD.lifecycle_status,
+        OLD.assigned_to,
+        'delete',
+        JSON_OBJECT(
+            'bucket_type', OLD.bucket_type,
+            'lifecycle_status', OLD.lifecycle_status,
+            'assigned_to', OLD.assigned_to,
+            'first_name', OLD.first_name,
+            'last_name', OLD.last_name,
+            'email', OLD.email
+        ),
+        NULL,
+        JSON_ARRAY('bucket_type', 'lifecycle_status', 'assigned_to'),
+        OLD.assigned_to
+    );
+END
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -9128,6 +9295,15 @@ CREATE TABLE `customer_assignment_history` (
   `assigned_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+--
+-- Dumping data for table `customer_assignment_history`
+--
+
+INSERT INTO `customer_assignment_history` (`id`, `customer_id`, `user_id`, `assigned_at`) VALUES
+(2, 'CUST-TH-002', 2, '2025-10-29 14:36:47'),
+(3, 'CUST-TH-003', 2, '2025-10-29 14:42:43'),
+(4, 'CUST-TH-012', 2, '2025-10-30 10:23:33');
+
 -- --------------------------------------------------------
 
 --
@@ -9155,6 +9331,59 @@ INSERT INTO `customer_blocks` (`id`, `customer_id`, `reason`, `blocked_by`, `blo
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `customer_logs`
+--
+
+CREATE TABLE `customer_logs` (
+  `id` int(11) NOT NULL,
+  `customer_id` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bucket_type` varchar(16) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `lifecycle_status` enum('New','Old','FollowUp','Old3Months','DailyDistribution') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `assigned_to` int(11) DEFAULT NULL,
+  `action_type` enum('create','update','delete') COLLATE utf8mb4_unicode_ci DEFAULT 'update',
+  `old_values` json DEFAULT NULL,
+  `new_values` json DEFAULT NULL,
+  `changed_fields` json DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `customer_logs`
+--
+
+INSERT INTO `customer_logs` (`id`, `customer_id`, `bucket_type`, `lifecycle_status`, `assigned_to`, `action_type`, `old_values`, `new_values`, `changed_fields`, `created_by`, `created_at`) VALUES
+(1, 'CUST-TH-002', 'ready', NULL, NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"ชิงกาเบล\", \"first_name\": \"สมหญิง\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": null}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-29 04:24:32'),
+(2, 'CUST-TH-002', 'assigned', 'DailyDistribution', 2, 'update', '{\"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": null}', '{\"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"DailyDistribution\"}', '[\"bucket_type\", null, null]', 2, '2025-10-29 07:36:47'),
+(3, 'CUST-TH-003', 'ready', NULL, NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"คลองสามวา\", \"first_name\": \"สมปอง\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": null}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-29 07:42:04'),
+(4, 'CUST-TH-003', 'assigned', 'New', 2, 'update', '{\"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": null}', '{\"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", null, null]', 2, '2025-10-29 07:42:43'),
+(5, 'CUST-TH-005', 'ready', NULL, NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"ตายแล้วนะ\", \"first_name\": \"สมหมาย\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": null}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-29 09:37:13'),
+(6, 'CUST-TH-006', 'assigned', NULL, 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"ตายแล้วนะ\", \"first_name\": \"สมหมาย\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": null}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-29 09:39:01'),
+(7, 'CUST-TH-007', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"สวกตูด\", \"first_name\": \"สมหมวก\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:34:19'),
+(8, 'CUST-TH-008', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"เสม็ดเสร็จฉัน\", \"first_name\": \"สมเสร็จ\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:35:23'),
+(9, 'CUST-TH-009', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 02:50:10'),
+(10, 'CUST-TH-010', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว2\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:51:59'),
+(11, 'CUST-TH-011', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว3\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:51:59'),
+(12, 'CUST-TH-012', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว4\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:51:59'),
+(13, 'CUST-TH-013', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว5\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 02:52:00'),
+(14, 'CUST-TH-014', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว6\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 02:52:00'),
+(15, 'CUST-TH-015', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว7\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 02:52:00'),
+(16, 'CUST-TH-016', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว8\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 02:52:00'),
+(17, 'CUST-TH-017', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว9\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 02:52:00'),
+(18, 'CUST-TH-012', 'assigned', 'DailyDistribution', 2, 'update', '{\"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '{\"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"DailyDistribution\"}', '[\"bucket_type\", \"lifecycle_status\", null]', 2, '2025-10-30 03:23:33'),
+(19, 'CUST-TH-018', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว10\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 05:56:35'),
+(20, 'CUST-TH-019', 'assigned', 'New', 2, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว11\", \"assigned_to\": 2, \"bucket_type\": \"assigned\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', 2, '2025-10-30 05:56:35'),
+(21, 'CUST-TH-020', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว12\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:35'),
+(22, 'CUST-TH-021', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว13\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:35'),
+(23, 'CUST-TH-022', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว14\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:35'),
+(24, 'CUST-TH-023', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว15\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:35'),
+(25, 'CUST-TH-024', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว16\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:36'),
+(26, 'CUST-TH-025', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว17\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:36'),
+(27, 'CUST-TH-026', 'ready', 'New', NULL, 'create', NULL, '{\"email\": \"somchai@example.com\", \"last_name\": \"นะมึง\", \"first_name\": \"สมแล้ว18\", \"assigned_to\": null, \"bucket_type\": \"ready\", \"lifecycle_status\": \"New\"}', '[\"bucket_type\", \"lifecycle_status\", \"assigned_to\"]', NULL, '2025-10-30 05:56:36');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `customer_tags`
 --
 
@@ -9170,7 +9399,8 @@ CREATE TABLE `customer_tags` (
 INSERT INTO `customer_tags` (`customer_id`, `tag_id`) VALUES
 ('CUS-100000001', 1),
 ('CUS-100000001', 3),
-('CUS-952513121', 5);
+('CUS-952513121', 5),
+('CUST-001', 19);
 
 -- --------------------------------------------------------
 
@@ -9196,7 +9426,9 @@ INSERT INTO `env` (`id`, `key`, `value`, `created_at`) VALUES
 (3, 'timezone', 'Asia/Bangkok', '2025-10-16 05:25:55'),
 (4, 'date_format', 'Y-m-d H:i:s', '2025-10-16 05:25:55'),
 (5, 'ACCESS_TOKEN_PANCAKE_1', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoidGlrIHRpayIsImV4cCI6MTc2Nzc2ODQyNSwiYXBwbGljYXRpb24iOjEsInVpZCI6IjA0MzY3NTc3LWQxYzUtNDk1Ny04OTQ5LWY5Nzk5YmZlZWQ4OCIsInNlc3Npb25faWQiOiJGZThjVmF6UTA3aGVxWkhkcjZPLy9sVnRHMEVTY0ljc2VuTXg3VEVhT2gwIiwiaWF0IjoxNzU5OTkyNDI1LCJmYl9pZCI6IjE4NTM4ODEwMTE4NDA1MyIsImxvZ2luX3Nlc3Npb24iOm51bGwsImZiX25hbWUiOiJ0aWsgdGlrIn0.Xr5cxiH7_w1yC9T6Tz2XVTC02wd3bATxk1wZVdeQjP8', '2025-10-16 05:27:43'),
-(6, 'page_store_db', '0', '2025-10-21 04:20:42');
+(6, 'page_store_db', '0', '2025-10-21 04:20:42'),
+(7, 'ONECALL_USERNAME_1', '+66944845322', '2025-10-30 07:40:24'),
+(8, 'ONECALL_PASSWORD_1', 'P@ssw0rd', '2025-10-30 07:40:24');
 
 -- --------------------------------------------------------
 
@@ -9221,7 +9453,41 @@ CREATE TABLE `exports` (
 
 INSERT INTO `exports` (`id`, `filename`, `file_path`, `orders_count`, `user_id`, `exported_by`, `created_at`, `download_count`) VALUES
 (1, 'orders_export_2025-10-17.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251017_052806_orders_export_2025-10-17.csv', 4, 4, 'Sommai Backoffice', '2025-10-17 12:28:06', 2),
-(2, 'orders_export_2025-10-27.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251027_064832_orders_export_2025-10-27.csv', 5, 4, 'Sommai Backoffice', '2025-10-27 13:48:32', 0);
+(2, 'orders_export_2025-10-27.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251027_064832_orders_export_2025-10-27.csv', 5, 4, 'Sommai Backoffice', '2025-10-27 13:48:32', 0),
+(3, 'orders_export_2025-10-28.csv', 'C:\\AppServ\\www\\CRM_ERP_V4\\api\\exports\\20251028_032733_orders_export_2025-10-28.csv', 1, 4, 'Sommai Backoffice', '2025-10-28 10:27:33', 0);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `marketing_ads_log`
+--
+
+CREATE TABLE `marketing_ads_log` (
+  `id` int(11) NOT NULL,
+  `page_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `date` date NOT NULL,
+  `ads_cost` int(11) DEFAULT NULL,
+  `impressions` int(11) DEFAULT NULL,
+  `reach` int(11) DEFAULT NULL,
+  `clicks` int(11) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `marketing_user_page`
+--
+
+CREATE TABLE `marketing_user_page` (
+  `id` int(11) NOT NULL,
+  `page_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -9280,27 +9546,27 @@ DELIMITER ;
 -- (See below for the actual view)
 --
 CREATE TABLE `notifications_by_role` (
-`action_text` varchar(100)
-,`action_url` varchar(255)
+`id` varchar(50)
+,`type` enum('system_maintenance','system_update','new_customer_assigned','customer_ownership_expiring','customer_follow_up_due','customer_grade_changed','new_order_created','order_status_changed','order_cancelled','order_payment_pending','payment_verification_required','payment_overdue','payment_verified','stock_low','stock_out','new_stock_received','new_promotion_created','promotion_expiring','campaign_performance','team_target_achieved','team_member_performance','new_team_member','daily_report_ready','weekly_report_ready','monthly_report_ready','page_engagement_drop','page_reach_increase','unanswered_messages','weekly_page_report','high_performing_post','low_performing_post','scheduled_post_reminder','facebook_policy_alert','new_customer_from_page','customer_inquiry_from_page','customer_complaint_from_page','customer_review_from_page','pancake_api_connection_issue','page_data_sync_success','page_data_sync_failure','environment_variable_change')
 ,`category` enum('system','sales','customer','order','payment','inventory','marketing','report','team','page_performance','content_management','customer_interaction')
-,`created_at` datetime
-,`current_value` decimal(10,2)
-,`id` varchar(50)
-,`is_read` tinyint(1)
+,`title` varchar(255)
 ,`message` text
-,`metadata` json
-,`page_id` int(11)
-,`page_name` varchar(255)
-,`percentage_change` decimal(5,2)
-,`platform` varchar(50)
-,`previous_value` decimal(10,2)
+,`timestamp` datetime
+,`is_read` tinyint(1)
 ,`priority` enum('low','medium','high','urgent')
 ,`related_id` varchar(50)
-,`role` enum('Admin Page','Telesale','Supervisor Telesale','Backoffice','Admin Control','Super Admin','Marketing')
-,`timestamp` datetime
-,`title` varchar(255)
-,`type` enum('system_maintenance','system_update','new_customer_assigned','customer_ownership_expiring','customer_follow_up_due','customer_grade_changed','new_order_created','order_status_changed','order_cancelled','order_payment_pending','payment_verification_required','payment_overdue','payment_verified','stock_low','stock_out','new_stock_received','new_promotion_created','promotion_expiring','campaign_performance','team_target_achieved','team_member_performance','new_team_member','daily_report_ready','weekly_report_ready','monthly_report_ready','page_engagement_drop','page_reach_increase','unanswered_messages','weekly_page_report','high_performing_post','low_performing_post','scheduled_post_reminder','facebook_policy_alert','new_customer_from_page','customer_inquiry_from_page','customer_complaint_from_page','customer_review_from_page','pancake_api_connection_issue','page_data_sync_success','page_data_sync_failure','environment_variable_change')
+,`page_id` int(11)
+,`page_name` varchar(255)
+,`platform` varchar(50)
+,`previous_value` decimal(10,2)
+,`current_value` decimal(10,2)
+,`percentage_change` decimal(5,2)
+,`action_url` varchar(255)
+,`action_text` varchar(100)
+,`metadata` json
+,`created_at` datetime
 ,`updated_at` datetime
+,`role` enum('Admin Page','Telesale','Supervisor Telesale','Backoffice','Admin Control','Super Admin','Marketing')
 );
 
 -- --------------------------------------------------------
@@ -23119,7 +23385,41 @@ INSERT INTO `orders` (`id`, `customer_id`, `company_id`, `creator_id`, `order_da
 ('ORD-1761281352625', 'CUS-002', 1, 1, '2025-10-24 04:49:13', '2025-10-25 00:00:00', '33/10 ภูริคลอง 7', 'คูคต', 'ลำลูกกา', 'ปทุมธานี', '12130', '0.00', '0.00', '1750.00', 'Transfer', 'Paid', 'api/uploads/slips/slip_ORD-1761281352625_20251024_044912_1ad2d2.jpg', '1750.00', '0.00', 'Picking', NULL, NULL, 'Facebook', 28, 1),
 ('ORD-1761282292085', 'CUS-002', 1, 1, '2025-10-24 05:04:52', '2025-10-25 00:00:00', '33/10 ภูริคลอง 7', 'คูคต', 'ลำลูกกา', 'ปทุมธานี', '12130', '0.00', '0.00', '120.00', 'Transfer', 'Unpaid', 'api/uploads/slips/slip_ORD-1761282292085_20251024_050452_b0f498.jpg', '0.00', '0.00', 'Cancelled', NULL, NULL, 'Facebook', 26, 1),
 ('ORD-1761285041247', 'CUS-002', 1, 1, '2025-10-24 05:50:41', '2025-10-25 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '120.00', 'Transfer', 'Unpaid', 'api/uploads/slips/slip_ORD-1761285041247_20251024_055041_b7e77c.jpg', NULL, NULL, 'Pending', NULL, NULL, 'Facebook', 32, 7),
-('ORD-1761533589243', 'CUS-100000001', 1, 2, '2025-10-27 02:53:09', '2025-10-28 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '400.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Picking', NULL, NULL, 'โทร', NULL, 7);
+('ORD-1761533589243', 'CUS-100000001', 1, 2, '2025-10-27 02:53:09', '2025-10-28 00:00:00', '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110', '0.00', '0.00', '400.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Picking', NULL, NULL, 'โทร', NULL, 7),
+('ORD-1761622007989', 'CUST-001', 1, 2, '2025-10-28 03:26:48', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '200.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Picking', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761622787497', 'CUS-004', 1, 2, '2025-10-28 03:39:47', '2025-10-29 00:00:00', '321 ถนนรังสิต', 'คลองหนึ่ง', 'คลองหลวง', 'ปทุมธานี', '12120', '0.00', '0.00', '600.00', 'Transfer', 'PendingVerification', NULL, NULL, NULL, 'Pending', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761622870309', 'CUS-003', 1, 2, '2025-10-28 03:41:10', '2025-10-29 00:00:00', '789 ถนนติวานนท์', 'บางกระสอ', 'เมืองนนทบุรี', 'นนทบุรี', '11000', '0.00', '0.00', '2000.00', 'Transfer', 'PendingVerification', NULL, NULL, NULL, 'Pending', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761625258789', 'CUST-001', 1, 2, '2025-10-28 04:20:59', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '600.00', 'Transfer', 'Paid', 'api/uploads/slips/slip_ORD-1761625258789_20251028_042058_409814.png', '600.00', '0.00', 'Pending', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761625451361', 'CUST-001', 1, 2, '2025-10-28 04:24:11', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '400.00', 'Transfer', 'Paid', 'api/uploads/slips/slip_ORD-1761625451361_20251028_042411_991f87.png', '400.00', '0.00', 'Pending', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761625974435', 'CUST-001', 1, 2, '2025-10-28 04:32:54', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '200.00', 'Transfer', 'PendingVerification', 'api/uploads/slips/slip_ORD-1761625974435_20251028_043254_59d73d.png', NULL, NULL, 'Pending', NULL, NULL, 'โทร', NULL, 1),
+('ORD-1761629121525', 'CUS-002', 1, 2, '2025-10-28 05:25:22', '2025-10-29 00:00:00', '456 ถนนพหลโยธิน', 'จตุจักร', 'จตุจักร', 'กรุงเทพ', '10900', '0.00', '0.00', '400.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Pending', NULL, NULL, 'โทร', NULL, 7),
+('ORD-1761636425498', 'CUST-001', 1, 1, '2025-10-28 07:27:05', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '360.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Pending', NULL, NULL, 'Facebook', 32, 1),
+('ORD-1761642243789', 'CUST-001', 1, 1, '2025-10-28 09:04:04', '2025-10-29 00:00:00', '128/12 ถนนพระราม 1 แขวงวังใหม่ เขตปทุมวัน', 'ลุมพินี', 'ปทุมวัน', 'กรุงเทพมหานคร', '10330', '0.00', '0.00', '240.00', 'COD', 'Unpaid', NULL, NULL, NULL, 'Pending', NULL, NULL, 'Facebook', 18, 1),
+('SO-1001', 'CUST-TH-001', 1, 1, '2025-10-29 03:50:19', '2025-10-29 03:50:19', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '600.00', 'Transfer', 'Paid', NULL, '600.00', NULL, 'Pending', 'คำสั่งซื้อแรกจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1002', 'CUST-TH-001', 1, 1, '2025-10-29 04:20:47', '2025-10-29 04:20:47', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '400.00', 'COD', 'Paid', NULL, '400.00', '400.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1003', 'CUST-TH-002', 1, 1, '2025-10-29 04:24:32', '2025-10-29 04:24:32', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '400.00', 'COD', 'Paid', NULL, '400.00', '400.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1005', 'CUST-TH-005', 1, 1, '2025-10-29 09:37:14', '2025-10-29 09:37:14', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1006', 'CUST-TH-006', 1, 1, '2025-10-29 09:39:01', '2025-10-29 09:39:01', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1007', 'CUST-TH-007', 1, 1, '2025-10-30 09:34:20', '2025-10-30 09:34:20', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1008', 'CUST-TH-008', 1, 1, '2025-10-30 09:35:23', '2025-10-30 09:35:23', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1009', 'CUST-TH-009', 1, 1, '2025-10-30 09:50:10', '2025-10-30 09:50:10', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1010', 'CUST-TH-010', 1, 1, '2025-10-30 09:51:59', '2025-10-30 09:51:59', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1200.00', 'COD', 'Paid', NULL, '1200.00', '1200.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1011', 'CUST-TH-011', 1, 1, '2025-10-30 09:51:59', '2025-10-30 09:51:59', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1400.00', 'COD', 'Paid', NULL, '1400.00', '1400.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1012', 'CUST-TH-012', 1, 1, '2025-10-30 09:51:59', '2025-10-30 09:51:59', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1600.00', 'COD', 'Paid', NULL, '1600.00', '1600.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1013', 'CUST-TH-013', 1, 1, '2025-10-30 09:52:00', '2025-10-30 09:52:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1014', 'CUST-TH-014', 1, 1, '2025-10-30 09:52:00', '2025-10-30 09:52:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '16000.00', 'COD', 'Paid', NULL, '16000.00', '16000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1015', 'CUST-TH-015', 1, 1, '2025-10-30 09:52:00', '2025-10-30 09:52:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '6000.00', 'COD', 'Paid', NULL, '6000.00', '6000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1016', 'CUST-TH-016', 1, 1, '2025-10-30 09:52:00', '2025-10-30 09:52:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '4000.00', 'COD', 'Paid', NULL, '4000.00', '4000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1017', 'CUST-TH-017', 1, 1, '2025-10-30 09:52:00', '2025-10-30 09:52:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '10800.00', 'COD', 'Paid', NULL, '10800.00', '10800.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1018', 'CUST-TH-018', 1, 1, '2025-10-30 12:56:35', '2025-10-30 12:56:35', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1000.00', 'COD', 'Paid', NULL, '1000.00', '1000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1019', 'CUST-TH-019', 1, 1, '2025-10-30 12:56:35', '2025-10-30 12:56:35', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1200.00', 'COD', 'Paid', NULL, '1200.00', '1200.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1020', 'CUST-TH-020', 1, 1, '2025-01-02 00:00:00', '2025-01-02 00:00:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1400.00', 'COD', 'Paid', NULL, '1400.00', '1400.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1021', 'CUST-TH-021', 1, 1, '2025-02-02 00:00:00', '2025-02-02 00:00:00', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '1600.00', 'COD', 'Paid', NULL, '1600.00', '1600.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1022', 'CUST-TH-022', 1, 1, '2025-10-30 12:56:35', '2025-10-30 12:56:35', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '2000.00', 'COD', 'Paid', NULL, '2000.00', '2000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1023', 'CUST-TH-023', 1, 1, '2025-10-30 12:56:35', '2025-10-30 12:56:35', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '16000.00', 'COD', 'Paid', NULL, '16000.00', '16000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1024', 'CUST-TH-024', 1, 1, '2025-10-30 12:56:36', '2025-10-30 12:56:36', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '6000.00', 'COD', 'Paid', NULL, '6000.00', '6000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1025', 'CUST-TH-025', 1, 1, '2025-10-30 12:56:36', '2025-10-30 12:56:36', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '4000.00', 'COD', 'Paid', NULL, '4000.00', '4000.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL),
+('SO-1026', 'CUST-TH-026', 1, 1, '2025-10-30 12:56:36', '2025-10-30 12:56:36', '99/9 หมู่บ้านสุขใจ ซอย 5 ถนนโชคชัย 4 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230', 'แขวงลาดพร้าว', 'เขตลาดพร้าว', 'กรุงเทพมหานคร', '10230', '0.00', '0.00', '10800.00', 'COD', 'Paid', NULL, '10800.00', '10800.00', 'Pending', 'คำสั่งซื้อที่สองจากแคมเปญเดือนตุลาคม', NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -23197,31 +23497,65 @@ INSERT INTO `order_items` (`id`, `order_id`, `product_id`, `product_name`, `quan
 (46, 'ORD-1760679975662', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (47, 'ORD-1760679975662', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
 (48, 'ORD-1760680043751', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
-(49, 'ORD-1760680043751', NULL, 'Seed A', 1, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(49, 'ORD-1760680043751', 1, 'Seed A', 1, '200.00', '0.00', 0, 1, NULL, NULL, 0),
 (50, 'ORD-1760680043751', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (51, 'ORD-1760680043751', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
 (52, 'ORD-1760945441327', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
-(53, 'ORD-1760945441327', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(53, 'ORD-1760945441327', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
 (54, 'ORD-1760945441327', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (55, 'ORD-1760945441327', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
-(56, 'ORD-1760947550715', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(56, 'ORD-1760947550715', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
 (57, 'ORD-1760948302845', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
 (58, 'ORD-1760948302845', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (59, 'ORD-1760948302845', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
 (60, 'ORD-1760949151533', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
 (61, 'ORD-1760949151533', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (62, 'ORD-1760949151533', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
-(63, 'ORD-1760950639386', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(63, 'ORD-1760950639386', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
 (64, 'ORD-1760950795424', NULL, '📦 ชุดทดลองเมล็ด 3 แถม 1', 1, '120.00', '0.00', 0, 1, 2, NULL, 1),
 (65, 'ORD-1760950795424', 3, 'เมล็ดพันธุ์ A', 3, '120.00', '0.00', 0, 1, 2, NULL, 0),
 (66, 'ORD-1760950795424', 3, 'เมล็ดพันธุ์ A (ของแถม)', 1, '0.00', '0.00', 1, 1, 2, NULL, 0),
-(67, 'ORD-1761279213225', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '20.00', 0, 1, NULL, NULL, 0),
+(67, 'ORD-1761279213225', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '20.00', 0, 1, NULL, NULL, 0),
 (68, 'ORD-1761281352625', NULL, '📦 ปุ๋ย แสงราชสีห์ ซื้อ 4 แถม 1', 1, '1750.00', '0.00', 0, 1, 5, NULL, 1),
 (69, 'ORD-1761281352625', 2, 'ปุ๋ย แสงราชสีห์', 4, '200.00', '0.00', 0, 1, 5, NULL, 0),
 (70, 'ORD-1761281352625', 2, 'ปุ๋ย แสงราชสีห์ (ของแถม)', 1, '0.00', '0.00', 1, 1, 5, NULL, 0),
-(71, 'ORD-1761282292085', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
-(72, 'ORD-1761285041247', NULL, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
-(73, 'ORD-1761533589243', NULL, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 1, NULL, NULL, 0);
+(71, 'ORD-1761282292085', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(72, 'ORD-1761285041247', 3, 'เมล็ดพันธุ์ A', 1, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(73, 'ORD-1761533589243', 2, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(74, 'ORD-1761622007989', 2, 'ปุ๋ย แสงราชสีห์', 1, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(75, 'ORD-1761622787497', 2, 'ปุ๋ย แสงราชสีห์', 3, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(76, 'ORD-1761622870309', 2, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(77, 'ORD-1761625258789', 2, 'ปุ๋ย แสงราชสีห์', 3, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(78, 'ORD-1761625451361', 2, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(79, 'ORD-1761625974435', 2, 'ปุ๋ย แสงราชสีห์', 1, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(80, 'ORD-1761629121525', 2, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 1, NULL, NULL, 0),
+(81, 'ORD-1761636425498', 3, 'เมล็ดพันธุ์ A', 3, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(82, 'ORD-1761642243789', 3, 'เมล็ดพันธุ์ A', 2, '120.00', '0.00', 0, 1, NULL, NULL, 0),
+(83, 'SO-1001', 1, 'Seed A', 3, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(84, 'SO-1002', 2, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(85, 'SO-1003', 2, 'ปุ๋ย แสงราชสีห์', 2, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(86, 'SO-1005', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(87, 'SO-1006', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(88, 'SO-1007', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(89, 'SO-1008', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(90, 'SO-1009', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(91, 'SO-1010', NULL, 'ปุ๋ย แสงราชสีห์', 6, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(92, 'SO-1011', NULL, 'ปุ๋ย แสงราชสีห์', 7, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(93, 'SO-1012', NULL, 'ปุ๋ย แสงราชสีห์', 8, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(94, 'SO-1013', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(95, 'SO-1014', NULL, 'ปุ๋ย แสงราชสีห์', 80, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(96, 'SO-1015', NULL, 'ปุ๋ย แสงราชสีห์', 30, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(97, 'SO-1016', NULL, 'ปุ๋ย แสงราชสีห์', 20, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(98, 'SO-1017', NULL, 'ปุ๋ย แสงราชสีห์', 54, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(99, 'SO-1018', NULL, 'ปุ๋ย แสงราชสีห์', 5, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(100, 'SO-1019', NULL, 'ปุ๋ย แสงราชสีห์', 6, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(101, 'SO-1020', NULL, 'ปุ๋ย แสงราชสีห์', 7, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(102, 'SO-1021', NULL, 'ปุ๋ย แสงราชสีห์', 8, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(103, 'SO-1022', NULL, 'ปุ๋ย แสงราชสีห์', 10, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(104, 'SO-1023', NULL, 'ปุ๋ย แสงราชสีห์', 80, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(105, 'SO-1024', NULL, 'ปุ๋ย แสงราชสีห์', 30, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(106, 'SO-1025', NULL, 'ปุ๋ย แสงราชสีห์', 20, '200.00', '0.00', 0, 0, NULL, NULL, 0),
+(107, 'SO-1026', NULL, 'ปุ๋ย แสงราชสีห์', 54, '200.00', '0.00', 0, 0, NULL, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -23252,20 +23586,26 @@ CREATE TABLE `order_item_allocations` (
 --
 
 INSERT INTO `order_item_allocations` (`id`, `order_id`, `order_item_id`, `product_id`, `promotion_id`, `is_freebie`, `required_quantity`, `allocated_quantity`, `warehouse_id`, `lot_number`, `status`, `notes`, `created_by`, `created_at`) VALUES
-(1, 'ORD-1760679975662', 46, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:46:15'),
-(2, 'ORD-1760679975662', 47, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:46:15'),
-(3, 'ORD-1760680043751', 50, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
-(4, 'ORD-1760680043751', 51, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
-(5, 'ORD-1760945441327', 54, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
-(6, 'ORD-1760945441327', 55, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
-(7, 'ORD-1760948302845', 58, 2, 5, 0, 4, 4, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
-(8, 'ORD-1760948302845', 59, 2, 5, 1, 1, 1, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
-(9, 'ORD-1760949151533', 61, 2, 5, 0, 4, 4, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
-(10, 'ORD-1760949151533', 62, 2, 5, 1, 1, 1, 2, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
-(11, 'ORD-1760950795424', 65, 3, 2, 0, 3, 3, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55'),
-(12, 'ORD-1760950795424', 66, 3, 2, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55'),
-(13, 'ORD-1761281352625', 69, 2, 5, 0, 4, 4, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-24 11:49:12'),
-(14, 'ORD-1761281352625', 70, 2, 5, 1, 1, 1, 1, NULL, 'ALLOCATED', NULL, 1, '2025-10-24 11:49:12');
+(1, 'ORD-1760679975662', 46, 2, 5, 0, 4, 4, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-17 12:46:15'),
+(2, 'ORD-1760679975662', 47, 2, 5, 1, 1, 1, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-17 12:46:15'),
+(3, 'ORD-1760680043751', 50, 2, 5, 0, 4, 4, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
+(4, 'ORD-1760680043751', 51, 2, 5, 1, 1, 1, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-17 12:47:23'),
+(5, 'ORD-1760945441327', 54, 2, 5, 0, 4, 4, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
+(6, 'ORD-1760945441327', 55, 2, 5, 1, 1, 1, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 1, '2025-10-20 14:30:41'),
+(7, 'ORD-1760948302845', 58, 2, 5, 0, 4, 4, 2, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
+(8, 'ORD-1760948302845', 59, 2, 5, 1, 1, 1, 2, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-20 15:18:22'),
+(9, 'ORD-1760949151533', 61, 2, 5, 0, 4, 4, 2, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
+(10, 'ORD-1760949151533', 62, 2, 5, 1, 1, 1, 2, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-20 15:32:31'),
+(11, 'ORD-1760950795424', 65, 3, 2, 0, 3, 3, 1, 'LOT-2024-003', 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55'),
+(12, 'ORD-1760950795424', 66, 3, 2, 1, 1, 1, 1, 'LOT-2024-003', 'ALLOCATED', NULL, 2, '2025-10-20 15:59:55'),
+(13, 'ORD-1761281352625', 69, 2, 5, 0, 4, 4, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 1, '2025-10-24 11:49:12'),
+(14, 'ORD-1761281352625', 70, 2, 5, 1, 1, 1, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 1, '2025-10-24 11:49:12'),
+(15, 'ORD-1761625974435', 79, 2, NULL, 0, 1, 1, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-28 11:32:54'),
+(16, 'ORD-1761629121525', 80, 2, NULL, 0, 2, 2, 1, 'LOT-2024-002', 'ALLOCATED', NULL, 2, '2025-10-28 12:25:21'),
+(17, 'ORD-1761636425498', 81, 3, NULL, 0, 3, 0, NULL, NULL, 'PENDING', NULL, 1, '2025-10-28 14:27:05'),
+(18, 'ORD-1761642243789', 82, 3, NULL, 0, 2, 0, NULL, NULL, 'PENDING', NULL, 1, '2025-10-28 16:04:03'),
+(19, 'SO-1002', 84, 2, NULL, 0, 2, 0, NULL, NULL, 'PENDING', NULL, 47, '2025-10-29 11:20:47'),
+(20, 'SO-1003', 85, 2, NULL, 0, 2, 0, NULL, NULL, 'PENDING', NULL, 47, '2025-10-29 11:24:32');
 
 -- --------------------------------------------------------
 
@@ -23290,7 +23630,10 @@ INSERT INTO `order_slips` (`id`, `order_id`, `url`, `created_at`) VALUES
 (4, 'ORD-1760950639386', 'api/uploads/slips/slip_ORD-1760950639386_20251020_091134_6abc6f.png', '2025-10-20 16:11:34'),
 (7, 'ORD-1761281352625', 'api/uploads/slips/slip_ORD-1761281352625_20251024_044912_1ad2d2.jpg', '2025-10-24 11:49:12'),
 (8, 'ORD-1761282292085', 'api/uploads/slips/slip_ORD-1761282292085_20251024_050452_b0f498.jpg', '2025-10-24 12:04:52'),
-(9, 'ORD-1761285041247', 'api/uploads/slips/slip_ORD-1761285041247_20251024_055041_b7e77c.jpg', '2025-10-24 12:50:41');
+(9, 'ORD-1761285041247', 'api/uploads/slips/slip_ORD-1761285041247_20251024_055041_b7e77c.jpg', '2025-10-24 12:50:41'),
+(10, 'ORD-1761625258789', 'api/uploads/slips/slip_ORD-1761625258789_20251028_042058_409814.png', '2025-10-28 11:20:58'),
+(11, 'ORD-1761625451361', 'api/uploads/slips/slip_ORD-1761625451361_20251028_042411_991f87.png', '2025-10-28 11:24:11'),
+(12, 'ORD-1761625974435', 'api/uploads/slips/slip_ORD-1761625974435_20251028_043254_59d73d.png', '2025-10-28 11:32:54');
 
 -- --------------------------------------------------------
 
@@ -24209,7 +24552,7 @@ CREATE TABLE `product_lots` (
 
 INSERT INTO `product_lots` (`id`, `lot_number`, `product_id`, `warehouse_id`, `purchase_date`, `expiry_date`, `quantity_received`, `quantity_remaining`, `unit_cost`, `supplier_id`, `supplier_invoice`, `status`, `notes`, `created_at`) VALUES
 (1, 'LOT-2024-001', 1, 1, '2025-10-12', '2025-12-31', '100.00', '100.00', '100.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
-(2, 'LOT-2024-002', 2, 1, '2025-10-12', '2025-11-30', '50.00', '50.00', '80.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
+(2, 'LOT-2024-002', 2, 1, '2025-10-12', '2025-11-30', '50.00', '47.00', '80.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
 (3, 'LOT-2024-003', 3, 1, '2025-10-12', '2025-10-31', '200.00', '200.00', '50.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
 (4, 'LOT-2024-004', 1, 2, '2025-10-12', '2025-12-31', '80.00', '80.00', '100.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
 (5, 'LOT-2024-005', 2, 2, '2025-10-12', '2025-11-30', '30.00', '30.00', '80.00', NULL, NULL, 'Active', NULL, '2025-10-12 11:51:26'),
@@ -24364,7 +24707,8 @@ INSERT INTO `tags` (`id`, `name`, `type`) VALUES
 (5, 'สนใจโปร', 'SYSTEM'),
 (6, 'ลูกค้าประจำ', 'SYSTEM'),
 (17, 'VIP', 'SYSTEM'),
-(18, 'Lead', 'SYSTEM');
+(18, 'Lead', 'SYSTEM'),
+(19, 'VIP', 'SYSTEM');
 
 -- --------------------------------------------------------
 
@@ -24397,13 +24741,13 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `email`, `phone`, `role`, `company_id`, `team_id`, `supervisor_id`, `id_oth`, `status`, `created_at`, `last_login`, `login_count`) VALUES
-(1, 'admin1', 'admin123', 'Somchai', 'Admin', 'admin1@example.com', '0810000001', 'Admin Page', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-24 10:18:53', 7),
-(2, 'telesale1', 'telesale123', 'Somsri', 'Telesale', 'telesale1@example.com', '0810000002', 'Telesale', 1, 1, 3, NULL, 'active', '2025-10-13 10:54:34', '2025-10-27 11:14:45', 33),
+(1, 'admin1', 'admin123', 'Somchai', 'Admin', 'admin1@example.com', '0810000001', 'Admin Page', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-28 14:26:39', 8),
+(2, 'telesale1', 'telesale123', 'Somsri', 'Telesale', 'telesale1@example.com', '0810000002', 'Telesale', 1, 1, 3, NULL, 'active', '2025-10-13 10:54:34', '2025-10-30 15:56:54', 39),
 (3, 'supervisor1', 'supervisor123', 'Somying', 'Supervisor', 'supervisor1@example.com', '0810000003', 'Supervisor Telesale', 1, 1, NULL, NULL, 'active', '2025-10-13 10:54:34', NULL, 0),
-(4, 'backoffice1', 'backoffice123', 'Sommai', 'Backoffice', 'backoffice1@example.com', '0810000004', 'Backoffice', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-27 13:48:18', 3),
+(4, 'backoffice1', 'backoffice123', 'Sommai', 'Backoffice', 'backoffice1@example.com', '0810000004', 'Backoffice', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-28 16:14:55', 7),
 (5, 'owner1', 'owner123', 'Owner', 'Control', 'owner1@example.com', '0810000005', 'Admin Control', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-23 09:48:35', 5),
 (6, 'superadmin', 'superadmin123', 'Super', 'Admin', 'superadmin@example.com', '0810000000', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-22 15:05:57', 1),
-(21, 'thanu.m', '1234', 'th', 'df', 'admin@prima49.com', '0952519797', 'Marketing', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-23 15:09:43', 1),
+(21, 'thanu.m', '1234', 'th', 'df', 'admin@prima49.com', '0952519797', 'Marketing', 1, NULL, NULL, NULL, 'active', '2025-10-13 10:54:34', '2025-10-29 09:38:33', 2),
 (24, 'pnr', '1234', 'ปอนด์', '[Supervisor]', 'pnr@gmail.com', '0950546556', 'Supervisor Telesale', 1, 1, NULL, NULL, 'active', '2025-09-03 14:13:09', '2025-10-13 09:22:11', 0),
 (25, 'nnn', '1234', 'หนิง', '[Supervisor]', 'nnn@gmail.com', '0994164440', 'Supervisor Telesale', 1, 2, NULL, NULL, 'active', '2025-09-03 14:14:15', '2025-10-14 12:03:48', 4),
 (26, 'nam', '1234', 'น้ำ', '[Supervisor]', 'nam@gmail.com', '0944272646', 'Supervisor Telesale', 1, 3, NULL, NULL, 'active', '2025-09-03 14:15:03', '2025-10-14 11:39:09', 1),
@@ -24414,14 +24758,14 @@ INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `e
 (31, 'viv', '1234', 'กวาง', '[Telesale]', 'viv@gmail.com', '0652041252', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:30:25', '2025-10-14 12:04:13', 1),
 (32, 'eng', '1234', 'พลอยใส', '[Telesale]', 'eng@gmail.com', '0945547266', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:31:34', '2025-10-13 09:08:07', 0),
 (33, 'noi', '1234', 'หน่อย', '[Telesale]', 'noi@gmail.com', '0660624651', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:32:24', '2025-10-13 09:11:19', 0),
-(34, 'min', '1234', 'มินนี่', '[Telesale]', 'min@gmail.com', '0660524963', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:33:19', '2025-10-22 09:30:22', 1),
+(34, 'min', '1234', 'มินนี่', '[Telesale]', 'min@gmail.com', '0660524963', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:33:19', '2025-10-30 15:07:45', 2),
 (35, 'ggg', '1234', 'แกรน', '[Telelsale]', 'ggg@gmail.com', '0626633267', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:34:10', '2025-10-14 12:05:52', 1),
 (36, 'gof', '1234', 'กล๊อฟ', '[Telesale]', 'gof@gmail.com', '0945547598', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-03 14:35:09', '2025-10-13 09:04:45', 0),
 (37, 'api', '1234', 'ตูน', '[Telesale]', 'api@gmail.com', '0831092265', 'Telesale', 1, 1, 24, NULL, 'active', '2025-09-03 14:37:15', '2025-10-13 09:08:13', 0),
 (38, 'cha', '1234', 'เอ้', '[Telesale]', 'cha@gmail.com', '0991451323', 'Telesale', 1, 3, 26, NULL, 'active', '2025-09-03 14:37:59', '2025-10-13 08:36:46', 0),
 (39, 'see', '1234', 'ซี', '[Telesale]', 'see@gmail.com', '0831092262', 'Telesale', 1, 2, 25, NULL, 'active', '2025-09-03 14:38:54', '2025-10-13 11:03:56', 0),
 (40, 'nut', '1234', 'นัท', '[Telesale]', 'nut@gmail.com', '0831092264', 'Telesale', 1, 4, 27, NULL, 'active', '2025-09-03 14:39:51', '2025-10-13 08:43:28', 0),
-(47, 'thanu', '1234', 'ธนู', 'สุริวงศ์', 'prima.thanu.s@gmail.com', '0952519797', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-03 23:03:32', '2025-10-27 14:18:25', 32),
+(47, 'thanu', '1234', 'ธนู', 'สุริวงศ์', 'prima.thanu.s@gmail.com', '0952519797', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-03 23:03:32', '2025-10-29 09:39:55', 35),
 (48, 'Boss', '1234', 'วัชรพัน', 'ลิ้มถาวรวิวัฒน์', 'watcharaphan.prima@gmail.com', '0958765410', 'Super Admin', 1, NULL, NULL, NULL, 'active', '2025-09-04 09:31:21', '2025-10-13 08:59:00', 0),
 (62, 'tai', '1234', 'ต่าย', '[Telesale]', 'tai@gmail.com', '0626831777', 'Telesale', 1, 2, 25, NULL, 'active', '2025-09-04 14:04:38', '2025-10-13 11:14:49', 0),
 (64, 'sry1', '1234', 'ปอ', 'Admin Page', 'sry1@prima49.com', '-', 'Admin Page', 1, NULL, NULL, NULL, 'inactive', '2025-09-05 13:43:18', NULL, 0),
@@ -24574,29 +24918,29 @@ DELIMITER ;
 -- (See below for the actual view)
 --
 CREATE TABLE `user_notifications` (
-`action_text` varchar(100)
-,`action_url` varchar(255)
+`id` varchar(50)
+,`type` enum('system_maintenance','system_update','new_customer_assigned','customer_ownership_expiring','customer_follow_up_due','customer_grade_changed','new_order_created','order_status_changed','order_cancelled','order_payment_pending','payment_verification_required','payment_overdue','payment_verified','stock_low','stock_out','new_stock_received','new_promotion_created','promotion_expiring','campaign_performance','team_target_achieved','team_member_performance','new_team_member','daily_report_ready','weekly_report_ready','monthly_report_ready','page_engagement_drop','page_reach_increase','unanswered_messages','weekly_page_report','high_performing_post','low_performing_post','scheduled_post_reminder','facebook_policy_alert','new_customer_from_page','customer_inquiry_from_page','customer_complaint_from_page','customer_review_from_page','pancake_api_connection_issue','page_data_sync_success','page_data_sync_failure','environment_variable_change')
 ,`category` enum('system','sales','customer','order','payment','inventory','marketing','report','team','page_performance','content_management','customer_interaction')
-,`created_at` datetime
-,`current_value` decimal(10,2)
-,`id` varchar(50)
-,`is_read` tinyint(1)
-,`is_read_by_user` int(1)
+,`title` varchar(255)
 ,`message` text
-,`metadata` json
-,`page_id` int(11)
-,`page_name` varchar(255)
-,`percentage_change` decimal(5,2)
-,`platform` varchar(50)
-,`previous_value` decimal(10,2)
+,`timestamp` datetime
+,`is_read` tinyint(1)
 ,`priority` enum('low','medium','high','urgent')
 ,`related_id` varchar(50)
-,`role` enum('Admin Page','Telesale','Supervisor Telesale','Backoffice','Admin Control','Super Admin','Marketing')
-,`timestamp` datetime
-,`title` varchar(255)
-,`type` enum('system_maintenance','system_update','new_customer_assigned','customer_ownership_expiring','customer_follow_up_due','customer_grade_changed','new_order_created','order_status_changed','order_cancelled','order_payment_pending','payment_verification_required','payment_overdue','payment_verified','stock_low','stock_out','new_stock_received','new_promotion_created','promotion_expiring','campaign_performance','team_target_achieved','team_member_performance','new_team_member','daily_report_ready','weekly_report_ready','monthly_report_ready','page_engagement_drop','page_reach_increase','unanswered_messages','weekly_page_report','high_performing_post','low_performing_post','scheduled_post_reminder','facebook_policy_alert','new_customer_from_page','customer_inquiry_from_page','customer_complaint_from_page','customer_review_from_page','pancake_api_connection_issue','page_data_sync_success','page_data_sync_failure','environment_variable_change')
+,`page_id` int(11)
+,`page_name` varchar(255)
+,`platform` varchar(50)
+,`previous_value` decimal(10,2)
+,`current_value` decimal(10,2)
+,`percentage_change` decimal(5,2)
+,`action_url` varchar(255)
+,`action_text` varchar(100)
+,`metadata` json
+,`created_at` datetime
 ,`updated_at` datetime
+,`role` enum('Admin Page','Telesale','Supervisor Telesale','Backoffice','Admin Control','Super Admin','Marketing')
 ,`user_id` int(11)
+,`is_read_by_user` int(1)
 );
 
 -- --------------------------------------------------------
@@ -24630,38 +24974,43 @@ CREATE TABLE `user_tags` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_customer_buckets` (
-`assigned_to` int(11)
-,`behavioral_status` enum('Hot','Warm','Cold','Frozen')
-,`bucket` varchar(8)
+`id` varchar(32)
+,`first_name` varchar(128)
+,`last_name` varchar(128)
+,`phone` varchar(64)
+,`email` varchar(255)
+,`province` varchar(128)
 ,`company_id` int(11)
+,`assigned_to` int(11)
 ,`date_assigned` datetime
 ,`date_registered` datetime
-,`district` varchar(128)
-,`email` varchar(255)
-,`facebook_name` varchar(255)
-,`first_name` varchar(128)
-,`follow_up_count` int(11)
 ,`follow_up_date` datetime
-,`followup_bonus_remaining` tinyint(1)
-,`grade` enum('D','C','B','A','A+')
-,`has_sold_before` tinyint(1)
-,`id` varchar(32)
-,`is_blocked` tinyint(1)
-,`is_in_waiting_basket` tinyint(1)
-,`last_follow_up_date` datetime
-,`last_name` varchar(128)
-,`last_sale_date` datetime
-,`lifecycle_status` enum('New','Old','FollowUp','Old3Months','DailyDistribution')
-,`line_id` varchar(128)
 ,`ownership_expires` datetime
-,`phone` varchar(64)
-,`postal_code` varchar(16)
-,`province` varchar(128)
+,`lifecycle_status` enum('New','Old','FollowUp','Old3Months','DailyDistribution')
+,`behavioral_status` enum('Hot','Warm','Cold','Frozen')
+,`grade` enum('D','C','B','A','A+')
+,`total_purchases` decimal(12,2)
+,`total_calls` int(11)
+,`facebook_name` varchar(255)
+,`line_id` varchar(128)
 ,`street` varchar(255)
 ,`subdistrict` varchar(128)
-,`total_calls` int(11)
-,`total_purchases` decimal(12,2)
+,`district` varchar(128)
+,`postal_code` varchar(16)
+,`has_sold_before` tinyint(1)
+,`follow_up_count` int(11)
+,`last_follow_up_date` datetime
+,`last_sale_date` datetime
+,`is_in_waiting_basket` tinyint(1)
 ,`waiting_basket_start_date` datetime
+,`followup_bonus_remaining` tinyint(1)
+,`is_blocked` tinyint(1)
+,`first_order_date` datetime
+,`last_order_date` datetime
+,`order_count` int(11)
+,`is_new_customer` tinyint(1)
+,`is_repeat_customer` tinyint(1)
+,`bucket` varchar(8)
 );
 
 -- --------------------------------------------------------
@@ -24671,12 +25020,12 @@ CREATE TABLE `v_customer_buckets` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_order_required_stock` (
-`allocated_qty` decimal(32,0)
-,`free_qty` decimal(32,0)
-,`order_id` varchar(32)
-,`paid_qty` decimal(32,0)
+`order_id` varchar(32)
 ,`product_id` int(11)
 ,`required_qty` decimal(32,0)
+,`allocated_qty` decimal(32,0)
+,`free_qty` decimal(32,0)
+,`paid_qty` decimal(32,0)
 );
 
 -- --------------------------------------------------------
@@ -24686,16 +25035,16 @@ CREATE TABLE `v_order_required_stock` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_telesale_call_overview_monthly` (
-`connected_calls` decimal(23,0)
-,`first_name` varchar(128)
-,`minutes_per_workday` decimal(37,2)
-,`month_key` varchar(7)
-,`phone` varchar(64)
-,`role` varchar(64)
-,`total_calls` bigint(21)
-,`total_minutes` decimal(35,2)
+`month_key` varchar(7)
 ,`user_id` int(11)
+,`first_name` varchar(128)
+,`role` varchar(64)
+,`phone` varchar(64)
 ,`working_days` decimal(25,1)
+,`total_minutes` decimal(35,2)
+,`connected_calls` decimal(23,0)
+,`total_calls` bigint(21)
+,`minutes_per_workday` decimal(37,2)
 );
 
 -- --------------------------------------------------------
@@ -24705,22 +25054,22 @@ CREATE TABLE `v_telesale_call_overview_monthly` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_user_daily_attendance` (
-`attendance_status` enum('absent','half','full')
-,`attendance_value` decimal(3,1)
-,`computed_at` datetime
-,`effective_hours` decimal(13,2)
-,`effective_seconds` int(11)
-,`first_login` datetime
-,`full_name` varchar(257)
-,`id` bigint(20)
-,`last_logout` datetime
-,`login_sessions` int(11)
-,`percent_of_workday` decimal(5,2)
-,`role` varchar(64)
-,`updated_at` datetime
+`id` bigint(20)
 ,`user_id` int(11)
 ,`username` varchar(64)
+,`full_name` varchar(257)
+,`role` varchar(64)
 ,`work_date` date
+,`first_login` datetime
+,`last_logout` datetime
+,`login_sessions` int(11)
+,`effective_seconds` int(11)
+,`effective_hours` decimal(13,2)
+,`percent_of_workday` decimal(5,2)
+,`attendance_value` decimal(3,1)
+,`attendance_status` enum('absent','half','full')
+,`computed_at` datetime
+,`updated_at` datetime
 );
 
 -- --------------------------------------------------------
@@ -24730,15 +25079,15 @@ CREATE TABLE `v_user_daily_attendance` (
 -- (See below for the actual view)
 --
 CREATE TABLE `v_user_daily_kpis` (
-`attendance_status` enum('absent','half','full')
-,`attendance_value` decimal(3,1)
-,`call_minutes` decimal(35,2)
-,`effective_seconds` int(11)
+`user_id` int(11)
+,`username` varchar(64)
 ,`full_name` varchar(257)
 ,`role` varchar(64)
-,`user_id` int(11)
-,`username` varchar(64)
 ,`work_date` date
+,`attendance_value` decimal(3,1)
+,`attendance_status` enum('absent','half','full')
+,`effective_seconds` int(11)
+,`call_minutes` decimal(35,2)
 );
 
 -- --------------------------------------------------------
@@ -24809,7 +25158,7 @@ CREATE TABLE `warehouse_stocks` (
 
 INSERT INTO `warehouse_stocks` (`id`, `warehouse_id`, `product_id`, `lot_number`, `product_lot_id`, `quantity`, `reserved_quantity`, `expiry_date`, `purchase_price`, `selling_price`, `location_in_warehouse`, `notes`, `created_at`) VALUES
 (1, 1, 1, 'LOT-2024-001', 1, 100, 0, '2025-12-31', '100.00', '200.00', 'A-1-1', NULL, '2025-10-09 16:03:18'),
-(2, 1, 2, 'LOT-2024-002', 2, 50, 0, '2025-11-30', '80.00', '200.00', 'A-1-2', NULL, '2025-10-09 16:03:18'),
+(2, 1, 2, 'LOT-2024-002', 2, 50, 3, '2025-11-30', '80.00', '200.00', 'A-1-2', NULL, '2025-10-09 16:03:18'),
 (3, 1, 3, 'LOT-2024-003', 3, 200, 0, '2025-10-31', '50.00', '120.00', 'A-2-1', NULL, '2025-10-09 16:03:18'),
 (4, 2, 1, 'LOT-2024-004', 4, 80, 0, '2025-12-31', '100.00', '200.00', 'B-1-1', NULL, '2025-10-09 16:03:18'),
 (5, 2, 2, 'LOT-2024-005', 5, 30, 0, '2025-11-30', '80.00', '200.00', 'B-1-2', NULL, '2025-10-09 16:03:18'),
@@ -24844,7 +25193,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `v_customer_buckets`;
 
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_customer_buckets`  AS  select `c`.`id` AS `id`,`c`.`first_name` AS `first_name`,`c`.`last_name` AS `last_name`,`c`.`phone` AS `phone`,`c`.`email` AS `email`,`c`.`province` AS `province`,`c`.`company_id` AS `company_id`,`c`.`assigned_to` AS `assigned_to`,`c`.`date_assigned` AS `date_assigned`,`c`.`date_registered` AS `date_registered`,`c`.`follow_up_date` AS `follow_up_date`,`c`.`ownership_expires` AS `ownership_expires`,`c`.`lifecycle_status` AS `lifecycle_status`,`c`.`behavioral_status` AS `behavioral_status`,`c`.`grade` AS `grade`,`c`.`total_purchases` AS `total_purchases`,`c`.`total_calls` AS `total_calls`,`c`.`facebook_name` AS `facebook_name`,`c`.`line_id` AS `line_id`,`c`.`street` AS `street`,`c`.`subdistrict` AS `subdistrict`,`c`.`district` AS `district`,`c`.`postal_code` AS `postal_code`,`c`.`has_sold_before` AS `has_sold_before`,`c`.`follow_up_count` AS `follow_up_count`,`c`.`last_follow_up_date` AS `last_follow_up_date`,`c`.`last_sale_date` AS `last_sale_date`,`c`.`is_in_waiting_basket` AS `is_in_waiting_basket`,`c`.`waiting_basket_start_date` AS `waiting_basket_start_date`,`c`.`followup_bonus_remaining` AS `followup_bonus_remaining`,`c`.`is_blocked` AS `is_blocked`,(case when (coalesce(`c`.`is_blocked`,0) = 1) then 'blocked' when (coalesce(`c`.`is_in_waiting_basket`,0) = 1) then 'waiting' when (`c`.`assigned_to` is null) then 'ready' else 'assigned' end) AS `bucket` from `customers` `c` ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_customer_buckets`  AS  select `c`.`id` AS `id`,`c`.`first_name` AS `first_name`,`c`.`last_name` AS `last_name`,`c`.`phone` AS `phone`,`c`.`email` AS `email`,`c`.`province` AS `province`,`c`.`company_id` AS `company_id`,`c`.`assigned_to` AS `assigned_to`,`c`.`date_assigned` AS `date_assigned`,`c`.`date_registered` AS `date_registered`,`c`.`follow_up_date` AS `follow_up_date`,`c`.`ownership_expires` AS `ownership_expires`,`c`.`lifecycle_status` AS `lifecycle_status`,`c`.`behavioral_status` AS `behavioral_status`,`c`.`grade` AS `grade`,`c`.`total_purchases` AS `total_purchases`,`c`.`total_calls` AS `total_calls`,`c`.`facebook_name` AS `facebook_name`,`c`.`line_id` AS `line_id`,`c`.`street` AS `street`,`c`.`subdistrict` AS `subdistrict`,`c`.`district` AS `district`,`c`.`postal_code` AS `postal_code`,`c`.`has_sold_before` AS `has_sold_before`,`c`.`follow_up_count` AS `follow_up_count`,`c`.`last_follow_up_date` AS `last_follow_up_date`,`c`.`last_sale_date` AS `last_sale_date`,`c`.`is_in_waiting_basket` AS `is_in_waiting_basket`,`c`.`waiting_basket_start_date` AS `waiting_basket_start_date`,`c`.`followup_bonus_remaining` AS `followup_bonus_remaining`,`c`.`is_blocked` AS `is_blocked`,`c`.`first_order_date` AS `first_order_date`,`c`.`last_order_date` AS `last_order_date`,`c`.`order_count` AS `order_count`,`c`.`is_new_customer` AS `is_new_customer`,`c`.`is_repeat_customer` AS `is_repeat_customer`,(case when (coalesce(`c`.`is_blocked`,0) = 1) then 'blocked' when (coalesce(`c`.`is_in_waiting_basket`,0) = 1) then 'waiting' when (`c`.`assigned_to` is null) then 'ready' else 'assigned' end) AS `bucket` from `customers` `c` ;
 
 -- --------------------------------------------------------
 
@@ -24986,6 +25335,15 @@ ALTER TABLE `customer_blocks`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `customer_logs`
+--
+ALTER TABLE `customer_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_customer_id` (`customer_id`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `idx_assigned_to` (`assigned_to`);
+
+--
 -- Indexes for table `customer_tags`
 --
 ALTER TABLE `customer_tags`
@@ -25006,6 +25364,26 @@ ALTER TABLE `env`
 ALTER TABLE `exports`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_exports_created_at` (`created_at`);
+
+--
+-- Indexes for table `marketing_ads_log`
+--
+ALTER TABLE `marketing_ads_log`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_page_user_date` (`page_id`,`user_id`,`date`),
+  ADD KEY `idx_page_id` (`page_id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_created_at` (`created_at`),
+  ADD KEY `idx_date` (`date`);
+
+--
+-- Indexes for table `marketing_user_page`
+--
+ALTER TABLE `marketing_user_page`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_page_user` (`page_id`,`user_id`),
+  ADD KEY `idx_page_id` (`page_id`),
+  ADD KEY `idx_user_id` (`user_id`);
 
 --
 -- Indexes for table `notifications`
@@ -25334,7 +25712,7 @@ ALTER TABLE `warehouse_stocks`
 -- AUTO_INCREMENT for table `activities`
 --
 ALTER TABLE `activities`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=113;
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=132;
 
 --
 -- AUTO_INCREMENT for table `ad_spend`
@@ -25352,7 +25730,7 @@ ALTER TABLE `appointments`
 -- AUTO_INCREMENT for table `call_history`
 --
 ALTER TABLE `call_history`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
 
 --
 -- AUTO_INCREMENT for table `companies`
@@ -25370,7 +25748,7 @@ ALTER TABLE `customer_address`
 -- AUTO_INCREMENT for table `customer_assignment_history`
 --
 ALTER TABLE `customer_assignment_history`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `customer_blocks`
@@ -25379,16 +25757,34 @@ ALTER TABLE `customer_blocks`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
+-- AUTO_INCREMENT for table `customer_logs`
+--
+ALTER TABLE `customer_logs`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+
+--
 -- AUTO_INCREMENT for table `env`
 --
 ALTER TABLE `env`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `exports`
 --
 ALTER TABLE `exports`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `marketing_ads_log`
+--
+ALTER TABLE `marketing_ads_log`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `marketing_user_page`
+--
+ALTER TABLE `marketing_user_page`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `notification_read_status`
@@ -25436,19 +25832,19 @@ ALTER TABLE `order_boxes`
 -- AUTO_INCREMENT for table `order_items`
 --
 ALTER TABLE `order_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=74;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=108;
 
 --
 -- AUTO_INCREMENT for table `order_item_allocations`
 --
 ALTER TABLE `order_item_allocations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
 
 --
 -- AUTO_INCREMENT for table `order_slips`
 --
 ALTER TABLE `order_slips`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `order_tracking_numbers`
@@ -25538,7 +25934,7 @@ ALTER TABLE `stock_reservations`
 -- AUTO_INCREMENT for table `tags`
 --
 ALTER TABLE `tags`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -25642,6 +26038,20 @@ ALTER TABLE `customer_assignment_history`
 ALTER TABLE `customer_tags`
   ADD CONSTRAINT `fk_customer_tags_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_customer_tags_tag` FOREIGN KEY (`tag_id`) REFERENCES `tags` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `marketing_ads_log`
+--
+ALTER TABLE `marketing_ads_log`
+  ADD CONSTRAINT `fk_marketing_ads_log_page_id` FOREIGN KEY (`page_id`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_marketing_ads_log_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `marketing_user_page`
+--
+ALTER TABLE `marketing_user_page`
+  ADD CONSTRAINT `fk_marketing_user_page_page_id` FOREIGN KEY (`page_id`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_marketing_user_page_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `notification_read_status`

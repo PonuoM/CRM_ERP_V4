@@ -23,6 +23,7 @@ import {
   TagType,
   Activity,
   ActivityType,
+  CustomerLog,
   Company,
   Warehouse,
   LineItem,
@@ -3584,12 +3585,10 @@ const App: React.FC = () => {
           appointments={appointments.filter(
             (a) => a.customerId === viewingCustomer.id,
           )}
-          activities={activities.filter(
-            (a) => a.customerId === viewingCustomer.id,
-          )}
           onClose={handleCloseCustomerDetail}
           openModal={openModal}
           user={currentUser}
+          allUsers={companyUsers}
           systemTags={systemTags}
           ownerName={(function () {
             const u = companyUsers.find(
@@ -3601,7 +3600,11 @@ const App: React.FC = () => {
           onRemoveTag={handleRemoveTagFromCustomer}
           onCreateUserTag={handleCreateUserTag}
           onCompleteAppointment={handleCompleteAppointment}
-          setActivePage={setActivePage}
+          onStartCreateOrder={(customer) => {
+            setCreateOrderInitialData({ customer });
+            handleCloseCustomerDetail();
+            setActivePage("CreateOrder");
+          }}
         />
       );
     }
@@ -4548,15 +4551,24 @@ const App: React.FC = () => {
           />
         );
       case "viewAllActivities":
-        return (
-          <ActivityLogModal
-            customer={modalState.data as Customer}
-            activities={activities.filter(
-              (a) => a.customerId === (modalState.data as Customer).id,
-            )}
-            onClose={closeModal}
-          />
-        );
+        {
+          const modalData = modalState.data as
+            | { customer: Customer; logs?: CustomerLog[] }
+            | Customer;
+          const customer =
+            (modalData as { customer?: Customer }).customer ??
+            (modalData as Customer);
+          const logs =
+            (modalData as { logs?: CustomerLog[] }).logs ?? undefined;
+          return (
+            <ActivityLogModal
+              customer={customer}
+              initialLogs={logs}
+              allUsers={companyUsers}
+              onClose={closeModal}
+            />
+          );
+        }
       default:
         return null;
     }
