@@ -1778,6 +1778,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   };
+  const clampQuantity = (value: any): number => {
+    const parsed = Math.floor(Number(value) || 0);
+    return parsed > 0 ? parsed : 1;
+  };
   const toBool = (v: any): boolean => {
     if (typeof v === "boolean") return v;
     if (typeof v === "number") return v !== 0;
@@ -2905,8 +2909,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               onChange={(e) =>
                                 updateOrderData(
                                   "items",
-                                  orderData.items?.map((it, i) =>
-                                    i === index
+                                  orderData.items?.map((it) =>
+                                    it.id === item.id
                                       ? { ...it, productName: e.target.value }
                                       : it,
                                   ),
@@ -2931,20 +2935,23 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           <input
                             type="number"
                             placeholder="จำนวน"
-                            value={item.quantity}
-                            onChange={(e) =>
+                            value={item.quantity ?? 1}
+                            min={1}
+                            step={1}
+                            onChange={(e) => {
+                              const nextQty = clampQuantity(e.target.value);
                               updateOrderData(
                                 "items",
-                                orderData.items?.map((it, i) =>
-                                  i === index
+                                orderData.items?.map((it) =>
+                                  it.id === item.id
                                     ? {
                                         ...it,
-                                        quantity: Number(e.target.value),
+                                        quantity: nextQty,
                                       }
                                     : it,
                                 ),
-                              )
-                            }
+                              );
+                            }}
                             onFocus={onFocusSelectAll}
                             className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                             disabled={false}
@@ -2958,22 +2965,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             type="number"
                             placeholder="ราคา"
                             value={item.pricePerUnit}
-                            onChange={(e) =>
-                              updateOrderData(
-                                "items",
-                                orderData.items?.map((it, i) =>
-                                  i === index
-                                    ? {
-                                        ...it,
-                                        pricePerUnit: Number(e.target.value),
-                                      }
-                                    : it,
-                                ),
-                              )
-                            }
-                            onFocus={onFocusSelectAll}
-                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                            disabled={item.isPromotionParent}
+                            readOnly
+                            className="w-full p-2 border border-gray-300 rounded-md bg-slate-100 text-[#0e141b] text-sm"
                           />
                         </div>
                         <div className="col-span-2">
@@ -2987,8 +2980,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             onChange={(e) =>
                               updateOrderData(
                                 "items",
-                                orderData.items?.map((it, i) =>
-                                  i === index
+                                orderData.items?.map((it) =>
+                                  it.id === item.id
                                     ? {
                                         ...it,
                                         discount: Number(e.target.value),
@@ -3010,8 +3003,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             onChange={(e) =>
                               updateOrderData(
                                 "items",
-                                orderData.items?.map((it, i) =>
-                                  i === index
+                                orderData.items?.map((it) =>
+                                  it.id === item.id
                                     ? {
                                         ...it,
                                         boxNumber: Math.max(
@@ -3050,8 +3043,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             onChange={(e) =>
                               updateOrderData(
                                 "items",
-                                orderData.items?.map((it, i) =>
-                                  i === index
+                                orderData.items?.map((it) =>
+                                  it.id === item.id
                                     ? { ...it, isFreebie: e.target.checked }
                                     : it,
                                 ),

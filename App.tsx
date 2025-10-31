@@ -118,6 +118,24 @@ import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
+
+const formatCustomerId = (
+  phone: string,
+  companyId?: number | null,
+): string => {
+  const digitsOnly = (phone ?? "").replace(/\D/g, "");
+  const withoutLeadingZero =
+    digitsOnly.length > 0 && digitsOnly.startsWith("0")
+      ? digitsOnly.substring(1)
+      : digitsOnly;
+  const baseId = `CUS-${withoutLeadingZero || digitsOnly || phone || ""}`;
+  return typeof companyId === "number"
+    ? `${baseId}-${companyId}`
+    : baseId;
+};
+
+const normalizePhoneDigits = (phone?: string | null): string =>
+  (phone ?? "").replace(/\D/g, "");
 import PageStatsPage from "./pages/PageStatsPage";
 import EngagementStatsPage from "./pages/EngagementStatsPage";
 import TeamsManagementPage from "./pages/TeamsManagementPage";
@@ -1439,7 +1457,48 @@ const App: React.FC = () => {
     let customerIdForOrder = newOrderData.customerId;
 
     if (newCustomerData && newCustomerData.phone) {
-      const newCustomerId = `CUS-${newCustomerData.phone.substring(1)}`;
+      const newCustomerId = formatCustomerId(
+        newCustomerData.phone,
+        currentUser.companyId,
+      );
+      const normalizedPhone = normalizePhoneDigits(newCustomerData.phone);
+      const existingCustomer = customers.find((c) => {
+        const sameId = c.id === newCustomerId;
+        const samePhone =
+          normalizedPhone !== "" &&
+          normalizePhoneDigits(c.phone) === normalizedPhone &&
+          (c.companyId ?? null) === currentUser.companyId;
+        return sameId || samePhone;
+      });
+
+      if (existingCustomer) {
+        const fullName = [existingCustomer.firstName, existingCustomer.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || "-";
+        const ownerName =
+          existingCustomer.assignedTo != null
+            ? (() => {
+                const owner = users.find(
+                  (u) => u.id === existingCustomer.assignedTo,
+                );
+                if (owner) {
+                  return `${owner.firstName} ${owner.lastName}`.trim();
+                }
+                return `ID ${existingCustomer.assignedTo}`;
+              })()
+            : "ยังไม่ระบุ";
+        alert(
+          [
+            "ไม่สามารถสร้างออเดอร์ให้ลูกค้าใหม่ได้",
+            "เนื่องจากพบลูกค้ารายนี้อยู่ในระบบแล้ว",
+            `ชื่อ: ${fullName}`,
+            `เบอร์โทร: ${existingCustomer.phone || "-"}`,
+            `ผู้ดูแลปัจจุบัน: ${ownerName}`,
+          ].join("\n"),
+        );
+        return;
+      }
 
       const newCustomer: Customer = {
         ...newCustomerData,
@@ -1884,7 +1943,10 @@ const App: React.FC = () => {
   ): Customer => {
     const { ownershipDays, ...newCustomerData } = customerData;
 
-    const newId = `CUS-${newCustomerData.phone.substring(1)}`;
+    const newId = formatCustomerId(
+      newCustomerData.phone,
+      currentUser.companyId,
+    );
 
     let ownershipExpires = new Date();
     if (ownershipDays) {
