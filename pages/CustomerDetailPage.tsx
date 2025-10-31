@@ -910,7 +910,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                               return (
                                                 <tr
                                                   key={item.id}
-                                                  className={`border-b last:border-0 ${item.isPromotionParent || isChild ? "bg-orange-50" : ""}`}
+                                                  className={`border-b last:border-0 ${item.isPromotionParent ? "bg-orange-100" : isChild ? "bg-orange-50" : ""}`}
                                                 >
                                                   <td
                                                     className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"}`}
