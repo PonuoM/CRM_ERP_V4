@@ -13,8 +13,6 @@ import {
   PaymentStatus,
   OrderStatus,
   Address,
-  Notification,
-  NotificationType,
   PaymentMethod,
   CustomerLifecycleStatus,
   CustomerBehavioralStatus,
@@ -103,7 +101,6 @@ import {
 import LogCallModal from "./components/LogCallModal";
 import AppointmentModal from "./components/AppointmentModal";
 import EditCustomerModal from "./components/EditCustomerModal";
-import NotificationPanel from "./components/NotificationPanel";
 import BulkTrackingPage from "./pages/BulkTrackingPage";
 import ExportHistoryPage from "./pages/ExportHistoryPage";
 import AddCustomerPage from "./pages/AddCustomerPage";
@@ -119,19 +116,14 @@ import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 
-const formatCustomerId = (
-  phone: string,
-  companyId?: number | null,
-): string => {
+const formatCustomerId = (phone: string, companyId?: number | null): string => {
   const digitsOnly = (phone ?? "").replace(/\D/g, "");
   const withoutLeadingZero =
     digitsOnly.length > 0 && digitsOnly.startsWith("0")
       ? digitsOnly.substring(1)
       : digitsOnly;
   const baseId = `CUS-${withoutLeadingZero || digitsOnly || phone || ""}`;
-  return typeof companyId === "number"
-    ? `${baseId}-${companyId}`
-    : baseId;
+  return typeof companyId === "number" ? `${baseId}-${companyId}` : baseId;
 };
 
 const normalizePhoneDigits = (phone?: string | null): string =>
@@ -150,8 +142,6 @@ import ManageCustomersPage from "./pages/ManageCustomersPage";
 import CustomerPoolsPage from "./pages/CustomerPoolsPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import OrderAllocationPage from "./pages/OrderAllocationPage";
-import NotificationSettingsPage from "./pages/NotificationSettingsPage";
-import notificationService from "./services/notificationService";
 import usePersistentState from "./utils/usePersistentState";
 
 const App: React.FC = () => {
@@ -252,8 +242,6 @@ const App: React.FC = () => {
   const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(
     null,
   );
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
     useState(false);
@@ -878,40 +866,6 @@ const App: React.FC = () => {
     return users[0];
   }, [sessionUser, users]);
 
-  useEffect(() => {
-    const userId = currentUser?.id;
-    const userRole = currentUser?.role as UserRole | undefined;
-
-    if (typeof userId !== "number" || !userRole) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const fetchNotifications = async () => {
-      try {
-        const userNotifications = await notificationService.fetchNotifications(
-          userId,
-          userRole,
-          50,
-        );
-        if (isMounted) {
-          setNotifications(userNotifications);
-        }
-      } catch (error) {
-        console.error("Error loading notifications:", error);
-      }
-    };
-
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [currentUser?.id, currentUser?.role]);
-
   const viewingCustomer = useMemo(() => {
     if (!viewingCustomerId) return null;
     return customers.find((c) => c.id === viewingCustomerId);
@@ -994,54 +948,6 @@ const App: React.FC = () => {
         : products.filter((p) => p.companyId === currentUser.companyId),
     [products, currentUser.companyId, isSuperAdmin],
   );
-
-  const visibleNotifications = useMemo(() => {
-    return notifications.filter((n) => {
-      const roleMatch =
-        Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
-      const userMatch =
-        typeof (n as any).userId === "number" &&
-        (n as any).userId === currentUser.id;
-      return roleMatch || userMatch;
-    });
-  }, [notifications, currentUser.role, currentUser.id]);
-
-  const unreadNotificationCount = useMemo(() => {
-    return visibleNotifications.filter((n) => !n.read).length;
-  }, [visibleNotifications]);
-
-  const handleToggleNotificationPanel = () => {
-    setIsNotificationPanelOpen((prev) => !prev);
-  };
-
-  const handleMarkNotificationAsRead = async (notificationId: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-
-    try {
-      await notificationService.markAsRead(notificationId, currentUser.id);
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    setNotifications((prev) =>
-      prev.filter((n) => {
-        const matchesRole =
-          Array.isArray(n.forRoles) && n.forRoles.includes(currentUser.role);
-        const matchesUser =
-          typeof (n as any).userId === "number" &&
-          (n as any).userId === currentUser.id;
-        return !(matchesRole || matchesUser);
-      }),
-    );
-
-    try {
-      await notificationService.markAllAsRead(currentUser.id, currentUser.role);
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
 
   const handleChangePassword = async () => {
     setPasswordError("");
@@ -1472,10 +1378,11 @@ const App: React.FC = () => {
       });
 
       if (existingCustomer) {
-        const fullName = [existingCustomer.firstName, existingCustomer.lastName]
-          .filter(Boolean)
-          .join(" ")
-          .trim() || "-";
+        const fullName =
+          [existingCustomer.firstName, existingCustomer.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || "-";
         const ownerName =
           existingCustomer.assignedTo != null
             ? (() => {
@@ -1761,23 +1668,6 @@ const App: React.FC = () => {
       const theCustomer = customers.find((c) => c.id === customerIdForOrder);
       const assignedUserId = theCustomer?.assignedTo || null;
       const isAdminCreating = currentUser.role === UserRole.Admin;
-
-      if (assignedUserId && assignedUserId !== currentUser.id) {
-        const notifId = `notif-neworder-${newOrder.id}`;
-        setNotifications((prev) => [
-          {
-            id: notifId,
-            type: NotificationType.NewOrderForCustomer,
-            message: `มีคำสั่งซื้อใหม่สำหรับลูกค้าของคุณ: ${newOrder.id}`,
-            timestamp: new Date().toISOString(),
-            read: false,
-            relatedId: newOrder.customerId,
-            forRoles: [],
-            userId: assignedUserId,
-          },
-          ...prev,
-        ]);
-      }
 
       if (isAdminCreating && !assignedUserId) {
         // Put customer into waiting basket for Admin Control to distribute via "Share"
@@ -4283,114 +4173,6 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "notifications":
-            return (
-              <div className="p-6 bg-[#F5F5F5]">
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-2">
-                    การแจ้งเตือน
-                  </h1>
-                  <p className="text-gray-600">
-                    การแจ้งเตือนทั้งหมดที่เกี่ยวข้องกับคุณ
-                  </p>
-                </div>
-
-                <div className="bg-white rounded-lg shadow-sm border">
-                  <div className="p-4 border-b">
-                    <div className="flex items-center">
-                      <Bell className="w-5 h-5 mr-2 text-gray-600" />
-                      <h2 className="text-lg font-semibold text-gray-800">
-                        การแจ้งเตือนล่าสุด
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="p-4">
-                    {visibleNotifications.length > 0 ? (
-                      <div className="space-y-4">
-                        {visibleNotifications.map((notif) => (
-                          <div
-                            key={notif.id}
-                            className={`flex items-start p-4 border rounded-lg ${
-                              !notif.read
-                                ? "bg-blue-50 border-blue-200"
-                                : "bg-white border-gray-200"
-                            }`}
-                          >
-                            <div className="flex-shrink-0 mt-1 mr-3">
-                              {notif.priority === "urgent" && (
-                                <AlertCircle className="w-5 h-5 text-red-500" />
-                              )}
-                              {notif.priority === "high" && (
-                                <AlertCircle className="w-5 h-5 text-orange-500" />
-                              )}
-                              {notif.priority === "medium" && (
-                                <Clock className="w-5 h-5 text-yellow-500" />
-                              )}
-                              {notif.priority === "low" && (
-                                <Check className="w-5 h-5 text-green-500" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-800">
-                                {notif.title}
-                              </p>
-                              <p className="text-sm text-gray-600 mt-1">
-                                {notif.message}
-                              </p>
-                              {notif.pageName && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  หน้า: {notif.pageName}{" "}
-                                  {notif.platform && `(${notif.platform})`}
-                                </p>
-                              )}
-                              <p className="text-xs text-gray-400 mt-1">
-                                {new Date(notif.timestamp).toLocaleString(
-                                  "th-TH",
-                                  {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
-                                )}
-                              </p>
-                              {notif.actionUrl && (
-                                <button
-                                  className="text-xs text-blue-600 hover:underline mt-2"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.location.href = notif.actionUrl;
-                                  }}
-                                >
-                                  {notif.actionText || "ดูรายละเอียด"}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-6 text-center text-sm text-gray-500">
-                        ไม่มีการแจ้งเตือนในขณะนี้
-                      </div>
-                    )}
-                  </div>
-
-                  {visibleNotifications.length > 0 && (
-                    <div className="p-4 border-t">
-                      <button
-                        onClick={handleMarkAllAsRead}
-                        className="w-full text-center text-sm text-blue-600 font-medium hover:bg-blue-50 rounded-md py-2"
-                      >
-                        ทำเครื่องหมายว่าอ่านทั้งหมด
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
           default:
             return (
               <AdminDashboard
@@ -4686,25 +4468,23 @@ const App: React.FC = () => {
             onClose={closeModal}
           />
         );
-      case "viewAllActivities":
-        {
-          const modalData = modalState.data as
-            | { customer: Customer; logs?: CustomerLog[] }
-            | Customer;
-          const customer =
-            (modalData as { customer?: Customer }).customer ??
-            (modalData as Customer);
-          const logs =
-            (modalData as { logs?: CustomerLog[] }).logs ?? undefined;
-          return (
-            <ActivityLogModal
-              customer={customer}
-              initialLogs={logs}
-              allUsers={companyUsers}
-              onClose={closeModal}
-            />
-          );
-        }
+      case "viewAllActivities": {
+        const modalData = modalState.data as
+          | { customer: Customer; logs?: CustomerLog[] }
+          | Customer;
+        const customer =
+          (modalData as { customer?: Customer }).customer ??
+          (modalData as Customer);
+        const logs = (modalData as { logs?: CustomerLog[] }).logs ?? undefined;
+        return (
+          <ActivityLogModal
+            customer={customer}
+            initialLogs={logs}
+            allUsers={companyUsers}
+            onClose={closeModal}
+          />
+        );
+      }
       default:
         return null;
     }
@@ -4762,19 +4542,7 @@ const App: React.FC = () => {
                 </select>
                 <ChevronsUpDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               </div>
-              <div className="relative">
-                <button
-                  onClick={handleToggleNotificationPanel}
-                  className="relative p-2 rounded-full hover:bg-gray-100 text-gray-500"
-                >
-                  <Bell size={20} />
-                  {unreadNotificationCount > 0 && (
-                    <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center ring-2 ring-white">
-                      {unreadNotificationCount}
-                    </span>
-                  )}
-                </button>
-              </div>
+              <div className="relative"></div>
               <div className="relative">
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
@@ -4836,21 +4604,7 @@ const App: React.FC = () => {
           {renderPage()}
         </main>
       </div>
-      {isNotificationPanelOpen && (
-        <NotificationPanel
-          notifications={visibleNotifications}
-          onClose={() => setIsNotificationPanelOpen(false)}
-          onMarkAllAsRead={handleMarkAllAsRead}
-          onMarkAsRead={handleMarkNotificationAsRead}
-          onNotificationClick={(notification) => {
-            // Navigate to notification URL if provided
-            if (notification.actionUrl) {
-              window.location.href = notification.actionUrl;
-            }
-          }}
-          currentUserRole={currentUserRole as UserRole}
-        />
-      )}
+
       {renderModal()}
 
       {/* Change Password Modal */}
