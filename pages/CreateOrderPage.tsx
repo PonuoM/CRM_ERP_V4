@@ -836,6 +836,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return codTotal.toFixed(2) === totalAmount.toFixed(2) && totalAmount > 0;
   }, [orderData.paymentMethod, totalAmount, codTotal]);
 
+  const codRemaining = useMemo(() => {
+    const totalRounded = Number(totalAmount.toFixed(2));
+    const codRounded = Number(codTotal.toFixed(2));
+    return Number((totalRounded - codRounded).toFixed(2));
+  }, [totalAmount, codTotal]);
+
   // Search results
   const searchResults = useMemo(() => {
     if (!searchTerm || isCreatingNewCustomer) return [];
@@ -3445,6 +3451,21 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             ฿{codTotal.toFixed(2)}
                           </span>
                           )
+                        </span>
+                        <span className="block mt-1">
+                          {codRemaining === 0 ? (
+                            <span className="text-green-700 font-medium">
+                              ครบถ้วนแล้ว
+                            </span>
+                          ) : codRemaining > 0 ? (
+                            <span className="text-orange-600 font-medium">
+                              คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-red-600 font-medium">
+                              เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div>
