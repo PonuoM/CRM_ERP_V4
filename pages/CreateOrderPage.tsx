@@ -352,7 +352,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [profileAddressModified, setProfileAddressModified] = useState(false);
 
-  const [validationError, setValidationError] = useState<ValidationField | null>(null);
+  const [validationError, setValidationError] =
+    useState<ValidationField | null>(null);
 
   const customerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const newCustomerFirstNameRef = useRef<HTMLInputElement | null>(null);
@@ -407,16 +408,19 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   useEffect(() => {
     const highlightClasses = ["ring-2", "ring-red-300", "border-red-500"];
-    (Object.entries(fieldRefs) as [ValidationField, React.MutableRefObject<any>][]).forEach(
-      ([key, ref]) => {
-        const el = ref.current as HTMLElement | null;
-        if (!el) return;
-        highlightClasses.forEach((cls) => el.classList.remove(cls));
-        if (validationError === key) {
-          highlightClasses.forEach((cls) => el.classList.add(cls));
-        }
-      },
-    );
+    (
+      Object.entries(fieldRefs) as [
+        ValidationField,
+        React.MutableRefObject<any>,
+      ][]
+    ).forEach(([key, ref]) => {
+      const el = ref.current as HTMLElement | null;
+      if (!el) return;
+      highlightClasses.forEach((cls) => el.classList.remove(cls));
+      if (validationError === key) {
+        highlightClasses.forEach((cls) => el.classList.add(cls));
+      }
+    });
   }, [validationError]);
 
   // Address options for the dropdown
@@ -1148,7 +1152,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             {
               id: result.oldAddressId || Date.now(), // Use returned ID or generate temp one
               address: sanitizeAddressValue(currentCustomerAddress.street),
-              sub_district: sanitizeAddressValue(currentCustomerAddress.subdistrict),
+              sub_district: sanitizeAddressValue(
+                currentCustomerAddress.subdistrict,
+              ),
               district: sanitizeAddressValue(currentCustomerAddress.district),
               province: sanitizeAddressValue(currentCustomerAddress.province),
               zip_code: sanitizeAddressValue(currentCustomerAddress.postalCode),
@@ -1993,23 +1999,32 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       (it) => !it.productName || String(it.productName).trim() === "",
     );
     let next: LineItem[];
+    let actualParentId = parentId; // Default to new parent ID
     if (emptyIndex !== -1) {
       next = existing.slice();
       // preserve the existing id for stability when replacing the empty row
       const existingId = next[emptyIndex].id;
       next[emptyIndex] = { ...parentItem, id: existingId };
+      actualParentId = existingId; // Use existing ID as actual parent ID
       newLockedIds.push(existingId);
     } else {
       next = [...existing, parentItem];
       newLockedIds.push(parentId);
     }
-    next = [...next, ...newItemsToAdd];
+
+    // Update child items to use the correct parent ID
+    const updatedChildItems = newItemsToAdd.map((item) => ({
+      ...item,
+      parentItemId: actualParentId,
+    }));
+
+    next = [...next, ...updatedChildItems];
 
     updateOrderData("items", next);
     setLockedItemIds((prev) => [
       ...prev,
       ...newLockedIds,
-      ...newItemsToAdd.map((i) => i.id),
+      ...updatedChildItems.map((i) => i.id),
     ]);
     closeProductSelector();
   };
@@ -2118,8 +2133,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     // Update parent item with total price
     parentItem.pricePerUnit = totalPromotionPrice;
 
-    // Add all new items to the order
-    updateOrderData("items", [...(orderData.items || []), ...newItemsToAdd]);
+    // Add all new items to the order (parent first, then children)
+    updateOrderData("items", [
+      ...(orderData.items || []),
+      parentItem,
+      ...newItemsToAdd,
+    ]);
     setLockedItemIds((prev) => [...prev, ...newLockedIds]);
     closeProductSelector();
   };
@@ -2163,7 +2182,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           <div className="space-y-6">
             {/* Section 1: Customer Information */}
             {
-              <div ref={shippingAddressSectionRef} className="bg-white rounded-lg border border-gray-300 p-6">
+              <div
+                ref={shippingAddressSectionRef}
+                className="bg-white rounded-lg border border-gray-300 p-6"
+              >
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
                   ข้อมูลลูกค้า
                 </h2>
@@ -2253,7 +2275,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 ref={newCustomerFirstNameRef}
                                 value={newCustomerFirstName}
                                 onChange={(e) => {
-                                  clearValidationErrorFor("newCustomerFirstName");
+                                  clearValidationErrorFor(
+                                    "newCustomerFirstName",
+                                  );
                                   setNewCustomerFirstName(e.target.value);
                                 }}
                                 className={commonInputClass}
@@ -2438,7 +2462,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
             {/* Section 2: Shipping Address */}
             {(selectedCustomer || isCreatingNewCustomer) && (
-              <div ref={itemsSectionRef} className="bg-white rounded-lg border border-gray-300 p-6">
+              <div
+                ref={itemsSectionRef}
+                className="bg-white rounded-lg border border-gray-300 p-6"
+              >
                 <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
                   ที่อยู่จัดส่ง
                 </h2>
@@ -3382,7 +3409,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
 
                   {orderData.paymentMethod === PaymentMethod.Transfer && (
-                    <div ref={transferSlipSectionRef} className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50">
+                    <div
+                      ref={transferSlipSectionRef}
+                      className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50"
+                    >
                       <p className="text-sm text-[#0e141b]">
                         แนบสลิปโอนเงินได้หลายภาพตามต้องการ
                       </p>
@@ -3432,7 +3462,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   )}
 
                   {orderData.paymentMethod === PaymentMethod.COD && (
-                    <div ref={codSectionRef} className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50">
+                    <div
+                      ref={codSectionRef}
+                      className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
+                    >
                       <h4 className="font-semibold text-[#0e141b]">
                         รายละเอียดการเก็บเงินปลายทาง
                       </h4>
@@ -3666,4 +3699,3 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 };
 
 export default CreateOrderPage;
-
