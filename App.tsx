@@ -941,6 +941,16 @@ const App: React.FC = () => {
         : users.filter((u) => u.companyId === currentUser.companyId),
     [users, currentUser.companyId, isSuperAdmin],
   );
+  const userCustomerCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    companyCustomers.forEach((customerItem) => {
+      if (customerItem.assignedTo != null) {
+        counts[customerItem.assignedTo] =
+          (counts[customerItem.assignedTo] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [companyCustomers]);
   const companyProducts = useMemo(
     () =>
       isSuperAdmin
@@ -1801,6 +1811,74 @@ const App: React.FC = () => {
       prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)),
     );
     closeModal();
+  };
+
+  const handleChangeCustomerOwner = async (
+    customerId: string,
+    newOwnerId: number,
+  ) => {
+    const targetUser = users.find((u) => u.id === newOwnerId);
+    if (!targetUser) {
+      throw new Error("ไม่พบผู้ใช้งานที่เลือก");
+    }
+
+    const sameCompany =
+      isSuperAdmin || targetUser.companyId === currentUser.companyId;
+
+    if (!sameCompany) {
+      throw new Error("ไม่สามารถย้ายลูกค้าไปยังบริษัทอื่นได้");
+    }
+
+    if (currentUser.role === UserRole.Supervisor) {
+      const isTeamMember =
+        targetUser.role === UserRole.Telesale &&
+        targetUser.supervisorId === currentUser.id;
+      const isSupervisorLevel =
+        targetUser.role === UserRole.Supervisor || targetUser.id === currentUser.id;
+
+      if (!isTeamMember && !isSupervisorLevel) {
+        throw new Error(
+          "หัวหน้าทีมสามารถย้ายให้ลูกทีมของตัวเองหรือหัวหน้าภายในบริษัทเดียวกันเท่านั้น",
+        );
+      }
+    } else if (currentUser.role === UserRole.Telesale) {
+      if (currentUser.supervisorId !== targetUser.id) {
+        throw new Error("เทเลเซลสามารถส่งให้หัวหน้าทีมของตัวเองเท่านั้น");
+      }
+    }
+
+    const dateAssigned = new Date().toISOString();
+
+    try {
+      await updateCustomer(customerId, {
+        assignedTo: newOwnerId,
+        dateAssigned,
+      });
+    } catch (error) {
+      console.error("update customer owner failed", error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("ไม่สามารถเปลี่ยนผู้ดูแลได้");
+    }
+
+    setCustomers((prev) =>
+      prev.map((customerItem) =>
+        customerItem.id === customerId
+          ? {
+              ...customerItem,
+              assignedTo: newOwnerId,
+              dateAssigned,
+              assignmentHistory: [
+                ...(customerItem.assignmentHistory || []),
+                newOwnerId,
+              ],
+            }
+          : customerItem,
+      ),
+    );
+
+    setViewingCustomerId((prev) => (prev === customerId ? null : prev));
   };
 
   const handleTakeCustomer = (customerToTake: Customer) => {
@@ -3626,6 +3704,8 @@ const App: React.FC = () => {
           onRemoveTag={handleRemoveTagFromCustomer}
           onCreateUserTag={handleCreateUserTag}
           onCompleteAppointment={handleCompleteAppointment}
+          onChangeOwner={handleChangeCustomerOwner}
+          customerCounts={userCustomerCounts}
           onStartCreateOrder={(customer) => {
             setCreateOrderInitialData({ customer });
             handleCloseCustomerDetail();
