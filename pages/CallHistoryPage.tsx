@@ -267,7 +267,7 @@ const authenticateOneCall = async () => {
 };
 
 // JavaScript version of getRecordingsData function
-const getRecordingsData = async (currentUser?: User) => {
+const getRecordingsData = async (currentUser?: User, sortParam?: string) => {
   // Try to get recordings data with token refresh logic
   const maxRetries = 2; // Allow one retry after token refresh
   let retryCount = 0;
@@ -278,7 +278,7 @@ const getRecordingsData = async (currentUser?: User) => {
   const apiConfig: any = {
     baseUrl: "/onecall/orktrack/rest/recordings",
     range: "custom",
-    sort: "",
+    sort: sortParam || "",
     page: 1,
     pagesize: 20,
     maxresults: -1,
@@ -499,6 +499,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   const [activeAudios, setActiveAudios] = useState<Set<number>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Duration sort state: "" -> "MaxToMin" -> "MinToMax" -> ""
+  const [durationSort, setDurationSort] = useState<"" | "MaxToMin" | "MinToMax">("");
   const isFirstLoad = useRef(true);
 
   // (Removed) Employee call overview state
@@ -1194,11 +1197,19 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
   // Function to create search parameters for SuperAdmin and AdminControl users
   const createSearchParams = () => {
+    // Determine sort value based on durationSort state
+    let sortValue = "";
+    if (durationSort === "MaxToMin") {
+      sortValue = "-duration";
+    } else if (durationSort === "MinToMax") {
+      sortValue = "duration";
+    }
+
     // Default parameters
     const params: any = {
       baseUrl: "/onecall/orktrack/rest/recordings",
       range: "custom",
-      sort: "",
+      sort: sortValue,
       page: 1,
       pagesize: 20,
       maxresults: -1,
@@ -1303,8 +1314,30 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     setDirection("all");
     setRange({ start: "", end: "" });
     setDatetimeRange({ start: "", end: "" });
+    setDurationSort(""); // Reset duration sort
     // Don't reset pagination values (currentPage and pageSize)
   };
+
+  // Function to handle Duration header click - cycles through sort states
+  const handleDurationSort = () => {
+    if (durationSort === "") {
+      setDurationSort("MaxToMin");
+    } else if (durationSort === "MaxToMin") {
+      setDurationSort("MinToMax");
+    } else {
+      setDurationSort("");
+    }
+  };
+
+  // Trigger search when durationSort changes (but not on initial mount)
+  const durationSortChangedRef = useRef(false);
+  useEffect(() => {
+    if (durationSortChangedRef.current) {
+      filterRecordings();
+    } else {
+      durationSortChangedRef.current = true;
+    }
+  }, [durationSort]);
 
   // Function to filter recordings data based on current filter values
   const filterRecordings = async () => {
@@ -1335,7 +1368,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         (currentUser.role === UserRole.AdminControl ||
           currentUser.role === UserRole.SuperAdmin)
       ) {
-        // Use the new createSearchParams function for AdminControl and SuperAdmin
+          // Use the new createSearchParams function for AdminControl and SuperAdmin
         const { params: paramsList, isDualRequest } = createSearchParams();
 
         // Update pagesize in all parameter sets to use current pageSize
@@ -1349,7 +1382,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           const requests = paramsList.map((paramObj) => {
             const urlParams = new URLSearchParams();
             Object.entries(paramObj).forEach(([key, value]) => {
-              if (value !== undefined && value !== null) {
+              // Always include sort parameter even if empty, skip other empty values
+              if (key === "sort") {
+                urlParams.append(key, value !== undefined && value !== null ? value.toString() : "");
+              } else if (value !== undefined && value !== null && value !== "") {
                 urlParams.append(key, value.toString());
               }
             });
@@ -1398,11 +1434,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
             status,
           );
 
-          // Sort by timestamp (newest first)
-          filteredByStatus.sort(
-            (a: any, b: any) =>
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-          );
+          // Only sort by timestamp if no duration sort is applied
+          // Otherwise, the API should handle the sorting
+          if (durationSort === "") {
+            filteredByStatus.sort(
+              (a: any, b: any) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+            );
+          }
 
           // Calculate pagination for the first page with current pageSize
           const startIndex = 0;
@@ -1431,7 +1470,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           const paramObj = paramsList[0];
           const urlParams = new URLSearchParams();
           Object.entries(paramObj).forEach(([key, value]) => {
-            if (value !== undefined && value !== null) {
+            // Always include sort parameter even if empty, skip other empty values
+            if (key === "sort") {
+              urlParams.append(key, value !== undefined && value !== null ? value.toString() : "");
+            } else if (value !== undefined && value !== null && value !== "") {
               urlParams.append(key, value.toString());
             }
           });
@@ -1474,11 +1516,19 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         }
       } else {
         // Use the original logic for other user roles
+        // Determine sort value based on durationSort state
+        let sortValue = "";
+        if (durationSort === "MaxToMin") {
+          sortValue = "-duration";
+        } else if (durationSort === "MinToMax") {
+          sortValue = "duration";
+        }
+
         // API Configuration parameters (default values)
         const apiConfig: any = {
           baseUrl: "/onecall/orktrack/rest/recordings",
           range: "custom",
-          sort: "",
+          sort: sortValue,
           page: 1,
           pagesize: pageSize,
           maxresults: -1,
@@ -1492,7 +1542,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
         // Add default parameters
         params.append("range", apiConfig.range);
-        params.append("sort", apiConfig.sort);
+        // Always include sort parameter even if empty
+        params.append("sort", apiConfig.sort || "");
         params.append("page", apiConfig.page.toString());
         params.append("pagesize", apiConfig.pagesize.toString());
         params.append("maxresults", apiConfig.maxresults.toString());
@@ -3073,8 +3124,20 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                       <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                         Datetime
                       </th>
-                      <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th 
+                        className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={handleDurationSort}
+                        title={
+                          durationSort === "MaxToMin" 
+                            ? "เรียงจากมากไปน้อย (คลิกเพื่อเปลี่ยนเป็นน้อยไปมาก)" 
+                            : durationSort === "MinToMax"
+                            ? "เรียงจากน้อยไปมาก (คลิกเพื่อรีเซ็ต)"
+                            : "คลิกเพื่อเรียงลำดับ"
+                        }
+                      >
                         Duration
+                        {durationSort === "MaxToMin" && " ↑"}
+                        {durationSort === "MinToMax" && " ↓"}
                       </th>
                       <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         พนักงานขาย
