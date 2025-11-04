@@ -2,8 +2,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, PaymentMethod, PaymentStatus } from '../types';
 import OrderTable from '../components/OrderTable';
-import { CreditCard, List } from 'lucide-react';
-import { History, ListChecks, Filter } from 'lucide-react';
+import { CreditCard, List, History, ListChecks, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 
 interface TelesaleOrdersPageProps {
   user: User;
@@ -15,6 +16,36 @@ interface TelesaleOrdersPageProps {
 }
 
 const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, customers, openModal, onCancelOrder, title }) => {
+  const filterStorageKey = `telesale_orders_filters_${user?.id ?? '0'}`;
+
+  const savedFilters = useMemo<Record<string, unknown> | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(filterStorageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }, [filterStorageKey]);
+
+  const initialPagination = useMemo(() => {
+    const fallback = { itemsPerPage: PAGE_SIZE_OPTIONS[0], page: 1, hasStoredPage: false };
+    if (!savedFilters) return fallback;
+
+    const storedItems = Number(savedFilters['itemsPerPage']);
+    const resolvedItems = Number.isFinite(storedItems) && PAGE_SIZE_OPTIONS.includes(storedItems)
+      ? storedItems
+      : fallback.itemsPerPage;
+
+    const storedPage = Number(savedFilters['currentPage']);
+    const hasStoredPage = Number.isFinite(storedPage) && storedPage >= 1;
+    const resolvedPage = hasStoredPage ? Math.floor(storedPage) : fallback.page;
+
+    return { itemsPerPage: resolvedItems, page: resolvedPage, hasStoredPage };
+  }, [savedFilters]);
+
   const [activeTab, setActiveTab] = useState<'all' | 'pendingSlip'>('all');
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('unpaid');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -37,11 +68,12 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
 
   const advRef = useRef<HTMLDivElement | null>(null);
+  const initialPageRef = useRef<number | null>(initialPagination.hasStoredPage ? initialPagination.page : null);
 
-  // Persist filters across page switches (per user)
-  const filterStorageKey = `telesale_orders_filters_${user?.id ?? '0'}`;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(initialPagination.itemsPerPage);
+  const [currentPage, setCurrentPage] = useState<number>(initialPagination.page);
 
-  // Load saved filters once on mount
+  // Load saved filters (key depends on user)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(filterStorageKey);
@@ -70,10 +102,19 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
         setAfPaymentStatus(saved.afPaymentStatus ?? saved.fPaymentStatus ?? '');
         setAfCustomerName(saved.afCustomerName ?? saved.fCustomerName ?? '');
         setAfCustomerPhone(saved.afCustomerPhone ?? saved.fCustomerPhone ?? '');
+        const savedItemsPerPage = Number(saved.itemsPerPage);
+        if (Number.isFinite(savedItemsPerPage) && PAGE_SIZE_OPTIONS.includes(savedItemsPerPage)) {
+          setItemsPerPage(savedItemsPerPage);
+        }
+        const savedPage = Number(saved.currentPage);
+        if (Number.isFinite(savedPage) && savedPage >= 1) {
+          const normalized = Math.floor(savedPage);
+          initialPageRef.current = normalized;
+          setCurrentPage(normalized);
+        }
       }
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filterStorageKey]);
 
   // Save filters whenever they change
   useEffect(() => {
@@ -98,10 +139,12 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
         afPaymentStatus,
         afCustomerName,
         afCustomerPhone,
+        itemsPerPage,
+        currentPage,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch {}
-  }, [activeTab, payTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, filterStorageKey]);
+  }, [activeTab, payTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
   
   const myOrders = useMemo(() => {
     return orders.filter(order => order.creatorId === user.id);
@@ -226,6 +269,74 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     }
     return list;
   }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
+
+  const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[0];
+  const totalItems = finalOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
+
+  useEffect(() => {
+    setCurrentPage((prev) => {
+      const target = initialPageRef.current ?? prev;
+      const next = Math.min(Math.max(target, 1), totalPages);
+      return next === prev ? prev : next;
+    });
+    if (initialPageRef.current && totalPages >= initialPageRef.current) {
+      initialPageRef.current = null;
+    }
+  }, [totalPages]);
+
+  const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;
+  const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
+
+  const paginatedOrders = useMemo(() => finalOrders.slice(startIndex, startIndex + safeItemsPerPage), [finalOrders, startIndex, safeItemsPerPage]);
+
+  const displayStart = totalItems === 0 ? 0 : startIndex + 1;
+  const displayEnd = totalItems === 0 ? 0 : endIndex;
+
+  const handlePageChange = (page: number) => {
+    const next = Math.min(Math.max(page, 1), totalPages);
+    setCurrentPage(next);
+  };
+
+  const handleItemsPerPageChange = (value: number) => {
+    const nextValue = value > 0 ? value : PAGE_SIZE_OPTIONS[0];
+    setItemsPerPage(nextValue);
+    setCurrentPage(1);
+  };
+
+  const getPageNumbers = () => {
+    const pages: Array<number | '...'> = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i += 1) {
+        pages.push(i);
+      }
+    } else if (effectivePage <= 3) {
+      for (let i = 1; i <= 4; i += 1) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    } else if (effectivePage >= totalPages - 2) {
+      pages.push(1);
+      pages.push('...');
+      for (let i = totalPages - 3; i <= totalPages; i += 1) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      pages.push('...');
+      for (let i = effectivePage - 1; i <= effectivePage + 1; i += 1) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    }
+
+    return pages;
+  };
 
   return (
     <div className="p-6">
@@ -360,13 +471,66 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       </div>
 
       <div className="bg-white rounded-lg shadow">
-        <OrderTable 
-            orders={finalOrders} 
-            customers={customers} 
-            openModal={openModal} 
-            user={user}
-            onCancelOrder={onCancelOrder}
+        <OrderTable
+          orders={paginatedOrders}
+          customers={customers}
+          openModal={openModal}
+          user={user}
+          onCancelOrder={onCancelOrder}
         />
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+          <div className="text-sm text-gray-700">
+            Showing {displayStart} to {displayEnd} of {totalItems} entries
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-700">Lines per page</span>
+              <select
+                value={safeItemsPerPage}
+                onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={() => handlePageChange(effectivePage - 1)}
+                disabled={effectivePage === 1}
+                className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              {getPageNumbers().map((page, index) => (
+                <button
+                  key={`${page}-${index}`}
+                  onClick={() => (typeof page === 'number' ? handlePageChange(page) : undefined)}
+                  disabled={page === '...'}
+                  className={`px-3 py-1 text-sm rounded ${
+                    page === effectivePage
+                      ? 'bg-blue-600 text-white'
+                      : page === '...'
+                        ? 'text-gray-400 cursor-default'
+                        : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => handlePageChange(effectivePage + 1)}
+                disabled={effectivePage === totalPages || totalItems === 0}
+                className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

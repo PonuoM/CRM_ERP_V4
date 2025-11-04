@@ -510,10 +510,12 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               }}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
+              <option value={5}>5 รายการ</option>
               <option value={10}>10 รายการ</option>
-              <option value={25}>25 รายการ</option>
+              <option value={20}>20 รายการ</option>
               <option value={50}>50 รายการ</option>
               <option value={100}>100 รายการ</option>
+              <option value={500}>500 รายการ</option>
             </select>
           </div>
         </div>
@@ -526,7 +528,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
         customers={filteredCustomers}
         onViewCustomer={(c) => (onViewCustomer ? onViewCustomer(c) : setSelectedCustomer(c))}
         openModal={(type, data) => { if (openModal) openModal(type, data); }}
-        pageSizeOptions={[10, 25, 50, 100]}
+        pageSizeOptions={[5, 10, 20, 50, 100, 500]}
         storageKey={`manageCustomers:${currentUser.id}`}
       />
       <div className="bg-white rounded-lg shadow-sm border hidden">

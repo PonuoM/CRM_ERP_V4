@@ -6,6 +6,7 @@ import {
   Appointment,
   ModalType,
   User,
+  UserRole,
   Tag,
   TagType,
   CustomerLog,
@@ -62,6 +63,8 @@ interface CustomerDetailPageProps {
   onCompleteAppointment?: (appointmentId: number) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
+  onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
+  customerCounts?: Record<number, number>;
 }
 
 type ActiveTab = "calls" | "appointments" | "orders";
@@ -95,7 +98,10 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     onAddTag,
     onRemoveTag,
     onCreateUserTag,
+    ownerName,
     onStartCreateOrder,
+    onChangeOwner,
+    customerCounts,
   } = props;
   const [activeTab, setActiveTab] = useState<ActiveTab>("calls");
   const [newTagName, setNewTagName] = useState("");
@@ -113,6 +119,10 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     Record<string, { items: LineItem[]; loading: boolean; error?: string }>
   >({});
   const [expandedOrderIds, setExpandedOrderIds] = useState<string[]>([]);
+  const [showOwnerChange, setShowOwnerChange] = useState(false);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
+  const [ownerChangeError, setOwnerChangeError] = useState<string | null>(null);
+  const [ownerChangeLoading, setOwnerChangeLoading] = useState(false);
 
   const usersById = useMemo(() => {
     const map = new Map<number, User>();
@@ -121,6 +131,187 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     });
     return map;
   }, [allUsers]);
+
+  const eligibleOwners = useMemo(() => {
+    const sameCompanyUsers =
+      user.role === UserRole.SuperAdmin
+        ? allUsers
+        : allUsers.filter(
+            (candidate) => candidate.companyId === user.companyId,
+          );
+
+    if (user.role === UserRole.Supervisor) {
+      return sameCompanyUsers.filter((candidate) => {
+        if (candidate.id === user.id) return true;
+        if (
+          candidate.role === UserRole.Telesale &&
+          candidate.supervisorId === user.id
+        ) {
+          return true;
+        }
+        if (
+          candidate.role === UserRole.Supervisor &&
+          candidate.id !== user.id
+        ) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    if (user.role === UserRole.Telesale) {
+      return sameCompanyUsers.filter(
+        (candidate) => candidate.id === user.supervisorId,
+      );
+    }
+
+    return sameCompanyUsers;
+  }, [allUsers, user]);
+
+  const filteredEligibleOwners = useMemo(
+    () => eligibleOwners.filter((candidate) => candidate.id !== user.id),
+    [eligibleOwners, user.id],
+  );
+
+  const currentOwnerUser =
+    customer.assignedTo != null ? usersById.get(customer.assignedTo) : null;
+
+  const currentOwnerBaseName =
+    currentOwnerUser
+      ? `${currentOwnerUser.firstName} ${currentOwnerUser.lastName}`.trim()
+      : ownerName ||
+        (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
+
+  const currentOwnerCustomerCount = currentOwnerUser
+    ? customerCounts?.[currentOwnerUser.id] ?? 0
+    : null;
+
+  const currentOwnerName =
+    currentOwnerCustomerCount != null && currentOwnerBaseName !== "-"
+      ? `${currentOwnerBaseName} (${currentOwnerCustomerCount} ลูกค้า)`
+      : currentOwnerBaseName;
+
+  const canChangeOwner =
+    Boolean(onChangeOwner) && filteredEligibleOwners.length > 0;
+
+  const ownerGroups = useMemo(() => {
+    const supervisors = filteredEligibleOwners.filter(
+      (candidate) => candidate.role === UserRole.Supervisor,
+    );
+    const telesales = filteredEligibleOwners.filter(
+      (candidate) => candidate.role === UserRole.Telesale,
+    );
+    const others = filteredEligibleOwners.filter(
+      (candidate) =>
+        candidate.role !== UserRole.Supervisor &&
+        candidate.role !== UserRole.Telesale,
+    );
+
+    return [
+      {
+        key: "supervisors",
+        label: "หัวหน้าทีม (Supervisor)",
+        users: supervisors,
+      },
+      {
+        key: "telesales",
+        label: "ลูกทีม (Telesale)",
+        users: telesales,
+      },
+      {
+        key: "others",
+        label: "บทบาทอื่น",
+        users: others,
+      },
+    ].filter((group) => group.users.length > 0);
+  }, [filteredEligibleOwners]);
+
+  const formatOwnerOption = (candidate: User) => {
+    const fullName = `${candidate.firstName} ${candidate.lastName}`.trim();
+    const count = customerCounts?.[candidate.id] ?? 0;
+    return `${fullName} (${count} ลูกค้า)`;
+  };
+
+  useEffect(() => {
+    if (!showOwnerChange) {
+      return;
+    }
+    if (filteredEligibleOwners.length === 0) {
+      setSelectedOwnerId(null);
+      return;
+    }
+    if (
+      selectedOwnerId == null ||
+      !filteredEligibleOwners.some(
+        (candidate) => candidate.id === selectedOwnerId,
+      )
+    ) {
+      const defaultCandidate =
+        filteredEligibleOwners.find(
+          (candidate) => candidate.id !== customer.assignedTo,
+        ) || filteredEligibleOwners[0];
+      setSelectedOwnerId(defaultCandidate ? defaultCandidate.id : null);
+    }
+  }, [
+    showOwnerChange,
+    filteredEligibleOwners,
+    selectedOwnerId,
+    customer.assignedTo,
+  ]);
+
+  const handleToggleOwnerSelector = () => {
+    if (!canChangeOwner) return;
+
+    if (!showOwnerChange) {
+      const defaultCandidate =
+        filteredEligibleOwners.find(
+          (candidate) => candidate.id !== customer.assignedTo,
+        ) || filteredEligibleOwners[0];
+      setSelectedOwnerId(defaultCandidate ? defaultCandidate.id : null);
+    }
+
+    setOwnerChangeError(null);
+    setShowOwnerChange((prev) => !prev);
+  };
+
+  const handleConfirmOwnerChange = async () => {
+    if (!onChangeOwner) {
+      return;
+    }
+
+    if (selectedOwnerId == null) {
+      setOwnerChangeError("กรุณาเลือกผู้ดูแลใหม่");
+      return;
+    }
+
+    if (selectedOwnerId === customer.assignedTo) {
+      setOwnerChangeError("กรุณาเลือกผู้ดูแลคนอื่น");
+      return;
+    }
+
+    const isEligible = filteredEligibleOwners.some(
+      (candidate) => candidate.id === selectedOwnerId,
+    );
+
+    if (!isEligible) {
+      setOwnerChangeError("ไม่สามารถมอบหมายให้ผู้ใช้งานนี้ได้");
+      return;
+    }
+
+    try {
+      setOwnerChangeLoading(true);
+      setOwnerChangeError(null);
+      await Promise.resolve(onChangeOwner(customer.id, selectedOwnerId));
+      setShowOwnerChange(false);
+    } catch (error) {
+      console.error("Failed to change owner", error);
+      const message =
+        error instanceof Error ? error.message : "ไม่สามารถเปลี่ยนผู้ดูแลได้";
+      setOwnerChangeError(message);
+    } finally {
+      setOwnerChangeLoading(false);
+    }
+  };
 
   const formatCurrency = (value: number) =>
     `฿${Number(value || 0).toLocaleString("th-TH", {
@@ -602,13 +793,69 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
               <InfoItem label="ผู้ดูแล">
                 <div className="flex items-center">
                   <span className="text-sm font-medium text-gray-800 mr-2">
-                    {props.ownerName ||
-                      (customer.assignedTo ? `ID ${customer.assignedTo}` : "-")}
+                    {currentOwnerName}
                   </span>
-                  <button className="text-xs text-blue-600 hover:underline">
-                    (เปลี่ยนผู้ดูแล)
-                  </button>
+                  {canChangeOwner && (
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={handleToggleOwnerSelector}
+                    >
+                      (เปลี่ยนผู้ดูแล)
+                    </button>
+                  )}
                 </div>
+                {showOwnerChange && canChangeOwner && (
+                  <div className="mt-2 space-y-2">
+                    <select
+                      className="w-full border rounded-md px-2 py-1 text-sm"
+                      value={selectedOwnerId != null ? String(selectedOwnerId) : ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSelectedOwnerId(value === "" ? null : Number(value));
+                        setOwnerChangeError(null);
+                      }}
+                    >
+                      <option value="">เลือกผู้ดูแลใหม่</option>
+                      {ownerGroups.map((group) => (
+                        <optgroup key={group.key} label={group.label}>
+                          {group.users.map((candidate) => (
+                            <option key={candidate.id} value={String(candidate.id)}>
+                              {formatOwnerOption(candidate)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {ownerChangeError && (
+                      <p className="text-xs text-red-600">{ownerChangeError}</p>
+                    )}
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleConfirmOwnerChange}
+                        className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={
+                          ownerChangeLoading ||
+                          selectedOwnerId == null ||
+                          selectedOwnerId === customer.assignedTo
+                        }
+                      >
+                        {ownerChangeLoading ? "กำลังบันทึก..." : "ยืนยัน"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowOwnerChange(false);
+                          setOwnerChangeError(null);
+                        }}
+                        className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                )}
               </InfoItem>
               <InfoItem
                 label="วันที่ลงทะเบียน"

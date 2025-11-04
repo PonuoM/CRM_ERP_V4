@@ -999,6 +999,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         openModal={openModal}
         showCallNotes={activeSubMenu === 'all'}
         hideGrade={true}
+        pageSizeOptions={[5, 10, 20, 50, 100, 500]}
         storageKey={`telesale:${user.id}`}
       />
     </div>
