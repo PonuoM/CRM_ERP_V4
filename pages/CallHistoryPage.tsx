@@ -85,7 +85,8 @@ const getOnecallCredentialsFromDB = async () => {
     if (
       user.role !== UserRole.SuperAdmin &&
       user.role !== UserRole.AdminControl &&
-      user.role !== UserRole.Telesale
+      user.role !== UserRole.Telesale &&
+      user.role !== UserRole.Supervisor
     ) {
       throw new Error("Access denied - insufficient permissions");
     }

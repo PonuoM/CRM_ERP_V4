@@ -50,11 +50,12 @@ try {
     json_response(["error" => "Missing required user fields"], 400);
   }
 
-  // Security: Only allow Super Admin, AdminControl, and Telesale roles
+  // Security: Only allow Super Admin, AdminControl, Telesale, and Supervisor Telesale roles
   if (
     $user["role"] !== "Super Admin" &&
     $user["role"] !== "AdminControl" &&
-    $user["role"] !== "Telesale"
+    $user["role"] !== "Telesale" &&
+    $user["role"] !== "Supervisor Telesale"
   ) {
     http_response_code(403);
     header("Content-Type: application/json");
