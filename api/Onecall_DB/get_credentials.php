@@ -9,31 +9,27 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
   json_response(["error" => "Method not allowed"], 405);
 }
 
-// Rate limiting
+// Rate limiting: 1 request per second
 $client_ip = $_SERVER["REMOTE_ADDR"] ?? "unknown";
 $rate_key = "get_creds_rate_" . md5($client_ip);
 $rate_file = sys_get_temp_dir() . "/" . $rate_key;
 
-// Rate limiting: max 5 requests per minute
-if (file_exists($rate_file)) {
-  $requests = json_decode(file_get_contents($rate_file), true) ?: [];
-  $now = time();
-  $requests = array_filter($requests, function ($timestamp) use ($now) {
-    return $now - $timestamp < 60;
-  });
+$now = time();
 
-  if (count($requests) >= 5) {
+if (file_exists($rate_file)) {
+  $last_request = intval(file_get_contents($rate_file));
+  
+  // Check if less than 1 second has passed since last request
+  if ($now - $last_request < 1) {
     http_response_code(429);
     header("Content-Type: application/json");
-    echo json_encode(["error" => "Too many requests"]);
+    echo json_encode(["error" => "Too many requests. Please wait 1 second between requests."]);
     exit();
   }
-
-  $requests[] = $now;
-  file_put_contents($rate_file, json_encode($requests));
-} else {
-  file_put_contents($rate_file, json_encode([time()]));
 }
+
+// Update last request timestamp
+file_put_contents($rate_file, (string)$now);
 
 try {
   // Get user data from request
