@@ -47,6 +47,29 @@ const showOnecallSetupMessage = () => {
   };
 };
 
+// Utility function to format Thai phone numbers to +66 format
+const formatPhoneToPlus66 = (phone: string) => {
+  // Remove any non-digit characters first
+  const digitsOnly = phone.replace(/\D/g, "");
+
+  // If already starts with +66, return as is
+  if (phone.startsWith("+66")) {
+    return phone;
+  }
+  // If starts with 0, remove 0 and add +66 (e.g., 0945547598 -> +66945547598)
+  else if (digitsOnly.startsWith("0")) {
+    return "+66" + digitsOnly.substring(1);
+  }
+  // If starts with 66, add + at the beginning (e.g., 66945547598 -> +66945547598)
+  else if (digitsOnly.startsWith("66")) {
+    return "+" + digitsOnly;
+  }
+  // Default case: add +66 (for numbers without country code)
+  else {
+    return "+66" + digitsOnly;
+  }
+};
+
 // Function to get Onecall credentials from database
 const getOnecallCredentialsFromDB = async () => {
   try {
@@ -248,10 +271,8 @@ const getRecordingsData = async (currentUser?: User) => {
     currentUser.role === UserRole.Telesale &&
     currentUser.phone
   ) {
-    // Format phone number from 0945547598 to +66945547598
-    const formattedPhone = currentUser.phone.startsWith("0")
-      ? "+66" + currentUser.phone.substring(1)
-      : "+66" + currentUser.phone;
+    // Format phone number using the global utility function
+    const formattedPhone = formatPhoneToPlus66(currentUser.phone);
 
     apiConfig.party = formattedPhone;
   } else if (
@@ -259,10 +280,8 @@ const getRecordingsData = async (currentUser?: User) => {
     currentUser.role === UserRole.Supervisor &&
     currentUser.phone
   ) {
-    // Format phone number from 0945547598 to +66945547598
-    const formattedPhone = currentUser.phone.startsWith("0")
-      ? "+66" + currentUser.phone.substring(1)
-      : "+66" + currentUser.phone;
+    // Format phone number using the global utility function
+    const formattedPhone = formatPhoneToPlus66(currentUser.phone);
 
     apiConfig.party = formattedPhone;
   }
@@ -783,18 +802,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       const hasCustomerPhone = qCustomerPhone && qCustomerPhone.trim() !== "";
       const hasSelectedAgent = selectedAgent && selectedAgent.trim() !== "";
 
-      const formatPhoneToPlus66 = (phone: string) => {
-        const digitsOnly = phone.replace(/\D/g, "");
-        if (digitsOnly.startsWith("0")) {
-          return "+66" + digitsOnly.substring(1);
-        } else if (digitsOnly.startsWith("66")) {
-          return "+" + digitsOnly;
-        } else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
-          return phone;
-        } else {
-          return "+66" + digitsOnly;
-        }
-      };
+      // Use global formatPhoneToPlus66 function
 
       if (
         (hasCustomerPhone && !hasSelectedAgent) ||
@@ -1225,28 +1233,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     const hasCustomerPhone = qCustomerPhone && qCustomerPhone.trim() !== "";
     const hasSelectedAgent = selectedAgent && selectedAgent.trim() !== "";
 
-    // Format phone numbers to +66 format
-    const formatPhoneToPlus66 = (phone: string) => {
-      // Remove any non-digit characters first
-      const digitsOnly = phone.replace(/\D/g, "");
-
-      // If starts with 0, remove 0 and add +66
-      if (digitsOnly.startsWith("0")) {
-        return "+66" + digitsOnly.substring(1);
-      }
-      // If starts with 66, add + at the beginning
-      else if (digitsOnly.startsWith("66")) {
-        return "+" + digitsOnly;
-      }
-      // If starts with +66, return as is
-      else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
-        return phone;
-      }
-      // Default case: add +66
-      else {
-        return "+66" + digitsOnly;
-      }
-    };
+    // Use global formatPhoneToPlus66 function
 
     // Case 1: Only one phone is specified
     if (
@@ -1534,9 +1521,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         if (currentUser && currentUser.role === UserRole.Supervisor) {
           const phoneToUse = selectedAgent || currentUser.phone;
           if (phoneToUse) {
-            const formattedPhone = phoneToUse.startsWith("0")
-              ? "+66" + phoneToUse.substring(1)
-              : "+66" + phoneToUse;
+            const formattedPhone = formatPhoneToPlus66(phoneToUse);
             params.append("party", formattedPhone);
           }
         }
@@ -1546,9 +1531,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           currentUser.role === UserRole.Telesale &&
           currentUser.phone
         ) {
-          const formattedPhone = currentUser.phone.startsWith("0")
-            ? "+66" + currentUser.phone.substring(1)
-            : "+66" + currentUser.phone;
+          const formattedPhone = formatPhoneToPlus66(currentUser.phone);
           params.append("party", formattedPhone);
         }
 
@@ -1568,28 +1551,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
               : currentUser.phone;
 
           if (agentPhone) {
-            // Format phone numbers to +66 format
-            const formatPhoneToPlus66 = (phone: string) => {
-              // Remove any non-digit characters first
-              const digitsOnly = phone.replace(/\D/g, "");
-
-              // If starts with 0, remove 0 and add +66
-              if (digitsOnly.startsWith("0")) {
-                return "+66" + digitsOnly.substring(1);
-              }
-              // If starts with 66, add + at the beginning
-              else if (digitsOnly.startsWith("66")) {
-                return "+" + digitsOnly;
-              }
-              // If starts with +66, return as is
-              else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
-                return phone;
-              }
-              // Default case: add +66
-              else {
-                return "+66" + digitsOnly;
-              }
-            };
+            // Use global formatPhoneToPlus66 function
 
             const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
             const formattedAgentPhone = formatPhoneToPlus66(agentPhone);
@@ -1994,28 +1956,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                 : currentUser.phone;
 
             if (agentPhone) {
-              // Format phone numbers to +66 format
-              const formatPhoneToPlus66 = (phone: string) => {
-                // Remove any non-digit characters first
-                const digitsOnly = phone.replace(/\D/g, "");
-
-                // If starts with 0, remove 0 and add +66
-                if (digitsOnly.startsWith("0")) {
-                  return "+66" + digitsOnly.substring(1);
-                }
-                // If starts with 66, add + at the beginning
-                else if (digitsOnly.startsWith("66")) {
-                  return "+" + digitsOnly;
-                }
-                // If starts with +66, return as is
-                else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
-                  return phone;
-                }
-                // Default case: add +66
-                else {
-                  return "+66" + digitsOnly;
-                }
-              };
+              // Use global formatPhoneToPlus66 function
 
               const formattedCustomerPhone =
                 formatPhoneToPlus66(qCustomerPhone);
@@ -2434,28 +2375,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
               : currentUser.phone;
 
           if (agentPhone) {
-            // Format phone numbers to +66 format
-            const formatPhoneToPlus66 = (phone: string) => {
-              // Remove any non-digit characters first
-              const digitsOnly = phone.replace(/\D/g, "");
-
-              // If starts with 0, remove 0 and add +66
-              if (digitsOnly.startsWith("0")) {
-                return "+66" + digitsOnly.substring(1);
-              }
-              // If starts with 66, add + at the beginning
-              else if (digitsOnly.startsWith("66")) {
-                return "+" + digitsOnly;
-              }
-              // If starts with +66, return as is
-              else if (digitsOnly.startsWith("66") && phone.startsWith("+")) {
-                return phone;
-              }
-              // Default case: add +66
-              else {
-                return "+66" + digitsOnly;
-              }
-            };
+            // Use global formatPhoneToPlus66 function
 
             const formattedCustomerPhone = formatPhoneToPlus66(qCustomerPhone);
             const formattedAgentPhone = formatPhoneToPlus66(agentPhone);
