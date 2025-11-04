@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { CallHistory, Customer, User, UserRole } from "@/types";
 import {
   PhoneIncoming,
@@ -59,7 +59,11 @@ const getOnecallCredentialsFromDB = async () => {
     const user = JSON.parse(sessionUser);
 
     // Check if user has permission to access credentials
-    if (user.role !== "Super Admin" && user.role !== "AdminControl") {
+    if (
+      user.role !== UserRole.SuperAdmin &&
+      user.role !== UserRole.AdminControl &&
+      user.role !== UserRole.Telesale
+    ) {
       throw new Error("Access denied - insufficient permissions");
     }
 
