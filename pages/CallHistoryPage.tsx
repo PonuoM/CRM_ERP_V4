@@ -70,6 +70,27 @@ const formatPhoneToPlus66 = (phone: string) => {
   }
 };
 
+// Helper function to filter recordings by status
+const filterRecordingsByStatus = (recordings: any[], statusFilter: string) => {
+  if (statusFilter === "all") {
+    return recordings;
+  }
+
+  return recordings.filter((recording: any) => {
+    // Determine status based on duration (same logic as in table display)
+    const getStatusText = (duration: number) => {
+      if (duration <= 40) {
+        return "ไม่ได้คุย";
+      } else {
+        return "ได้คุย";
+      }
+    };
+
+    const recordingStatus = getStatusText(recording.duration || 0);
+    return recordingStatus === statusFilter;
+  });
+};
+
 // Function to get Onecall credentials from database
 const getOnecallCredentialsFromDB = async () => {
   try {
@@ -1230,6 +1251,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       params.direction = direction;
     }
 
+    // Add status filter if specified
+    if (status !== "all") {
+      params.status = status;
+    }
+
     // Handle phone filters
     const hasCustomerPhone = qCustomerPhone && qCustomerPhone.trim() !== "";
     const hasSelectedAgent = selectedAgent && selectedAgent.trim() !== "";
@@ -1366,8 +1392,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
               index === self.findIndex((t: any) => t.id === obj.id),
           );
 
+          // Apply status filtering
+          const filteredByStatus = filterRecordingsByStatus(
+            uniqueObjects,
+            status,
+          );
+
           // Sort by timestamp (newest first)
-          uniqueObjects.sort(
+          filteredByStatus.sort(
             (a: any, b: any) =>
               new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
           );
@@ -1375,14 +1407,14 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           // Calculate pagination for the first page with current pageSize
           const startIndex = 0;
           const endIndex = pageSize;
-          const pageObjects = uniqueObjects.slice(startIndex, endIndex);
+          const pageObjects = filteredByStatus.slice(startIndex, endIndex);
 
           // Update state with paginated results
           const mergedData = {
             objects: pageObjects,
             page: 1,
             pageSize: pageSize,
-            resultCount: uniqueObjects.length,
+            resultCount: filteredByStatus.length,
           };
 
           setRecordingsData(mergedData);
@@ -1425,7 +1457,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
-              setFilteredRecordings(responseData.objects);
+              const filteredObjects = filterRecordingsByStatus(
+                responseData.objects,
+                status,
+              );
+              setFilteredRecordings(filteredObjects);
               setSearchedAgent(selectedAgent);
               setCurrentPage(responseData.page || 1);
               setPageSize(responseData.pageSize || pageSize);
@@ -1667,7 +1703,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
-              setFilteredRecordings(responseData.objects);
+              const filteredObjects = filterRecordingsByStatus(
+                responseData.objects,
+                status,
+              );
+              setFilteredRecordings(filteredObjects);
               setSearchedAgent(selectedAgent);
               setCurrentPage(responseData.page || 1);
               setPageSize(responseData.pageSize || 20);
@@ -1820,7 +1860,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
               if (responseData && responseData.objects) {
                 setRecordingsData(responseData);
-                setFilteredRecordings(responseData.objects);
+                const filteredObjects = filterRecordingsByStatus(
+                  responseData.objects,
+                  status,
+                );
+                setFilteredRecordings(filteredObjects);
                 setSearchedAgent(selectedAgent);
                 setCurrentPage(responseData.page || page);
                 setPageSize(responseData.pageSize || pageSize);
@@ -2088,7 +2132,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
               if (responseData && responseData.objects) {
                 setRecordingsData(responseData);
-                setFilteredRecordings(responseData.objects);
+                const filteredObjects = filterRecordingsByStatus(
+                  responseData.objects,
+                  status,
+                );
+                setFilteredRecordings(filteredObjects);
                 setSearchedAgent(selectedAgent);
                 setCurrentPage(responseData.page || page);
                 setPageSize(responseData.pageSize || pageSize);
@@ -2491,7 +2539,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
             if (responseData && responseData.objects) {
               setRecordingsData(responseData);
-              setFilteredRecordings(responseData.objects);
+              const filteredObjects = filterRecordingsByStatus(
+                responseData.objects,
+                status,
+              );
+              setFilteredRecordings(filteredObjects);
               setSearchedAgent(selectedAgent);
               setCurrentPage(responseData.page || 1);
               setPageSize(responseData.pageSize || newPageSize);
@@ -2547,7 +2599,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
           if (responseData && responseData.objects) {
             setRecordingsData(responseData);
-            setFilteredRecordings(responseData.objects);
+            const filteredObjects = filterRecordingsByStatus(
+              responseData.objects,
+              status,
+            );
+            setFilteredRecordings(filteredObjects);
 
             // Update pagination state
             setCurrentPage(responseData.page || 1);
@@ -2625,7 +2681,11 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   // Initialize filtered recordings when recordings data is loaded
   useEffect(() => {
     if (recordingsData && recordingsData.objects) {
-      setFilteredRecordings(recordingsData.objects);
+      const filteredObjects = filterRecordingsByStatus(
+        recordingsData.objects,
+        status,
+      );
+      setFilteredRecordings(filteredObjects);
 
       // Update pagination state
       setCurrentPage(recordingsData.page || 1);
@@ -2636,6 +2696,17 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       setLimitReached(recordingsData.limitReached || false);
     }
   }, [recordingsData]);
+
+  // Re-filter when status changes
+  useEffect(() => {
+    if (recordingsData && recordingsData.objects) {
+      const filteredObjects = filterRecordingsByStatus(
+        recordingsData.objects,
+        status,
+      );
+      setFilteredRecordings(filteredObjects);
+    }
+  }, [status, recordingsData]);
 
   return (
     <>
@@ -2819,9 +2890,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
                   <option value="all">ทั้งหมด</option>
-                  <option value="รับ">รับสาย</option>
-                  <option value="ไม่รับ">ไม่รับ</option>
-                  <option value="พลาด">พลาด</option>
+                  <option value="ได้คุย">ได้คุย</option>
+                  <option value="ไม่ได้คุย">ไม่ได้คุย</option>
                 </select>
               </div>
               <div className="flex items-end gap-2">
