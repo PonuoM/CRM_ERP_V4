@@ -35,7 +35,7 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
     try {
       const [year, month] = selectedMonth.split("-");
       const response = await fetch(
-        `/api/index.php/call_overview?month=${selectedMonth}`,
+        `${import.meta.env.BASE_URL}api/index.php/call_overview?month=${selectedMonth}`,
         {
           method: "GET",
           headers: {

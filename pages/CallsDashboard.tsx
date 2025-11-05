@@ -45,10 +45,10 @@ const authenticateOneCall = async () => {
     const passwordKey = `ONECALL_PASSWORD_${companyId}`;
 
     const [usernameRes, passwordRes] = await Promise.all([
-      fetch(`api/Marketing_DB/get_env.php?key=${usernameKey}`, {
+      fetch(`${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${usernameKey}`, {
         headers: { "Content-Type": "application/json" },
       }),
-      fetch(`api/Marketing_DB/get_env.php?key=${passwordKey}`, {
+      fetch(`${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${passwordKey}`, {
         headers: { "Content-Type": "application/json" },
       }),
     ]);
@@ -254,13 +254,16 @@ const saveBatchToDatabase = async (
       amount_record: amountRecord,
     };
 
-    const response = await fetch("/api/Onecall_DB/onecall_batch.php", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_batch.php`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
       },
-      body: JSON.stringify(requestData),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -316,13 +319,16 @@ const saveLogToDatabase = async (logs: any[], batchId: number) => {
       batch_id: batchId,
     };
 
-    const response = await fetch("/api/Onecall_DB/onecall_logs.php", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_logs.php`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
       },
-      body: JSON.stringify(requestData),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -425,7 +431,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   const fetchDashboardStats = async () => {
     try {
       const response = await fetch(
-        `/api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -444,7 +450,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   const fetchEmployeeSummary = async () => {
     try {
       const resp = await fetch(
-        `/api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -466,7 +472,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const resp = await fetch(
-        `/api/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -488,7 +494,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
       const resp = await fetch(
-        `/api/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -721,7 +727,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch batches
   const fetchBatches = async () => {
     try {
-      const response = await fetch("/api/Onecall_DB/onecall_batch_crud.php");
+      const response = await fetch(
+        `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_batch_crud.php`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -739,7 +747,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch users with telesale and supervisor roles
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/Onecall_DB/get_users.php");
+      const response = await fetch(
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_users.php`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -779,7 +789,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
     try {
       const response = await fetch(
-        `/api/Onecall_DB/onecall_batch_crud.php?id=${batchId}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_batch_crud.php?id=${batchId}`,
         {
           method: "DELETE",
         },
@@ -838,8 +848,8 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
       const url =
         isEditingBatch && selectedBatch
-          ? `/api/Onecall_DB/onecall_batch_crud.php?id=${selectedBatch.id}`
-          : "/api/Onecall_DB/onecall_batch_crud.php";
+          ? `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_batch_crud.php?id=${selectedBatch.id}`
+          : `${import.meta.env.BASE_URL}api/Onecall_DB/onecall_batch_crud.php`;
 
       const method = isEditingBatch ? "PUT" : "POST";
 

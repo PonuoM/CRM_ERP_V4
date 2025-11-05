@@ -112,20 +112,23 @@ const getOnecallCredentialsFromDB = async () => {
       throw new Error("Access denied - insufficient permissions");
     }
 
-    // Call secure API to get credentials
-    const response = await fetch("/api/Onecall_DB/get_credentials.php", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user: {
-          id: user.id,
-          company_id: user.company_id,
-          role: user.role,
+    // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
+    const response = await fetch(
+      `${import.meta.env.BASE_URL}api/Onecall_DB/get_credentials.php`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          user: {
+            id: user.id,
+            company_id: user.company_id,
+            role: user.role,
+          },
+        }),
+      },
+    );
 
     if (!response.ok) {
       const errorData = await response.json();
