@@ -49,7 +49,7 @@ try {
   // Security: Only allow Super Admin, AdminControl, Telesale, and Supervisor Telesale roles
   if (
     $user["role"] !== "Super Admin" &&
-    $user["role"] !== "AdminControl" &&
+    $user["role"] !== "Admin Control" &&
     $user["role"] !== "Telesale" &&
     $user["role"] !== "Supervisor Telesale"
   ) {
