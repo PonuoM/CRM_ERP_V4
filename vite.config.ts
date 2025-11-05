@@ -23,6 +23,8 @@ function fixHtmlContentType(): Plugin {
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      // Important: app is served from /mini_erp on the host
+      base: '/mini_erp/',
       plugins: [fixHtmlContentType(), react()],
       server: {
         port: 5173,
