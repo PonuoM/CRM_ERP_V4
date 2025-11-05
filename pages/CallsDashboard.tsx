@@ -23,9 +23,9 @@ interface CallsDashboardProps {
 
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
-  // Use proxy to avoid CORS issues
+  // Use reverse proxy path (works in dev + prod)
   const loginUrl =
-    "/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true";
+    `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
 
   try {
     // Get current user from localStorage
@@ -202,7 +202,7 @@ const fetchRecordingsData = async (startDate: string, endDate: string) => {
     params.append("includemetadata", "true");
     params.append("includeprograms", "true");
 
-    const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
+    const searchUrl = `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings?${params.toString()}`;
 
     const response = await fetch(searchUrl, {
       method: "GET",
@@ -618,7 +618,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         params.append("includemetadata", "true");
         params.append("includeprograms", "true");
 
-        const searchUrl = `/onecall/orktrack/rest/recordings?${params.toString()}`;
+        const searchUrl = `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings?${params.toString()}`;
 
         const response = await fetch(searchUrl, {
           method: "GET",

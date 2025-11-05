@@ -150,9 +150,9 @@ const getOnecallCredentialsFromDB = async () => {
 
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
-  // Use proxy to avoid CORS issues
+  // Use reverse proxy path (works in dev + prod)
   const loginUrl =
-    "/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true";
+    `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
 
   let username, password;
 
@@ -279,7 +279,7 @@ const getRecordingsData = async (currentUser?: User, sortParam?: string) => {
 
   // API Configuration parameters
   const apiConfig: any = {
-    baseUrl: "/onecall/orktrack/rest/recordings",
+    baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
     range: "custom",
     sort: sortParam || "",
     page: 1,
@@ -765,7 +765,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
       // Use current filter settings
       const params: any = {
-        baseUrl: "/onecall/orktrack/rest/recordings",
+        baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
         range: "custom",
         sort: "",
         page: 1,
@@ -1210,7 +1210,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
     // Default parameters
     const params: any = {
-      baseUrl: "/onecall/orktrack/rest/recordings",
+      baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
       range: "custom",
       sort: sortValue,
       page: 1,
@@ -1529,7 +1529,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
 
         // API Configuration parameters (default values)
         const apiConfig: any = {
-          baseUrl: "/onecall/orktrack/rest/recordings",
+          baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
           range: "custom",
           sort: sortValue,
           page: 1,
@@ -1933,7 +1933,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           // Use the original logic for other user roles
           // API Configuration parameters (default values)
           const apiConfig: any = {
-            baseUrl: "/onecall/orktrack/rest/recordings",
+            baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
             range: "custom",
             sort: "",
             page: page,
@@ -2362,7 +2362,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         // Use the original logic for other user roles
         // API Configuration parameters (default values)
         const apiConfig: any = {
-          baseUrl: "/onecall/orktrack/rest/recordings",
+          baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
           range: "custom",
           sort: "",
           page: 1, // Reset to first page

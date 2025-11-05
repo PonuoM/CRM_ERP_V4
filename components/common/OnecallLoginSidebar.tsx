@@ -260,7 +260,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   ): Promise<AuthResponse> => {
     // Use proxy to avoid CORS issues
     const loginUrl =
-      "/onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true";
+      `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
 
     // Create auth string and encode it (Postman Basic Auth style)
     const authString = `${user}:${pass}`;

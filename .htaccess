@@ -8,20 +8,26 @@
   # 1) Allow API requests to pass through to /api
   RewriteRule ^api/ - [L]
 
+  # 1.1) Route Onecall reverse-proxy path to PHP proxy BEFORE SPA rewrites
+  # Example: /mini_erp/onecall/orktrack/rest/... -> api/Onecall_DB/onecall_proxy.php?path=orktrack/rest/...
+  RewriteRule ^onecall/(.*)$ api/Onecall_DB/onecall_proxy.php?path=$1 [QSA,L]
+
   # 2) Serve existing files/directories in this folder as-is
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 3) For non-API requests not already under /dist,
+  # 3) For non-API/onecall requests not already under /dist,
   #    rewrite to /dist/<path> so built assets are served
-  RewriteRule ^(?!dist/|api/)(.*)$ dist/$1 [QSA,L]
+  RewriteRule ^(?!dist/|api/|onecall/)(.*)$ dist/$1 [QSA,L]
 
   # 4) SPA fallback: for anything under /dist that is not a real file/dir,
   #    serve /dist/index.html so client-side routing works
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^dist/.* dist/index.html [L]
+  # Reverse proxy for /onecall/* is handled at server vhost level.
+  # No .htaccess rewrite here to avoid forcing PHP proxy path.
 </IfModule>
 
 # Ensure the default document is the built index.html
