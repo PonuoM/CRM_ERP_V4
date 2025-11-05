@@ -20,11 +20,12 @@ function fixHtmlContentType(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
     const env = loadEnv(mode, '.', '');
+    const isDev = command === 'serve';
     return {
-      // Important: app is served from /mini_erp on the host
-      base: '/mini_erp/',
+      // Use root base in dev; sub-path in builds
+      base: isDev ? '/' : '/mini_erp/',
       plugins: [fixHtmlContentType(), react()],
       server: {
         port: 5173,
