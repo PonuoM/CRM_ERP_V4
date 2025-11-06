@@ -1610,7 +1610,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     return (
                       <tr key={row.id} className="border-b">
                         <td className="px-3 py-2">{row.spendDate}</td>
-                        <td className="px-3 py-2">{p?.name || row.pageId}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span>{p?.name || row.pageId}</span>
+                            {p?.active === false && (
+                              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2">฿{row.amount.toFixed(2)}</td>
                         <td className="px-3 py-2">{row.notes || "-"}</td>
                       </tr>
@@ -1834,7 +1843,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     {userPages.length > 0 &&
                       userPages.map((page, index) => (
                         <tr key={page.id} className="border-b">
-                          <td className="px-3 py-2 font-medium">{page.name}</td>
+                          <td className="px-3 py-2 font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{page.name}</span>
+                              {page.active === false && (
+                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-2">{page.platform}</td>
                           <td className="px-3 py-2">
                             <input
@@ -2223,7 +2241,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             ? row.log_date
                             : row.log_date || ""}
                         </td>
-                        <td className="px-3 py-2">{row.page_name}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span>{row.page_name}</span>
+                            {(() => {
+                              const page = pages.find(
+                                (p) => p.name === row.page_name,
+                              );
+                              return page?.active === false ? (
+                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                  Inactive
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                        </td>
                         {dashboardView === "user" && (
                           <td className="px-3 py-2">
                             {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
@@ -2890,10 +2922,27 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         >
                           <td className="px-3 py-2">{d}</td>
                           <td className="px-3 py-2">
-                            {log.page_name ||
-                              pages.find((p) => p.id === Number(log.page_id))
-                                ?.name ||
-                              log.page_id}
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {log.page_name ||
+                                  pages.find(
+                                    (p) => p.id === Number(log.page_id),
+                                  )?.name ||
+                                  log.page_id}
+                              </span>
+                              {(() => {
+                                const page = pages.find(
+                                  (p) =>
+                                    p.name === log.page_name ||
+                                    p.id === Number(log.page_id),
+                                );
+                                return page?.active === false ? (
+                                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                    Inactive
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             ฿{Number(log.ads_cost || 0).toFixed(2)}
