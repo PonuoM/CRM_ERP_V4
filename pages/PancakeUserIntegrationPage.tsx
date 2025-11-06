@@ -1,7 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { Search, UserCheck, UserX, RefreshCw, Link, Unlink, Check, X, AlertCircle, ExternalLink, Users, Database } from 'lucide-react';
-import { listAdminPageUsers, AdminPageUser, listUserPancakeMappings, createUserPancakeMapping, UserPancakeMapping } from '../services/api';
-import PageIconFront from '@/components/PageIconFront';
+import React, { useState, useEffect } from "react";
+import {
+  Search,
+  UserCheck,
+  UserX,
+  RefreshCw,
+  Link,
+  Unlink,
+  Check,
+  X,
+  AlertCircle,
+  ExternalLink,
+  Users,
+  Database,
+} from "lucide-react";
+import {
+  listAdminPageUsers,
+  AdminPageUser,
+  listUserPancakeMappings,
+  createUserPancakeMapping,
+  UserPancakeMapping,
+} from "../services/api";
+import PageIconFront from "@/components/PageIconFront";
 
 interface AdminPageUserFromDB {
   id: number;
@@ -47,31 +66,40 @@ interface PageWithUsers {
   }>;
 }
 
-const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'mappings' | 'search'>('mappings');
+const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
+  currentUser,
+}) => {
+  const [activeTab, setActiveTab] = useState<"mappings" | "search">("mappings");
   const [internalUsers, setInternalUsers] = useState<AdminPageUserFromDB[]>([]);
   const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
   const [pagesWithUsers, setPagesWithUsers] = useState<PageWithUsers[]>([]);
   const [userMappings, setUserMappings] = useState<UserPancakeMapping[]>([]);
-  const [internalSearchTerm, setInternalSearchTerm] = useState('');
-  const [pageUserSearchTerm, setPageUserSearchTerm] = useState('');
-  const [pageUserFilter, setPageUserFilter] = useState<'all' | 'connected' | 'unconnected'>('all');
-  const [selectedInternalUser, setSelectedInternalUser] = useState<AdminPageUserFromDB | null>(null);
-  const [selectedPageUser, setSelectedPageUser] = useState<PageUserFromDB | null>(null);
+  const [internalSearchTerm, setInternalSearchTerm] = useState("");
+  const [pageUserSearchTerm, setPageUserSearchTerm] = useState("");
+  const [pageUserFilter, setPageUserFilter] = useState<
+    "all" | "connected" | "unconnected"
+  >("all");
+  const [selectedInternalUser, setSelectedInternalUser] =
+    useState<AdminPageUserFromDB | null>(null);
+  const [selectedPageUser, setSelectedPageUser] =
+    useState<PageUserFromDB | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingPageUsers, setLoadingPageUsers] = useState(false);
   const [loadingPagesWithUsers, setLoadingPagesWithUsers] = useState(false);
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   // Filter states for connections tab
   const [connectionFilters, setConnectionFilters] = useState({
     active: true,
     removed: true,
     other: true,
     connected: true,
-    unconnected: true
+    unconnected: true,
   });
 
   // ดึงข้อมูล Admin Page users จาก API
@@ -85,15 +113,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
     try {
-      const response = await fetch('api/get_admin_page_users.php');
+      const response = await fetch("api/get_admin_page_users.php");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const adminUsers: AdminPageUserFromDB[] = await response.json();
       setInternalUsers(adminUsers);
     } catch (error) {
-      console.error('Failed to load Admin Page users:', error);
-      showMessage('error', 'ไม่สามารถโหลดข้อมูลผู้ใช้ Admin Page ได้ กรุณาตรวจสอบ API connection');
+      console.error("Failed to load Admin Page users:", error);
+      showMessage(
+        "error",
+        "ไม่สามารถโหลดข้อมูลผู้ใช้ Admin Page ได้ กรุณาตรวจสอบ API connection",
+      );
       setInternalUsers([]);
     } finally {
       setLoadingUsers(false);
@@ -103,15 +134,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const loadPageUsers = async () => {
     setLoadingPageUsers(true);
     try {
-      const response = await fetch('api/get_page_users.php');
+      const response = await fetch("api/get_page_users.php");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const pageUsersData: PageUserFromDB[] = await response.json();
       setPageUsers(pageUsersData);
     } catch (error) {
-      console.error('Failed to load page users:', error);
-      showMessage('error', 'ไม่สามารถโหลดข้อมูลผู้ใช้เพจได้ กรุณาตรวจสอบ API connection');
+      console.error("Failed to load page users:", error);
+      showMessage(
+        "error",
+        "ไม่สามารถโหลดข้อมูลผู้ใช้เพจได้ กรุณาตรวจสอบ API connection",
+      );
       setPageUsers([]);
     } finally {
       setLoadingPageUsers(false);
@@ -121,14 +155,14 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
   const loadPagesWithUsers = async () => {
     setLoadingPagesWithUsers(true);
     try {
-      const response = await fetch('api/get_pages_with_users.php', {
-        method: 'POST',
+      const response = await fetch("api/get_pages_with_users.php", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          companyId: currentUser?.companyId || 1
-        })
+          companyId: currentUser?.companyId || 1,
+        }),
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -136,8 +170,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
       const pagesData: PageWithUsers[] = await response.json();
       setPagesWithUsers(pagesData);
     } catch (error) {
-      console.error('Failed to load pages with users:', error);
-      showMessage('error', 'ไม่สามารถโหลดข้อมูลเพจและผู้ใช้ได้ กรุณาตรวจสอบ API connection');
+      console.error("Failed to load pages with users:", error);
+      showMessage(
+        "error",
+        "ไม่สามารถโหลดข้อมูลเพจและผู้ใช้ได้ กรุณาตรวจสอบ API connection",
+      );
       setPagesWithUsers([]);
     } finally {
       setLoadingPagesWithUsers(false);
@@ -149,61 +186,59 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
       const mappings = await listUserPancakeMappings();
       setUserMappings(mappings);
     } catch (error) {
-      console.error('Failed to load user mappings:', error);
+      console.error("Failed to load user mappings:", error);
       setUserMappings([]);
     }
   };
 
-
-  const showMessage = (type: 'success' | 'error', text: string) => {
+  const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleMapUsers = async () => {
     if (!selectedInternalUser || !selectedPageUser) {
-      showMessage('error', 'กรุณาเลือกผู้ใช้ทั้งสองระบบ');
+      showMessage("error", "กรุณาเลือกผู้ใช้ทั้งสองระบบ");
       return;
     }
 
     setLoading(true);
     try {
       // Update the page_user record with the internal user ID
-      const response = await fetch('api/update_page_user_connection.php', {
-        method: 'POST',
+      const response = await fetch("api/update_page_user_connection.php", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           pageUserId: selectedPageUser.id,
-          internalUserId: selectedInternalUser.id
-        })
+          internalUserId: selectedInternalUser.id,
+        }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, response: ${errorText}`);
+        throw new Error(
+          `HTTP error! status: ${response.status}, response: ${errorText}`,
+        );
       }
 
       const result = await response.json();
-      
+
       if (!result.ok) {
-        throw new Error(result.error || 'Failed to update user connection');
+        throw new Error(result.error || "Failed to update user connection");
       }
 
-      showMessage('success', 'เชื่อมต่อผู้ใช้สำเร็จแล้ว');
-      
+      showMessage("success", "เชื่อมต่อผู้ใช้สำเร็จแล้ว");
+
       // Reload all data to reflect the changes
-      await Promise.all([
-        loadPageUsers(),
-        loadPagesWithUsers()
-      ]);
-      
+      await Promise.all([loadPageUsers(), loadPagesWithUsers()]);
+
       setSelectedInternalUser(null);
       setSelectedPageUser(null);
     } catch (error) {
-      console.error('Failed to create mapping:', error);
-      showMessage('error', 'ไม่สามารถเชื่อมต่อผู้ใช้ได้ กรุณาลองใหม่');
+      console.error("Failed to create mapping:", error);
+      showMessage("error", "ไม่สามารถเชื่อมต่อผู้ใช้ได้ กรุณาลองใหม่");
     } finally {
       setLoading(false);
     }
@@ -216,18 +251,60 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
       // await deleteUserPancakeMapping(mappingId);
 
       // ชั่วครายว่าสำเร็จ
-      setUserMappings(userMappings.filter(m => m.id !== mappingId));
-      showMessage('success', 'ยกเลิกการเชื่อมต่อสำเร็จแล้ว');
+      setUserMappings(userMappings.filter((m) => m.id !== mappingId));
+      showMessage("success", "ยกเลิกการเชื่อมต่อสำเร็จแล้ว");
     } catch (error) {
-      console.error('Failed to delete mapping:', error);
-      showMessage('error', 'ไม่สามารถยกเลิกการเชื่อมต่อได้');
+      console.error("Failed to delete mapping:", error);
+      showMessage("error", "ไม่สามารถยกเลิกการเชื่อมต่อได้");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnectPageUser = async (pageUserId: number) => {
+    setLoading(true);
+    try {
+      // Update page_user record to set user_id to NULL
+      const response = await fetch("api/Page_DB/disconnect_page_user.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          pageUserId: pageUserId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, response: ${errorText}`,
+        );
+      }
+
+      const result = await response.json();
+
+      if (!result.ok) {
+        throw new Error(result.error || "Failed to disconnect page user");
+      }
+
+      showMessage("success", "ยกเลิกการเชื่อมต่อสำเร็จแล้ว");
+
+      // Reload data to reflect changes
+      await Promise.all([loadPageUsers(), loadPagesWithUsers()]);
+
+      setSelectedInternalUser(null);
+      setSelectedPageUser(null);
+    } catch (error) {
+      console.error("Failed to disconnect page user:", error);
+      showMessage("error", "ไม่สามารถยกเลิกการเชื่อมต่อได้");
     } finally {
       setLoading(false);
     }
   };
 
   const togglePageExpansion = (pageId: string) => {
-    setExpandedPages(prev => {
+    setExpandedPages((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(pageId)) {
         newSet.delete(pageId);
@@ -240,81 +317,106 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
 
   const handleUserClick = (user: any) => {
     // Find the corresponding page user in the pageUsers array
-    const correspondingPageUser = pageUsers.find(pu => pu.page_user_id === user.page_user_id);
-    
+    const correspondingPageUser = pageUsers.find(
+      (pu) => pu.page_user_id === user.page_user_id,
+    );
+
     if (correspondingPageUser) {
       // Select the page user
       setSelectedPageUser(correspondingPageUser);
-      
+
       // Switch to the search tab
-      setActiveTab('search');
-      
+      setActiveTab("search");
+
       // Clear any selected internal user to allow new selection
       setSelectedInternalUser(null);
-      
+
       // Scroll to the selected user after a short delay to ensure the tab has switched
       setTimeout(() => {
-        const selectedUserElement = document.querySelector(`[data-page-user-id="${user.page_user_id}"]`);
+        const selectedUserElement = document.querySelector(
+          `[data-page-user-id="${user.page_user_id}"]`,
+        );
         if (selectedUserElement) {
-          selectedUserElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          selectedUserElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         }
       }, 100);
     }
   };
 
-  const getInternalUser = (id: number) => internalUsers.find(u => u.id === id);
-  const getPageUser = (id: number) => pageUsers.find(u => u.id === id);
+  const getInternalUser = (id: number) =>
+    internalUsers.find((u) => u.id === id);
+  const getPageUser = (id: number) => pageUsers.find((u) => u.id === id);
 
-  const filteredInternalUsers = internalUsers.filter(user =>
-    user.first_name.toLowerCase().includes(internalSearchTerm.toLowerCase()) ||
-    user.last_name.toLowerCase().includes(internalSearchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(internalSearchTerm.toLowerCase())
+  const filteredInternalUsers = internalUsers.filter(
+    (user) =>
+      user.first_name
+        .toLowerCase()
+        .includes(internalSearchTerm.toLowerCase()) ||
+      user.last_name.toLowerCase().includes(internalSearchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(internalSearchTerm.toLowerCase()),
   );
 
-  const filteredPageUsers = pageUsers.filter(user => {
+  const filteredPageUsers = pageUsers.filter((user) => {
     // Apply search filter
-    const matchesSearch = pageUserSearchTerm === '' ||
-      user.page_user_name.toLowerCase().includes(pageUserSearchTerm.toLowerCase()) ||
-      user.page_user_id.toLowerCase().includes(pageUserSearchTerm.toLowerCase());
-    
+    const matchesSearch =
+      pageUserSearchTerm === "" ||
+      user.page_user_name
+        .toLowerCase()
+        .includes(pageUserSearchTerm.toLowerCase()) ||
+      user.page_user_id
+        .toLowerCase()
+        .includes(pageUserSearchTerm.toLowerCase());
+
     // Apply connection status filter
-    const matchesFilter = pageUserFilter === 'all' ||
-      (pageUserFilter === 'connected' && user.user_id !== null) ||
-      (pageUserFilter === 'unconnected' && user.user_id === null);
-    
+    const matchesFilter =
+      pageUserFilter === "all" ||
+      (pageUserFilter === "connected" && user.user_id !== null) ||
+      (pageUserFilter === "unconnected" && user.user_id === null);
+
     return matchesSearch && matchesFilter;
   });
 
   // Filter pages with users based on status filters
-  const filteredPagesWithUsers = pagesWithUsers.map(page => ({
-    ...page,
-    users: page.users.filter(user => {
-      // Status filter
-      let matchesStatus = false;
-      if (user.status === 'active' && connectionFilters.active) {
-        matchesStatus = true;
-      } else if (user.status === 'removed' && connectionFilters.removed) {
-        matchesStatus = true;
-      } else if (user.status !== 'active' && user.status !== 'removed' && connectionFilters.other) {
-        matchesStatus = true;
-      }
-      
-      // Connection filter
-      let matchesConnection = false;
-      if (user.is_connected && connectionFilters.connected) {
-        matchesConnection = true;
-      } else if (!user.is_connected && connectionFilters.unconnected) {
-        matchesConnection = true;
-      }
-      
-      return matchesStatus && matchesConnection;
-    })
-  })).filter(page => page.users.length > 0); // Only show pages that have users after filtering
+  const filteredPagesWithUsers = pagesWithUsers
+    .map((page) => ({
+      ...page,
+      users: page.users.filter((user) => {
+        // Status filter
+        let matchesStatus = false;
+        if (user.status === "active" && connectionFilters.active) {
+          matchesStatus = true;
+        } else if (user.status === "removed" && connectionFilters.removed) {
+          matchesStatus = true;
+        } else if (
+          user.status !== "active" &&
+          user.status !== "removed" &&
+          connectionFilters.other
+        ) {
+          matchesStatus = true;
+        }
 
-  const handleConnectionStatusFilterChange = (status: keyof typeof connectionFilters) => {
-    setConnectionFilters(prev => ({
+        // Connection filter
+        let matchesConnection = false;
+        if (user.is_connected && connectionFilters.connected) {
+          matchesConnection = true;
+        } else if (!user.is_connected && connectionFilters.unconnected) {
+          matchesConnection = true;
+        }
+
+        return matchesStatus && matchesConnection;
+      }),
+    }))
+    .filter((page) => page.users.length > 0); // Only show pages that have users after filtering
+
+  const handleConnectionStatusFilterChange = (
+    status: keyof typeof connectionFilters,
+  ) => {
+    setConnectionFilters((prev) => ({
       ...prev,
-      [status]: !prev[status]
+      [status]: !prev[status],
     }));
   };
 
@@ -328,12 +430,16 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
               <Users className="w-6 h-6 text-orange-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">เชื่อมต่อผู้ใช้กับ Pancake</h1>
-              <p className="text-gray-600">จัดการการเชื่อมต่อ user ภายในกับ user จาก Pancake API</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                เชื่อมต่อผู้ใช้กับ Pancake
+              </h1>
+              <p className="text-gray-600">
+                จัดการการเชื่อมต่อ user ภายในกับ user จาก Pancake API
+              </p>
             </div>
           </div>
           <button
-            onClick={() => window.open('https://pancake.in.th', '_blank')}
+            onClick={() => window.open("https://pancake.in.th", "_blank")}
             className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
           >
             <ExternalLink className="w-4 h-4" />
@@ -344,10 +450,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
 
       {/* Alert Message */}
       {message && (
-        <div className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${
-          message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {message.type === 'success' ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+        <div
+          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${
+            message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
+          {message.type === "success" ? (
+            <Check className="w-5 h-5" />
+          ) : (
+            <X className="w-5 h-5" />
+          )}
           {message.text}
         </div>
       )}
@@ -357,11 +471,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
         <div className="border-b border-gray-200">
           <nav className="flex gap-1 p-1">
             <button
-              onClick={() => setActiveTab('mappings')}
+              onClick={() => setActiveTab("mappings")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'mappings'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:text-gray-900'
+                activeTab === "mappings"
+                  ? "bg-orange-100 text-orange-700"
+                  : "text-gray-600 hover:text-gray-900"
               }`}
             >
               <div className="flex items-center gap-2">
@@ -370,11 +484,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('search')}
+              onClick={() => setActiveTab("search")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === 'search'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'text-gray-600 hover:text-gray-900'
+                activeTab === "search"
+                  ? "bg-orange-100 text-orange-700"
+                  : "text-gray-600 hover:text-gray-900"
               }`}
             >
               <div className="flex items-center gap-2">
@@ -387,23 +501,30 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === 'mappings' && (
+          {activeTab === "mappings" && (
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">รายการเพจและผู้ใช้</h2>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  รายการเพจและผู้ใช้
+                </h2>
                 <div className="text-sm text-gray-600">
-                  พบ {filteredPagesWithUsers.length} เพจ (จากทั้งหมด {pagesWithUsers.length} เพจ)
+                  พบ {filteredPagesWithUsers.length} เพจ (จากทั้งหมด{" "}
+                  {pagesWithUsers.length} เพจ)
                 </div>
               </div>
-              
+
               <div className="mb-6 space-y-3">
                 <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">กรองตามสถานะผู้ใช้:</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    กรองตามสถานะผู้ใช้:
+                  </span>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={connectionFilters.active}
-                      onChange={() => handleConnectionStatusFilterChange('active')}
+                      onChange={() =>
+                        handleConnectionStatusFilterChange("active")
+                      }
                       className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                     />
                     <span className="text-sm text-gray-700">Active</span>
@@ -412,7 +533,9 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <input
                       type="checkbox"
                       checked={connectionFilters.removed}
-                      onChange={() => handleConnectionStatusFilterChange('removed')}
+                      onChange={() =>
+                        handleConnectionStatusFilterChange("removed")
+                      }
                       className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
                     />
                     <span className="text-sm text-gray-700">Removed</span>
@@ -421,20 +544,26 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <input
                       type="checkbox"
                       checked={connectionFilters.other}
-                      onChange={() => handleConnectionStatusFilterChange('other')}
+                      onChange={() =>
+                        handleConnectionStatusFilterChange("other")
+                      }
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                     <span className="text-sm text-gray-700">อื่นๆ</span>
                   </label>
                 </div>
-                
+
                 <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <span className="text-sm font-medium text-gray-700">กรองตามการเชื่อมต่อ:</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    กรองตามการเชื่อมต่อ:
+                  </span>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={connectionFilters.connected}
-                      onChange={() => handleConnectionStatusFilterChange('connected')}
+                      onChange={() =>
+                        handleConnectionStatusFilterChange("connected")
+                      }
                       className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                     />
                     <span className="text-sm text-gray-700">เชื่อมต่อแล้ว</span>
@@ -443,10 +572,14 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     <input
                       type="checkbox"
                       checked={connectionFilters.unconnected}
-                      onChange={() => handleConnectionStatusFilterChange('unconnected')}
+                      onChange={() =>
+                        handleConnectionStatusFilterChange("unconnected")
+                      }
                       className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500"
                     />
-                    <span className="text-sm text-gray-700">ยังไม่เชื่อมต่อ</span>
+                    <span className="text-sm text-gray-700">
+                      ยังไม่เชื่อมต่อ
+                    </span>
                   </label>
                 </div>
               </div>
@@ -455,31 +588,40 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                 {loadingPagesWithUsers ? (
                   <div className="flex items-center justify-center py-12">
                     <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
-                    <span className="text-gray-600">กำลังโหลดข้อมูลเพจและผู้ใช้...</span>
+                    <span className="text-gray-600">
+                      กำลังโหลดข้อมูลเพจและผู้ใช้...
+                    </span>
                   </div>
                 ) : filteredPagesWithUsers.length === 0 ? (
                   <div className="text-center py-12">
                     <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600">ไม่พบข้อมูลเพจ</p>
-                    <p className="text-sm text-gray-500 mt-2">กรุณาอัปเดตข้อมูลเพจจากหน้า Pages Management</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      กรุณาอัปเดตข้อมูลเพจจากหน้า Pages Management
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredPagesWithUsers.map(page => (
-                      <div key={page.page_id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    {filteredPagesWithUsers.map((page) => (
+                      <div
+                        key={page.page_id}
+                        className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                      >
                         <div
                           className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
                           onClick={() => togglePageExpansion(page.page_id)}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              <PageIconFront platform={page.platform || 'unknown'} />
+                              <PageIconFront
+                                platform={page.platform || "unknown"}
+                              />
                               <div>
                                 <div className="font-medium text-gray-900">
                                   {page.page_name}
                                 </div>
                                 <div className="text-sm text-gray-600">
-                                  {page.active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                                  {page.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                                 </div>
                               </div>
                             </div>
@@ -494,53 +636,66 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                               )}
                             </div>
                           </div>
-                          
+
                           <div className="flex justify-between items-center">
                             <div className="text-sm text-gray-600">
                               ผู้ใช้ที่ตรงตามฟิลเตอร์
                             </div>
                             <div className="text-xs text-gray-500">
-                              {page.users.filter(u => u.is_connected).length} เชื่อมต่อแล้ว
+                              {page.users.filter((u) => u.is_connected).length}{" "}
+                              เชื่อมต่อแล้ว
                             </div>
                           </div>
                         </div>
-                        
+
                         {expandedPages.has(page.page_id) && (
                           <div className="p-4 bg-white border-t border-gray-200">
-                            <h4 className="font-medium text-gray-900 mb-3">ผู้ใช้ในเพจ:</h4>
+                            <h4 className="font-medium text-gray-900 mb-3">
+                              ผู้ใช้ในเพจ:
+                            </h4>
                             {page.users.length === 0 ? (
-                              <p className="text-sm text-gray-500">ไม่มีผู้ใช้ในเพจนี้</p>
+                              <p className="text-sm text-gray-500">
+                                ไม่มีผู้ใช้ในเพจนี้
+                              </p>
                             ) : (
                               <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {page.users.map(user => (
+                                {page.users.map((user) => (
                                   <div
                                     key={user.page_user_id}
-                                    className={`flex items-center justify-between p-2 border border-gray-100 rounded ${!user.is_connected ? 'cursor-pointer hover:bg-gray-50' : ''}`}
-                                    onClick={() => !user.is_connected && handleUserClick(user)}
+                                    className={`flex items-center justify-between p-2 border border-gray-100 rounded ${!user.is_connected ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                                    onClick={() =>
+                                      !user.is_connected &&
+                                      handleUserClick(user)
+                                    }
                                   >
                                     <div className="flex items-center gap-2">
-                                      <div className={`w-2 h-2 rounded-full ${user.is_connected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                      <div
+                                        className={`w-2 h-2 rounded-full ${user.is_connected ? "bg-green-500" : "bg-gray-400"}`}
+                                      ></div>
                                       <div>
                                         <div className="flex items-center gap-2">
-                                          <div className={`text-sm font-medium ${user.is_connected ? 'text-green-900' : 'text-gray-900'} ${!user.is_connected ? 'hover:text-blue-600' : ''}`}>
+                                          <div
+                                            className={`text-sm font-medium ${user.is_connected ? "text-green-900" : "text-gray-900"} ${!user.is_connected ? "hover:text-blue-600" : ""}`}
+                                          >
                                             {user.page_user_name}
                                           </div>
                                           {/* Status Badge */}
-                                          {user.status === 'active' && (
+                                          {user.status === "active" && (
                                             <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
                                               active
                                             </span>
                                           )}
-                                          {user.status === 'removed' && (
+                                          {user.status === "removed" && (
                                             <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
                                               removed
                                             </span>
                                           )}
-                                          {user.status !== 'active' && user.status !== 'removed' && (
-                                            <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
-                                              {user.status}
-                                            </span>
-                                          )}
+                                          {user.status !== "active" &&
+                                            user.status !== "removed" && (
+                                              <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
+                                                {user.status}
+                                              </span>
+                                            )}
                                         </div>
                                         <div className="text-xs text-gray-500">
                                           ID: {user.page_user_id}
@@ -577,9 +732,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
             </div>
           )}
 
-          {activeTab === 'search' && (
+          {activeTab === "search" && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">ค้นหาและเชื่อมต่อผู้ใช้</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">
+                ค้นหาและเชื่อมต่อผู้ใช้
+              </h2>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Internal Users */}
@@ -606,31 +763,36 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                     {loadingUsers ? (
                       <div className="flex items-center justify-center py-8">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
-                        <span className="text-gray-600">กำลังโหลดข้อมูล...</span>
+                        <span className="text-gray-600">
+                          กำลังโหลดข้อมูล...
+                        </span>
                       </div>
                     ) : filteredInternalUsers.length === 0 ? (
                       <div className="text-center py-8">
                         <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                         <p className="text-gray-600">ไม่พบผู้ใช้ Admin Page</p>
                         <p className="text-sm text-gray-500 mt-2">
-                          ตรวจสอบว่ามีผู้ใช้ที่มีสถานะ Active และ Role เป็น Admin Page
+                          ตรวจสอบว่ามีผู้ใช้ที่มีสถานะ Active และ Role เป็น
+                          Admin Page
                         </p>
                       </div>
                     ) : (
-                      filteredInternalUsers.map(user => (
+                      filteredInternalUsers.map((user) => (
                         <div
                           key={user.id}
                           onClick={() => setSelectedInternalUser(user)}
                           className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                             selectedInternalUser?.id === user.id
-                              ? 'border-orange-500 bg-orange-50'
-                              : 'border-gray-200 hover:bg-gray-50'
+                              ? "border-orange-500 bg-orange-50"
+                              : "border-gray-200 hover:bg-gray-50"
                           }`}
                         >
                           <div className="font-medium text-gray-900">
                             {user.first_name} {user.last_name}
                           </div>
-                          <div className="text-sm text-gray-600">{user.email}</div>
+                          <div className="text-sm text-gray-600">
+                            {user.email}
+                          </div>
                           <div className="text-xs text-gray-500">
                             {user.role}
                           </div>
@@ -661,47 +823,52 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                   </div>
                   <div className="flex gap-2 mb-4">
                     <button
-                      onClick={() => setPageUserFilter('all')}
+                      onClick={() => setPageUserFilter("all")}
                       className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === 'all'
-                          ? 'bg-orange-100 text-orange-700 border border-orange-300'
-                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                        pageUserFilter === "all"
+                          ? "bg-orange-100 text-orange-700 border border-orange-300"
+                          : "bg-gray-100 text-gray-700 border border-gray-300"
                       }`}
                     >
                       ทั้งหมด
                     </button>
                     <button
-                      onClick={() => setPageUserFilter('connected')}
+                      onClick={() => setPageUserFilter("connected")}
                       className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === 'connected'
-                          ? 'bg-green-100 text-green-700 border border-green-300'
-                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                        pageUserFilter === "connected"
+                          ? "bg-green-100 text-green-700 border border-green-300"
+                          : "bg-gray-100 text-gray-700 border border-gray-300"
                       }`}
                     >
                       เชื่อมต่อแล้ว
                     </button>
                     <button
-                      onClick={() => setPageUserFilter('unconnected')}
+                      onClick={() => setPageUserFilter("unconnected")}
                       className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === 'unconnected'
-                          ? 'bg-red-100 text-red-700 border border-red-300'
-                          : 'bg-gray-100 text-gray-700 border border-gray-300'
+                        pageUserFilter === "unconnected"
+                          ? "bg-red-100 text-red-700 border border-red-300"
+                          : "bg-gray-100 text-gray-700 border border-gray-300"
                       }`}
                     >
                       ยังไม่เชื่อมต่อ
                     </button>
                   </div>
                   <div className="text-xs text-gray-500 mb-2">
-                    {pageUserFilter === 'all' && `แสดงทั้งหมด ${pageUsers.length} รายการ`}
-                    {pageUserFilter === 'connected' && `แสดงเฉพาะที่เชื่อมต่อแล้ว ${pageUsers.filter(u => u.user_id !== null).length} รายการ`}
-                    {pageUserFilter === 'unconnected' && `แสดงเฉพาะที่ยังไม่เชื่อมต่อ ${pageUsers.filter(u => u.user_id === null).length} รายการ`}
+                    {pageUserFilter === "all" &&
+                      `แสดงทั้งหมด ${pageUsers.length} รายการ`}
+                    {pageUserFilter === "connected" &&
+                      `แสดงเฉพาะที่เชื่อมต่อแล้ว ${pageUsers.filter((u) => u.user_id !== null).length} รายการ`}
+                    {pageUserFilter === "unconnected" &&
+                      `แสดงเฉพาะที่ยังไม่เชื่อมต่อ ${pageUsers.filter((u) => u.user_id === null).length} รายการ`}
                   </div>
 
                   <div className="max-h-80 overflow-y-auto space-y-2">
                     {loadingPageUsers ? (
                       <div className="flex items-center justify-center py-8">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
-                        <span className="text-gray-600">กำลังโหลดข้อมูล...</span>
+                        <span className="text-gray-600">
+                          กำลังโหลดข้อมูล...
+                        </span>
                       </div>
                     ) : filteredPageUsers.length === 0 ? (
                       <div className="text-center py-8">
@@ -709,10 +876,12 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                         <p className="text-gray-600">ไม่พบข้อมูลผู้ใช้เพจ</p>
                       </div>
                     ) : (
-                      filteredPageUsers.map(user => {
+                      filteredPageUsers.map((user) => {
                         // Get the internal user if this page user is connected
-                        const internalUser = user.user_id ? getInternalUser(user.user_id) : null;
-                        
+                        const internalUser = user.user_id
+                          ? getInternalUser(user.user_id)
+                          : null;
+
                         return (
                           <div
                             key={user.id}
@@ -720,24 +889,32 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                             onClick={() => setSelectedPageUser(user)}
                             className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                               selectedPageUser?.id === user.id
-                                ? 'border-orange-500 bg-orange-50'
-                                : 'border-gray-200 hover:bg-gray-50'
+                                ? "border-orange-500 bg-orange-50"
+                                : "border-gray-200 hover:bg-gray-50"
                             }`}
                           >
-                            <div className={`font-medium ${user.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
+                            <div
+                              className={`font-medium ${user.user_id === null ? "text-red-600" : "text-gray-900"}`}
+                            >
                               {user.page_user_name}
                               {user.user_id === null && (
-                                <span className="ml-2 text-xs text-red-500">(ยังไม่มีการเชื่อมต่อ)</span>
+                                <span className="ml-2 text-xs text-red-500">
+                                  (ยังไม่มีการเชื่อมต่อ)
+                                </span>
                               )}
                             </div>
                             {internalUser && (
                               <div className="text-sm text-green-600">
-                                เชื่อมต่อกับ: {internalUser.first_name} {internalUser.last_name}
+                                เชื่อมต่อกับ: {internalUser.first_name}{" "}
+                                {internalUser.last_name}
                               </div>
                             )}
-                            <div className="text-sm text-gray-600">จำนวนเพจ: {user.page_count}</div>
+                            <div className="text-sm text-gray-600">
+                              จำนวนเพจ: {user.page_count}
+                            </div>
                             <div className="text-xs text-gray-500">
-                              ID: {user.page_user_id} • อัปเดตเมื่อ {user.updated_at?.split('T')[0]}
+                              ID: {user.page_user_id} • อัปเดตเมื่อ{" "}
+                              {user.updated_at?.split("T")[0]}
                             </div>
                           </div>
                         );
@@ -751,9 +928,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
               <div className="mt-6 flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                   {loadingUsers || loadingPageUsers ? (
-                    <span className="text-blue-600">
-                      กำลังโหลดข้อมูล...
-                    </span>
+                    <span className="text-blue-600">กำลังโหลดข้อมูล...</span>
                   ) : selectedInternalUser && selectedPageUser ? (
                     <span className="text-green-600">✓ เลือกผู้ใช้ครบแล้ว</span>
                   ) : (
@@ -761,39 +936,86 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({ currentUs
                   )}
                 </div>
 
-                <button
-                  onClick={handleMapUsers}
-                  disabled={!selectedInternalUser || !selectedPageUser || loading}
-                  className="flex items-center gap-2 px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                >
-                  {loading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Link className="w-4 h-4" />
+                <div className="flex items-center gap-3">
+                  {/* Disconnect Button - Show when selected page user is already connected */}
+                  {selectedPageUser && selectedPageUser.user_id && (
+                    <button
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `ต้องการยกเลิกการเชื่อมต่อ "${selectedPageUser.page_user_name}" ใช่หรือไม่?`,
+                          )
+                        ) {
+                          handleDisconnectPageUser(selectedPageUser.id);
+                          setSelectedInternalUser(null);
+                          setSelectedPageUser(null);
+                        }
+                      }}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {loading ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Unlink className="w-4 h-4" />
+                      )}
+                      ยกเลิกการเชื่อมต่อ
+                    </button>
                   )}
-                  เชื่อมต่อผู้ใช้
-                </button>
+
+                  <button
+                    onClick={handleMapUsers}
+                    disabled={
+                      !selectedInternalUser ||
+                      !selectedPageUser ||
+                      selectedPageUser.user_id !== null ||
+                      loading
+                    }
+                    className="flex items-center gap-2 px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {loading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Link className="w-4 h-4" />
+                    )}
+                    เชื่อมต่อผู้ใช้
+                  </button>
+                </div>
               </div>
 
               {/* Preview Selected Users */}
               {selectedInternalUser && selectedPageUser && (
                 <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
-                  <h4 className="font-medium text-gray-900 mb-3">ตัวอย่างการเชื่อมต่อ:</h4>
+                  <h4 className="font-medium text-gray-900 mb-3">
+                    ตัวอย่างการเชื่อมต่อ:
+                  </h4>
                   <div className="flex items-center gap-4">
                     <div>
                       <div className="text-sm text-gray-600">ผู้ใช้ภายใน:</div>
                       <div className="font-medium">
-                        {selectedInternalUser.first_name} {selectedInternalUser.last_name}
+                        {selectedInternalUser.first_name}{" "}
+                        {selectedInternalUser.last_name}
                       </div>
                     </div>
                     <div className="text-orange-500">→</div>
                     <div>
                       <div className="text-sm text-gray-600">ผู้ใช้เพจ:</div>
-                      <div className={`font-medium ${selectedPageUser.user_id === null ? 'text-red-600' : 'text-gray-900'}`}>
+                      <div
+                        className={`font-medium ${selectedPageUser.user_id === null ? "text-red-600" : "text-gray-900"}`}
+                      >
                         {selectedPageUser.page_user_name}
                         {selectedPageUser.user_id && (
                           <span className="ml-2 text-sm text-green-600">
-                            (เชื่อมต่อกับ: {getInternalUser(selectedPageUser.user_id)?.first_name} {getInternalUser(selectedPageUser.user_id)?.last_name})
+                            (เชื่อมต่อกับ:{" "}
+                            {
+                              getInternalUser(selectedPageUser.user_id)
+                                ?.first_name
+                            }{" "}
+                            {
+                              getInternalUser(selectedPageUser.user_id)
+                                ?.last_name
+                            }
+                            )
                           </span>
                         )}
                       </div>
