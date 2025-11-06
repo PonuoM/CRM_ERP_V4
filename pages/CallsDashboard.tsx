@@ -24,8 +24,7 @@ interface CallsDashboardProps {
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
   // Use reverse proxy path (works in dev + prod)
-  const loginUrl =
-    `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
+  const loginUrl = `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
 
   try {
     // Get current user from localStorage
@@ -45,12 +44,18 @@ const authenticateOneCall = async () => {
     const passwordKey = `ONECALL_PASSWORD_${companyId}`;
 
     const [usernameRes, passwordRes] = await Promise.all([
-      fetch(`${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${usernameKey}`, {
-        headers: { "Content-Type": "application/json" },
-      }),
-      fetch(`${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${passwordKey}`, {
-        headers: { "Content-Type": "application/json" },
-      }),
+      fetch(
+        `${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${usernameKey}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+      fetch(
+        `${import.meta.env.BASE_URL}api/Marketing_DB/get_env.php?key=${passwordKey}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     ]);
 
     if (!usernameRes.ok || !passwordRes.ok) {
@@ -1027,12 +1032,6 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                     <h3 className="text-md font-semibold text-gray-700">
                       ข้อมูล Batch
                     </h3>
-                    <button
-                      onClick={openCreateBatchModal}
-                      className="bg-blue-600 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-700"
-                    >
-                      สร้าง Batch
-                    </button>
                   </div>
                   <div className="overflow-auto">
                     <table className="w-full text-sm">
@@ -1271,69 +1270,6 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                 </p>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Batch CRUD Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {isEditingBatch ? "แก้ไข Batch" : "สร้าง Batch ใหม่"}
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  วันที่เริ่มต้น
-                </label>
-                <input
-                  type="date"
-                  value={batchStartDate}
-                  onChange={(e) => setBatchStartDate(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  วันที่สิ้นสุด
-                </label>
-                <input
-                  type="date"
-                  value={batchEndDate}
-                  onChange={(e) => setBatchEndDate(e.target.value)}
-                  min={batchStartDate}
-                  disabled={!batchStartDate}
-                  className={`w-full border rounded-md px-3 py-2 text-sm ${!batchStartDate ? "bg-gray-100 cursor-not-allowed" : ""}`}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  จำนวนรายการ
-                </label>
-                <input
-                  type="number"
-                  value={batchAmount}
-                  onChange={(e) => setBatchAmount(Number(e.target.value))}
-                  min="0"
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowBatchModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={saveBatch}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
-              >
-                {isEditingBatch ? "อัปเดต" : "สร้าง"}
-              </button>
-            </div>
           </div>
         </div>
       )}
