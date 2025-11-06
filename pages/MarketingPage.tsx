@@ -54,6 +54,14 @@ const hasAdminAccess = (user: User) => {
   );
 };
 
+// Helper function to check if page is inactive
+const isPageInactive = (page?: {
+  active?: boolean | number | string | null;
+}) => {
+  // A page is inactive if active is falsy (false, 0, "0", null, undefined)
+  return !page?.active;
+};
+
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<
     "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
@@ -1613,7 +1621,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <span>{p?.name || row.pageId}</span>
-                            {p?.active === false && (
+                            {isPageInactive(p) && (
                               <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
                                 Inactive
                               </span>
@@ -1846,7 +1854,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2 font-medium">
                             <div className="flex items-center gap-2">
                               <span>{page.name}</span>
-                              {page.active === false && (
+                              {isPageInactive(page) && (
                                 <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
                                   Inactive
                                 </span>
@@ -2248,7 +2256,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                               const page = pages.find(
                                 (p) => p.name === row.page_name,
                               );
-                              return page?.active === false ? (
+                              return isPageInactive(page) ? (
                                 <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
                                   Inactive
                                 </span>
@@ -2936,7 +2944,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                     p.name === log.page_name ||
                                     p.id === Number(log.page_id),
                                 );
-                                return page?.active === false ? (
+                                return isPageInactive(page) ? (
                                   <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
                                     Inactive
                                   </span>
