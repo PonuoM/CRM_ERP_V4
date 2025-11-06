@@ -41,12 +41,19 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredPages = pages.filter(
-    (page) =>
-      (showInactivePages || page.active !== false) &&
-      (page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        page.platform.toLowerCase().includes(searchTerm.toLowerCase())),
-  );
+  const filteredPages = pages
+    .filter(
+      (page) =>
+        (showInactivePages || page.active !== false) &&
+        (page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          page.platform.toLowerCase().includes(searchTerm.toLowerCase())),
+    )
+    .sort((a, b) => {
+      // Sort by active status first (active pages first), then by name
+      if (a.active === false && b.active !== false) return 1;
+      if (a.active !== false && b.active === false) return -1;
+      return a.name.localeCompare(b.name);
+    });
 
   const handleTogglePage = (pageId: number) => {
     if (selectedPages.includes(pageId)) {
