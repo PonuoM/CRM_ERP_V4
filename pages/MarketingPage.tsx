@@ -84,6 +84,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   });
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
   const [tempEnd, setTempEnd] = useState(dateRange.end);
@@ -184,6 +185,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
     number[]
   >([]);
+  const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
+    useState(false);
   const [adsHistoryDatePickerOpen, setAdsHistoryDatePickerOpen] =
     useState(false);
   const [adsHistoryTempStart, setAdsHistoryTempStart] = useState(
@@ -355,9 +358,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         );
         setPromotions(Array.isArray(promo) ? promo : []);
         setUserAccessiblePages(userPages);
-        // Set default filters for ads history to show all data
+        // Set default filters for ads history to show all data (active pages only)
         setAdsHistoryDateRange({ start: "", end: "" });
-        setAdsHistorySelectedPages(userPages.map((page: Page) => page.id));
+        setAdsHistorySelectedPages(
+          userPages
+            .filter((page: Page) => page.active !== false)
+            .map((page: Page) => page.id),
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1298,9 +1305,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       end: endOfWeek.toISOString().slice(0, 10),
     });
 
-    // Set default to select all pages
+    // Set default to select all active pages only
     if (pages.length > 0) {
-      setSelectedPages(pages.map((p) => p.id));
+      setSelectedPages(
+        pages.filter((p) => p.active !== false).map((p) => p.id),
+      );
     }
   }, [pages]);
 
@@ -1962,9 +1971,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
+                    active: page.active,
                   }))}
                   selectedPages={selectedPages}
                   onChange={setSelectedPages}
+                  showInactivePages={showInactivePages}
+                  onToggleInactivePages={setShowInactivePages}
                 />
               </div>
 
@@ -2541,9 +2553,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       id: page.id,
                       name: page.name,
                       platform: page.platform,
+                      active: page.active,
                     }))}
                     selectedPages={exportSelectedPages}
                     onChange={setExportSelectedPages}
+                    showInactivePages={showInactivePages}
+                    onToggleInactivePages={setShowInactivePages}
                   />
                 </div>
               </div>
@@ -2671,9 +2686,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
+                    active: page.active,
                   }))}
                   selectedPages={adsHistorySelectedPages}
                   onChange={setAdsHistorySelectedPages}
+                  showInactivePages={showInactivePagesAdsHistory}
+                  onToggleInactivePages={setShowInactivePagesAdsHistory}
                 />
               </div>
 
