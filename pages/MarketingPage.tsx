@@ -238,6 +238,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Helper function to map background colors to hover equivalents
+  const getHoverColor = (bgColor: string): string => {
+    const hoverMap: { [key: string]: string } = {
+      "bg-emerald-50": "hover:bg-emerald-100",
+      "bg-blue-50": "hover:bg-blue-100",
+      "bg-yellow-50": "hover:bg-yellow-100",
+      "bg-purple-50": "hover:bg-purple-100",
+      "bg-pink-50": "hover:bg-pink-100",
+      "bg-orange-50": "hover:bg-orange-100",
+      "bg-sky-50": "hover:bg-sky-100",
+      "bg-rose-50": "hover:bg-rose-100",
+      "": "hover:bg-gray-50", // fallback for rows with no background
+    };
+    return hoverMap[bgColor] || "hover:bg-gray-50";
+  };
+
   // Map each date to a background color for consistent grouping in tables
   const adsLogsDateBgMap = useMemo(() => {
     const palette = [
@@ -2852,7 +2868,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       return (
                         <tr
                           key={log.id}
-                          className={`border-b ${bg} hover:bg-gray-50`}
+                          className={`border-b ${bg} ${getHoverColor(bg)}`}
                         >
                           <td className="px-3 py-2">{d}</td>
                           <td className="px-3 py-2">
