@@ -10,6 +10,7 @@ import {
   Download,
   X,
   ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import LineChart from "@/components/LineChart";
@@ -372,6 +373,207 @@ const saveLogToDatabase = async (logs: any[], batchId: number) => {
       error: error.message || "Failed to save logs to database",
     };
   }
+};
+
+// Custom Date Picker Component
+const CustomDatePicker: React.FC<{
+  value: string;
+  onChange: (date: string) => void;
+  batches: any[];
+  placeholder: string;
+  minDate?: string;
+  disabled?: boolean;
+}> = ({ value, onChange, batches, placeholder, minDate, disabled = false }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // Helper function to get all dates from batches
+  const getExistingDates = () => {
+    const dates = new Set<string>();
+    batches.forEach((batch) => {
+      const start = new Date(batch.startdate);
+      const end = new Date(batch.enddate);
+      const current = new Date(start);
+
+      while (current <= end) {
+        dates.add(current.toISOString().split("T")[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    });
+    return dates;
+  };
+
+  const existingDates = getExistingDates();
+  const today = new Date().toISOString().split("T")[0];
+
+  // Generate calendar days
+  const generateCalendarDays = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+    const days = [];
+    const current = new Date(startDate);
+
+    for (let i = 0; i < 42; i++) {
+      days.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+
+    return days;
+  };
+
+  const handleDateSelect = (date: Date) => {
+    const dateStr = date.toISOString().split("T")[0];
+
+    // Check if it's today
+    if (dateStr === today) {
+      return; // Don't allow selection of today
+    }
+
+    // Check min date constraint
+    if (minDate && dateStr < minDate) {
+      return;
+    }
+
+    onChange(dateStr);
+    setIsOpen(false);
+  };
+
+  const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return placeholder;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("th-TH", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  return (
+    <div className="relative">
+      <div
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`w-full border rounded-md px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${
+          disabled ? "bg-gray-100 cursor-not-allowed text-gray-400" : "bg-white"
+        }`}
+      >
+        <span className={value ? "text-gray-900" : "text-gray-400"}>
+          {formatDisplayDate(value)}
+        </span>
+        <Calendar className="w-4 h-4 text-gray-400" />
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-50 p-3 w-80">
+          {/* Calendar Header */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() =>
+                setCurrentMonth(
+                  new Date(
+                    currentMonth.getFullYear(),
+                    currentMonth.getMonth() - 1,
+                  ),
+                )
+              }
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="font-medium text-sm">
+              {currentMonth.toLocaleDateString("th-TH", {
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <button
+              onClick={() =>
+                setCurrentMonth(
+                  new Date(
+                    currentMonth.getFullYear(),
+                    currentMonth.getMonth() + 1,
+                  ),
+                )
+              }
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Weekday Headers */}
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((day) => (
+              <div
+                key={day}
+                className="text-center text-xs font-medium text-gray-500 p-1"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7 gap-1">
+            {generateCalendarDays().map((date, index) => {
+              const dateStr = date.toISOString().split("T")[0];
+              const isCurrentMonth =
+                date.getMonth() === currentMonth.getMonth();
+              const isExisting = existingDates.has(dateStr);
+              const isToday = dateStr === today;
+              const isSelected = value === dateStr;
+              const isDisabled =
+                dateStr === today || (minDate && dateStr < minDate);
+
+              return (
+                <button
+                  key={index}
+                  onClick={() => handleDateSelect(date)}
+                  disabled={isDisabled}
+                  className={`p-1 text-xs rounded relative ${
+                    !isCurrentMonth ? "text-gray-300" : ""
+                  } ${isDisabled ? "cursor-not-allowed" : "hover:bg-gray-100"} ${
+                    isSelected ? "bg-blue-500 text-white hover:bg-blue-600" : ""
+                  }`}
+                >
+                  <span
+                    className={`block ${isToday && !isSelected ? "text-orange-500 font-semibold" : ""}`}
+                  >
+                    {date.getDate()}
+                  </span>
+                  {isExisting && !isSelected && (
+                    <div
+                      className={`absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full ${
+                        isToday ? "bg-orange-500" : "bg-green-500"
+                      }`}
+                    />
+                  )}
+                  {isToday && !isSelected && (
+                    <div className="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>มีข้อมูลในระบบ</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+              <span>วันนี้ (ไม่สามารถเลือกได้)</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // Calls overview focused on layout only (neutral labels, no brand colors/names)
@@ -980,24 +1182,24 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                       <label className="block text-xs text-gray-500 mb-1">
                         วันที่เริ่มต้น
                       </label>
-                      <input
-                        type="date"
+                      <CustomDatePicker
                         value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        onChange={(date) => setStartDate(date)}
+                        batches={batches}
+                        placeholder="เลือกวันที่เริ่มต้น"
                       />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">
                         วันที่สิ้นสุด
                       </label>
-                      <input
-                        type="date"
+                      <CustomDatePicker
                         value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
+                        onChange={(date) => setEndDate(date)}
+                        batches={batches}
+                        placeholder="เลือกวันที่สิ้นสุด"
+                        minDate={startDate}
                         disabled={!startDate}
-                        className={`w-full border rounded-md px-3 py-2 text-sm ${!startDate ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
                     </div>
                     <div>
