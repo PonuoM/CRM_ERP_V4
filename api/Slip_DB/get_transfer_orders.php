@@ -49,7 +49,7 @@ try {
   $maxPage = ceil($totalCount / $pageSize);
   $offset = ($page - 1) * $pageSize;
 
-  // Main query to fetch transfer orders with customer data (with pagination)
+  // Main query to fetch transfer orders with customer data and payment status (with pagination)
   $sql = "SELECT
                 o.id,
                 o.order_date,
@@ -57,9 +57,14 @@ try {
                 o.total_amount,
                 c.first_name,
                 c.last_name,
-                c.phone
+                c.phone,
+                CASE
+                    WHEN os.order_id IS NOT NULL THEN 'จ่ายแล้ว'
+                    ELSE 'ค้างจ่าย'
+                END as payment_status
             FROM orders o
             LEFT JOIN customers c ON c.id = o.customer_id
+            LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE o.company_id = :company_id
             AND o.payment_method = 'Transfer'
             ORDER BY o.order_date DESC
@@ -83,6 +88,7 @@ try {
       "last_name" => $row["last_name"],
       "phone" => $row["phone"],
       "full_name" => trim($row["first_name"] . " " . $row["last_name"]),
+      "payment_status" => $row["payment_status"],
     ];
   }
 

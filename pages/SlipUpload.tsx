@@ -10,6 +10,7 @@ interface Order {
   last_name: string;
   phone: string;
   full_name: string;
+  payment_status: string;
 }
 
 interface PaginationInfo {
@@ -302,6 +303,9 @@ const SlipUpload: React.FC = () => {
                     <th className="text-right py-3 px-4 font-medium text-gray-900">
                       ยอดเงิน
                     </th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-900">
+                      สถานะ
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,6 +342,17 @@ const SlipUpload: React.FC = () => {
                         {order.total_amount.toLocaleString("th-TH", {
                           minimumFractionDigits: 2,
                         })}
+                      </td>
+                      <td className="py-3 px-4 text-sm">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            order.payment_status === "จ่ายแล้ว"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {order.payment_status}
+                        </span>
                       </td>
                     </tr>
                   ))}
