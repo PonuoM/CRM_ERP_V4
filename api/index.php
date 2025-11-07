@@ -3011,12 +3011,24 @@ function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
                 $in = json_input();
                 $userId = isset($in['userId']) ? (int)$in['userId'] : null;
                 if (!$userId) { json_response(['error' => 'USER_ID_REQUIRED'], 400); }
-                // Guard: ensure role is telesale/supervisor and active
+                // Guard: ensure user is active and allowed to track attendance
                 $uStmt = $pdo->prepare("SELECT role, status FROM users WHERE id = ?");
                 $uStmt->execute([$userId]);
                 $user = $uStmt->fetch();
                 if (!$user) { json_response(['error' => 'NOT_FOUND'], 404); }
-                if ($user['status'] !== 'active' || !in_array($user['role'], ['Telesale','Supervisor Telesale'])) {
+                if ($user['status'] !== 'active') {
+                    json_response(['error' => 'FORBIDDEN_ROLE'], 403);
+                }
+                $allowedRoles = [
+                    'Admin Page',
+                    'Telesale',
+                    'Supervisor Telesale',
+                    'Backoffice',
+                    'Admin Control',
+                    'Super Admin',
+                    'Marketing',
+                ];
+                if (!in_array($user['role'], $allowedRoles, true)) {
                     json_response(['error' => 'FORBIDDEN_ROLE'], 403);
                 }
 

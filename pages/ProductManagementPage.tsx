@@ -113,19 +113,20 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
 
   const handleToggleProductStatus = async (product: Product) => {
     try {
-      console.log('Toggling product status for product ID:', product.id, 'Current status:', product.status);
-      
-      const newStatus = (product.status || 'Active') === 'Active' ? 'Inactive' : 'Active';
-      
-      console.log('Updating product status to:', newStatus);
-      const result = await updateProduct(product.id, { status: newStatus });
-      console.log('Update result:', result);
+      const currentStatus = getProductStatus(product);
+      const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+
+      await updateProduct(product.id, { status: newStatus });
       
       // แจ้ง parent component ให้อัปเดตข้อมูล
       openModal('refreshProducts');
     } catch (error) {
       console.error('Error updating product status:', error);
-      alert('เกิดข้อผิดพลาดในการอัปเดตสถานะสินค้า: ' + error.message);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : (error as any)?.message ?? '';
+      alert('เกิดข้อผิดพลาดในการอัปเดตสถานะสินค้า: ' + errorMessage);
     }
   };
 
@@ -159,7 +160,16 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   // ตรวจสอบสถานะการใช้งานของสินค้า
   const getProductStatus = (product: Product) => {
     // อ่านสถานะโดยตรงจากตาราง products
-    return product.status || 'Active';
+    const rawStatus = (product.status ?? '').toString().trim();
+    if (!rawStatus) {
+      return 'Active';
+    }
+    const lower = rawStatus.toLowerCase();
+    if (lower === 'active') return 'Active';
+    if (lower === 'inactive') return 'Inactive';
+    if (lower === '1' || lower === 'true' || lower === 'enabled') return 'Active';
+    if (lower === '0' || lower === 'false' || lower === 'disabled') return 'Inactive';
+    return rawStatus;
   };
 
   // ฟังก์ชันสำหรับหาชื่อคลังสินค้า

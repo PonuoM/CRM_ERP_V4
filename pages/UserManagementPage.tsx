@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { User, UserRole, Company } from '../types';
+import { User, UserRole, Company, UserStatus } from '../types';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
 
 interface UserManagementPageProps {
   users: User[];
   openModal: (type: string, data?: any) => void;
+  onToggleStatus: (userId: number, status: Exclude<UserStatus, 'resigned'>) => Promise<void>;
   currentUser: User;
   allCompanies: Company[];
 }
@@ -12,11 +13,13 @@ interface UserManagementPageProps {
 const UserManagementPage: React.FC<UserManagementPageProps> = ({
   users,
   openModal,
+  onToggleStatus,
   currentUser,
   allCompanies,
 }) => {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
+  const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
 
   const handleDelete = (user: User) => {
     openModal("confirmDelete", {
@@ -35,6 +38,25 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
       return roleMatch && companyMatch;
     });
   }, [users, roleFilter, companyFilter, isSuperAdmin]);
+
+  const handleStatusToggle = async (user: User, shouldActivate: boolean) => {
+    if (user.status === 'resigned') {
+      return;
+    }
+    const targetStatus: Exclude<UserStatus, 'resigned'> = shouldActivate ? 'active' : 'inactive';
+    if ((user.status ?? 'active') === targetStatus) {
+      return;
+    }
+    try {
+      setStatusUpdatingId(user.id);
+      await onToggleStatus(user.id, targetStatus);
+    } catch (error) {
+      console.error('Failed to change user status', error);
+      alert('Unable to update user status. Please try again.');
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -98,6 +120,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
               <th scope="col" className="px-6 py-3">เบอร์โทรศัพท์</th>
               <th scope="col" className="px-6 py-3">ตำแหน่ง</th>
               <th scope="col" className="px-6 py-3">Team ID</th>
+              <th scope="col" className="px-6 py-3">Status</th>
               <th scope="col" className="px-6 py-3 text-right">การดำเนินการ</th>
             </tr>
           </thead>
@@ -113,6 +136,35 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
                 <td className="px-6 py-4">{user.phone || "-"}</td>
                 <td className="px-6 py-4">{user.role}</td>
                 <td className="px-6 py-4">{user.teamId || "-"}</td>
+                <td className="px-6 py-4">
+                  {user.status === 'resigned' ? (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+                      Resigned
+                    </span>
+                  ) : (
+                    <div className="flex items-center space-x-3">
+                      <label
+                        className={`inline-flex items-center ${statusUpdatingId === user.id ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                      >
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            className="peer sr-only"
+                            checked={(user.status ?? 'active') === 'active'}
+                            onChange={(e) => handleStatusToggle(user, e.target.checked)}
+                            disabled={statusUpdatingId === user.id}
+                            aria-label={`Toggle status for ${user.username}`}
+                          />
+                          <div className="h-5 w-10 rounded-full bg-gray-200 transition-colors peer-checked:bg-green-500"></div>
+                          <div className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></div>
+                        </div>
+                      </label>
+                      <span className="text-sm font-medium text-gray-700">
+                        {(user.status ?? 'active') === 'active' ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  )}
+                </td>
                 <td className="px-6 py-4 flex items-center justify-end space-x-2">
                   <button
                     onClick={() => openModal("editUser", user)}

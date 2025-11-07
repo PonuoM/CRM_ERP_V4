@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   UserRole,
   User,
+  UserStatus,
   Order,
   OrderSlip,
   ModalState,
@@ -54,6 +55,8 @@ import {
   listActivities,
   createActivity,
   listTags,
+  listAttendance,
+  checkInAttendance,
   apiFetch,
   createUser as apiCreateUser,
   updateUser as apiUpdateUser,
@@ -115,6 +118,46 @@ import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
+
+const HALF_THRESHOLD_SECONDS = 2 * 3600;
+const FULL_THRESHOLD_SECONDS = 4 * 3600;
+type AttendanceSessionState = {
+  userId: number;
+  loginHistoryId: number | null;
+  loginTime: string;
+  date: string;
+};
+
+const computeAttendanceValueFromSeconds = (seconds: number): number => {
+  if (seconds >= FULL_THRESHOLD_SECONDS) return 1.0;
+  if (seconds >= HALF_THRESHOLD_SECONDS) return 0.5;
+  if (seconds > 0) return 0.0;
+  return 0.0;
+};
+
+const formatDurationText = (seconds: number): string => {
+  if (seconds <= 0) return "0 นาที";
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (hrs > 0) {
+    return `${hrs} ชม. ${mins} นาที`;
+  }
+  if (mins > 0) {
+    return `${mins} นาที`;
+  }
+  return `${secs} วินาที`;
+};
+
+const formatTimeText = (iso?: string | null): string => {
+  if (!iso) return "-";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+};
+
+const getTodayIsoString = (): string =>
+  new Date().toISOString().slice(0, 10);
 
 const formatCustomerId = (phone: string, companyId?: number | null): string => {
   const digitsOnly = (phone ?? "").replace(/\D/g, "");
@@ -256,6 +299,21 @@ const App: React.FC = () => {
     string,
     { view?: boolean; use?: boolean }
   > | null>(null);
+  const [attendanceSession, setAttendanceSession] =
+    usePersistentState<AttendanceSessionState | null>(
+      "attendance.session",
+      null,
+    );
+  const [attendanceInfo, setAttendanceInfo] = useState<{
+    firstLogin?: string | null;
+    lastLogout?: string | null;
+    attendanceValue?: number | null;
+    attendanceStatus?: string | null;
+    effectiveSeconds?: number;
+  } | null>(null);
+  const [attendanceDuration, setAttendanceDuration] = useState<number>(0);
+  const [attendanceLoading, setAttendanceLoading] = useState<boolean>(false);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -402,6 +460,63 @@ const App: React.FC = () => {
       default:
         return "Unpaid";
     }
+  };
+
+  const normalizeProductStatus = (rawStatus: unknown): string => {
+    if (typeof rawStatus === "string") {
+      const trimmed = rawStatus.trim();
+      if (!trimmed) return "Active";
+      const lower = trimmed.toLowerCase();
+      if (lower === "inactive" || lower === "in-active") {
+        return "Inactive";
+      }
+      if (lower === "active") {
+        return "Active";
+      }
+      if (lower === "0" || lower === "false" || lower === "disabled") {
+        return "Inactive";
+      }
+      if (lower === "1" || lower === "true" || lower === "enabled") {
+        return "Active";
+      }
+      return trimmed;
+    }
+    if (typeof rawStatus === "boolean") {
+      return rawStatus ? "Active" : "Inactive";
+    }
+    if (typeof rawStatus === "number") {
+      return rawStatus === 0 ? "Inactive" : "Active";
+    }
+    return "Active";
+  };
+
+  const mapProductFromApi = (r: any): Product => {
+    const companyValue =
+      typeof r.company_id !== "undefined" && r.company_id !== null
+        ? r.company_id
+        : typeof r.companyId !== "undefined" && r.companyId !== null
+          ? r.companyId
+          : 0;
+    const companyId =
+      typeof companyValue === "number"
+        ? companyValue
+        : Number(companyValue) || 0;
+
+    return {
+      id: r.id,
+      sku: r.sku,
+      name: r.name,
+      description: r.description ?? undefined,
+      category: r.category,
+      unit: r.unit,
+      cost: Number(r.cost || 0),
+      price: Number(r.price || 0),
+      stock: Number(r.stock || 0),
+      companyId,
+      status: normalizeProductStatus(
+        typeof r.status !== "undefined" ? r.status : r.active,
+      ),
+    };
   };
 
   useEffect(() => {
@@ -683,19 +798,6 @@ const App: React.FC = () => {
             : undefined,
         });
 
-        const mapProduct = (r: any): Product => ({
-          id: r.id,
-          sku: r.sku,
-          name: r.name,
-          description: r.description ?? undefined,
-          category: r.category,
-          unit: r.unit,
-          cost: Number(r.cost || 0),
-          price: Number(r.price || 0),
-          stock: Number(r.stock || 0),
-          companyId: r.company_id,
-        });
-
         const mapCall = (r: any): CallHistory => ({
           id: r.id,
           customerId: r.customer_id,
@@ -756,7 +858,7 @@ const App: React.FC = () => {
         setUsers(Array.isArray(u) ? u.map(mapUser) : []);
         setCustomers(Array.isArray(c) ? c.map(mapCustomer) : []);
         setOrders(Array.isArray(o) ? o.map(mapOrder) : []);
-        setProducts(Array.isArray(p) ? p.map(mapProduct) : []);
+        setProducts(Array.isArray(p) ? p.map(mapProductFromApi) : []);
         setPages(
           Array.isArray(pg)
             ? pg.map((r: any) => ({
@@ -865,6 +967,268 @@ const App: React.FC = () => {
     }
     return users[0];
   }, [sessionUser, users]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setAttendanceSession(null);
+      setAttendanceInfo(null);
+      setAttendanceDuration(0);
+      return;
+    }
+    if (!attendanceSession) return;
+    const today = getTodayIsoString();
+    if (
+      attendanceSession.userId !== currentUser.id ||
+      attendanceSession.date !== today
+    ) {
+      setAttendanceSession(null);
+      setAttendanceInfo(null);
+      setAttendanceDuration(0);
+    }
+  }, [
+    attendanceSession,
+    currentUser?.id,
+    setAttendanceSession,
+  ]);
+
+  const refreshAttendance = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!currentUser?.id) return;
+      const today = getTodayIsoString();
+      if (!opts?.silent) {
+        setAttendanceLoading(true);
+        setAttendanceError(null);
+      }
+      try {
+        const response = await listAttendance({
+          userId: currentUser.id,
+          date: today,
+          roleOnly: "all",
+        });
+        const row =
+          Array.isArray(response) && response.length > 0 ? response[0] : null;
+        if (row) {
+          const firstLogin =
+            row.first_login ??
+            row.firstLogin ??
+            null;
+          const lastLogout =
+            row.last_logout ??
+            row.lastLogout ??
+            null;
+          const attendanceValue =
+            row.attendance_value != null
+              ? Number(row.attendance_value)
+              : row.attendanceValue != null
+              ? Number(row.attendanceValue)
+              : null;
+          const attendanceStatus =
+            row.attendance_status ??
+            row.attendanceStatus ??
+            null;
+          const effectiveSecondsRaw =
+            row.effective_seconds ??
+            row.effectiveSeconds ??
+            0;
+          const effectiveSeconds =
+            typeof effectiveSecondsRaw === "number"
+              ? effectiveSecondsRaw
+              : Number(effectiveSecondsRaw ?? 0);
+          setAttendanceInfo({
+            firstLogin,
+            lastLogout,
+            attendanceValue,
+            attendanceStatus,
+            effectiveSeconds,
+          });
+          if (firstLogin) {
+            setAttendanceSession((prev) => {
+              if (
+                prev &&
+                prev.userId === currentUser.id &&
+                prev.date === today &&
+                prev.loginTime === firstLogin
+              ) {
+                return prev;
+              }
+              return {
+                userId: currentUser.id,
+                loginHistoryId:
+                  prev && prev.userId === currentUser.id
+                    ? prev.loginHistoryId
+                    : null,
+                loginTime: firstLogin,
+                date: today,
+              };
+            });
+            const referenceEnd = lastLogout
+              ? Date.parse(lastLogout)
+              : Date.now();
+            const durationFromTimes = Math.max(
+              0,
+              Math.floor((referenceEnd - Date.parse(firstLogin)) / 1000),
+            );
+            const derivedDuration = Math.max(
+              effectiveSeconds,
+              durationFromTimes,
+            );
+            setAttendanceDuration(derivedDuration);
+          } else {
+            setAttendanceSession(null);
+            setAttendanceDuration(0);
+          }
+        } else {
+          setAttendanceInfo(null);
+          setAttendanceSession(null);
+          setAttendanceDuration(0);
+        }
+        if (!opts?.silent) {
+          setAttendanceError(null);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "ไม่สามารถดึงข้อมูลการเข้าเวรได้";
+        if (!opts?.silent) {
+          setAttendanceError(message);
+        }
+      } finally {
+        if (!opts?.silent) {
+          setAttendanceLoading(false);
+        }
+      }
+    },
+    [currentUser?.id, setAttendanceSession],
+  );
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    refreshAttendance({ silent: true }).catch(() => {});
+    const interval = window.setInterval(() => {
+      refreshAttendance({ silent: true }).catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [currentUser?.id, refreshAttendance]);
+
+  const handleCheckIn = useCallback(async () => {
+    if (!currentUser?.id) return;
+    setAttendanceLoading(true);
+    setAttendanceError(null);
+    const today = getTodayIsoString();
+    try {
+      const res = await checkInAttendance(currentUser.id);
+      const attendance = (res as any)?.attendance ?? null;
+      const loginTime =
+        attendance?.first_login ??
+        (res as any)?.loginTime ??
+        new Date().toISOString();
+      setAttendanceSession({
+        userId: currentUser.id,
+        loginHistoryId:
+          typeof (res as any)?.loginHistoryId === "number"
+            ? (res as any).loginHistoryId
+            : null,
+        loginTime,
+        date: today,
+      });
+      const effectiveSeconds =
+        typeof attendance?.effective_seconds === "number"
+          ? attendance.effective_seconds
+          : 0;
+      setAttendanceInfo(
+        attendance
+          ? {
+              firstLogin: attendance.first_login ?? loginTime,
+              lastLogout: attendance.last_logout ?? null,
+              attendanceValue:
+                attendance.attendance_value != null
+                  ? Number(attendance.attendance_value)
+                  : null,
+              attendanceStatus: attendance.attendance_status ?? null,
+              effectiveSeconds,
+            }
+          : {
+              firstLogin: loginTime,
+              lastLogout: null,
+              attendanceValue: null,
+              attendanceStatus: null,
+              effectiveSeconds,
+            },
+      );
+      const derivedDuration = Math.max(
+        effectiveSeconds,
+        Math.max(0, Math.floor((Date.now() - Date.parse(loginTime)) / 1000)),
+      );
+      setAttendanceDuration(derivedDuration);
+    } catch (error) {
+      setAttendanceError(
+        error instanceof Error
+          ? error.message
+          : "ไม่สามารถเช็คอินได้ กรุณาลองใหม่",
+      );
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [currentUser?.id, setAttendanceSession]);
+
+  const attendanceStartIso = useMemo(
+    () => attendanceInfo?.firstLogin ?? attendanceSession?.loginTime ?? null,
+    [attendanceInfo?.firstLogin, attendanceSession?.loginTime],
+  );
+
+  const hasCheckedIn = useMemo(
+    () => Boolean(attendanceStartIso),
+    [attendanceStartIso],
+  );
+
+  const computedAttendanceValue = useMemo(() => {
+    const liveValue = computeAttendanceValueFromSeconds(attendanceDuration);
+    const storedValue =
+      attendanceInfo?.attendanceValue != null
+        ? Number(attendanceInfo.attendanceValue)
+        : null;
+    return storedValue != null ? Math.max(storedValue, liveValue) : liveValue;
+  }, [attendanceInfo?.attendanceValue, attendanceDuration]);
+
+  useEffect(() => {
+    if (!attendanceStartIso || !hasCheckedIn) return;
+    const startMs = Date.parse(attendanceStartIso);
+    if (Number.isNaN(startMs)) return;
+
+    const updateDuration = () => {
+      const endMs = attendanceInfo?.lastLogout
+        ? Date.parse(attendanceInfo.lastLogout)
+        : Date.now();
+      if (Number.isNaN(endMs)) return;
+      let seconds = Math.max(0, Math.floor((endMs - startMs) / 1000));
+      const effectiveSecondsFromServer =
+        attendanceInfo?.effectiveSeconds != null
+          ? Number(attendanceInfo.effectiveSeconds)
+          : null;
+      if (
+        effectiveSecondsFromServer != null &&
+        effectiveSecondsFromServer > seconds
+      ) {
+        seconds = effectiveSecondsFromServer;
+      }
+      setAttendanceDuration((prev) => (prev === seconds ? prev : seconds));
+    };
+
+    updateDuration();
+
+    if (attendanceInfo?.lastLogout) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(updateDuration, 1000);
+    return () => window.clearInterval(timer);
+  }, [
+    attendanceStartIso,
+    hasCheckedIn,
+    attendanceInfo?.lastLogout,
+    attendanceInfo?.effectiveSeconds,
+  ]);
 
   const viewingCustomer = useMemo(() => {
     if (!viewingCustomerId) return null;
@@ -1046,7 +1410,10 @@ const App: React.FC = () => {
   const fetchProducts = async () => {
     try {
       const productsData = await listProducts();
-      setProducts(productsData);
+      const mappedProducts = Array.isArray(productsData)
+        ? productsData.map(mapProductFromApi)
+        : [];
+      setProducts(mappedProducts);
     } catch (error) {
       console.error("Error fetching products:", error);
     }
@@ -2025,6 +2392,46 @@ const App: React.FC = () => {
     } catch (e) {
       console.error("Failed to save user via API", e);
       alert("ไม่สามารถบันทึกข้อมูลผู้ใช้ได้ (API)");
+    }
+  };
+
+  const handleToggleUserStatus = async (
+    userId: number,
+    nextStatus: Exclude<UserStatus, "resigned">,
+  ) => {
+    try {
+      const updated: any = await apiUpdateUser(userId, { status: nextStatus });
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId
+            ? {
+                ...u,
+                username: updated.username,
+                firstName: updated.first_name,
+                lastName: updated.last_name,
+                email: updated.email ?? undefined,
+                phone: updated.phone ?? undefined,
+                role: updated.role,
+                companyId: updated.company_id,
+                teamId:
+                  typeof updated.team_id !== "undefined" &&
+                  updated.team_id !== null
+                    ? Number(updated.team_id)
+                    : undefined,
+                supervisorId:
+                  typeof updated.supervisor_id !== "undefined" &&
+                  updated.supervisor_id !== null
+                    ? Number(updated.supervisor_id)
+                    : undefined,
+                status:
+                  (updated.status as UserStatus | undefined) ?? nextStatus,
+              }
+            : u,
+        ),
+      );
+    } catch (e) {
+      console.error("Failed to toggle user status via API", e);
+      throw e;
     }
   };
 
@@ -3662,6 +4069,7 @@ const App: React.FC = () => {
         <UserManagementPage
           users={companyUsers}
           openModal={openModal}
+          onToggleStatus={handleToggleUserStatus}
           currentUser={currentUser}
           allCompanies={companies}
         />
@@ -3793,16 +4201,16 @@ const App: React.FC = () => {
         />
       );
     }
-    const superOnly = new Set([
-      "Data Management",
-      "Permissions",
-      "Teams",
-      "Pages",
-      "Tags",
-      "Users",
-      "Products",
-    ]);
-    if (superOnly.has(activePage) && currentUser.role !== UserRole.SuperAdmin) {
+    const pageRoleLimits: Record<string, UserRole[]> = {
+      Permissions: [UserRole.SuperAdmin],
+      Teams: [UserRole.SuperAdmin],
+      Products: [UserRole.SuperAdmin, UserRole.AdminControl],
+      Users: [UserRole.SuperAdmin, UserRole.AdminControl],
+      Pages: [UserRole.SuperAdmin, UserRole.AdminControl],
+      Tags: [UserRole.SuperAdmin, UserRole.AdminControl],
+    };
+    const allowedRoles = pageRoleLimits[activePage];
+    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
       return <div className="p-6 text-red-600">Not authorized</div>;
     }
     if (activePage === "Users") {
@@ -3810,6 +4218,7 @@ const App: React.FC = () => {
         <UserManagementPage
           users={companyUsers}
           openModal={openModal}
+          onToggleStatus={handleToggleUserStatus}
           currentUser={currentUser}
           allCompanies={companies}
         />
@@ -4113,6 +4522,7 @@ const App: React.FC = () => {
               <UserManagementPage
                 users={companyUsers}
                 openModal={openModal}
+                onToggleStatus={handleToggleUserStatus}
                 currentUser={currentUser}
                 allCompanies={companies}
               />
@@ -4570,6 +4980,56 @@ const App: React.FC = () => {
     }
   };
 
+  const renderAttendanceWidget = () => {
+    if (!currentUser?.id) return null;
+    if (!hasCheckedIn) {
+      return (
+        <div className="flex flex-col items-center space-y-1">
+          {attendanceError && !attendanceLoading && (
+            <span className="text-xs text-red-500">{attendanceError}</span>
+          )}
+          <button
+            type="button"
+            onClick={handleCheckIn}
+            className="px-6 py-2 rounded-full bg-green-600 text-white font-semibold shadow hover:bg-green-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={attendanceLoading}
+          >
+            {attendanceLoading ? "กำลังบันทึก..." : "บันทึกเข้างาน"}
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center space-y-1">
+        <div className="flex items-center space-x-5 rounded-full border border-green-200 bg-white px-4 py-2 shadow-sm">
+          <Clock className="w-5 h-5 text-green-600" />
+          <div className="flex items-center space-x-4">
+            <div className="flex flex-col leading-tight">
+              <span className="text-[11px] text-gray-500">เริ่มงาน</span>
+              <span className="text-sm font-semibold text-gray-800">
+                {formatTimeText(attendanceStartIso)}
+              </span>
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span className="text-[11px] text-gray-500">เวลาสะสม</span>
+              <span className="text-sm font-semibold text-gray-800">
+                {formatDurationText(attendanceDuration)}
+              </span>
+            </div>
+          </div>
+          {computedAttendanceValue >= 1 && (
+            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-100">
+              <Check className="w-4 h-4 text-green-600" />
+            </div>
+          )}
+        </div>
+        {attendanceError && !attendanceLoading && (
+          <span className="text-xs text-red-500">{attendanceError}</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen bg-[#F5F5F5]">
       {!viewingCustomer && !hideSidebar && (
@@ -4587,8 +5047,8 @@ const App: React.FC = () => {
         className={`flex-1 flex flex-col overflow-hidden ${hideSidebar ? "w-full" : ""}`}
       >
         {!viewingCustomer && !hideSidebar && (
-          <header className="flex justify-between items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
-            <div className="flex items-center space-x-4">
+          <header className="flex items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
+            <div className="flex items-center space-x-4 flex-shrink-0">
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
                 className="text-gray-600 lg:hidden"
@@ -4599,7 +5059,10 @@ const App: React.FC = () => {
                 {activePage}
               </h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex-1 flex justify-center px-2">
+              {renderAttendanceWidget()}
+            </div>
+            <div className="flex items-center space-x-4 flex-shrink-0">
               <div className="relative hidden">
                 <select
                   value={currentUserRole}

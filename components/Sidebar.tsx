@@ -167,23 +167,38 @@ const Sidebar: React.FC<SidebarProps> = ({
     children: promoChildren,
   };
 
+  const allowDataItem = (key: string) => {
+    if (user.role === UserRole.AdminControl) {
+      return (
+        key === "data.users" ||
+        key === "data.products" ||
+        key === "data.pages" ||
+        key === "data.tags"
+      );
+    }
+    return true;
+  };
+
   const dataChildren: NavItem[] = [
-    ...(canView("data.users")
+    ...(allowDataItem("data.users") && canView("data.users")
       ? ([{ icon: Users, label: "Users" }] as NavItem[])
       : []),
-    ...(canView("data.permissions")
+    ...(allowDataItem("data.products") && canView("data.products")
+      ? ([{ icon: Package, label: "Products" }] as NavItem[])
+      : []),
+    ...(allowDataItem("data.permissions") && canView("data.permissions")
       ? ([{ icon: Settings, label: "Permissions" }] as NavItem[])
       : []),
-    ...(canView("data.teams")
+    ...(allowDataItem("data.teams") && canView("data.teams")
       ? ([{ icon: Briefcase, label: "Teams" }] as NavItem[])
       : []),
-    ...(canView("data.pages")
+    ...(allowDataItem("data.pages") && canView("data.pages")
       ? ([{ icon: Share2, label: "Pages" }] as NavItem[])
       : []),
-    ...(canView("data.tags")
+    ...(allowDataItem("data.tags") && canView("data.tags")
       ? ([{ icon: FileText, label: "Tags" }] as NavItem[])
       : []),
-    ...(canView("data.companies")
+    ...(allowDataItem("data.companies") && canView("data.companies")
       ? ([{ icon: Briefcase, label: "Companies" }] as NavItem[])
       : []),
   ];
@@ -295,10 +310,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       case UserRole.AdminControl:
         return [
           homeGroup,
+          dataGroup,
+          inventoryGroup,
           reportsGroup,
-          { icon: Share2, label: "Share" },
-          { icon: Settings, label: "Settings" },
+          customersGroupFixed,
           callGroup,
+          { icon: Settings, label: "Settings" },
           { icon: BarChart2, label: "Marketing" },
         ];
       case UserRole.Admin:

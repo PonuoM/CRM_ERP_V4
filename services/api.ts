@@ -156,6 +156,7 @@ export async function createUser(payload: {
   companyId: number;
   teamId?: number;
   supervisorId?: number;
+  status?: "active" | "inactive" | "resigned";
 }) {
   return apiFetch("users", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -173,6 +174,7 @@ export async function updateUser(
     companyId: number;
     teamId?: number;
     supervisorId?: number;
+    status?: "active" | "inactive" | "resigned";
   }>,
 ) {
   return apiFetch(`users/${encodeURIComponent(String(id))}`, {

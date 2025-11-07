@@ -1,12 +1,11 @@
 -- Migration: Create daily attendance tracking from login history
 -- Purpose: Track per-user daily attendance (Telesale/Supervisor Telesale)
 -- Logic:
---   - Work window: 09:00:00 to 18:00:00 each day (9 hours = 32400 seconds)
---   - Sum only the overlap between login sessions and the work window
---   - Attendance value:
---       >= 80% of window -> 1.0 (full)
---       >= 40% and <80% -> 0.5 (half)
---       otherwise        -> 0.0 (absent)
+--   - Track login activity across the full day (00:00:00 - 23:59:59)
+--   - Attendance value thresholds (based on working seconds, capped at 6 hours):
+--       >= 4 hours (14,400 seconds) -> 1.0 (full)
+--       >= 2 hours (7,200 seconds)  -> 0.5 (half)
+--       otherwise                   -> 0.0 (absent)
 -- Safe for repeated runs (guards on existence)
 
 USE `mini_erp`;
@@ -19,8 +18,8 @@ CREATE TABLE IF NOT EXISTS `user_daily_attendance` (
   `first_login` DATETIME NULL,
   `last_logout` DATETIME NULL,
   `login_sessions` INT NOT NULL DEFAULT 0,
-  `effective_seconds` INT NOT NULL DEFAULT 0 COMMENT 'Seconds overlapped with 09:00-18:00',
-  `percent_of_workday` DECIMAL(5,2) GENERATED ALWAYS AS (ROUND((`effective_seconds` / 32400) * 100, 2)) STORED,
+  `effective_seconds` INT NOT NULL DEFAULT 0 COMMENT 'Tracked work seconds for the day',
+  `percent_of_workday` DECIMAL(5,2) GENERATED ALWAYS AS (ROUND((LEAST(`effective_seconds`, 21600) / 21600) * 100, 2)) STORED,
   `attendance_value` DECIMAL(3,1) NOT NULL DEFAULT 0.0 COMMENT '0.0, 0.5, 1.0',
   `attendance_status` ENUM('absent','half','full') NOT NULL DEFAULT 'absent',
   `computed_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,24 +36,29 @@ DELIMITER $$
 CREATE PROCEDURE `sp_upsert_user_daily_attendance`(IN p_user_id INT, IN p_date DATE)
 proc: BEGIN
   DECLARE v_role VARCHAR(64);
+  DECLARE v_status VARCHAR(32);
   DECLARE v_work_start DATETIME;
   DECLARE v_work_end DATETIME;
   DECLARE v_first_login DATETIME;
   DECLARE v_last_logout DATETIME;
   DECLARE v_sessions INT DEFAULT 0;
   DECLARE v_effective_seconds INT DEFAULT 0;
+  DECLARE v_effective_for_calc INT DEFAULT 0;
   DECLARE v_att_val DECIMAL(3,1) DEFAULT 0.0;
   DECLARE v_att_status VARCHAR(10);
+  DECLARE v_half_threshold INT DEFAULT 7200;
+  DECLARE v_full_threshold INT DEFAULT 14400;
+  DECLARE v_cap_seconds INT DEFAULT 21600;
 
-  -- Only consider Telesale roles
-  SELECT role INTO v_role FROM users WHERE id = p_user_id LIMIT 1;
-  IF v_role IS NULL OR v_role NOT IN ('Telesale','Supervisor Telesale') THEN
+  -- Ensure user exists and remains active
+  SELECT role, status INTO v_role, v_status FROM users WHERE id = p_user_id LIMIT 1;
+  IF v_role IS NULL OR v_status IS NULL OR v_status <> 'active' THEN
     LEAVE proc;
   END IF;
 
-  -- Work window boundaries for the day
-  SET v_work_start = TIMESTAMP(p_date, '09:00:00');
-  SET v_work_end   = TIMESTAMP(p_date, '18:00:00');
+  -- Work window boundaries for the day (full day)
+  SET v_work_start = TIMESTAMP(p_date, '00:00:00');
+  SET v_work_end   = TIMESTAMP(p_date, '23:59:59');
 
   -- First login within the day
   SELECT MIN(h.login_time)
@@ -82,7 +86,7 @@ proc: BEGIN
      AND h.login_time < v_work_end
      AND COALESCE(h.logout_time, NOW()) > v_work_start;
 
-  -- Sum effective seconds overlapping [09:00, 18:00]
+  -- Sum effective seconds overlapping the day
   SELECT COALESCE(SUM(
            GREATEST(0, TIMESTAMPDIFF(SECOND,
              GREATEST(h.login_time, v_work_start),
@@ -97,10 +101,15 @@ proc: BEGIN
      AND h.login_time < v_work_end
      AND COALESCE(h.logout_time, NOW()) > v_work_start;
 
+  SET v_effective_for_calc = v_effective_seconds;
+  IF v_effective_for_calc > v_cap_seconds THEN
+    SET v_effective_for_calc = v_cap_seconds;
+  END IF;
+
   -- Attendance value and status
-  IF v_effective_seconds >= 0.80 * 32400 THEN
+  IF v_effective_for_calc >= v_full_threshold THEN
     SET v_att_val = 1.0; SET v_att_status = 'full';
-  ELSEIF v_effective_seconds >= 0.40 * 32400 THEN
+  ELSEIF v_effective_for_calc >= v_half_threshold THEN
     SET v_att_val = 0.5; SET v_att_status = 'half';
   ELSE
     SET v_att_val = 0.0; SET v_att_status = 'absent';
@@ -133,7 +142,7 @@ BEGIN
   DECLARE v_user_id INT;
   DECLARE cur CURSOR FOR
     SELECT id FROM users 
-     WHERE status = 'active' AND role IN ('Telesale','Supervisor Telesale');
+     WHERE status = 'active';
   DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
   OPEN cur;
@@ -206,7 +215,7 @@ SELECT
   a.updated_at
 FROM user_daily_attendance a
 JOIN users u ON u.id = a.user_id
-WHERE u.role IN ('Telesale','Supervisor Telesale');
+WHERE u.status = 'active';
 
 -- 7) View with daily call minutes (for per-day KPI and later averaging)
 DROP VIEW IF EXISTS `v_user_daily_kpis`;
@@ -226,5 +235,5 @@ JOIN users u ON u.id = a.user_id
 LEFT JOIN call_history ch
   ON DATE(ch.`date`) = a.work_date
  AND ch.caller = CONCAT(u.first_name, ' ', u.last_name)
-WHERE u.role IN ('Telesale','Supervisor Telesale')
+WHERE u.status = 'active'
 GROUP BY a.id;

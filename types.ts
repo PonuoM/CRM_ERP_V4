@@ -19,6 +19,8 @@ export interface Tag {
   type: TagType;
 }
 
+export type UserStatus = 'active' | 'inactive' | 'resigned';
+
 export interface User {
   id: number;
   username: string;
@@ -31,7 +33,7 @@ export interface User {
   companyId: number;
   teamId?: number;
   supervisorId?: number;
-  status?: string; // 'active' | 'inactive' | 'resigned'
+  status?: UserStatus;
   customTags: Tag[];
 }
 

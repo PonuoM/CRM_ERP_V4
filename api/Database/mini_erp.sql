@@ -73,7 +73,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_compute_daily_attendance` (IN `p
   DECLARE v_user_id INT;
   DECLARE cur CURSOR FOR
     SELECT id FROM users 
-     WHERE status = 'active' AND role IN ('Telesale','Supervisor Telesale');
+     WHERE status = 'active';
   DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
   OPEN cur;
@@ -104,24 +104,29 @@ END$$
 
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_upsert_user_daily_attendance` (IN `p_user_id` INT, IN `p_date` DATE)  proc: BEGIN
   DECLARE v_role VARCHAR(64);
+  DECLARE v_status VARCHAR(32);
   DECLARE v_work_start DATETIME;
   DECLARE v_work_end DATETIME;
   DECLARE v_first_login DATETIME;
   DECLARE v_last_logout DATETIME;
   DECLARE v_sessions INT DEFAULT 0;
   DECLARE v_effective_seconds INT DEFAULT 0;
+  DECLARE v_effective_for_calc INT DEFAULT 0;
   DECLARE v_att_val DECIMAL(3,1) DEFAULT 0.0;
   DECLARE v_att_status VARCHAR(10);
+  DECLARE v_half_threshold INT DEFAULT 7200;
+  DECLARE v_full_threshold INT DEFAULT 14400;
+  DECLARE v_cap_seconds INT DEFAULT 21600;
 
-  -- Only consider Telesale roles
-  SELECT role INTO v_role FROM users WHERE id = p_user_id LIMIT 1;
-  IF v_role IS NULL OR v_role NOT IN ('Telesale','Supervisor Telesale') THEN
+  -- Ensure user exists and is active
+  SELECT role, status INTO v_role, v_status FROM users WHERE id = p_user_id LIMIT 1;
+  IF v_role IS NULL OR v_status IS NULL OR v_status <> 'active' THEN
     LEAVE proc;
   END IF;
 
-  -- Work window boundaries for the day
-  SET v_work_start = TIMESTAMP(p_date, '09:00:00');
-  SET v_work_end   = TIMESTAMP(p_date, '18:00:00');
+  -- Work window boundaries for the day (full day)
+  SET v_work_start = TIMESTAMP(p_date, '00:00:00');
+  SET v_work_end   = TIMESTAMP(p_date, '23:59:59');
 
   -- First login within the day
   SELECT MIN(h.login_time)
@@ -149,7 +154,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_upsert_user_daily_attendance` (I
      AND h.login_time < v_work_end
      AND COALESCE(h.logout_time, NOW()) > v_work_start;
 
-  -- Sum effective seconds overlapping [09:00, 18:00]
+  -- Sum effective seconds overlapping the work day
   SELECT COALESCE(SUM(
            GREATEST(0, TIMESTAMPDIFF(SECOND,
              GREATEST(h.login_time, v_work_start),
@@ -164,10 +169,15 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_upsert_user_daily_attendance` (I
      AND h.login_time < v_work_end
      AND COALESCE(h.logout_time, NOW()) > v_work_start;
 
+  SET v_effective_for_calc = v_effective_seconds;
+  IF v_effective_for_calc > v_cap_seconds THEN
+    SET v_effective_for_calc = v_cap_seconds;
+  END IF;
+
   -- Attendance value and status
-  IF v_effective_seconds >= 0.80 * 32400 THEN
+  IF v_effective_for_calc >= v_full_threshold THEN
     SET v_att_val = 1.0; SET v_att_status = 'full';
-  ELSEIF v_effective_seconds >= 0.40 * 32400 THEN
+  ELSEIF v_effective_for_calc >= v_half_threshold THEN
     SET v_att_val = 0.5; SET v_att_status = 'half';
   ELSE
     SET v_att_val = 0.0; SET v_att_status = 'absent';
@@ -24634,7 +24644,7 @@ CREATE TABLE `role_permissions` (
 --
 
 INSERT INTO `role_permissions` (`role`, `data`) VALUES
-('Admin Control', '{\"home.dashboard\":{\"use\":true},\"home.sales_overview\":{\"use\":true},\"home.calls_overview\":{\"use\":true},\"data.users\":{\"use\":true},\"data.permissions\":{\"use\":true},\"data.products\":{\"use\":true},\"data.teams\":{\"use\":true},\"data.pages\":{\"use\":true},\"data.tags\":{\"use\":true},\"nav.share\":{\"use\":true},\"nav.search\":{\"use\":true},\"nav.settings\":{\"use\":true},\"nav.data\":{\"use\":true},\"nav.orders\":{\"view\":false},\"nav.customers\":{\"view\":false},\"nav.manage_orders\":{\"view\":false},\"nav.debt\":{\"view\":false},\"nav.bulk_tracking\":{\"view\":false},\"nav.reports\":{\"use\":true}}'),
+('Admin Control', '{\"home.dashboard\":{\"use\":true},\"home.sales_overview\":{\"use\":true},\"home.calls_overview\":{\"use\":true},\"data.users\":{\"use\":true},\"data.products\":{\"use\":true},\"data.pages\":{\"use\":true},\"data.tags\":{\"use\":true},\"data.permissions\":{\"view\":false},\"data.teams\":{\"view\":false},\"data.companies\":{\"view\":false},\"nav.share\":{\"use\":true},\"nav.search\":{\"use\":true},\"nav.settings\":{\"use\":true},\"nav.data\":{\"use\":true},\"nav.customers\":{\"use\":true},\"nav.orders\":{\"view\":false},\"nav.manage_orders\":{\"view\":false},\"nav.debt\":{\"view\":false},\"nav.bulk_tracking\":{\"view\":false},\"nav.reports\":{\"use\":true},\"nav.call_history\":{\"use\":true},\"inventory.warehouses\":{\"use\":true},\"inventory.stock\":{\"use\":true},\"inventory.lot\":{\"use\":true},\"inventory.allocations\":{\"use\":true},\"inventory.promotions\":{\"use\":true},\"reports.export_history\":{\"use\":true},\"reports.import_export\":{\"use\":true},\"reports.reports\":{\"use\":true}}'),
 ('Admin Page', '{\"nav.orders\":{\"use\":true},\"nav.customers\":{\"use\":true},\"nav.search\":{\"use\":true},\"home.dashboard\":{\"use\":true},\"home.sales_overview\":{\"use\":true},\"home.calls_overview\":{\"view\":false},\"data.users\":{\"view\":false},\"data.permissions\":{\"view\":false},\"data.products\":{\"view\":false},\"data.teams\":{\"view\":false},\"data.pages\":{\"view\":false},\"data.tags\":{\"view\":false},\"nav.manage_orders\":{\"view\":false},\"nav.debt\":{\"view\":false},\"nav.reports\":{\"view\":false},\"nav.bulk_tracking\":{\"view\":false},\"nav.share\":{\"view\":false},\"nav.settings\":{\"view\":false},\"nav.data\":{\"view\":false}}'),
 ('Backoffice', '{\"home.dashboard\":{\"view\":true,\"use\":true},\"home.sales_overview\":{\"view\":false},\"home.calls_overview\":{\"view\":false},\"data.users\":{\"view\":false},\"data.permissions\":{\"view\":false},\"data.products\":{\"view\":false},\"data.teams\":{\"view\":false},\"data.pages\":{\"view\":false},\"data.tags\":{\"view\":false},\"nav.orders\":{\"use\":true},\"nav.manage_orders\":{\"use\":true},\"nav.debt\":{\"use\":true},\"nav.reports\":{\"use\":true},\"nav.bulk_tracking\":{\"use\":true},\"nav.search\":{\"use\":true},\"nav.customers\":{\"view\":false},\"nav.share\":{\"view\":false},\"nav.settings\":{\"view\":false},\"nav.data\":{\"view\":false}}'),
 ('Marketing', '{\"data.pages\":{\"use\":true},\"data.teams\":{\"view\":false},\"data.products\":{\"use\":true},\"data.permissions\":{\"view\":false},\"data.users\":{\"view\":false},\"home.calls_overview\":{\"view\":false},\"home.sales_overview\":{\"view\":false},\"home.dashboard\":{\"view\":true,\"use\":true},\"nav.orders\":{\"view\":false},\"nav.customers\":{\"view\":false},\"nav.manage_orders\":{\"view\":false},\"nav.debt\":{\"view\":false},\"nav.reports\":{\"view\":false},\"nav.bulk_tracking\":{\"view\":false},\"nav.search\":{\"view\":false},\"nav.share\":{\"view\":false},\"nav.settings\":{\"view\":false},\"nav.data\":{\"view\":false},\"data.tags\":{\"view\":false}}'),
@@ -24803,8 +24813,8 @@ CREATE TABLE `user_daily_attendance` (
   `first_login` datetime DEFAULT NULL,
   `last_logout` datetime DEFAULT NULL,
   `login_sessions` int(11) NOT NULL DEFAULT '0',
-  `effective_seconds` int(11) NOT NULL DEFAULT '0' COMMENT 'Seconds overlapped with 09:00-18:00',
-  `percent_of_workday` decimal(5,2) GENERATED ALWAYS AS (round(((`effective_seconds` / 32400) * 100),2)) STORED,
+  `effective_seconds` int(11) NOT NULL DEFAULT '0' COMMENT 'Tracked work seconds for the day',
+  `percent_of_workday` decimal(5,2) GENERATED ALWAYS AS (round(((least(`effective_seconds`, 21600) / 21600) * 100),2)) STORED,
   `attendance_value` decimal(3,1) NOT NULL DEFAULT '0.0' COMMENT '0.0, 0.5, 1.0',
   `attendance_status` enum('absent','half','full') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'absent',
   `computed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -25220,7 +25230,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `v_user_daily_attendance`;
 
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_user_daily_attendance`  AS  select `a`.`id` AS `id`,`a`.`user_id` AS `user_id`,`u`.`username` AS `username`,concat(`u`.`first_name`,' ',`u`.`last_name`) AS `full_name`,`u`.`role` AS `role`,`a`.`work_date` AS `work_date`,`a`.`first_login` AS `first_login`,`a`.`last_logout` AS `last_logout`,`a`.`login_sessions` AS `login_sessions`,`a`.`effective_seconds` AS `effective_seconds`,round((`a`.`effective_seconds` / 3600),2) AS `effective_hours`,`a`.`percent_of_workday` AS `percent_of_workday`,`a`.`attendance_value` AS `attendance_value`,`a`.`attendance_status` AS `attendance_status`,`a`.`computed_at` AS `computed_at`,`a`.`updated_at` AS `updated_at` from (`user_daily_attendance` `a` join `users` `u` on((`u`.`id` = `a`.`user_id`))) where (`u`.`role` in ('Telesale','Supervisor Telesale')) ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_user_daily_attendance`  AS  select `a`.`id` AS `id`,`a`.`user_id` AS `user_id`,`u`.`username` AS `username`,concat(`u`.`first_name`,' ',`u`.`last_name`) AS `full_name`,`u`.`role` AS `role`,`a`.`work_date` AS `work_date`,`a`.`first_login` AS `first_login`,`a`.`last_logout` AS `last_logout`,`a`.`login_sessions` AS `login_sessions`,`a`.`effective_seconds` AS `effective_seconds`,round((`a`.`effective_seconds` / 3600),2) AS `effective_hours`,`a`.`percent_of_workday` AS `percent_of_workday`,`a`.`attendance_value` AS `attendance_value`,`a`.`attendance_status` AS `attendance_status`,`a`.`computed_at` AS `computed_at`,`a`.`updated_at` AS `updated_at` from (`user_daily_attendance` `a` join `users` `u` on((`u`.`id` = `a`.`user_id`))) where (`u`.`status` = 'active') ;
 
 -- --------------------------------------------------------
 
@@ -25229,7 +25239,7 @@ CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW 
 --
 DROP TABLE IF EXISTS `v_user_daily_kpis`;
 
-CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_user_daily_kpis`  AS  select `a`.`user_id` AS `user_id`,`u`.`username` AS `username`,concat(`u`.`first_name`,' ',`u`.`last_name`) AS `full_name`,`u`.`role` AS `role`,`a`.`work_date` AS `work_date`,`a`.`attendance_value` AS `attendance_value`,`a`.`attendance_status` AS `attendance_status`,`a`.`effective_seconds` AS `effective_seconds`,round((coalesce(sum(`ch`.`duration`),0) / 60),2) AS `call_minutes` from ((`user_daily_attendance` `a` join `users` `u` on((`u`.`id` = `a`.`user_id`))) left join `call_history` `ch` on(((cast(`ch`.`date` as date) = `a`.`work_date`) and (`ch`.`caller` = concat(`u`.`first_name`,' ',`u`.`last_name`))))) where (`u`.`role` in ('Telesale','Supervisor Telesale')) group by `a`.`id` ;
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_user_daily_kpis`  AS  select `a`.`user_id` AS `user_id`,`u`.`username` AS `username`,concat(`u`.`first_name`,' ',`u`.`last_name`) AS `full_name`,`u`.`role` AS `role`,`a`.`work_date` AS `work_date`,`a`.`attendance_value` AS `attendance_value`,`a`.`attendance_status` AS `attendance_status`,`a`.`effective_seconds` AS `effective_seconds`,round((coalesce(sum(`ch`.`duration`),0) / 60),2) AS `call_minutes` from ((`user_daily_attendance` `a` join `users` `u` on((`u`.`id` = `a`.`user_id`))) left join `call_history` `ch` on(((cast(`ch`.`date` as date) = `a`.`work_date`) and (`ch`.`caller` = concat(`u`.`first_name`,' ',`u`.`last_name`))))) where (`u`.`status` = 'active') group by `a`.`id` ;
 
 --
 -- Indexes for dumped tables
