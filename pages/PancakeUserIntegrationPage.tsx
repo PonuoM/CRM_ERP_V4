@@ -780,7 +780,13 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                       filteredInternalUsers.map((user) => (
                         <div
                           key={user.id}
-                          onClick={() => setSelectedInternalUser(user)}
+                          onClick={() =>
+                            setSelectedInternalUser(
+                              selectedInternalUser?.id === user.id
+                                ? null
+                                : user,
+                            )
+                          }
                           className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                             selectedInternalUser?.id === user.id
                               ? "border-orange-500 bg-orange-50"
@@ -886,7 +892,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                           <div
                             key={user.id}
                             data-page-user-id={user.page_user_id}
-                            onClick={() => setSelectedPageUser(user)}
+                            onClick={() =>
+                              setSelectedPageUser(
+                                selectedPageUser?.id === user.id ? null : user,
+                              )
+                            }
                             className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                               selectedPageUser?.id === user.id
                                 ? "border-orange-500 bg-orange-50"
