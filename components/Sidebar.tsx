@@ -43,6 +43,10 @@ const PAGE_STATS_OVERVIEW = "Page Performance";
 const PAGE_ENGAGEMENT_STATS = "Engagement Insights";
 const CALL_MGMT = "Call Management";
 const PROMO_MGMT = "Promotions";
+const PAYMENT_SLIP_MGMT = "Upload สลิปโอนเงิน";
+const PAYMENT_SLIP_UPLOAD = "Upload";
+const PAYMENT_SLIP_ALL = "สลิปทั้งหมด";
+const PAYMENT_SLIP_DETAILS = "รายละเอียดสลิป";
 
 const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -113,6 +117,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Page Performance": "ประสิทธิภาพหน้า",
     "Engagement Insights": "ข้อมูลเชิงลึกการมีส่วนร่วม",
     "Customer Pools": "กลุ่มลูกค้า",
+    "Upload สลิปโอนเงิน": "Upload สลิปโอนเงิน",
+    Upload: "Upload",
+    สลิปทั้งหมด: "สลิปทั้งหมด",
+    รายละเอียดสลิป: "รายละเอียดสลิป",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -165,6 +173,24 @@ const Sidebar: React.FC<SidebarProps> = ({
     icon: BarChart2,
     label: PROMO_MGMT,
     children: promoChildren,
+  };
+
+  // Payment Slip Upload group
+  const paymentSlipChildren: NavItem[] = [
+    ...(canView("payment_slip.upload")
+      ? ([{ icon: FileUp, label: PAYMENT_SLIP_UPLOAD }] as NavItem[])
+      : []),
+    ...(canView("payment_slip.all")
+      ? ([{ icon: FileText, label: PAYMENT_SLIP_ALL }] as NavItem[])
+      : []),
+    ...(canView("payment_slip.details")
+      ? ([{ icon: FileText, label: PAYMENT_SLIP_DETAILS }] as NavItem[])
+      : []),
+  ];
+  const paymentSlipGroup: NavItem = {
+    icon: FileUp,
+    label: PAYMENT_SLIP_MGMT,
+    children: paymentSlipChildren,
   };
 
   const allowDataItem = (key: string) => {
@@ -305,6 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           { icon: BarChart2, label: "Marketing" },
           customersGroupFixed,
           callGroup,
+          paymentSlipGroup,
           { icon: Settings, label: "Settings" },
         ];
       case UserRole.AdminControl:
@@ -315,6 +342,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           reportsGroup,
           customersGroupFixed,
           callGroup,
+          paymentSlipGroup,
           { icon: Settings, label: "Settings" },
           { icon: BarChart2, label: "Marketing" },
         ];
@@ -368,6 +396,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.bulk_tracking")
             ? ([{ icon: FileUp, label: "Bulk Tracking" }] as NavItem[])
             : []),
+          paymentSlipGroup,
         ];
       default:
         return [homeGroup];

@@ -153,11 +153,13 @@ const formatTimeText = (iso?: string | null): string => {
   if (!iso) return "-";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
-const getTodayIsoString = (): string =>
-  new Date().toISOString().slice(0, 10);
+const getTodayIsoString = (): string => new Date().toISOString().slice(0, 10);
 
 const formatCustomerId = (phone: string, companyId?: number | null): string => {
   const digitsOnly = (phone ?? "").replace(/\D/g, "");
@@ -185,6 +187,9 @@ import ManageCustomersPage from "./pages/ManageCustomersPage";
 import CustomerPoolsPage from "./pages/CustomerPoolsPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import OrderAllocationPage from "./pages/OrderAllocationPage";
+import SlipUpload from "./pages/SlipUpload";
+import SlipAll from "./pages/SlipAll";
+import SlipDetail from "./pages/SlipDetail";
 import usePersistentState from "./utils/usePersistentState";
 
 const App: React.FC = () => {
@@ -985,11 +990,7 @@ const App: React.FC = () => {
       setAttendanceInfo(null);
       setAttendanceDuration(0);
     }
-  }, [
-    attendanceSession,
-    currentUser?.id,
-    setAttendanceSession,
-  ]);
+  }, [attendanceSession, currentUser?.id, setAttendanceSession]);
 
   const refreshAttendance = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -1008,28 +1009,18 @@ const App: React.FC = () => {
         const row =
           Array.isArray(response) && response.length > 0 ? response[0] : null;
         if (row) {
-          const firstLogin =
-            row.first_login ??
-            row.firstLogin ??
-            null;
-          const lastLogout =
-            row.last_logout ??
-            row.lastLogout ??
-            null;
+          const firstLogin = row.first_login ?? row.firstLogin ?? null;
+          const lastLogout = row.last_logout ?? row.lastLogout ?? null;
           const attendanceValue =
             row.attendance_value != null
               ? Number(row.attendance_value)
               : row.attendanceValue != null
-              ? Number(row.attendanceValue)
-              : null;
+                ? Number(row.attendanceValue)
+                : null;
           const attendanceStatus =
-            row.attendance_status ??
-            row.attendanceStatus ??
-            null;
+            row.attendance_status ?? row.attendanceStatus ?? null;
           const effectiveSecondsRaw =
-            row.effective_seconds ??
-            row.effectiveSeconds ??
-            0;
+            row.effective_seconds ?? row.effectiveSeconds ?? 0;
           const effectiveSeconds =
             typeof effectiveSecondsRaw === "number"
               ? effectiveSecondsRaw
@@ -1105,9 +1096,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
     refreshAttendance({ silent: true }).catch(() => {});
-    const interval = window.setInterval(() => {
-      refreshAttendance({ silent: true }).catch(() => {});
-    }, 5 * 60 * 1000);
+    const interval = window.setInterval(
+      () => {
+        refreshAttendance({ silent: true }).catch(() => {});
+      },
+      5 * 60 * 1000,
+    );
     return () => window.clearInterval(interval);
   }, [currentUser?.id, refreshAttendance]);
 
@@ -2201,7 +2195,8 @@ const App: React.FC = () => {
         targetUser.role === UserRole.Telesale &&
         targetUser.supervisorId === currentUser.id;
       const isSupervisorLevel =
-        targetUser.role === UserRole.Supervisor || targetUser.id === currentUser.id;
+        targetUser.role === UserRole.Supervisor ||
+        targetUser.id === currentUser.id;
 
       if (!isTeamMember && !isSupervisorLevel) {
         throw new Error(
@@ -4603,6 +4598,12 @@ const App: React.FC = () => {
 
           case "Marketing":
             return <MarketingPage currentUser={currentUser} />;
+          case "Upload":
+            return <SlipUpload />;
+          case "สลิปทั้งหมด":
+            return <SlipAll />;
+          case "รายละเอียดสลิป":
+            return <SlipDetail />;
           default:
             return (
               <AdminDashboard
@@ -4850,6 +4851,12 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
+          case "Upload":
+            return <SlipUpload />;
+          case "สลิปทั้งหมด":
+            return <SlipAll />;
+          case "รายละเอียดสลิป":
+            return <SlipDetail />;
           default:
             return <div className="p-6">หน้านี้ไม่พร้อมใช้งาน</div>;
         }
