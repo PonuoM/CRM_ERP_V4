@@ -20,6 +20,14 @@ interface PaginationInfo {
   maxPage: number;
 }
 
+interface FilterOptions {
+  order_id: string;
+  customer_name: string;
+  phone: string;
+  sale_month: string;
+  sale_year: string;
+}
+
 const SlipUpload: React.FC = () => {
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -32,6 +40,13 @@ const SlipUpload: React.FC = () => {
     currentPage: 1,
     pageSize: 10,
     maxPage: 1,
+  });
+  const [filters, setFilters] = useState<FilterOptions>({
+    order_id: "",
+    customer_name: "",
+    phone: "",
+    sale_month: "",
+    sale_year: "",
   });
 
   const showMessage = (type: "success" | "error", text: string) => {
@@ -59,8 +74,24 @@ const SlipUpload: React.FC = () => {
         return;
       }
 
+      // Build query string with filters
+      const queryParams = new URLSearchParams({
+        company_id: companyId.toString(),
+        page: pagination.currentPage.toString(),
+        pageSize: pagination.pageSize.toString(),
+      });
+
+      // Add filters to query if they have values
+      if (filters.order_id) queryParams.append("order_id", filters.order_id);
+      if (filters.customer_name)
+        queryParams.append("customer_name", filters.customer_name);
+      if (filters.phone) queryParams.append("phone", filters.phone);
+      if (filters.sale_month)
+        queryParams.append("sale_month", filters.sale_month);
+      if (filters.sale_year) queryParams.append("sale_year", filters.sale_year);
+
       const response = await fetch(
-        `/api/Slip_DB/get_transfer_orders.php?company_id=${companyId}&page=${pagination.currentPage}&pageSize=${pagination.pageSize}`,
+        `/api/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
       );
       const data = await response.json();
 
@@ -72,6 +103,13 @@ const SlipUpload: React.FC = () => {
           pageSize: data.pageSize,
           maxPage: data.maxPage,
         });
+
+        // Reset to first page if filters change and currentPage > maxPage
+        if (data.currentPage > data.maxPage && data.maxPage > 0) {
+          setPagination((prev) => ({ ...prev, currentPage: 1 }));
+          fetchOrders();
+          return;
+        }
         if (data.count === 0) {
           showMessage(
             "error",
@@ -89,10 +127,29 @@ const SlipUpload: React.FC = () => {
     }
   };
 
-  // Fetch orders on component mount and when pagination changes
+  // Fetch orders on component mount and when pagination or filters change
   useEffect(() => {
     fetchOrders();
-  }, [pagination.currentPage, pagination.pageSize]); // Re-fetch when pagination changes
+  }, [pagination.currentPage, pagination.pageSize, filters]); // Re-fetch when pagination or filters change
+
+  const handleFilterChange = (field: keyof FilterOptions, value: string) => {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      order_id: "",
+      customer_name: "",
+      phone: "",
+      sale_month: "",
+      sale_year: "",
+    });
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+  };
+
+  const applyFilters = () => {
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+  };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.maxPage) {
@@ -253,7 +310,7 @@ const SlipUpload: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         {/* Orders Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <h2 className="text-lg font-semibold text-gray-900">
               รายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอน
             </h2>
@@ -274,6 +331,138 @@ const SlipUpload: React.FC = () => {
                 </>
               )}
             </button>
+          </div>
+
+          {/* Filters Section */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-medium text-gray-900 mb-4">
+              ค้นหาข้อมูล
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {/* Order ID Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  รหัสคำสั่งซื้อ
+                </label>
+                <input
+                  type="text"
+                  value={filters.order_id}
+                  onChange={(e) =>
+                    handleFilterChange("order_id", e.target.value)
+                  }
+                  placeholder="รหัสคำสั่งซื้อ"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Customer Name Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  ชื่อลูกค้า
+                </label>
+                <input
+                  type="text"
+                  value={filters.customer_name}
+                  onChange={(e) =>
+                    handleFilterChange("customer_name", e.target.value)
+                  }
+                  placeholder="ชื่อลูกค้า"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Phone Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  เบอร์โทร
+                </label>
+                <input
+                  type="text"
+                  value={filters.phone}
+                  onChange={(e) => handleFilterChange("phone", e.target.value)}
+                  placeholder="เบอร์โทร"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Sale Month Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  เดือนที่ขาย
+                </label>
+                <select
+                  value={filters.sale_month}
+                  onChange={(e) =>
+                    handleFilterChange("sale_month", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">เลือกเดือน</option>
+                  <option value="1">มกราคม</option>
+                  <option value="2">กุมภาพันธ์</option>
+                  <option value="3">มีนาคม</option>
+                  <option value="4">เมษายน</option>
+                  <option value="5">พฤษภาคม</option>
+                  <option value="6">มิถุนายน</option>
+                  <option value="7">กรกฎาคม</option>
+                  <option value="8">สิงหาคม</option>
+                  <option value="9">กันยายน</option>
+                  <option value="10">ตุลาคม</option>
+                  <option value="11">พฤศจิกายน</option>
+                  <option value="12">ธันวาคม</option>
+                </select>
+              </div>
+
+              {/* Sale Year Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  ปีที่ขาย
+                </label>
+                <select
+                  value={filters.sale_year}
+                  onChange={(e) =>
+                    handleFilterChange("sale_year", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">เลือกปี</option>
+                  {(() => {
+                    const currentYear = new Date().getFullYear();
+                    const years = [];
+                    for (
+                      let year = currentYear;
+                      year >= currentYear - 5;
+                      year--
+                    ) {
+                      years.push(
+                        <option key={year} value={year}>
+                          {year + 543} {/* Thai Buddhist year */}
+                        </option>,
+                      );
+                    }
+                    return years;
+                  })()}
+                </select>
+              </div>
+            </div>
+
+            {/* Filter Actions */}
+            <div className="flex items-center gap-2 mt-4">
+              <button
+                onClick={applyFilters}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+              >
+                <CheckCircle className="w-4 h-4" />
+                ค้นหา
+              </button>
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors text-sm"
+              >
+                <AlertCircle className="w-4 h-4" />
+                ล้างตัวกรอง
+              </button>
+            </div>
           </div>
 
           {loadingOrders && orders.length === 0 ? (
