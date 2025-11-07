@@ -12,6 +12,13 @@ interface Order {
   full_name: string;
 }
 
+interface PaginationInfo {
+  totalCount: number;
+  currentPage: number;
+  pageSize: number;
+  maxPage: number;
+}
+
 const SlipUpload: React.FC = () => {
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -19,6 +26,12 @@ const SlipUpload: React.FC = () => {
   } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    totalCount: 0,
+    currentPage: 1,
+    pageSize: 10,
+    maxPage: 1,
+  });
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -46,12 +59,18 @@ const SlipUpload: React.FC = () => {
       }
 
       const response = await fetch(
-        `/api/Slip_DB/get_transfer_orders.php?company_id=${companyId}`,
+        `/api/Slip_DB/get_transfer_orders.php?company_id=${companyId}&page=${pagination.currentPage}&pageSize=${pagination.pageSize}`,
       );
       const data = await response.json();
 
       if (data.success) {
         setOrders(data.data);
+        setPagination({
+          totalCount: data.totalCount,
+          currentPage: data.currentPage,
+          pageSize: data.pageSize,
+          maxPage: data.maxPage,
+        });
         if (data.count === 0) {
           showMessage(
             "error",
@@ -69,10 +88,129 @@ const SlipUpload: React.FC = () => {
     }
   };
 
-  // Fetch orders on component mount
+  // Fetch orders on component mount and when pagination changes
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [pagination.currentPage, pagination.pageSize]); // Re-fetch when pagination changes
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= pagination.maxPage) {
+      setPagination((prev) => ({ ...prev, currentPage: newPage }));
+    }
+  };
+
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPagination((prev) => ({
+      ...prev,
+      pageSize: newPageSize,
+      currentPage: 1, // Reset to first page when changing page size
+    }));
+  };
+
+  const renderPagination = () => {
+    const { currentPage, pageSize, totalCount, maxPage } = pagination;
+    const startItem = (currentPage - 1) * pageSize + 1;
+    const endItem = Math.min(currentPage * pageSize, totalCount);
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200">
+        {/* Page info */}
+        <div className="text-sm text-gray-700">
+          แสดง {startItem}-{endItem} จากทั้งหมด{" "}
+          {totalCount.toLocaleString("th-TH")} รายการ
+        </div>
+
+        {/* Page size selector */}
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-gray-700">แสดง:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+          <span className="text-gray-700">รายการ</span>
+        </div>
+
+        {/* Pagination buttons */}
+        <div className="flex items-center gap-1">
+          {/* First page */}
+          <button
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            หน้าแรก
+          </button>
+
+          {/* Previous page */}
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ก่อนหน้า
+          </button>
+
+          {/* Page numbers */}
+          <div className="flex items-center gap-1">
+            {(() => {
+              const pages = [];
+              const maxVisible = 5;
+              let startPage = Math.max(
+                1,
+                currentPage - Math.floor(maxVisible / 2),
+              );
+              let endPage = Math.min(maxPage, startPage + maxVisible - 1);
+
+              if (endPage - startPage + 1 < maxVisible) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(
+                  <button
+                    key={i}
+                    onClick={() => handlePageChange(i)}
+                    className={`px-3 py-1 text-sm border rounded ${
+                      i === currentPage
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {i}
+                  </button>,
+                );
+              }
+              return pages;
+            })()}
+          </div>
+
+          {/* Next page */}
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === maxPage}
+            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ถัดไป
+          </button>
+
+          {/* Last page */}
+          <button
+            onClick={() => handlePageChange(maxPage)}
+            disabled={currentPage === maxPage}
+            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            หน้าสุดท้าย
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -214,6 +352,9 @@ const SlipUpload: React.FC = () => {
               </p>
             </div>
           )}
+
+          {/* Pagination */}
+          {orders.length > 0 && renderPagination()}
         </div>
       </div>
     </div>
