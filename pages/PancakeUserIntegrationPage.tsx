@@ -947,31 +947,33 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* Disconnect Button - Show when selected page user is already connected */}
-                  {selectedPageUser && selectedPageUser.user_id && (
-                    <button
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `ต้องการยกเลิกการเชื่อมต่อ "${selectedPageUser.page_user_name}" ใช่หรือไม่?`,
-                          )
-                        ) {
-                          handleDisconnectPageUser(selectedPageUser.id);
-                          setSelectedInternalUser(null);
-                          setSelectedPageUser(null);
-                        }
-                      }}
-                      disabled={loading}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {loading ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Unlink className="w-4 h-4" />
-                      )}
-                      ยกเลิกการเชื่อมต่อ
-                    </button>
-                  )}
+                  {/* Disconnect Button - Show when selected page user is already connected and no internal user is selected */}
+                  {selectedPageUser &&
+                    selectedPageUser.user_id &&
+                    !selectedInternalUser && (
+                      <button
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `ต้องการยกเลิกการเชื่อมต่อ "${selectedPageUser.page_user_name}" ใช่หรือไม่?`,
+                            )
+                          ) {
+                            handleDisconnectPageUser(selectedPageUser.id);
+                            setSelectedInternalUser(null);
+                            setSelectedPageUser(null);
+                          }
+                        }}
+                        disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {loading ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Unlink className="w-4 h-4" />
+                        )}
+                        ยกเลิกการเชื่อมต่อ
+                      </button>
+                    )}
 
                   <button
                     onClick={handleMapUsers}
