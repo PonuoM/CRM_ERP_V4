@@ -54,6 +54,14 @@ const hasAdminAccess = (user: User) => {
   );
 };
 
+// Helper function to check if page is inactive
+const isPageInactive = (page?: {
+  active?: boolean | number | string | null;
+}) => {
+  // A page is inactive if active is falsy (false, 0, "0", null, undefined)
+  return !page?.active;
+};
+
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<
     "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
@@ -84,6 +92,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   });
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
   const [tempEnd, setTempEnd] = useState(dateRange.end);
@@ -184,6 +193,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
     number[]
   >([]);
+  const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
+    useState(false);
   const [adsHistoryDatePickerOpen, setAdsHistoryDatePickerOpen] =
     useState(false);
   const [adsHistoryTempStart, setAdsHistoryTempStart] = useState(
@@ -237,6 +248,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Helper function to map background colors to hover equivalents
+  const getHoverColor = (bgColor: string): string => {
+    const hoverMap: { [key: string]: string } = {
+      "bg-emerald-50": "hover:bg-emerald-100",
+      "bg-blue-50": "hover:bg-blue-100",
+      "bg-yellow-50": "hover:bg-yellow-100",
+      "bg-purple-50": "hover:bg-purple-100",
+      "bg-pink-50": "hover:bg-pink-100",
+      "bg-orange-50": "hover:bg-orange-100",
+      "bg-sky-50": "hover:bg-sky-100",
+      "bg-rose-50": "hover:bg-rose-100",
+      "": "hover:bg-gray-50", // fallback for rows with no background
+    };
+    return hoverMap[bgColor] || "hover:bg-gray-50";
+  };
 
   // Map each date to a background color for consistent grouping in tables
   const adsLogsDateBgMap = useMemo(() => {
@@ -339,9 +366,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         );
         setPromotions(Array.isArray(promo) ? promo : []);
         setUserAccessiblePages(userPages);
-        // Set default filters for ads history to show all data
+        // Set default filters for ads history to show all data (active pages only)
         setAdsHistoryDateRange({ start: "", end: "" });
-        setAdsHistorySelectedPages(userPages.map((page: Page) => page.id));
+        setAdsHistorySelectedPages(
+          userPages
+            .filter((page: Page) => page.active !== false)
+            .map((page: Page) => page.id),
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1282,9 +1313,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       end: endOfWeek.toISOString().slice(0, 10),
     });
 
-    // Set default to select all pages
+    // Set default to select all active pages only
     if (pages.length > 0) {
-      setSelectedPages(pages.map((p) => p.id));
+      setSelectedPages(
+        pages.filter((p) => p.active !== false).map((p) => p.id),
+      );
     }
   }, [pages]);
 
@@ -1585,7 +1618,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     return (
                       <tr key={row.id} className="border-b">
                         <td className="px-3 py-2">{row.spendDate}</td>
-                        <td className="px-3 py-2">{p?.name || row.pageId}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span>{p?.name || row.pageId}</span>
+                            {isPageInactive(p) && (
+                              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2">฿{row.amount.toFixed(2)}</td>
                         <td className="px-3 py-2">{row.notes || "-"}</td>
                       </tr>
@@ -1809,7 +1851,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     {userPages.length > 0 &&
                       userPages.map((page, index) => (
                         <tr key={page.id} className="border-b">
-                          <td className="px-3 py-2 font-medium">{page.name}</td>
+                          <td className="px-3 py-2 font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{page.name}</span>
+                              {isPageInactive(page) && (
+                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-2">{page.platform}</td>
                           <td className="px-3 py-2">
                             <input
@@ -1946,9 +1997,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
+                    active: page.active,
                   }))}
                   selectedPages={selectedPages}
                   onChange={setSelectedPages}
+                  showInactivePages={showInactivePages}
+                  onToggleInactivePages={setShowInactivePages}
                 />
               </div>
 
@@ -2195,7 +2249,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                             ? row.log_date
                             : row.log_date || ""}
                         </td>
-                        <td className="px-3 py-2">{row.page_name}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span>{row.page_name}</span>
+                            {(() => {
+                              const page = pages.find(
+                                (p) => p.name === row.page_name,
+                              );
+                              return isPageInactive(page) ? (
+                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                  Inactive
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                        </td>
                         {dashboardView === "user" && (
                           <td className="px-3 py-2">
                             {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
@@ -2525,9 +2593,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       id: page.id,
                       name: page.name,
                       platform: page.platform,
+                      active: page.active,
                     }))}
                     selectedPages={exportSelectedPages}
                     onChange={setExportSelectedPages}
+                    showInactivePages={showInactivePages}
+                    onToggleInactivePages={setShowInactivePages}
                   />
                 </div>
               </div>
@@ -2655,9 +2726,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
+                    active: page.active,
                   }))}
                   selectedPages={adsHistorySelectedPages}
                   onChange={setAdsHistorySelectedPages}
+                  showInactivePages={showInactivePagesAdsHistory}
+                  onToggleInactivePages={setShowInactivePagesAdsHistory}
                 />
               </div>
 
@@ -2852,14 +2926,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       return (
                         <tr
                           key={log.id}
-                          className={`border-b ${bg} hover:bg-gray-50`}
+                          className={`border-b ${bg} ${getHoverColor(bg)}`}
                         >
                           <td className="px-3 py-2">{d}</td>
                           <td className="px-3 py-2">
-                            {log.page_name ||
-                              pages.find((p) => p.id === Number(log.page_id))
-                                ?.name ||
-                              log.page_id}
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {log.page_name ||
+                                  pages.find(
+                                    (p) => p.id === Number(log.page_id),
+                                  )?.name ||
+                                  log.page_id}
+                              </span>
+                              {(() => {
+                                const page = pages.find(
+                                  (p) =>
+                                    p.name === log.page_name ||
+                                    p.id === Number(log.page_id),
+                                );
+                                return isPageInactive(page) ? (
+                                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                    Inactive
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             ฿{Number(log.ads_cost || 0).toFixed(2)}

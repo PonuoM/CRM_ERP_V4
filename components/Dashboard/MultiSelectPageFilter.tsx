@@ -5,18 +5,23 @@ interface PageOption {
   id: number;
   name: string;
   platform: string;
+  active?: boolean;
 }
 
 interface MultiSelectPageFilterProps {
   pages: PageOption[];
   selectedPages: number[];
   onChange: (selectedPages: number[]) => void;
+  showInactivePages?: boolean;
+  onToggleInactivePages?: (show: boolean) => void;
 }
 
 const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
   pages,
   selectedPages,
   onChange,
+  showInactivePages = false,
+  onToggleInactivePages,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -36,11 +41,19 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredPages = pages.filter(
-    (page) =>
-      page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      page.platform.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredPages = pages
+    .filter(
+      (page) =>
+        (showInactivePages || page.active !== false) &&
+        (page.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          page.platform.toLowerCase().includes(searchTerm.toLowerCase())),
+    )
+    .sort((a, b) => {
+      // Sort by active status first (active pages first), then by name
+      if (a.active === false && b.active !== false) return 1;
+      if (a.active !== false && b.active === false) return -1;
+      return a.name.localeCompare(b.name);
+    });
 
   const handleTogglePage = (pageId: number) => {
     if (selectedPages.includes(pageId)) {
@@ -51,7 +64,9 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
   };
 
   const handleSelectAll = () => {
-    const allPageIds = pages.map((page) => page.id);
+    const allPageIds = pages
+      .filter((page) => showInactivePages || page.active !== false)
+      .map((page) => page.id);
     onChange(allPageIds);
   };
 
@@ -96,6 +111,21 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
             />
           </div>
 
+          {/* Show inactive pages checkbox */}
+          <div className="p-3 border-b border-gray-200">
+            <label className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded">
+              <input
+                type="checkbox"
+                checked={showInactivePages}
+                onChange={(e) => onToggleInactivePages?.(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="ml-2 text-sm text-gray-700">
+                แสดงเพจที่ไม่ active
+              </span>
+            </label>
+          </div>
+
           {/* Quick actions */}
           <div className="p-2 border-b border-gray-200 flex gap-2">
             <button
@@ -121,11 +151,14 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
             ) : (
               filteredPages.map((page) => {
                 const isSelected = selectedPages.includes(page.id);
+                const isInactive = page.active === false;
                 return (
                   <div
                     key={page.id}
                     onClick={() => handleTogglePage(page.id)}
-                    className="flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded transition-colors"
+                    className={`flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded transition-colors ${
+                      isInactive ? "opacity-60" : ""
+                    }`}
                   >
                     {/* Checkbox */}
                     <div className="relative mr-3">
@@ -144,11 +177,20 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
 
                     {/* Page info */}
                     <div className="flex-1">
-                      <div className="font-medium text-gray-900 text-sm">
+                      <div
+                        className={`font-medium text-sm ${
+                          isInactive ? "text-gray-500" : "text-gray-900"
+                        }`}
+                      >
                         {page.name}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {page.platform}
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <span>{page.platform}</span>
+                        {isInactive && (
+                          <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                            Inactive
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -166,7 +208,9 @@ const MultiSelectPageFilter: React.FC<MultiSelectPageFilterProps> = ({
               </span>{" "}
               จาก{" "}
               <span className="font-semibold text-gray-900">
-                {pages.length}
+                {showInactivePages
+                  ? pages.length
+                  : pages.filter((p) => p.active !== false).length}
               </span>{" "}
               เพจ
             </div>
