@@ -43,7 +43,6 @@ interface SlipFormData {
   amount: string;
   bank_account_id: string;
   transfer_date: string;
-  slip_image: File | null;
 }
 
 const SlipUpload: React.FC = () => {
@@ -76,7 +75,6 @@ const SlipUpload: React.FC = () => {
     amount: "",
     bank_account_id: "",
     transfer_date: "",
-    slip_image: null,
   });
   const [uploadingSlip, setUploadingSlip] = useState(false);
 
@@ -132,7 +130,6 @@ const SlipUpload: React.FC = () => {
       amount: order.total_amount.toString(),
       bank_account_id: "",
       transfer_date: "",
-      slip_image: null,
     });
     setShowSlipModal(true);
     if (bankAccounts.length === 0) {
@@ -140,10 +137,7 @@ const SlipUpload: React.FC = () => {
     }
   };
 
-  const handleSlipFormChange = (
-    field: keyof SlipFormData,
-    value: string | File | null,
-  ) => {
+  const handleSlipFormChange = (field: keyof SlipFormData, value: string) => {
     setSlipFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -151,8 +145,7 @@ const SlipUpload: React.FC = () => {
     if (
       !slipFormData.amount ||
       !slipFormData.bank_account_id ||
-      !slipFormData.transfer_date ||
-      !slipFormData.slip_image
+      !slipFormData.transfer_date
     ) {
       showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
@@ -170,31 +163,12 @@ const SlipUpload: React.FC = () => {
       const user = JSON.parse(sessionUser);
       const companyId = user.company_id;
 
-      // First upload the slip image
-      const formData = new FormData();
-      formData.append("slip_image", slipFormData.slip_image);
-      formData.append("order_id", slipFormData.order_id);
-
-      const uploadResponse = await fetch("/api/Slip_DB/upload_slip_image.php", {
-        method: "POST",
-        body: formData,
-      });
-
-      const uploadData = await uploadResponse.json();
-
-      if (!uploadData.success) {
-        showMessage("error", uploadData.message || "ไม่สามารถอัปโหลดรูปภาพได้");
-        setUploadingSlip(false);
-        return;
-      }
-
-      // Then insert the order slip record
+      // Insert the order slip record directly
       const slipData = {
         order_id: slipFormData.order_id,
         amount: parseInt(slipFormData.amount),
         bank_account_id: parseInt(slipFormData.bank_account_id),
         transfer_date: slipFormData.transfer_date,
-        url: uploadData.url,
         company_id: companyId,
       };
 
@@ -843,29 +817,6 @@ const SlipUpload: React.FC = () => {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                </div>
-
-                {/* Slip Image */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    รูปภาพสลิป *
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      handleSlipFormChange(
-                        "slip_image",
-                        e.target.files?.[0] || null,
-                      )
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  {slipFormData.slip_image && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      ไฟล์ที่เลือก: {slipFormData.slip_image.name}
-                    </p>
-                  )}
                 </div>
               </div>
 
