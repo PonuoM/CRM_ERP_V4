@@ -27,6 +27,12 @@ interface PaymentSlip {
 }
 
 const SlipAll: React.FC = () => {
+  const toAbsoluteApiUrl = (u: string | undefined | null) => {
+    if (!u) return u as any;
+    const s = String(u);
+    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("//")) return s;
+    return s.startsWith("/") ? s : "/" + s;
+  };
   const [slips, setSlips] = useState<PaymentSlip[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -363,7 +369,7 @@ const SlipAll: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 border border-gray-200 rounded-lg overflow-hidden">
                           <img
-                            src={slip.url}
+                            src={toAbsoluteApiUrl(slip.url)}
                             alt={slip.name}
                             className="w-full h-full object-cover"
                           />
@@ -452,7 +458,7 @@ const SlipAll: React.FC = () => {
                     รูปภาพสลิป
                   </h3>
                   <img
-                    src={selectedSlip.url}
+                    src={toAbsoluteApiUrl(selectedSlip.url)}
                     alt={selectedSlip.name}
                     className="w-full border border-gray-200 rounded-lg"
                   />

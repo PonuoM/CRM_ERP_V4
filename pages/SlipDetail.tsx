@@ -302,7 +302,7 @@ const SlipDetail: React.FC = () => {
               รูปภาพสลิป
             </h2>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <img src={slip.url} alt={slip.name} className="w-full h-auto" />
+              <img src={(slip.url && (slip.url.startsWith('http://') || slip.url.startsWith('https://') || slip.url.startsWith('//'))) ? slip.url : (slip.url?.startsWith('/') ? slip.url : `/${slip.url}`)} alt={slip.name} className="w-full h-auto" />
             </div>
           </div>
 

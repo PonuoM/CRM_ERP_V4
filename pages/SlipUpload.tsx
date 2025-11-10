@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AlertCircle, CheckCircle, FileText } from "lucide-react";
 
 interface Order {
@@ -77,6 +77,10 @@ const SlipUpload: React.FC = () => {
     transfer_date: "",
   });
   const [uploadingSlip, setUploadingSlip] = useState(false);
+  const [slipImage, setSlipImage] = useState<File | null>(null);
+  const [slipImagePreview, setSlipImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -141,6 +145,47 @@ const SlipUpload: React.FC = () => {
     setSlipFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleChooseImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const file = e.target.files?.[0] || null;
+    setSlipImage(file || null);
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setSlipImagePreview(url);
+    } else {
+      setSlipImagePreview(null);
+    }
+  };
+
+  const uploadSlipImage = async (orderId: string): Promise<string | null> => {
+    if (!slipImage) return null;
+    try {
+      setUploadingImage(true);
+      const form = new FormData();
+      form.append("file", slipImage);
+      form.append("order_id", orderId);
+      const res = await fetch("/api/Slip_DB/upload_slip_image.php", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showMessage("error", data.message || "อัปโหลดรูปสลิปไม่สำเร็จ");
+        return null;
+      }
+      return data.url as string;
+    } catch (err) {
+      console.error("Upload slip image error", err);
+      showMessage("error", "เกิดข้อผิดพลาดระหว่างอัปโหลดรูปสลิป");
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleSlipSubmit = async () => {
     if (
       !slipFormData.amount ||
@@ -163,6 +208,16 @@ const SlipUpload: React.FC = () => {
       const user = JSON.parse(sessionUser);
       const companyId = user.company_id;
 
+      // Upload image first if provided
+      let slipUrl: string | null = null;
+      if (slipImage) {
+        slipUrl = await uploadSlipImage(slipFormData.order_id);
+        if (slipImage && !slipUrl) {
+          setUploadingSlip(false);
+          return;
+        }
+      }
+
       // Insert the order slip record directly
       const slipData = {
         order_id: slipFormData.order_id,
@@ -170,6 +225,7 @@ const SlipUpload: React.FC = () => {
         bank_account_id: parseInt(slipFormData.bank_account_id),
         transfer_date: slipFormData.transfer_date,
         company_id: companyId,
+        url: slipUrl,
       };
 
       const insertResponse = await fetch("/api/Slip_DB/insert_order_slip.php", {
@@ -185,6 +241,8 @@ const SlipUpload: React.FC = () => {
       if (insertResult.success) {
         showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
         setShowSlipModal(false);
+        setSlipImage(null);
+        setSlipImagePreview(null);
         fetchOrders(); // Refresh the orders list
       } else {
         showMessage(
@@ -818,6 +876,57 @@ const SlipUpload: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
+
+                {/* Slip Image Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    อัปโหลดรูปสลิปโอนเงิน (ไม่บังคับ)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleChooseImageClick}
+                      disabled={uploadingImage || uploadingSlip}
+                      className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      เลือกรูปภาพ
+                    </button>
+                    {slipImage && (
+                      <span className="text-sm text-gray-700 truncate max-w-[200px]">
+                        {slipImage.name}
+                      </span>
+                    )}
+                    {slipImage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlipImage(null);
+                          setSlipImagePreview(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="px-2 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                      >
+                        ลบรูป
+                      </button>
+                    )}
+                  </div>
+                  {slipImagePreview && (
+                    <div className="mt-2">
+                      <img
+                        src={slipImagePreview}
+                        alt="Slip preview"
+                        className="max-h-40 rounded-md border"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}
@@ -831,7 +940,7 @@ const SlipUpload: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSlipSubmit}
-                  disabled={uploadingSlip}
+                  disabled={uploadingSlip || uploadingImage}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploadingSlip ? (
