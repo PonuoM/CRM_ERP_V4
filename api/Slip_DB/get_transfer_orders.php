@@ -96,9 +96,13 @@ try {
 
   // First query to get total count for pagination calculation
   $countSql = "SELECT COUNT(*) as total
-               FROM orders o
-               LEFT JOIN customers c ON c.id = o.customer_id
-               WHERE {$whereClause}";
+               FROM (
+                   SELECT o.id
+                   FROM orders o
+                   LEFT JOIN customers c ON c.id = o.customer_id
+                   WHERE {$whereClause}
+                   GROUP BY o.id
+               ) as grouped_orders";
 
   $countStmt = $conn->prepare($countSql);
   $countStmt->execute($allParams);
@@ -117,14 +121,17 @@ try {
                 c.first_name,
                 c.last_name,
                 c.phone,
+                COALESCE(SUM(os.amount), 0) as slip_total,
                 CASE
-                    WHEN os.order_id IS NOT NULL THEN 'จ่ายแล้ว'
+                    WHEN COALESCE(SUM(os.amount), 0) >= o.total_amount THEN 'จ่ายแล้ว'
+                    WHEN COALESCE(SUM(os.amount), 0) > 0 THEN 'จ่ายยังไม่ครบ'
                     ELSE 'ค้างจ่าย'
                 END as payment_status
             FROM orders o
             LEFT JOIN customers c ON c.id = o.customer_id
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
+            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, c.first_name, c.last_name, c.phone
             ORDER BY o.order_date DESC
             LIMIT ? OFFSET ?";
 
@@ -147,6 +154,7 @@ try {
       "phone" => $row["phone"],
       "full_name" => trim($row["first_name"] . " " . $row["last_name"]),
       "payment_status" => $row["payment_status"],
+      "slip_total" => (float) ($row["slip_total"] ?? 0),
     ];
   }
 
