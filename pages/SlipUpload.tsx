@@ -28,6 +28,24 @@ interface FilterOptions {
   sale_year: string;
 }
 
+interface BankAccount {
+  id: number;
+  bank: string;
+  bank_number: string;
+  is_active: boolean;
+  display_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SlipFormData {
+  order_id: string;
+  amount: string;
+  bank_account_id: string;
+  transfer_date: string;
+  slip_image: File | null;
+}
+
 const SlipUpload: React.FC = () => {
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -49,9 +67,163 @@ const SlipUpload: React.FC = () => {
     sale_year: "",
   });
 
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
+  const [showSlipModal, setShowSlipModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [slipFormData, setSlipFormData] = useState<SlipFormData>({
+    order_id: "",
+    amount: "",
+    bank_account_id: "",
+    transfer_date: "",
+    slip_image: null,
+  });
+  const [uploadingSlip, setUploadingSlip] = useState(false);
+
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 3000);
+  };
+
+  const fetchBankAccounts = async () => {
+    setLoadingBankAccounts(true);
+    try {
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (!sessionUser) {
+        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        setLoadingBankAccounts(false);
+        return;
+      }
+
+      const user = JSON.parse(sessionUser);
+      const companyId = user.company_id;
+
+      if (!companyId) {
+        showMessage("error", "ไม่พบข้อมูลบริษัท กรุณาติดต่อผู้ดูแลระบบ");
+        setLoadingBankAccounts(false);
+        return;
+      }
+
+      const response = await fetch(
+        `/api/Bank_DB/get_bank_accounts.php?company_id=${companyId}`,
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setBankAccounts(data.data);
+      } else {
+        showMessage(
+          "error",
+          data.message || "ไม่สามารถดึงข้อมูลบัญชีธนาคารได้",
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching bank accounts:", error);
+      showMessage("error", "เกิดข้อผิดพลาดในการดึงข้อมูลบัญชีธนาคาร");
+    } finally {
+      setLoadingBankAccounts(false);
+    }
+  };
+
+  const handleAddSlip = (order: Order) => {
+    setSelectedOrder(order);
+    setSlipFormData({
+      order_id: order.id.toString(),
+      amount: order.total_amount.toString(),
+      bank_account_id: "",
+      transfer_date: "",
+      slip_image: null,
+    });
+    setShowSlipModal(true);
+    if (bankAccounts.length === 0) {
+      fetchBankAccounts();
+    }
+  };
+
+  const handleSlipFormChange = (
+    field: keyof SlipFormData,
+    value: string | File | null,
+  ) => {
+    setSlipFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSlipSubmit = async () => {
+    if (
+      !slipFormData.amount ||
+      !slipFormData.bank_account_id ||
+      !slipFormData.transfer_date ||
+      !slipFormData.slip_image
+    ) {
+      showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    setUploadingSlip(true);
+    try {
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (!sessionUser) {
+        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        setUploadingSlip(false);
+        return;
+      }
+
+      const user = JSON.parse(sessionUser);
+      const companyId = user.company_id;
+
+      // First upload the slip image
+      const formData = new FormData();
+      formData.append("slip_image", slipFormData.slip_image);
+      formData.append("order_id", slipFormData.order_id);
+
+      const uploadResponse = await fetch("/api/Slip_DB/upload_slip_image.php", {
+        method: "POST",
+        body: formData,
+      });
+
+      const uploadData = await uploadResponse.json();
+
+      if (!uploadData.success) {
+        showMessage("error", uploadData.message || "ไม่สามารถอัปโหลดรูปภาพได้");
+        setUploadingSlip(false);
+        return;
+      }
+
+      // Then insert the order slip record
+      const slipData = {
+        order_id: slipFormData.order_id,
+        amount: parseInt(slipFormData.amount),
+        bank_account_id: parseInt(slipFormData.bank_account_id),
+        transfer_date: slipFormData.transfer_date,
+        url: uploadData.url,
+        company_id: companyId,
+      };
+
+      const insertResponse = await fetch("/api/Slip_DB/insert_order_slip.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(slipData),
+      });
+
+      const insertResult = await insertResponse.json();
+
+      if (insertResult.success) {
+        showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
+        setShowSlipModal(false);
+        fetchOrders(); // Refresh the orders list
+      } else {
+        showMessage(
+          "error",
+          insertResult.message || "ไม่สามารถบันทึกข้อมูลสลิปได้",
+        );
+      }
+    } catch (error) {
+      console.error("Error submitting slip:", error);
+      showMessage("error", "เกิดข้อผิดพลาดในการบันทึกข้อมูลสลิป");
+    } finally {
+      setUploadingSlip(false);
+    }
   };
 
   const fetchOrders = async () => {
@@ -126,6 +298,11 @@ const SlipUpload: React.FC = () => {
       setLoadingOrders(false);
     }
   };
+
+  // Fetch bank accounts on component mount
+  useEffect(() => {
+    fetchBankAccounts();
+  }, []);
 
   // Fetch orders on component mount and when pagination or filters change
   useEffect(() => {
@@ -495,6 +672,9 @@ const SlipUpload: React.FC = () => {
                     <th className="text-left py-3 px-4 font-medium text-gray-900">
                       สถานะ
                     </th>
+                    <th className="text-center py-3 px-4 font-medium text-gray-900">
+                      เพิ่มสลิป
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -543,6 +723,18 @@ const SlipUpload: React.FC = () => {
                           {order.payment_status}
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-sm text-center">
+                        {order.payment_status === "ค้างจ่าย" ? (
+                          <button
+                            onClick={() => handleAddSlip(order)}
+                            className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
+                          >
+                            เพิ่มสลิป
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -561,6 +753,150 @@ const SlipUpload: React.FC = () => {
           {orders.length > 0 && renderPagination()}
         </div>
       </div>
+
+      {/* Add Slip Modal */}
+      {showSlipModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                เพิ่มสลิปการโอนเงิน
+              </h3>
+
+              <div className="space-y-4">
+                {/* Order Info */}
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">
+                    รหัสคำสั่งซื้อ:{" "}
+                    <span className="font-medium text-gray-900">
+                      #{selectedOrder.id}
+                    </span>
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    ยอดเงิน:{" "}
+                    <span className="font-medium text-gray-900">
+                      ฿
+                      {selectedOrder.total_amount.toLocaleString("th-TH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    จำนวนเงินที่โอน *
+                  </label>
+                  <input
+                    type="number"
+                    value={slipFormData.amount}
+                    onChange={(e) =>
+                      handleSlipFormChange("amount", e.target.value)
+                    }
+                    placeholder="กรอกจำนวนเงินที่โอน"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Bank Account */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    บัญชีธนาคารที่รับเงินโอน *
+                  </label>
+                  {loadingBankAccounts ? (
+                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm">
+                      กำลังโหลดข้อมูลบัญชี...
+                    </div>
+                  ) : bankAccounts.length > 0 ? (
+                    <select
+                      value={slipFormData.bank_account_id}
+                      onChange={(e) =>
+                        handleSlipFormChange("bank_account_id", e.target.value)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">เลือกบัญชีธนาคาร</option>
+                      {bankAccounts.map((bank) => (
+                        <option key={bank.id} value={bank.id}>
+                          {bank.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-red-600">
+                      ไม่พบบัญชีธนาคาร
+                    </div>
+                  )}
+                </div>
+
+                {/* Transfer Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    วันที่โอนเงิน *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={slipFormData.transfer_date}
+                    onChange={(e) =>
+                      handleSlipFormChange("transfer_date", e.target.value)
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Slip Image */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    รูปภาพสลิป *
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) =>
+                      handleSlipFormChange(
+                        "slip_image",
+                        e.target.files?.[0] || null,
+                      )
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {slipFormData.slip_image && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      ไฟล์ที่เลือก: {slipFormData.slip_image.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setShowSlipModal(false)}
+                  disabled={uploadingSlip}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleSlipSubmit}
+                  disabled={uploadingSlip}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadingSlip ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />
+                      กำลังบันทึก...
+                    </>
+                  ) : (
+                    "บันทึกสลิป"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
