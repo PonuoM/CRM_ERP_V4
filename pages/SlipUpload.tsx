@@ -45,6 +45,19 @@ interface SlipFormData {
   transfer_date: string;
 }
 
+interface SlipHistory {
+  id: number;
+  order_id: string;
+  amount: number;
+  bank_account_id: number;
+  bank_name: string;
+  bank_number: string;
+  transfer_date: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
 const SlipUpload: React.FC = () => {
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -79,6 +92,8 @@ const SlipUpload: React.FC = () => {
   const [uploadingSlip, setUploadingSlip] = useState(false);
   const [slipImage, setSlipImage] = useState<File | null>(null);
   const [slipImagePreview, setSlipImagePreview] = useState<string | null>(null);
+  const [slipHistory, setSlipHistory] = useState<SlipHistory[]>([]);
+  const [loadingSlipHistory, setLoadingSlipHistory] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -136,6 +151,7 @@ const SlipUpload: React.FC = () => {
       transfer_date: "",
     });
     setShowSlipModal(true);
+    fetchSlipHistory(order.id.toString());
     if (bankAccounts.length === 0) {
       fetchBankAccounts();
     }
@@ -143,6 +159,42 @@ const SlipUpload: React.FC = () => {
 
   const handleSlipFormChange = (field: keyof SlipFormData, value: string) => {
     setSlipFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const fetchSlipHistory = async (orderId: string) => {
+    setLoadingSlipHistory(true);
+    try {
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (!sessionUser) {
+        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        setLoadingSlipHistory(false);
+        return;
+      }
+
+      const user = JSON.parse(sessionUser);
+      const companyId = user.company_id;
+
+      const response = await fetch(
+        `/api/Slip_DB/get_slip_history.php?order_id=${orderId}`,
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setSlipHistory(data.data);
+      } else {
+        showMessage(
+          "error",
+          data.message || "ไม่สามารถดึงข้อมูลประวัติสลิปได้",
+        );
+        setSlipHistory([]);
+      }
+    } catch (error) {
+      console.error("Error fetching slip history:", error);
+      showMessage("error", "เกิดข้อผิดพลาดในการดึงข้อมูลประวัติสลิป");
+      setSlipHistory([]);
+    } finally {
+      setLoadingSlipHistory(false);
+    }
   };
 
   const handleChooseImageClick = () => {
@@ -240,10 +292,18 @@ const SlipUpload: React.FC = () => {
 
       if (insertResult.success) {
         showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
+        // Close modal first
         setShowSlipModal(false);
+        // Then reset form and refresh data
+        setSlipFormData((prev) => ({
+          ...prev,
+          bank_account_id: "",
+          transfer_date: "",
+        }));
         setSlipImage(null);
         setSlipImagePreview(null);
-        fetchOrders(); // Refresh the orders list
+        // Refresh orders list
+        fetchOrders();
       } else {
         showMessage(
           "error",
@@ -756,16 +816,12 @@ const SlipUpload: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-center">
-                        {order.payment_status === "ค้างจ่าย" ? (
-                          <button
-                            onClick={() => handleAddSlip(order)}
-                            className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
-                          >
-                            เพิ่มสลิป
-                          </button>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
+                        <button
+                          onClick={() => handleAddSlip(order)}
+                          className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
+                        >
+                          เพิ่มสลิป
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -909,7 +965,8 @@ const SlipUpload: React.FC = () => {
                         onClick={() => {
                           setSlipImage(null);
                           setSlipImagePreview(null);
-                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          if (fileInputRef.current)
+                            fileInputRef.current.value = "";
                         }}
                         className="px-2 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
                       >
@@ -927,6 +984,95 @@ const SlipUpload: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Slip History Section */}
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">
+                  ประวัติการอัปโหลดสลิป
+                </h4>
+                {loadingSlipHistory ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : slipHistory.length > 0 ? (
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {slipHistory.map((slip) => (
+                      <div
+                        key={slip.id}
+                        className="bg-gray-50 p-3 rounded-lg border border-gray-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            ฿
+                            {slip.amount.toLocaleString("th-TH", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(slip.created_at).toLocaleDateString(
+                              "th-TH",
+                              {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600 mb-2">
+                          <div>
+                            บัญชี: {slip.bank_name} - {slip.bank_number}
+                          </div>
+                          <div>
+                            วันที่โอน:{" "}
+                            {new Date(slip.transfer_date).toLocaleString(
+                              "th-TH",
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={slip.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 underline"
+                          >
+                            ดูรูปสลิป
+                          </a>
+                          <span className="text-xs text-gray-400">|</span>
+                          <img
+                            src={slip.url}
+                            alt="สลิปการโอนเงิน"
+                            className="w-12 h-12 object-cover rounded border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+                            onClick={() => window.open(slip.url, "_blank")}
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                              e.currentTarget.nextElementSibling?.removeProperty(
+                                "display",
+                              );
+                            }}
+                          />
+                          <span
+                            style={{
+                              display: "none",
+                              color: "#ef4444",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            ไม่สามารถโหลดรูป
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-sm text-gray-500">
+                    ยังไม่มีประวัติการอัปโหลดสลิป
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
