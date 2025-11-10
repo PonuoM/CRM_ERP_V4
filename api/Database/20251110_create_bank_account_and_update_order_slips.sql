@@ -32,6 +32,11 @@ SET @bank_account_id_exists = (SELECT COUNT(*) FROM information_schema.columns
                                AND table_name = 'order_slips'
                                AND column_name = 'bank_account_id');
 
+SET @transfer_date_exists = (SELECT COUNT(*) FROM information_schema.columns
+                               WHERE table_schema = DATABASE()
+                               AND table_name = 'order_slips'
+                               AND column_name = 'transfer_date');
+
 SET @created_at_exists = (SELECT COUNT(*) FROM information_schema.columns
                           WHERE table_schema = DATABASE()
                           AND table_name = 'order_slips'
@@ -58,9 +63,17 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Add transfer_date column if not exists
+SET @sql = IF(@table_exists > 0 AND @transfer_date_exists = 0,
+  'ALTER TABLE `order_slips` ADD COLUMN `transfer_date` DATETIME NULL AFTER `bank_account_id`',
+  'SELECT "Skipping transfer_date column - already exists or table does not exist" as message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- Add created_at column if not exists
 SET @sql = IF(@table_exists > 0 AND @created_at_exists = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `bank_account_id`',
+  'ALTER TABLE `order_slips` ADD COLUMN `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `transfer_date`',
   'SELECT "Skipping created_at column - already exists or table does not exist" as message');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
