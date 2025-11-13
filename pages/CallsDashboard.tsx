@@ -404,7 +404,9 @@ const CustomDatePicker: React.FC<{
   };
 
   const existingDates = getExistingDates();
-  const today = new Date().toISOString().split("T")[0];
+  // Use local date string for today to avoid timezone issues
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // Generate calendar days
   const generateCalendarDays = () => {
@@ -427,7 +429,11 @@ const CustomDatePicker: React.FC<{
   };
 
   const handleDateSelect = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    // Use local date string to avoid timezone issues
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${year}-${month}-${day}`;
 
     // Check if it's today
     if (dateStr === today) {
@@ -445,12 +451,7 @@ const CustomDatePicker: React.FC<{
 
   const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return placeholder;
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("th-TH", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    return dateStr; // Show the raw date string (e.g., "2025-11-09")
   };
 
   return (
@@ -520,7 +521,8 @@ const CustomDatePicker: React.FC<{
           {/* Calendar Days */}
           <div className="grid grid-cols-7 gap-1">
             {generateCalendarDays().map((date, index) => {
-              const dateStr = date.toISOString().split("T")[0];
+              // Use local date string to match handleDateSelect format
+              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
               const isCurrentMonth =
                 date.getMonth() === currentMonth.getMonth();
               const isExisting = existingDates.has(dateStr);
