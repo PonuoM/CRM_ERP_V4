@@ -1,3 +1,4 @@
+<?php
 // Enable error reporting for debugging
 error_reporting(E_ALL);
 ini_set("display_errors", 1);
@@ -33,7 +34,7 @@ try {
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
 
   // Get employee summary data from the call overview view
-  $monthKey = sprintf('%04d-%02d', $year, $month);
+  $monthKey = sprintf("%04d-%02d", $year, $month);
 
   $sql = "SELECT
                 user_id,
@@ -50,14 +51,14 @@ try {
             ORDER BY first_name";
 
   $stmt = $pdo->prepare($sql);
-  $stmt->execute([':month_key' => $monthKey]);
+  $stmt->execute([":month_key" => $monthKey]);
   $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
   json_response([
-    'success' => true,
-    'month' => $month,
-    'year' => $year,
-    'data' => $employees
+    "success" => true,
+    "month" => $month,
+    "year" => $year,
+    "data" => $employees,
   ]);
 } catch (PDOException $e) {
   error_log("Failed to retrieve employee summary: " . $e->getMessage());
@@ -70,4 +71,3 @@ try {
   );
 }
 ?>
- ?>
