@@ -35,18 +35,20 @@ try {
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
 
   $params = [":year" => $year, ":month" => $month];
-  $userFirstName = null;
+  $userPhone = null;
+
+  $where = "WHERE YEAR(`timestamp`) = :year AND MONTH(`timestamp`) = :month";
 
   if (!empty($userId)) {
-    $uStmt = $pdo->prepare(
-      "SELECT first_name FROM users WHERE id = :uid LIMIT 1",
-    );
+    // Get user's phone to match with onecall_log.phone_telesale field
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id = :uid LIMIT 1");
     $uStmt->execute([":uid" => $userId]);
     $row = $uStmt->fetch(PDO::FETCH_ASSOC);
-    if ($row && !empty($row["first_name"])) {
-      $userFirstName = $row["first_name"];
+    if ($row && !empty($row["phone"])) {
+      $where .= " AND phone_telesale = :userphone";
+      $params[":userphone"] = $row["phone"];
     } else {
-      // If user not found, return zeroed days for the month
+      // If user not found, return zeroed days for month
       $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
       $empty = [];
       for ($d = 1; $d <= $daysInMonth; $d++) {
@@ -61,12 +63,6 @@ try {
       ]);
       exit();
     }
-  }
-
-  $where = "WHERE YEAR(`timestamp`) = :year AND MONTH(`timestamp`) = :month";
-  if ($userFirstName !== null) {
-    $where .= " AND phone_telesale = :firstname";
-    $params[":firstname"] = $userFirstName;
   }
 
   $sql = "SELECT DATE(`timestamp`) AS d, COUNT(*) AS cnt, FLOOR(SUM(duration)/60) AS total_min

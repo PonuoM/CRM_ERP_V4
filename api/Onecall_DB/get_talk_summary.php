@@ -37,16 +37,16 @@ try {
 
   $userFirstName = null;
   $additionalWhere = "";
+  $userPhone = null;
 
   if (!empty($userId)) {
-    $uStmt = $pdo->prepare(
-      "SELECT first_name FROM users WHERE id = :uid LIMIT 1",
-    );
+    // Get user's phone to match with onecall_log.phone_telesale field
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id = :uid LIMIT 1");
     $uStmt->execute([":uid" => $userId]);
     $row = $uStmt->fetch(PDO::FETCH_ASSOC);
-    if ($row && !empty($row["first_name"])) {
-      $userFirstName = $row["first_name"];
-      $additionalWhere = " AND phone_telesale = :firstname";
+    if ($row && !empty($row["phone"])) {
+      $userPhone = $row["phone"];
+      $additionalWhere = " AND phone_telesale = :userphone";
     }
   }
 
@@ -60,8 +60,8 @@ try {
 
   $params = [":year" => $year, ":month" => $month];
 
-  if (!empty($userFirstName)) {
-    $params[":firstname"] = $userFirstName;
+  if (!empty($userPhone)) {
+    $params[":userphone"] = $userPhone;
   }
 
   // Log SQL and parameters for debugging

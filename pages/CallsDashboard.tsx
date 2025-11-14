@@ -639,8 +639,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch dashboard stats
   const fetchDashboardStats = async () => {
     try {
+      const userParam = selectedUserId
+        ? `&user_id=${encodeURIComponent(selectedUserId)}`
+        : "";
       const response = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -658,8 +661,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
   const fetchEmployeeSummary = async () => {
     try {
+      const userParam = selectedUserId
+        ? `&user_id=${encodeURIComponent(selectedUserId)}`
+        : "";
       const resp = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();

@@ -33,19 +33,37 @@ try {
   // Get month and year from query parameters
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
+  $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
+
+  // Build WHERE clause
+  $whereClause = "WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?";
+  $params = [$month, $year];
+
+  // If a specific user is selected, add filter for that user
+  if (!empty($userId)) {
+    // Get user's phone to match with phone_telesale field
+    $userStmt = $pdo->prepare("SELECT phone FROM users WHERE id = ? LIMIT 1");
+    $userStmt->execute([$userId]);
+    $userRow = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($userRow && !empty($userRow["phone"])) {
+      $whereClause .= " AND phone_telesale = ?";
+      $params[] = $userRow["phone"];
+    }
+  }
 
   // Calculate total calls
   $stmt = $pdo->prepare(
-    "SELECT COUNT(*) as total_calls FROM onecall_log WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?",
+    "SELECT COUNT(*) as total_calls FROM onecall_log $whereClause",
   );
-  $stmt->execute([$month, $year]);
+  $stmt->execute($params);
   $totalCalls = $stmt->fetch(PDO::FETCH_ASSOC)["total_calls"];
 
   // Calculate total duration in seconds and convert to minutes directly in SQL
   $stmt = $pdo->prepare(
-    "SELECT SUM(duration) / 60 as total_duration_minutes FROM onecall_log WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?",
+    "SELECT SUM(duration) / 60 as total_duration_minutes FROM onecall_log $whereClause",
   );
-  $stmt->execute([$month, $year]);
+  $stmt->execute($params);
   $totalMinutes = floor(
     $stmt->fetch(PDO::FETCH_ASSOC)["total_duration_minutes"] ?: 0,
   );

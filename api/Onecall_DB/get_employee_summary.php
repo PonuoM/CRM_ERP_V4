@@ -32,6 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "GET") {
 try {
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
+  $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
 
   // Get employee summary data from the call overview view
   $monthKey = sprintf("%04d-%02d", $year, $month);
@@ -47,11 +48,20 @@ try {
                 total_calls,
                 minutes_per_workday
             FROM v_telesale_call_overview_monthly
-            WHERE month_key = :month_key
-            ORDER BY first_name";
+            WHERE month_key = :month_key";
+
+  $params = [":month_key" => $monthKey];
+
+  // If a specific user is selected, add filter for that user
+  if (!empty($userId)) {
+    $sql .= " AND user_id = :user_id";
+    $params[":user_id"] = $userId;
+  }
+
+  $sql .= " ORDER BY first_name";
 
   $stmt = $pdo->prepare($sql);
-  $stmt->execute([":month_key" => $monthKey]);
+  $stmt->execute($params);
   $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
   json_response([
