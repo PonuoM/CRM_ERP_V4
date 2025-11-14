@@ -1089,27 +1089,19 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   };
 
   // Fetch batches and users on component mount
-  useState(() => {
+  useEffect(() => {
     fetchBatches();
     fetchUsers();
-    fetchDashboardStats();
-    fetchEmployeeSummary();
-    fetchDailySeries();
-    fetchTalkSummary();
-  });
+  }, []);
 
-  // Update dashboard stats when month or year changes
-  useState(() => {
+  // Update dashboard stats when component mounts or when month/year changes
+  useEffect(() => {
     if (month && year) {
       fetchDashboardStats();
       fetchEmployeeSummary();
+      fetchDailySeries();
+      fetchTalkSummary();
     }
-  }, [month, year]);
-
-  // Update daily chart when month/year/user filter changes
-  useEffect(() => {
-    fetchDailySeries();
-    fetchTalkSummary();
   }, [month, year, selectedUserId]);
 
   // Handle Onecall login
