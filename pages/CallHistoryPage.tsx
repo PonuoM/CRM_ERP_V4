@@ -14,6 +14,23 @@ import {
 } from "lucide-react";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
 
+// Helper function to get the correct base URL for OneCall API
+const getOneCallBaseUrl = (): string => {
+  // Check if we're in local development or production
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+
+  // Determine base URL based on environment
+  if (isLocalhost) {
+    return ""; // Local development - no base path needed
+  }
+
+  // Production - ensure /mini_erp/ with trailing slash
+  return "/mini_erp/";
+};
+
 interface CallHistoryPageProps {
   currentUser: User;
   calls: CallHistory[];
@@ -113,8 +130,9 @@ const getOnecallCredentialsFromDB = async () => {
     }
 
     // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
+    const baseUrl = getOneCallBaseUrl();
     const response = await fetch(
-      `${import.meta.env.BASE_URL}api/Onecall_DB/get_credentials.php`,
+      `${baseUrl}api/Onecall_DB/get_credentials.php`,
       {
         method: "POST",
         headers: {
@@ -151,8 +169,8 @@ const getOnecallCredentialsFromDB = async () => {
 // JavaScript version of authenticateOneCall function
 const authenticateOneCall = async () => {
   // Use reverse proxy path (works in dev + prod)
-  const loginUrl =
-    `${import.meta.env.BASE_URL}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
+  const baseUrl = getOneCallBaseUrl();
+  const loginUrl = `${baseUrl}onecall/orktrack/rest/user/login?version=orktrack&accesspolicy=all&licenseinfo=true`;
 
   let username, password;
 
@@ -278,8 +296,9 @@ const getRecordingsData = async (currentUser?: User, sortParam?: string) => {
   let lastError = null;
 
   // API Configuration parameters
+  const baseUrl = getOneCallBaseUrl();
   const apiConfig: any = {
-    baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+    baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
     range: "custom",
     sort: sortParam || "",
     page: 1,
@@ -504,7 +523,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Duration sort state: "" -> "MaxToMin" -> "MinToMax" -> ""
-  const [durationSort, setDurationSort] = useState<"" | "MaxToMin" | "MinToMax">("");
+  const [durationSort, setDurationSort] = useState<
+    "" | "MaxToMin" | "MinToMax"
+  >("");
   const isFirstLoad = useRef(true);
 
   // (Removed) Employee call overview state
@@ -617,10 +638,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     }
 
     try {
+      // Get the correct base URL for the current environment
+      const baseUrl = getOneCallBaseUrl();
+
       // We need to use the proxy for the recording URL as well
       const proxyURL = recordingURL.replace(
         "https://onecallvoicerecord.dtac.co.th",
-        "/onecall",
+        `${baseUrl}onecall`,
       );
 
       // Fetch the audio file with Authorization header
@@ -629,6 +653,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         headers: {
           Authorization: accessToken,
         },
+        mode: "cors",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -764,8 +790,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       setIsDataLoading(true);
 
       // Use current filter settings
+      const baseUrl = getOneCallBaseUrl();
       const params: any = {
-        baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+        baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
         range: "custom",
         sort: "",
         page: 1,
@@ -1112,10 +1139,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     }
 
     try {
+      // Get the correct base URL for the current environment
+      const baseUrl = getOneCallBaseUrl();
+
       // We need to use the proxy for the recording URL as well
       const proxyURL = recordingURL.replace(
         "https://onecallvoicerecord.dtac.co.th",
-        "/onecall",
+        `${baseUrl}onecall`,
       );
 
       // Fetch the audio file with Authorization header
@@ -1124,6 +1154,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         headers: {
           Authorization: accessToken,
         },
+        mode: "cors",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -1209,8 +1241,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     }
 
     // Default parameters
+    const baseUrl = getOneCallBaseUrl();
     const params: any = {
-      baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+      baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
       range: "custom",
       sort: sortValue,
       page: 1,
@@ -1371,7 +1404,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         (currentUser.role === UserRole.AdminControl ||
           currentUser.role === UserRole.SuperAdmin)
       ) {
-          // Use the new createSearchParams function for AdminControl and SuperAdmin
+        // Use the new createSearchParams function for AdminControl and SuperAdmin
         const { params: paramsList, isDualRequest } = createSearchParams();
 
         // Update pagesize in all parameter sets to use current pageSize
@@ -1387,8 +1420,15 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
             Object.entries(paramObj).forEach(([key, value]) => {
               // Always include sort parameter even if empty, skip other empty values
               if (key === "sort") {
-                urlParams.append(key, value !== undefined && value !== null ? value.toString() : "");
-              } else if (value !== undefined && value !== null && value !== "") {
+                urlParams.append(
+                  key,
+                  value !== undefined && value !== null ? value.toString() : "",
+                );
+              } else if (
+                value !== undefined &&
+                value !== null &&
+                value !== ""
+              ) {
                 urlParams.append(key, value.toString());
               }
             });
@@ -1442,7 +1482,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           if (durationSort === "") {
             filteredByStatus.sort(
               (a: any, b: any) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+                new Date(b.timestamp).getTime() -
+                new Date(a.timestamp).getTime(),
             );
           }
 
@@ -1475,7 +1516,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
           Object.entries(paramObj).forEach(([key, value]) => {
             // Always include sort parameter even if empty, skip other empty values
             if (key === "sort") {
-              urlParams.append(key, value !== undefined && value !== null ? value.toString() : "");
+              urlParams.append(
+                key,
+                value !== undefined && value !== null ? value.toString() : "",
+              );
             } else if (value !== undefined && value !== null && value !== "") {
               urlParams.append(key, value.toString());
             }
@@ -1528,8 +1572,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         }
 
         // API Configuration parameters (default values)
+        const baseUrl = getOneCallBaseUrl();
         const apiConfig: any = {
-          baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+          baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
           range: "custom",
           sort: sortValue,
           page: 1,
@@ -1932,8 +1977,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
         } else {
           // Use the original logic for other user roles
           // API Configuration parameters (default values)
+          const baseUrl = getOneCallBaseUrl();
           const apiConfig: any = {
-            baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+            baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
             range: "custom",
             sort: "",
             page: page,
@@ -2361,8 +2407,9 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       } else {
         // Use the original logic for other user roles
         // API Configuration parameters (default values)
+        const baseUrl = getOneCallBaseUrl();
         const apiConfig: any = {
-          baseUrl: `${import.meta.env.BASE_URL}onecall/orktrack/rest/recordings`,
+          baseUrl: `${baseUrl}onecall/orktrack/rest/recordings`,
           range: "custom",
           sort: "",
           page: 1, // Reset to first page
@@ -3127,15 +3174,15 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                       <th className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                         Datetime
                       </th>
-                      <th 
+                      <th
                         className="py-3 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                         onClick={handleDurationSort}
                         title={
-                          durationSort === "MaxToMin" 
-                            ? "เรียงจากมากไปน้อย (คลิกเพื่อเปลี่ยนเป็นน้อยไปมาก)" 
+                          durationSort === "MaxToMin"
+                            ? "เรียงจากมากไปน้อย (คลิกเพื่อเปลี่ยนเป็นน้อยไปมาก)"
                             : durationSort === "MinToMax"
-                            ? "เรียงจากน้อยไปมาก (คลิกเพื่อรีเซ็ต)"
-                            : "คลิกเพื่อเรียงลำดับ"
+                              ? "เรียงจากน้อยไปมาก (คลิกเพื่อรีเซ็ต)"
+                              : "คลิกเพื่อเรียงลำดับ"
                         }
                       >
                         Duration
