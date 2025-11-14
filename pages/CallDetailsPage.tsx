@@ -34,8 +34,24 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
     setIsLoading(true);
     try {
       const [year, month] = selectedMonth.split("-");
+      // Determine company id from prop or session fallback
+      const companyId = (() => {
+        if (currentUser && typeof (currentUser as any).companyId === "number") {
+          return (currentUser as any).companyId as number;
+        }
+        try {
+          const s = localStorage.getItem("sessionUser");
+          if (s) {
+            const su = JSON.parse(s);
+            if (su && typeof su.company_id === "number") return su.company_id as number;
+          }
+        } catch {}
+        return undefined as number | undefined;
+      })();
+
+      const companyQs = companyId != null ? `&companyId=${encodeURIComponent(String(companyId))}` : "";
       const response = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_call_overview.php?month=${selectedMonth}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_call_overview.php?month=${selectedMonth}${companyQs}`,
         {
           method: "GET",
           headers: {
