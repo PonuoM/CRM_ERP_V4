@@ -54,7 +54,7 @@ try {
     "Checking for exact matching batches with startdate: {$data["startdate"]}, enddate: {$data["enddate"]}",
   );
   $stmt = $pdo->prepare(
-    "SELECT id FROM Onecall_batch WHERE startdate = ? AND enddate = ?",
+    "SELECT id FROM onecall_batch WHERE startdate = ? AND enddate = ?",
   );
   $stmt->execute([$data["startdate"], $data["enddate"]]);
   $existingBatch = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -72,7 +72,7 @@ try {
 
   // Insert batch record
   $stmt = $pdo->prepare(
-    "INSERT INTO Onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)",
+    "INSERT INTO onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)",
   );
   $stmt->execute([
     $data["startdate"],

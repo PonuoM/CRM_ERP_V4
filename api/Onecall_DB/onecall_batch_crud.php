@@ -34,7 +34,7 @@ switch ($method) {
     if (isset($_GET["id"])) {
       // Get a specific batch
       $batchId = $_GET["id"];
-      $stmt = $pdo->prepare("SELECT * FROM Onecall_batch WHERE id = ?");
+      $stmt = $pdo->prepare("SELECT * FROM onecall_batch WHERE id = ?");
       $stmt->execute([$batchId]);
       $batch = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -45,7 +45,7 @@ switch ($method) {
       }
     } else {
       // Get all batches
-      $stmt = $pdo->query("SELECT * FROM Onecall_batch ORDER BY id DESC");
+      $stmt = $pdo->query("SELECT * FROM onecall_batch ORDER BY id DESC");
       $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
       json_response(["success" => true, "data" => $batches]);
     }
@@ -72,7 +72,7 @@ switch ($method) {
         "Checking for exact matching batches with startdate: {$data["startdate"]}, enddate: {$data["enddate"]}",
       );
       $stmt = $pdo->prepare(
-        "SELECT id FROM Onecall_batch WHERE startdate = ? AND enddate = ?",
+        "SELECT id FROM onecall_batch WHERE startdate = ? AND enddate = ?",
       );
       $stmt->execute([$data["startdate"], $data["enddate"]]);
       $existingBatch = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -90,7 +90,7 @@ switch ($method) {
 
       // Insert batch record
       $stmt = $pdo->prepare(
-        "INSERT INTO Onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)",
+        "INSERT INTO onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)",
       );
       $stmt->execute([
         $data["startdate"],
@@ -146,7 +146,7 @@ switch ($method) {
     try {
       // Update batch record
       $stmt = $pdo->prepare(
-        "UPDATE Onecall_batch SET startdate = ?, enddate = ?, amount_record = ? WHERE id = ?",
+        "UPDATE onecall_batch SET startdate = ?, enddate = ?, amount_record = ? WHERE id = ?",
       );
       $stmt->execute([
         $data["startdate"],
@@ -189,12 +189,12 @@ switch ($method) {
       $pdo->beginTransaction();
 
       // Delete associated logs
-      $stmt = $pdo->prepare("DELETE FROM Onecall_Log WHERE batch_id = ?");
+      $stmt = $pdo->prepare("DELETE FROM onecall_log WHERE batch_id = ?");
       $stmt->execute([$batchId]);
       $deletedLogs = $stmt->rowCount();
 
       // Delete the batch
-      $stmt = $pdo->prepare("DELETE FROM Onecall_batch WHERE id = ?");
+      $stmt = $pdo->prepare("DELETE FROM onecall_batch WHERE id = ?");
       $stmt->execute([$batchId]);
 
       // Check if the batch was deleted

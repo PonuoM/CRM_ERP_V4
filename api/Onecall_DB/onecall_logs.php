@@ -57,12 +57,12 @@ try {
 
   // Prepare statement for inserting logs with IGNORE to skip duplicates
   $stmt = $pdo->prepare(
-    "INSERT IGNORE INTO Onecall_Log (id, timestamp, duration, localParty, remoteParty, direction, phone_telesale, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT IGNORE INTO onecall_log (id, timestamp, duration, localParty, remoteParty, direction, phone_telesale, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   // Prepare statement to check for existing logs
   $checkStmt = $pdo->prepare(
-    "SELECT id, timestamp, duration, localParty, remoteParty, direction, phone_telesale FROM Onecall_Log WHERE id = ?",
+    "SELECT id, timestamp, duration, localParty, remoteParty, direction, phone_telesale FROM onecall_log WHERE id = ?",
   );
 
   // Insert each log and track duplicates
