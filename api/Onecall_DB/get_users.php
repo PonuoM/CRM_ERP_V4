@@ -32,7 +32,9 @@ if ($_SERVER["REQUEST_METHOD"] !== "GET") {
 try {
   // Query to get users with Telesale and Supervisor Telesale roles
   $stmt = $pdo->prepare(
-    "SELECT id, first_name, last_name, role FROM users WHERE role IN ('Telesale', 'Supervisor Telesale')",
+    "SELECT id, first_name, last_name, role, company_id
+       FROM users
+      WHERE role IN ('Telesale', 'Supervisor Telesale')",
   );
   $stmt->execute();
 
@@ -45,6 +47,8 @@ try {
       "firstname" => $user["first_name"],
       "lastname" => $user["last_name"],
       "role" => $user["role"],
+      // include company for client-side filtering
+      "company_id" => isset($user["company_id"]) ? (int)$user["company_id"] : null,
     ];
   }, $users);
 

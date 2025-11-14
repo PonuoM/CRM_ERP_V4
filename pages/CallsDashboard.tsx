@@ -614,7 +614,37 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
   // State for users
   const [users, setUsers] = useState<any[]>([]);
+  // Selected employee (must be declared before use)
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  // Derive current company id from prop or session
+  const currentCompanyId = useMemo(() => {
+    if (user && typeof user.companyId === "number") return user.companyId;
+    try {
+      const sessionUserStr = localStorage.getItem("sessionUser");
+      if (sessionUserStr) {
+        const su = JSON.parse(sessionUserStr);
+        if (su && typeof su.company_id === "number") return su.company_id;
+      }
+    } catch {}
+    return undefined as number | undefined;
+  }, [user]);
+
+  // Only show employees from the same company as current user
+  const usersForFilter = useMemo(() => {
+    if (!Array.isArray(users)) return [] as any[];
+    if (currentCompanyId == null) return users;
+    return users.filter((u) => {
+      const cid = typeof u.company_id === "number" ? u.company_id : u.companyId;
+      return cid === currentCompanyId;
+    });
+  }, [users, currentCompanyId]);
+
+  // Ensure selected user stays within the filtered list
+  useEffect(() => {
+    if (!selectedUserId) return;
+    const exists = usersForFilter.some((u) => String(u.id) === String(selectedUserId));
+    if (!exists) setSelectedUserId("");
+  }, [usersForFilter, selectedUserId]);
 
   // State for sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1340,7 +1370,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                 className="w-full border rounded-md px-3 py-2 text-sm"
               >
                 <option value="">ทั้งหมด</option>
-                {users.map((user) => (
+                {usersForFilter.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.firstname} {user.lastname} ({user.role})
                   </option>
