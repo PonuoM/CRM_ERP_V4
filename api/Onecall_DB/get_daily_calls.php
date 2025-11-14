@@ -5,6 +5,7 @@ ini_set("display_errors", 1);
 
 // Load config file
 require_once __DIR__ . "/../config.php";
+require_once __DIR__ . "/../phone_utils.php";
 
 // Set CORS headers
 cors();
@@ -40,13 +41,16 @@ try {
   $where = "WHERE YEAR(`timestamp`) = :year AND MONTH(`timestamp`) = :month";
 
   if (!empty($userId)) {
-    // Get user's phone to match with onecall_log.phone_telesale field
+    // Get user's phone, normalize to '66' format, and match onecall_log.phone_telesale
     $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id = :uid LIMIT 1");
     $uStmt->execute([":uid" => $userId]);
     $row = $uStmt->fetch(PDO::FETCH_ASSOC);
     if ($row && !empty($row["phone"])) {
-      $where .= " AND phone_telesale = :userphone";
-      $params[":userphone"] = $row["phone"];
+      $normalized = normalize_phone_to_66($row["phone"]);
+      if (!empty($normalized)) {
+        $where .= " AND phone_telesale = :userphone";
+        $params[":userphone"] = $normalized;
+      }
     } else {
       // If user not found, return zeroed days for month
       $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);

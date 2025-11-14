@@ -5,6 +5,7 @@ ini_set("display_errors", 1);
 
 // Load config file
 require_once __DIR__ . "/../config.php";
+require_once __DIR__ . "/../phone_utils.php";
 
 // Set CORS headers
 cors();
@@ -41,14 +42,17 @@ try {
 
   // If a specific user is selected, add filter for that user
   if (!empty($userId)) {
-    // Get user's phone to match with phone_telesale field
+    // Get user's phone, normalize to '66' format, then match phone_telesale
     $userStmt = $pdo->prepare("SELECT phone FROM users WHERE id = ? LIMIT 1");
     $userStmt->execute([$userId]);
     $userRow = $userStmt->fetch(PDO::FETCH_ASSOC);
 
     if ($userRow && !empty($userRow["phone"])) {
-      $whereClause .= " AND phone_telesale = ?";
-      $params[] = $userRow["phone"];
+      $normalized = normalize_phone_to_66($userRow["phone"]);
+      if (!empty($normalized)) {
+        $whereClause .= " AND phone_telesale = ?";
+        $params[] = $normalized;
+      }
     }
   }
 

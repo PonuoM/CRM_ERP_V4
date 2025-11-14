@@ -5,6 +5,7 @@ ini_set("display_errors", 1);
 
 // Load config file
 require_once __DIR__ . "/../config.php";
+require_once __DIR__ . "/../phone_utils.php";
 
 // Set CORS headers
 cors();
@@ -40,13 +41,16 @@ try {
   $userPhone = null;
 
   if (!empty($userId)) {
-    // Get user's phone to match with onecall_log.phone_telesale field
+    // Get user's phone, normalize to '66' format, and match onecall_log.phone_telesale
     $uStmt = $pdo->prepare("SELECT phone FROM users WHERE id = :uid LIMIT 1");
     $uStmt->execute([":uid" => $userId]);
     $row = $uStmt->fetch(PDO::FETCH_ASSOC);
     if ($row && !empty($row["phone"])) {
-      $userPhone = $row["phone"];
-      $additionalWhere = " AND phone_telesale = :userphone";
+      $normalized = normalize_phone_to_66($row["phone"]);
+      if (!empty($normalized)) {
+        $userPhone = $normalized;
+        $additionalWhere = " AND phone_telesale = :userphone";
+      }
     }
   }
 
