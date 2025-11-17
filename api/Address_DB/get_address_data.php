@@ -93,11 +93,11 @@ try {
                         sd.id, sd.name_th AS sub_district, sd.zip_code,
                         d.name_th AS district, d.id AS district_id,
                         p.name_th AS province, p.id AS province_id,
-                        g.name_th AS geography, g.id AS geography_id
+                        g.name AS geography, g.id AS geography_id
                     FROM address_sub_districts sd
                     JOIN address_districts d ON sd.district_id = d.id
                     JOIN address_provinces p ON d.province_id = p.id
-                    JOIN address_geographies g ON p.geography_id = g.id
+                    LEFT JOIN address_geographies g ON p.geography_id = g.id
                     WHERE sd.zip_code = ?
                     ORDER BY sd.name_th
                 ");
@@ -155,10 +155,21 @@ try {
             }
 
             try {
-                $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                $recipientFirstName = '';
+                $recipientLastName = '';
+                if (isset($data['recipient_first_name']) || isset($data['recipientFirstName'])) {
+                    $recipientFirstName = trim((string)($data['recipient_first_name'] ?? $data['recipientFirstName']));
+                }
+                if (isset($data['recipient_last_name']) || isset($data['recipientLastName'])) {
+                    $recipientLastName = trim((string)($data['recipient_last_name'] ?? $data['recipientLastName']));
+                }
+
+                $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                 $stmt->execute([
                     $data['customer_id'],
                     $data['address'],
+                    $recipientFirstName !== '' ? $recipientFirstName : null,
+                    $recipientLastName !== '' ? $recipientLastName : null,
                     $data['province'] ?? '',
                     $data['district'] ?? '',
                     $data['sub_district'] ?? '',
@@ -208,10 +219,12 @@ try {
 
                 // If customer has a current address, add it to customer_address table
                 if ($currentCustomerAddress && $currentCustomerAddress['street']) {
-                    $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
+                    $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                     $stmt->execute([
                         $data['customerId'],
                         $currentCustomerAddress['street'],
+                        null,
+                        null,
                         $currentCustomerAddress['province'],
                         $currentCustomerAddress['district'],
                         $currentCustomerAddress['subdistrict'],

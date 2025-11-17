@@ -39,6 +39,110 @@ try {
   $conn = db_connect();
   $conn->exec("SET NAMES utf8mb4");
   $conn->exec("SET CHARACTER SET utf8mb4");
+  
+  // Ensure bank_account table exists (create without foreign key first, then add FK if needed)
+  $table_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 
+    WHERE table_schema = DATABASE() AND table_name = 'bank_account'")->fetchColumn();
+  
+  if ($table_exists == 0) {
+    // Create table without foreign key first
+    $conn->exec("CREATE TABLE `bank_account` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `company_id` INT NOT NULL,
+      `bank` VARCHAR(100) NOT NULL,
+      `bank_number` VARCHAR(50) NOT NULL,
+      `is_active` BOOLEAN DEFAULT 1,
+      `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      `deleted_at` DATETIME NULL,
+      INDEX `idx_company_id` (`company_id`),
+      INDEX `idx_is_active` (`is_active`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    
+    // Try to add foreign key constraint (may fail if companies table doesn't exist, but that's ok)
+    try {
+      $conn->exec("ALTER TABLE `bank_account` 
+        ADD CONSTRAINT `fk_bank_account_company` 
+        FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE CASCADE");
+    } catch (Exception $e) {
+      // Foreign key constraint failed, but table is created - that's acceptable
+    }
+  }
+  
+  // Ensure order_slips table exists
+  $order_slips_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 
+    WHERE table_schema = DATABASE() AND table_name = 'order_slips'")->fetchColumn();
+  
+  if ($order_slips_exists == 0) {
+    $conn->exec("CREATE TABLE `order_slips` (
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `order_id` VARCHAR(32) NOT NULL,
+      `url` VARCHAR(1024) NOT NULL,
+      `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX `idx_order_slips_order` (`order_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    
+    // Try to add foreign key constraint
+    try {
+      $conn->exec("ALTER TABLE `order_slips` 
+        ADD CONSTRAINT `fk_order_slips_order` 
+        FOREIGN KEY (`order_id`) REFERENCES `orders`(`id`) ON DELETE CASCADE");
+    } catch (Exception $e) {
+      // Foreign key constraint failed, but table is created - that's acceptable
+    }
+  }
+  
+  // Add columns to order_slips if they don't exist
+  $columns_to_add = [
+    'amount' => 'INT NULL AFTER `id`',
+    'bank_account_id' => 'INT NULL AFTER `amount`',
+    'transfer_date' => 'DATETIME NULL AFTER `bank_account_id`',
+  ];
+  
+  foreach ($columns_to_add as $column => $definition) {
+    $check_col = $conn->query("SELECT COUNT(*) FROM information_schema.columns 
+      WHERE table_schema = DATABASE() 
+      AND table_name = 'order_slips' 
+      AND column_name = '$column'")->fetchColumn();
+    
+    if ($check_col == 0) {
+      try {
+        $conn->exec("ALTER TABLE `order_slips` ADD COLUMN `$column` $definition");
+      } catch (Exception $e) {
+        // Column add failed, but continue
+      }
+    }
+  }
+  
+  // Add index for bank_account_id if it doesn't exist
+  $check_idx = $conn->query("SELECT COUNT(*) FROM information_schema.statistics 
+    WHERE table_schema = DATABASE() 
+    AND table_name = 'order_slips' 
+    AND index_name = 'idx_order_slips_bank_account_id'")->fetchColumn();
+  
+  if ($check_idx == 0) {
+    try {
+      $conn->exec("ALTER TABLE `order_slips` ADD INDEX `idx_order_slips_bank_account_id` (`bank_account_id`)");
+    } catch (Exception $e) {
+      // Index add failed, but continue
+    }
+  }
+  
+  // Try to add foreign key for bank_account_id if it doesn't exist
+  $check_fk = $conn->query("SELECT COUNT(*) FROM information_schema.table_constraints 
+    WHERE table_schema = DATABASE() 
+    AND table_name = 'order_slips' 
+    AND constraint_name = 'fk_order_slips_bank_account_id'")->fetchColumn();
+  
+  if ($check_fk == 0) {
+    try {
+      $conn->exec("ALTER TABLE `order_slips` 
+        ADD CONSTRAINT `fk_order_slips_bank_account_id` 
+        FOREIGN KEY (`bank_account_id`) REFERENCES `bank_account` (`id`) ON DELETE SET NULL");
+    } catch (Exception $e) {
+      // Foreign key constraint failed, but continue
+    }
+  }
 
   // Validate if order exists and belongs to company
   $order_id = $data["order_id"];

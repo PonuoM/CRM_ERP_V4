@@ -49,12 +49,32 @@ try {
 
     $customerId = $data['customer_id'];
 
+    // Check which columns exist in the customers table
+    // recipient_first_name and recipient_last_name are used for primary address (profile address) in customers table
+    // Additional addresses use recipient_first_name and recipient_last_name in customer_address table
+    $existingColumns = [];
+    $columnsToCheck = ['recipient_first_name', 'recipient_last_name', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'facebook_name', 'line_id'];
+    
+    // Use INFORMATION_SCHEMA to check for existing columns
+    $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+    $checkColumnsSql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME IN (?,?,?,?,?,?,?,?,?)";
+    $checkColumns = $pdo->prepare($checkColumnsSql);
+    $params = array_merge([$dbName], $columnsToCheck);
+    $checkColumns->execute($params);
+    $existingColumns = $checkColumns->fetchAll(PDO::FETCH_COLUMN);
+
     // Prepare update fields
     $updateFields = [];
     $updateValues = [];
     $requestedFields = [];
 
+    // Field map for customers table
+    // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+    // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
     $fieldMap = [
+        'recipient_first_name' => 'recipient_first_name',
+        'recipient_last_name' => 'recipient_last_name',
         'street' => 'street',
         'subdistrict' => 'subdistrict',
         'district' => 'district',
@@ -65,7 +85,8 @@ try {
     ];
 
     foreach ($fieldMap as $inputKey => $column) {
-        if (array_key_exists($inputKey, $data)) {
+        // Only include columns that exist in the table
+        if (array_key_exists($inputKey, $data) && in_array($column, $existingColumns)) {
             $value = $sanitizeValue($data[$inputKey]);
             $updateFields[] = "{$column} = ?";
             $updateValues[] = $value;
@@ -92,7 +113,11 @@ try {
     $result = $stmt->execute($updateValues);
 
     // Retrieve the latest state regardless of affected rows
-    $selectStmt = $pdo->prepare("SELECT id, first_name, last_name, phone, email, street, subdistrict, district, province, postal_code, facebook_name, line_id FROM customers WHERE id = ?");
+    // Build SELECT query dynamically based on existing columns
+    $selectColumns = ['id', 'first_name', 'last_name', 'phone', 'email'];
+    $selectColumns = array_merge($selectColumns, $existingColumns);
+    $selectColumnsStr = implode(', ', $selectColumns);
+    $selectStmt = $pdo->prepare("SELECT {$selectColumnsStr} FROM customers WHERE id = ?");
     $selectStmt->execute([$customerId]);
     $updatedCustomer = $selectStmt->fetch(PDO::FETCH_ASSOC);
 

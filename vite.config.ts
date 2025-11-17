@@ -31,6 +31,12 @@ export default defineConfig(({ command, mode }) => {
         port: 5173,
         host: true,
         proxy: {
+          '/api/uploads': {
+            target: 'http://localhost',
+            changeOrigin: true,
+            rewrite: (p) => p.replace(/^\/api/, '/CRM_ERP_V4/api'),
+            // Don't rewrite for static files, just proxy them
+          },
           '/api': {
             target: 'http://localhost',
             changeOrigin: true,

@@ -12,10 +12,8 @@ import {
   Download,
   History,
   X,
-  FileText,
   AlertCircle,
 } from "lucide-react";
-import ExportHistoryPage from "./ExportHistoryPage";
 
 type TemplateKey = "sales" | "customers";
 type ImportKind = "sales" | "customers";
@@ -525,7 +523,6 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
   onImportSales,
   onImportCustomers,
 }) => {
-  const [activeTab, setActiveTab] = useState<"import" | "export">("import");
   const [selectedFiles, setSelectedFiles] = useState<{
     sales?: File;
     customers?: File;
@@ -653,24 +650,11 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
     await processFile(file, type);
   };
 
-  const tabs = [
-    {
-      id: "import",
-      name: "นำเข้าข้อมูล",
-      icon: FileUp,
-    },
-    {
-      id: "export",
-      name: "ส่งออกข้อมูล",
-      icon: Download,
-    },
-  ];
-
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-2">
-          นำเข้าและส่งออกข้อมูล
+          นำเข้าข้อมูล
         </h1>
       </div>
 
@@ -724,29 +708,6 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                    activeTab === tab.id
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <Icon size={20} />
-                  <span>{tab.name}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
 
       {errorMessage && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
@@ -759,11 +720,10 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
       )}
 
       <div className="bg-white rounded-lg shadow-sm border p-6">
-        {activeTab === "import" && (
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              นำเข้าข้อมูล
-            </h2>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">
+            นำเข้าข้อมูล
+          </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="border border-gray-200 rounded-lg p-4">
@@ -894,48 +854,6 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
               </ul>
             </div>
           </div>
-        )}
-
-        {activeTab === "export" && (
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              ส่งออกข้อมูล
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-800 mb-2">
-                  ส่งออกข้อมูลลูกค้า
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  ดาวน์โหลดข้อมูลลูกค้าทั้งหมดเป็นไฟล์ CSV
-                </p>
-                <button
-                  type="button"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  <Download size={16} className="mr-2" />
-                  ส่งออกลูกค้า
-                </button>
-              </div>
-
-              <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-800 mb-2">
-                  ส่งออกข้อมูลการขาย
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  ดาวน์โหลดข้อมูลคำสั่งซื้อทั้งหมดเป็นไฟล์ CSV
-                </p>
-                <button
-                  type="button"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <Download size={16} className="mr-2" />
-                  ส่งออกการขาย
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {report && (

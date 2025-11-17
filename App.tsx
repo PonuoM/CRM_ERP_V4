@@ -38,6 +38,8 @@ import {
   listProducts,
   listPromotions,
   listPages,
+  listPlatforms,
+  listWarehouses,
   listCallHistory,
   listAppointments,
   createCustomer as apiCreateCustomer,
@@ -68,6 +70,7 @@ import {
   getCustomerOwnershipStatus,
   recordSale,
 } from "@/ownershipApi";
+import { calculateCustomerGrade } from "@/utils/customerGrade";
 import Sidebar from "./components/Sidebar";
 import AdminDashboard from "./pages/AdminDashboard";
 import TelesaleDashboard from "./pages/TelesaleDashboard";
@@ -136,17 +139,17 @@ const computeAttendanceValueFromSeconds = (seconds: number): number => {
 };
 
 const formatDurationText = (seconds: number): string => {
-  if (seconds <= 0) return "0 นาที";
+  if (seconds <= 0) return "0 à¸™à¸²à¸—à¸µ";
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   if (hrs > 0) {
-    return `${hrs} ชม. ${mins} นาที`;
+    return `${hrs} à¸Šà¸¡. ${mins} à¸™à¸²à¸—à¸µ`;
   }
   if (mins > 0) {
-    return `${mins} นาที`;
+    return `${mins} à¸™à¸²à¸—à¸µ`;
   }
-  return `${secs} วินาที`;
+  return `${secs} à¸§à¸´à¸™à¸²à¸—à¸µ`;
 };
 
 const formatTimeText = (iso?: string | null): string => {
@@ -177,6 +180,8 @@ import PageStatsPage from "./pages/PageStatsPage";
 import EngagementStatsPage from "./pages/EngagementStatsPage";
 import TeamsManagementPage from "./pages/TeamsManagementPage";
 import PagesManagementPage from "./pages/PagesManagementPage";
+import PlatformsManagementPage from "./pages/PlatformsManagementPage";
+import BankAccountsManagementPage from "./pages/BankAccountsManagementPage";
 import TagsManagementPage from "./pages/TagsManagementPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import CallDetailsPage from "./pages/CallDetailsPage";
@@ -191,6 +196,9 @@ import SlipUpload from "./pages/SlipUpload";
 import SlipAll from "./pages/SlipAll";
 import SlipDetail from "./pages/SlipDetail";
 import usePersistentState from "./utils/usePersistentState";
+
+const SLIP_ALL_LABEL = String.raw`���,������,������,'���,>���,-���,���1%���,O.,������,������,\\\\"\\`;
+const SLIP_DETAIL_LABEL = String.raw`���,������,������,������,������,������1?���,-���,���,������,\\"���,������,������,'���,>`;
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -236,31 +244,35 @@ const App: React.FC = () => {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [callHistory, setCallHistory] = useState<CallHistory[]>([]);
   const [pages, setPages] = useState<any[]>([]);
+  const [platforms, setPlatforms] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [warehouseStocks, setWarehouseStocks] = useState<WarehouseStock[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [productLots, setProductLots] = useState<any[]>([]);
   const [systemTags, setSystemTags] = useState<Tag[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([
     {
       id: 1,
-      name: "สำนักงานใหญ่",
+      name: "à¸ªà¸³à¸™à¸±à¸à¸‡à¸²à¸™à¹ƒà¸«à¸à¹ˆ",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
-      address: "123 ถนนสุขุมวิท",
-      province: "กรุงเทพมหานคร",
-      district: "คลองเตย",
-      subdistrict: "คลองเตยเหนือ",
+      address: "123 à¸–à¸™à¸™à¸ªà¸¸à¸‚à¸¸à¸¡à¸§à¸´à¸—",
+      province: "à¸à¸£à¸¸à¸‡à¹€à¸—à¸žà¸¡à¸«à¸²à¸™à¸„à¸£",
+      district: "à¸„à¸¥à¸­à¸‡à¹€à¸•à¸¢",
+      subdistrict: "à¸„à¸¥à¸­à¸‡à¹€à¸•à¸¢à¹€à¸«à¸™à¸·à¸­",
       postalCode: "10110",
       phone: "02-123-4567",
       email: "bangkok@alphaseeds.com",
-      managerName: "สมชาย ใจดี",
+      managerName: "à¸ªà¸¡à¸Šà¸²à¸¢ à¹ƒà¸ˆà¸”à¸µ",
       managerPhone: "081-234-5678",
       responsibleProvinces: [
-        "กรุงเทพมหานคร",
-        "นนทบุรี",
-        "ปทุมธานี",
-        "สมุทรปราการ",
-        "ชลบุรี",
+        "à¸à¸£à¸¸à¸‡à¹€à¸—à¸žà¸¡à¸«à¸²à¸™à¸„à¸£",
+        "à¸™à¸™à¸—à¸šà¸¸à¸£à¸µ",
+        "à¸›à¸—à¸¸à¸¡à¸˜à¸²à¸™à¸µ",
+        "à¸ªà¸¡à¸¸à¸—à¸£à¸›à¸£à¸²à¸à¸²à¸£",
+        "à¸Šà¸¥à¸šà¸¸à¸£à¸µ",
       ],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
@@ -268,19 +280,19 @@ const App: React.FC = () => {
     },
     {
       id: 2,
-      name: "สำนักงานสาขาเชียงใหม่",
+      name: "à¸ªà¸³à¸™à¸±à¸à¸‡à¸²à¸™à¸ªà¸²à¸‚à¸²à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
-      address: "456 ถนนนิมมานเหมินทร์",
-      province: "เชียงใหม่",
-      district: "เมืองเชียงใหม่",
-      subdistrict: "สุเทพ",
+      address: "456 à¸–à¸™à¸™à¸™à¸´à¸¡à¸¡à¸²à¸™à¹€à¸«à¸¡à¸´à¸™à¸—à¸£à¹Œ",
+      province: "à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
+      district: "à¹€à¸¡à¸·à¸­à¸‡à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
+      subdistrict: "à¸ªà¸¸à¹€à¸—à¸ž",
       postalCode: "50200",
       phone: "053-123-456",
       email: "chiangmai@alphaseeds.com",
-      managerName: "มานี รักษาดี",
+      managerName: "à¸¡à¸²à¸™à¸µ à¸£à¸±à¸à¸©à¸²à¸”à¸µ",
       managerPhone: "082-345-6789",
-      responsibleProvinces: ["เชียงใหม่", "ลำปาง", "ลำพูน", "แพร่", "น่าน"],
+      responsibleProvinces: ["à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ", "à¸¥à¸³à¸›à¸²à¸‡", "à¸¥à¸³à¸žà¸¹à¸™", "à¹à¸žà¸£à¹ˆ", "à¸™à¹ˆà¸²à¸™"],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -535,6 +547,7 @@ const App: React.FC = () => {
           p,
           promo,
           pg,
+          plats,
           ch,
           ap,
           ctags,
@@ -544,12 +557,13 @@ const App: React.FC = () => {
           perms,
           whs,
         ] = await Promise.all([
-          listUsers(),
-          listCustomers(),
-          listOrders(),
-          listProducts(),
-          listPromotions(),
-          listPages(),
+          listUsers(sessionUser?.company_id),
+          listCustomers({ companyId: sessionUser?.company_id }),
+          listOrders(sessionUser?.company_id),
+          listProducts(sessionUser?.company_id),
+          listPromotions(sessionUser?.company_id),
+          listPages(sessionUser?.company_id),
+          listPlatforms(sessionUser?.company_id, true),
           listCallHistory(),
           listAppointments(),
           listCustomerTags(),
@@ -557,7 +571,7 @@ const App: React.FC = () => {
           listTags(),
           apiFetch("companies"),
           getRolePermissions((sessionUser?.role ?? users[0]?.role) as any),
-          apiFetch("warehouses"),
+          listWarehouses(sessionUser?.company_id),
         ]);
 
         if (cancelled) return;
@@ -700,54 +714,60 @@ const App: React.FC = () => {
           }
         }
 
-        const mapCustomer = (r: any): Customer => ({
-          id: r.id,
-          firstName: r.first_name,
-          lastName: r.last_name,
-          phone: r.phone,
-          email: r.email ?? undefined,
-          address: {
-            street: r.street || "",
-            subdistrict: r.subdistrict || "",
-            district: r.district || "",
+        const mapCustomer = (r: any): Customer => {
+          const totalPurchases = Number(r.total_purchases || 0);
+
+          return {
+            id: r.id,
+            firstName: r.first_name,
+            lastName: r.last_name,
+            phone: r.phone,
+            email: r.email ?? undefined,
+            address: {
+              recipientFirstName: r.recipient_first_name || "",
+              recipientLastName: r.recipient_last_name || "",
+              street: r.street || "",
+              subdistrict: r.subdistrict || "",
+              district: r.district || "",
+              province: r.province || "",
+              postalCode: r.postal_code || "",
+            },
             province: r.province || "",
-            postalCode: r.postal_code || "",
-          },
-          province: r.province || "",
-          companyId: r.company_id,
-          assignedTo:
-            r.assigned_to !== null && typeof r.assigned_to !== "undefined"
-              ? Number(r.assigned_to)
-              : null,
-          dateAssigned: r.date_assigned,
-          dateRegistered: r.date_registered ?? undefined,
-          followUpDate: r.follow_up_date ?? undefined,
-          ownershipExpires: r.ownership_expires ?? "",
-          lifecycleStatus:
-            r.lifecycle_status === "New"
-              ? CustomerLifecycleStatus.New
-              : r.lifecycle_status === "Old"
-                ? CustomerLifecycleStatus.Old
-                : r.lifecycle_status === "FollowUp"
-                  ? CustomerLifecycleStatus.FollowUp
-                  : r.lifecycle_status === "Old3Months"
-                    ? CustomerLifecycleStatus.Old3Months
-                    : r.lifecycle_status === "DailyDistribution"
-                      ? CustomerLifecycleStatus.DailyDistribution
-                      : (r.lifecycle_status ?? CustomerLifecycleStatus.New),
-          behavioralStatus: (r.behavioral_status ??
-            "Cold") as CustomerBehavioralStatus,
-          grade: (r.grade ?? "C") as CustomerGrade,
-          tags: tagsByCustomer[r.id] || [],
-          assignmentHistory: [],
-          totalPurchases: Number(r.total_purchases || 0),
-          totalCalls: Number(r.total_calls || 0),
-          facebookName: r.facebook_name ?? undefined,
-          lineId: r.line_id ?? undefined,
-          isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
-          waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
-          isBlocked: Boolean(r.is_blocked ?? false),
-        });
+            companyId: r.company_id,
+            assignedTo:
+              r.assigned_to !== null && typeof r.assigned_to !== "undefined"
+                ? Number(r.assigned_to)
+                : null,
+            dateAssigned: r.date_assigned,
+            dateRegistered: r.date_registered ?? undefined,
+            followUpDate: r.follow_up_date ?? undefined,
+            ownershipExpires: r.ownership_expires ?? "",
+            lifecycleStatus:
+              r.lifecycle_status === "New"
+                ? CustomerLifecycleStatus.New
+                : r.lifecycle_status === "Old"
+                  ? CustomerLifecycleStatus.Old
+                  : r.lifecycle_status === "FollowUp"
+                    ? CustomerLifecycleStatus.FollowUp
+                    : r.lifecycle_status === "Old3Months"
+                      ? CustomerLifecycleStatus.Old3Months
+                      : r.lifecycle_status === "DailyDistribution"
+                        ? CustomerLifecycleStatus.DailyDistribution
+                        : (r.lifecycle_status ?? CustomerLifecycleStatus.New),
+            behavioralStatus: (r.behavioral_status ??
+              "Cold") as CustomerBehavioralStatus,
+            grade: calculateCustomerGrade(totalPurchases),
+            tags: tagsByCustomer[r.id] || [],
+            assignmentHistory: [],
+            totalPurchases,
+            totalCalls: Number(r.total_calls || 0),
+            facebookName: r.facebook_name ?? undefined,
+            lineId: r.line_id ?? undefined,
+            isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
+            waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
+            isBlocked: Boolean(r.is_blocked ?? false),
+          };
+        };
 
         const mapOrder = (r: any): Order => ({
           id: r.id,
@@ -757,13 +777,28 @@ const App: React.FC = () => {
           orderDate: r.order_date,
           deliveryDate: r.delivery_date ?? "",
           shippingAddress: {
+            recipientFirstName: r.recipient_first_name || "",
+            recipientLastName: r.recipient_last_name || "",
             street: r.street || "",
             subdistrict: r.subdistrict || "",
             district: r.district || "",
             province: r.province || "",
             postalCode: r.postal_code || "",
           },
-          items: [],
+          items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+            id: Number(it.id ?? i + 1),
+            productId: typeof it.product_id !== 'undefined' && it.product_id !== null ? Number(it.product_id) : undefined,
+            productName: String(it.product_name ?? ''),
+            productSku: it.product_sku || undefined,
+            quantity: Number(it.quantity ?? 0),
+            pricePerUnit: Number(it.price_per_unit ?? 0),
+            discount: Number(it.discount ?? 0),
+            isFreebie: !!(it.is_freebie ?? 0),
+            boxNumber: Number(it.box_number ?? 0),
+            promotionId: typeof it.promotion_id !== 'undefined' && it.promotion_id !== null ? Number(it.promotion_id) : undefined,
+            parentItemId: typeof it.parent_item_id !== 'undefined' && it.parent_item_id !== null ? Number(it.parent_item_id) : undefined,
+            isPromotionParent: !!(it.is_promotion_parent ?? 0),
+          })) : [],
           shippingCost: Number(r.shipping_cost ?? 0),
           billDiscount: Number(r.bill_discount ?? 0),
           totalAmount: Number(r.total_amount || 0),
@@ -873,6 +908,19 @@ const App: React.FC = () => {
                 url: r.url ?? undefined,
                 companyId: r.company_id,
                 active: Boolean(r.active),
+              }))
+            : [],
+        );
+        setPlatforms(
+          Array.isArray(plats)
+            ? plats.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                displayName: p.display_name,
+                description: p.description,
+                active: p.active,
+                sortOrder: p.sort_order,
+                showPagesFrom: p.show_pages_from || null,
               }))
             : [],
         );
@@ -1080,7 +1128,7 @@ const App: React.FC = () => {
         const message =
           error instanceof Error
             ? error.message
-            : "ไม่สามารถดึงข้อมูลการเข้าเวรได้";
+            : "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸”à¸¶à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¹€à¸§à¸£à¹„à¸”à¹‰";
         if (!opts?.silent) {
           setAttendanceError(message);
         }
@@ -1159,7 +1207,7 @@ const App: React.FC = () => {
       setAttendanceError(
         error instanceof Error
           ? error.message
-          : "ไม่สามารถเช็คอินได้ กรุณาลองใหม่",
+          : "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¹‡à¸„à¸­à¸´à¸™à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ",
       );
     } finally {
       setAttendanceLoading(false);
@@ -1328,12 +1376,12 @@ const App: React.FC = () => {
         !passwordForm.newPassword ||
         !passwordForm.confirmPassword
       ) {
-        setPasswordError("กรุณากรอกข้อมูลให้ครบถ้วน");
+        setPasswordError("à¸à¸£à¸¸à¸“à¸²à¸à¸£à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸«à¹‰à¸„à¸£à¸šà¸–à¹‰à¸§à¸™");
         return;
       }
 
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-        setPasswordError("รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน");
+        setPasswordError("à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹ƒà¸«à¸¡à¹ˆà¹à¸¥à¸°à¸¢à¸·à¸™à¸¢à¸±à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹„à¸¡à¹ˆà¸•à¸£à¸‡à¸à¸±à¸™");
         return;
       }
 
@@ -1357,7 +1405,7 @@ const App: React.FC = () => {
 
       if (result.ok) {
         // Success
-        alert("เปลี่ยนรหัสผ่านสำเร็จ");
+        alert("à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
         setIsChangePasswordModalOpen(false);
         setPasswordForm({
           currentPassword: "",
@@ -1366,23 +1414,44 @@ const App: React.FC = () => {
         });
       } else {
         // Error
-        setPasswordError(result.error || "เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน");
+        setPasswordError(result.error || "à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™");
       }
     } catch (error) {
       console.error("Error changing password:", error);
-      setPasswordError("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+      setPasswordError("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­");
     } finally {
       setIsChangingPassword(false);
     }
   };
 
+  const resetPersistentUiState = () => {
+    try {
+      localStorage.removeItem("ui.activePage");
+      localStorage.removeItem("ui.hideSidebar");
+      localStorage.removeItem("attendance.session");
+    } catch {
+      /* ignore storage errors */
+    }
+
+    setActivePage("Dashboard");
+    setHideSidebar(false);
+    setAttendanceSession(null);
+  };
+
   const handleLogout = () => {
-    // Clear session data
-    localStorage.removeItem("sessionUser");
+    // Clear session data and any UI state tied to the previous role
+    try {
+      localStorage.removeItem("sessionUser");
+    } catch {
+      /* ignore storage errors */
+    }
+    resetPersistentUiState();
     setSessionUser(null);
 
-    // Redirect to login page
+    // Redirect to login page without leftover UI query params
     const url = new URL(window.location.href);
+    url.searchParams.delete("page");
+    url.searchParams.delete("nosidebar");
     url.searchParams.set("login", "true");
     window.location.replace(url.toString());
   };
@@ -1395,15 +1464,20 @@ const App: React.FC = () => {
     } else if (type === "confirmDelete") {
       setModalState({ type, data });
     } else if (type === "refreshProducts") {
-      // รีเฟรชข้อมูลสินค้า
+      // à¸£à¸µà¹€à¸Ÿà¸£à¸Šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸ªà¸´à¸™à¸„à¹‰à¸²
       fetchProducts();
+      fetchWarehouseStocks();
+      fetchStockMovements();
+      fetchProductLots();
     }
   };
 
   // Function to fetch products
   const fetchProducts = async () => {
+    if (!currentUser?.companyId) return;
+    
     try {
-      const productsData = await listProducts();
+      const productsData = await listProducts(currentUser.companyId);
       const mappedProducts = Array.isArray(productsData)
         ? productsData.map(mapProductFromApi)
         : [];
@@ -1413,7 +1487,70 @@ const App: React.FC = () => {
     }
   };
 
+  // Function to fetch warehouse stocks
+  const fetchWarehouseStocks = async () => {
+    if (!currentUser?.companyId) return;
+    
+    try {
+      const response = await fetch(
+        `http://localhost/CRM_ERP_V4/api/get_warehouse_stocks.php?company_id=${currentUser.companyId}`
+      );
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        setWarehouseStocks(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching warehouse stocks:", error);
+    }
+  };
+
+  // Function to fetch stock movements
+  const fetchStockMovements = async () => {
+    if (!currentUser?.companyId) return;
+    
+    try {
+      const response = await fetch(
+        `http://localhost/CRM_ERP_V4/api/get_stock_movements.php?company_id=${currentUser.companyId}`
+      );
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        setStockMovements(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching stock movements:", error);
+    }
+  };
+
+  // Function to fetch product lots
+  const fetchProductLots = async () => {
+    if (!currentUser?.companyId) return;
+    
+    try {
+      const response = await fetch(
+        `http://localhost/CRM_ERP_V4/api/get_product_lots.php?company_id=${currentUser.companyId}`
+      );
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        setProductLots(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching product lots:", error);
+    }
+  };
+
   const closeModal = () => setModalState({ type: null, data: null });
+
+  // Fetch warehouse data when currentUser changes
+  React.useEffect(() => {
+    if (currentUser?.companyId) {
+      fetchWarehouseStocks();
+      fetchStockMovements();
+      fetchProductLots();
+    }
+  }, [currentUser?.companyId]);
 
   const handleViewCustomer = (customer: Customer) =>
     setViewingCustomerId(customer.id);
@@ -1436,7 +1573,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
-        description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
+        description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id} à¸ˆà¸²à¸ '${originalOrder.orderStatus}' à¹€à¸›à¹‡à¸™ '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1450,7 +1587,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified,
-        description: `ยืนยันการชำระเงินสำเร็จสำหรับคำสั่งซื้อ ${updatedOrder.id}`,
+        description: `à¸¢à¸·à¸™à¸¢à¸±à¸™à¸à¸²à¸£à¸Šà¸³à¸£à¸°à¹€à¸‡à¸´à¸™à¸ªà¸³à¹€à¸£à¹‡à¸ˆà¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1465,7 +1602,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.TrackingAdded,
-        description: `เพิ่ม Tracking [${newTracking.join(", ")}] สำหรับคำสั่งซื้อ ${updatedOrder.id}`,
+        description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking [${newTracking.join(", ")}] à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1532,7 +1669,7 @@ const App: React.FC = () => {
   };
 
   const handleCancelOrder = async (orderId: string) => {
-    if (window.confirm("คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?")) {
+    if (window.confirm("à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¸™à¸µà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?")) {
       const orderToCancel = orders.find((o) => o.id === orderId);
       if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
         const newActivity: Activity = {
@@ -1540,7 +1677,7 @@ const App: React.FC = () => {
           customerId: orderToCancel.customerId,
           timestamp: new Date().toISOString(),
           type: ActivityType.OrderCancelled,
-          description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
+          description: `à¸¢à¸à¹€à¸¥à¸´à¸à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${orderId}`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         };
         if (true) {
@@ -1583,7 +1720,7 @@ const App: React.FC = () => {
             customerId: o.customerId,
             timestamp: new Date().toISOString(),
             type: ActivityType.OrderStatusChanged,
-            description: `อัปเดตสถานะคำสั่งซื้อ ${o.id} จาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
+            description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${o.id} à¸ˆà¸²à¸ '${OrderStatus.Pending}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Picking}'`,
             actorName: `${currentUser.firstName} ${currentUser.lastName}`,
           });
           return { ...o, orderStatus: OrderStatus.Picking };
@@ -1638,7 +1775,7 @@ const App: React.FC = () => {
               customerId: (orderToUpdate as Order).customerId,
               timestamp: new Date().toISOString(),
               type: ActivityType.TrackingAdded,
-              description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
+              description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking ${update.trackingNumber} à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${update.orderId}`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
             });
 
@@ -1660,7 +1797,7 @@ const App: React.FC = () => {
                 customerId: (orderToUpdate as Order).customerId,
                 timestamp: new Date().toISOString(),
                 type: ActivityType.OrderStatusChanged,
-                description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${OrderStatus.Picking}' เป็น '${OrderStatus.Shipping}'`,
+                description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${update.orderId} à¸ˆà¸²à¸ '${OrderStatus.Picking}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Shipping}'`,
                 actorName: `${currentUser.firstName} ${currentUser.lastName}`,
               });
             }
@@ -1718,12 +1855,16 @@ const App: React.FC = () => {
       Pick<Customer, "address" | "facebookName" | "lineId">
     >;
     slipUploads?: string[];
+    bankAccountId?: number;
+    transferDate?: string;
   }): Promise<string | undefined> => {
     const {
       order: newOrderData,
       newCustomer: newCustomerData,
       customerUpdate,
       slipUploads,
+      bankAccountId,
+      transferDate,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
       ? slipUploads.filter(
@@ -1765,14 +1906,14 @@ const App: React.FC = () => {
                 }
                 return `ID ${existingCustomer.assignedTo}`;
               })()
-            : "ยังไม่ระบุ";
+            : "ยังไม่ได้มอบหมาย";
         alert(
           [
-            "ไม่สามารถสร้างออเดอร์ให้ลูกค้าใหม่ได้",
-            "เนื่องจากพบลูกค้ารายนี้อยู่ในระบบแล้ว",
+            "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸”à¸­à¸£à¹Œà¹ƒà¸«à¹‰à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆà¹„à¸”à¹‰",
+            "à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸à¸žà¸šà¸¥à¸¹à¸à¸„à¹‰à¸²à¸£à¸²à¸¢à¸™à¸µà¹‰à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™à¸£à¸°à¸šà¸šà¹à¸¥à¹‰à¸§",
             `ชื่อ: ${fullName}`,
-            `เบอร์โทร: ${existingCustomer.phone || "-"}`,
-            `ผู้ดูแลปัจจุบัน: ${ownerName}`,
+            `เบอร์โทรศัพท์: ${existingCustomer.phone || "-"}`,
+            `à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™: ${ownerName}`,
           ].join("\n"),
         );
         return;
@@ -1789,6 +1930,7 @@ const App: React.FC = () => {
         totalCalls: 0,
         tags: [],
         assignmentHistory: [],
+        grade: calculateCustomerGrade(0),
       };
       try {
         await apiCreateCustomer({
@@ -1811,7 +1953,7 @@ const App: React.FC = () => {
             newCustomer.lifecycleStatus ?? CustomerLifecycleStatus.New,
           behavioralStatus:
             newCustomer.behavioralStatus ?? CustomerBehavioralStatus.Cold,
-          grade: newCustomer.grade ?? CustomerGrade.D,
+          grade: newCustomer.grade ?? calculateCustomerGrade(0),
           totalPurchases: 0,
           totalCalls: 0,
           facebookName: newCustomer.facebookName ?? null,
@@ -1821,7 +1963,7 @@ const App: React.FC = () => {
         console.log("Customer created successfully:", newCustomer.id);
       } catch (e) {
         console.error("create customer API failed", e);
-        alert("ไม่สามารถสร้างลูกค้าได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
+        alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸¥à¸¹à¸à¸„à¹‰à¸²à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹à¸¥à¸°à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
         return; // Don't proceed with order creation if customer creation fails
       }
       setCustomers((prev) => [newCustomer, ...prev]);
@@ -1881,6 +2023,8 @@ const App: React.FC = () => {
       salesChannel: newOrderData.salesChannel,
       salesChannelPageId: newOrderData.salesChannelPageId,
       warehouseId: newOrderData.warehouseId,
+      bankAccountId: bankAccountId || undefined,
+      transferDate: transferDate || undefined,
     };
 
     console.log("Sending order payload:", orderPayload);
@@ -1897,7 +2041,17 @@ const App: React.FC = () => {
       if (slipUploadsArray.length > 0) {
         for (const dataUrl of slipUploadsArray) {
           try {
-            const res: any = await createOrderSlip(newOrder.id, dataUrl);
+            const res: any = await createOrderSlip(
+              newOrder.id,
+              dataUrl,
+              bankAccountId !== undefined && transferDate !== undefined
+                ? {
+                    bankAccountId,
+                    transferDate,
+                    amount: newOrder.totalAmount,
+                  }
+                : undefined
+            );
             if (res && res.url) {
               uploadedSlips.push({
                 id: Number(res.id ?? Date.now()),
@@ -1908,10 +2062,20 @@ const App: React.FC = () => {
                     : new Date().toISOString(),
               });
             }
-          } catch (uploadErr) {
+          } catch (uploadErr: any) {
             console.error("order slip upload failed", uploadErr);
-            alert("ไม่สามารถอัพโหลดสลิปได้ กรุณาตรวจสอบแล้วลองใหม่อีกครั้ง");
-            break;
+            // ตรวจสอบ error message จาก API
+            const errorMessage = uploadErr?.data?.message || uploadErr?.data?.error || uploadErr?.message || "เกิดข้อผิดพลาดไม่ทราบสาเหตุ";
+            let alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้";
+            if (errorMessage.includes("DECODE_FAILED") || errorMessage.includes("INVALID_INPUT")) {
+              alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลสลิปไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
+            } else if (errorMessage.includes("400") || errorMessage.includes("Bad Request")) {
+              alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
+            } else {
+              alertMessage = `ไม่สามารถบันทึกสลิปการโอนได้: ${errorMessage} กรุณาตรวจสอบและลองใหม่อีกครั้ง`;
+            }
+            alert(alertMessage);
+            // ไม่ break เพื่อให้ loop ต่อไปยังสลิปถัดไป (ถ้ามีหลายสลิป)
           }
         }
         if (uploadedSlips.length > 0) {
@@ -1927,7 +2091,7 @@ const App: React.FC = () => {
 
       // Refresh orders from API to get the latest data
       try {
-        const freshOrders = await listOrders();
+        const freshOrders = await listOrders(currentUser?.companyId);
 
         // Helper functions for mapping API data
         const fromApiOrderStatus = (s: any): OrderStatus => {
@@ -1970,6 +2134,8 @@ const App: React.FC = () => {
               orderDate: o.order_date,
               deliveryDate: o.delivery_date,
               shippingAddress: {
+                recipientFirstName: o.recipient_first_name || "",
+                recipientLastName: o.recipient_last_name || "",
                 street: o.street,
                 subdistrict: o.subdistrict,
                 district: o.district,
@@ -2030,7 +2196,7 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error("create order API failed", e);
-      alert("ไม่สามารถสร้างคำสั่งซื้อได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
+      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹à¸¥à¸°à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
       return; // Don't add to local state if API fails
     }
 
@@ -2141,6 +2307,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateCustomer = async (updatedCustomer: Customer) => {
+    const resolvedGrade = calculateCustomerGrade(updatedCustomer.totalPurchases);
     if (true) {
       try {
         await updateCustomer(updatedCustomer.id, {
@@ -2157,7 +2324,7 @@ const App: React.FC = () => {
           ownershipExpires: updatedCustomer.ownershipExpires,
           lifecycleStatus: updatedCustomer.lifecycleStatus,
           behavioralStatus: updatedCustomer.behavioralStatus,
-          grade: updatedCustomer.grade,
+          grade: resolvedGrade,
           totalPurchases: updatedCustomer.totalPurchases,
           totalCalls: updatedCustomer.totalCalls,
           facebookName: updatedCustomer.facebookName,
@@ -2169,7 +2336,9 @@ const App: React.FC = () => {
       }
     }
     setCustomers((prev) =>
-      prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)),
+      prev.map((c) =>
+        c.id === updatedCustomer.id ? { ...updatedCustomer, grade: resolvedGrade } : c,
+      ),
     );
     closeModal();
   };
@@ -2180,14 +2349,14 @@ const App: React.FC = () => {
   ) => {
     const targetUser = users.find((u) => u.id === newOwnerId);
     if (!targetUser) {
-      throw new Error("ไม่พบผู้ใช้งานที่เลือก");
+      throw new Error("à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸");
     }
 
     const sameCompany =
       isSuperAdmin || targetUser.companyId === currentUser.companyId;
 
     if (!sameCompany) {
-      throw new Error("ไม่สามารถย้ายลูกค้าไปยังบริษัทอื่นได้");
+      throw new Error("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸¢à¹‰à¸²à¸¢à¸¥à¸¹à¸à¸„à¹‰à¸²à¹„à¸›à¸¢à¸±à¸‡à¸šà¸£à¸´à¸©à¸±à¸—à¸­à¸·à¹ˆà¸™à¹„à¸”à¹‰");
     }
 
     if (currentUser.role === UserRole.Supervisor) {
@@ -2200,12 +2369,12 @@ const App: React.FC = () => {
 
       if (!isTeamMember && !isSupervisorLevel) {
         throw new Error(
-          "หัวหน้าทีมสามารถย้ายให้ลูกทีมของตัวเองหรือหัวหน้าภายในบริษัทเดียวกันเท่านั้น",
+          "à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸—à¸µà¸¡à¸ªà¸²à¸¡à¸²à¸£à¸–à¸¢à¹‰à¸²à¸¢à¹ƒà¸«à¹‰à¸¥à¸¹à¸à¸—à¸µà¸¡à¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡à¸«à¸£à¸·à¸­à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸ à¸²à¸¢à¹ƒà¸™à¸šà¸£à¸´à¸©à¸±à¸—à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™",
         );
       }
     } else if (currentUser.role === UserRole.Telesale) {
       if (currentUser.supervisorId !== targetUser.id) {
-        throw new Error("เทเลเซลสามารถส่งให้หัวหน้าทีมของตัวเองเท่านั้น");
+        throw new Error("à¹€à¸—à¹€à¸¥à¹€à¸‹à¸¥à¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¹ˆà¸‡à¹ƒà¸«à¹‰à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸—à¸µà¸¡à¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™");
       }
     }
 
@@ -2221,7 +2390,7 @@ const App: React.FC = () => {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error("ไม่สามารถเปลี่ยนผู้ดูแลได้");
+      throw new Error("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¹„à¸”à¹‰");
     }
 
     setCustomers((prev) =>
@@ -2246,7 +2415,7 @@ const App: React.FC = () => {
   const handleTakeCustomer = (customerToTake: Customer) => {
     if (
       window.confirm(
-        `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
+        `à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸£à¸±à¸šà¸œà¸´à¸”à¸Šà¸­à¸šà¸¥à¸¹à¸à¸„à¹‰à¸² "${customerToTake.firstName} ${customerToTake.lastName}" à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`,
       )
     ) {
       setCustomers((prev) =>
@@ -2295,7 +2464,7 @@ const App: React.FC = () => {
       dateAssigned: new Date().toISOString(),
       ownershipExpires: ownershipExpires.toISOString(),
       behavioralStatus: CustomerBehavioralStatus.Warm,
-      grade: CustomerGrade.D,
+      grade: calculateCustomerGrade(0),
     };
 
     setCustomers((prev) => [newCustomer, ...prev]);
@@ -2386,7 +2555,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to save user via API", e);
-      alert("ไม่สามารถบันทึกข้อมูลผู้ใช้ได้ (API)");
+      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸”à¹‰ (API)");
     }
   };
 
@@ -2437,7 +2606,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to delete user via API", e);
-      alert("ไม่สามารถลบผู้ใช้ได้ (อาจมีข้อมูลที่เกี่ยวข้อง)");
+      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸”à¹‰ (à¸­à¸²à¸ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¹€à¸à¸µà¹ˆà¸¢à¸§à¸‚à¹‰à¸­à¸‡)");
     }
   };
 
@@ -2581,11 +2750,11 @@ const App: React.FC = () => {
         id: Math.max(...appointments.map((a) => a.id), 0) + 1,
         customerId: customerId,
         date: newFollowUpDate,
-        title: `ติดตามลูกค้า (${callLogData.result})`,
-        status: "รอดำเนินการ",
+        title: `à¸•à¸´à¸”à¸•à¸²à¸¡à¸¥à¸¹à¸à¸„à¹‰à¸² (${callLogData.result})`,
+        status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
         notes:
           callLogData.notes ||
-          `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`,
+          `à¸•à¸´à¸”à¸•à¸²à¸¡à¸¥à¸¹à¸à¸„à¹‰à¸²à¸ˆà¸²à¸à¸à¸²à¸£à¹‚à¸—à¸£à¸—à¸µà¹ˆà¸¡à¸µà¸œà¸¥à¸¥à¸±à¸žà¸˜à¹Œ ${callLogData.result}`,
       };
       if (true) {
         try {
@@ -2593,7 +2762,7 @@ const App: React.FC = () => {
             customerId,
             date: newFollowUpDate,
             title: newAppointment.title,
-            status: "รอดำเนินการ",
+            status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
             notes: newAppointment.notes,
           });
         } catch (e) {
@@ -2623,7 +2792,7 @@ const App: React.FC = () => {
       customerId: customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.CallLogged,
-      description: `บันทึกการโทร: ${callLogData.result}`,
+      description: `à¸šà¸±à¸™à¸—à¸¶à¸à¸à¸²à¸£à¹‚à¸—à¸£: ${callLogData.result}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -2767,7 +2936,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
       ...appointmentData,
       id: Math.max(...appointments.map((a) => a.id), 0) + 1,
-      status: "รอดำเนินการ",
+      status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
     };
     if (true) {
       try {
@@ -2775,7 +2944,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: "รอดำเนินการ",
+          status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -2839,7 +3008,7 @@ const App: React.FC = () => {
       customerId: appointmentData.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `นัดหมาย: ${appointmentData.title}`,
+      description: `à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢: ${appointmentData.title}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -2868,12 +3037,12 @@ const App: React.FC = () => {
 
     const updatedAppointment = {
       ...appointmentToUpdate,
-      status: "เสร็จสิ้น",
+      status: "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™",
     };
 
     if (true) {
       try {
-        await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
+        await updateAppointment(appointmentId, { status: "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™" });
       } catch (e) {
         console.error("update appointment API failed", e);
         // If API fails, still update local state
@@ -2896,7 +3065,7 @@ const App: React.FC = () => {
     );
 
     const hasPendingAppointments = customerAppointments.some(
-      (a) => a.status !== "เสร็จสิ้น",
+      (a) => a.status !== "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™",
     );
 
     // If no pending appointments, update customer lifecycle status
@@ -2975,7 +3144,7 @@ const App: React.FC = () => {
       customerId: appointmentToUpdate.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
+      description: `à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢ "${appointmentToUpdate.title}" à¸–à¸¹à¸à¸—à¸³à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸«à¸¡à¸²à¸¢à¸§à¹ˆà¸²à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™à¹à¸¥à¹‰à¸§`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -3051,14 +3220,14 @@ const App: React.FC = () => {
       return prev.map((u) => {
         if (u.id === currentUser.id) {
           if (u.customTags.length >= 10) {
-            alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
+            alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸žà¸´à¹ˆà¸¡ Tag à¹„à¸”à¹‰à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸à¸¡à¸µà¸„à¸£à¸š 10 Tag à¹à¸¥à¹‰à¸§");
             return u;
           }
           const existingTag = [...systemTags, ...u.customTags].find(
             (t) => t.name.toLowerCase() === tagName.toLowerCase(),
           );
           if (existingTag) {
-            alert("มี Tag นี้อยู่แล้ว");
+            alert("à¸¡à¸µ Tag à¸™à¸µà¹‰à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§");
             return u;
           }
 
@@ -3274,7 +3443,7 @@ const App: React.FC = () => {
       case "A+":
       case "A_PLUS":
       case "A-PLUS":
-        return CustomerGrade.APlus;
+        return CustomerGrade.A;
       case "A":
         return CustomerGrade.A;
       case "B":
@@ -3283,6 +3452,8 @@ const App: React.FC = () => {
         return CustomerGrade.C;
       case "D":
         return CustomerGrade.D;
+      case "E":
+        return CustomerGrade.E;
       default:
         return undefined;
     }
@@ -3445,13 +3616,14 @@ const App: React.FC = () => {
       existing?.behavioralStatus ??
       CustomerBehavioralStatus.Cold;
 
-    const resolvedGrade = input.grade ?? existing?.grade ?? CustomerGrade.C;
-
     const resolvedTotalPurchases =
       typeof input.totalPurchases === "number" &&
       Number.isFinite(input.totalPurchases)
         ? input.totalPurchases
         : (existing?.totalPurchases ?? 0);
+
+    const resolvedGrade =
+      calculateCustomerGrade(resolvedTotalPurchases);
 
     const address = {
       street,
@@ -3776,7 +3948,21 @@ const App: React.FC = () => {
         parseDateToIso(first.saleDate) ?? toThaiIsoString(new Date());
       const paymentMethod = normalizePaymentMethodValue(first.paymentMethod);
       const paymentStatus = normalizePaymentStatusValue(first.paymentStatus);
+      const recipientFirstName = sanitizeValue(
+        (first as any).recipientFirstName ??
+          (first as any).recipient_first_name ??
+          customer.firstName ??
+          "",
+      );
+      const recipientLastName = sanitizeValue(
+        (first as any).recipientLastName ??
+          (first as any).recipient_last_name ??
+          customer.lastName ??
+          "",
+      );
       const shippingAddress: Address = {
+        recipientFirstName,
+        recipientLastName,
         street: sanitizeValue(first.address),
         subdistrict: sanitizeValue(first.subdistrict),
         district: sanitizeValue(first.district),
@@ -3792,7 +3978,7 @@ const App: React.FC = () => {
 
       if (!salespersonMatched && salespersonReference) {
         summary.notes.push(
-          `Order ${orderId}: ผู้ขาย ${salespersonReference} ไม่พบในระบบ ใช้ ${currentUser.username} แทน.`,
+          `Order ${orderId}: à¸œà¸¹à¹‰à¸‚à¸²à¸¢ ${salespersonReference} à¹„à¸¡à¹ˆà¸žà¸šà¹ƒà¸™à¸£à¸°à¸šà¸š à¹ƒà¸Šà¹‰ ${currentUser.username} à¹à¸—à¸™.`,
         );
       }
 
@@ -4134,9 +4320,7 @@ const App: React.FC = () => {
     // Page stats (Super Admin): group default or specific page
     if (
       activePage === "Page Stats" ||
-      activePage === "Page Performance" ||
-      activePage === "Reports" ||
-      activePage === "รายงาน"
+      activePage === "Page Performance"
     ) {
       return (
         <PageStatsPage
@@ -4146,10 +4330,7 @@ const App: React.FC = () => {
         />
       );
     }
-    if (
-      activePage === "Engagement Insights" ||
-      activePage === "สถิติการมีส่วนร่วม"
-    ) {
+    if (activePage === "Engagement Insights") {
       return (
         <EngagementStatsPage
           orders={companyOrders}
@@ -4162,7 +4343,7 @@ const App: React.FC = () => {
     }
 
     // New, neutral sidebar labels mapping with role guard
-    if (activePage === "Dashboard" || activePage === "แดชบอร์ด") {
+    if (activePage === "Dashboard" || activePage === "Home") {
       if (currentUser.role === UserRole.Backoffice) {
         return (
           <BackofficeDashboard
@@ -4270,7 +4451,7 @@ const App: React.FC = () => {
         />
       );
     }
-    if (activePage === "Share" || activePage === "แจกจ่าย") {
+    if (activePage === "Share") {
       return (
         <CustomerDistributionPage
           allCustomers={companyCustomers}
@@ -4312,6 +4493,12 @@ const App: React.FC = () => {
     }
     if (activePage === "Pages") {
       return <PagesManagementPage pages={pages} currentUser={currentUser} />;
+    }
+    if (activePage === "Platforms") {
+      return <PlatformsManagementPage currentUser={currentUser} companies={companies} />;
+    }
+    if (activePage === "Bank Accounts") {
+      return <BankAccountsManagementPage currentUser={currentUser} companies={companies} />;
     }
     if (activePage === "Tags") {
       return (
@@ -4413,12 +4600,18 @@ const App: React.FC = () => {
       );
     }
     if (activePage === "Reports") {
-      return <ReportsPage orders={companyOrders} />;
+      return (
+        <ReportsPage 
+          orders={companyOrders} 
+          customers={companyCustomers}
+          products={products}
+          warehouseStock={warehouseStocks}
+          stockMovements={stockMovements}
+          productLots={productLots}
+        />
+      );
     }
-    if (
-      activePage === "รายงานการขายสินค้า" ||
-      activePage === "Product Sales Report"
-    ) {
+    if (activePage === "Product Sales Report") {
       return (
         <ProductSalesReportPage
           orders={companyOrders}
@@ -4440,7 +4633,6 @@ const App: React.FC = () => {
     }
     if (
       activePage === "Call History" ||
-      activePage === "ประวัติการโทร" ||
       activePage === "Dtac Onecall"
     ) {
       return (
@@ -4455,10 +4647,7 @@ const App: React.FC = () => {
     if (
       activePage === "Active Promotions" ||
       activePage === "Promotion History" ||
-      activePage === "Create Promotion" ||
-      activePage === "โปรโมชั่นที่กำลังใช้งาน" ||
-      activePage === "ประวัติโปรโมชั่น" ||
-      activePage === "สร้างโปรโมชั่น"
+      activePage === "Create Promotion"
     ) {
       return <PromotionsPage />;
     }
@@ -4467,7 +4656,7 @@ const App: React.FC = () => {
       case UserRole.SuperAdmin:
       case UserRole.AdminControl:
         switch (activePage) {
-          case "แดชบอร์ด":
+          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
             return (
               <AdminDashboard
                 user={currentUser}
@@ -4483,28 +4672,29 @@ const App: React.FC = () => {
                 products={companyProducts}
                 promotions={promotions}
                 pages={pages}
+                platforms={platforms}
                 warehouses={warehouses}
                 onSave={handleCreateOrder}
-                onCancel={() => setActivePage("แดชบอร์ด")}
+                onCancel={() => setActivePage("Dashboard")}
                 initialData={createOrderInitialData}
               />
             );
-          case "เพิ่มลูกค้า":
+          case "à¹€à¸žà¸´à¹ˆà¸¡à¸¥à¸¹à¸à¸„à¹‰à¸²":
             return (
               <AddCustomerPage
                 companyUsers={companyUsers}
-                onCancel={() => setActivePage("แดชบอร์ด")}
+                onCancel={() => setActivePage("Dashboard")}
                 onSave={(customerData, andCreateOrder) => {
                   const newCustomer = handleSaveCustomer(customerData);
                   if (andCreateOrder) {
                     setActivePage("CreateOrder");
                   } else {
-                    setActivePage("แดชบอร์ด");
+                    setActivePage("Dashboard");
                   }
                 }}
               />
             );
-          case "แจกจ่าย":
+          case "à¹à¸ˆà¸à¸ˆà¹ˆà¸²à¸¢":
             return (
               <CustomerDistributionPage
                 allCustomers={companyCustomers}
@@ -4512,7 +4702,7 @@ const App: React.FC = () => {
                 setCustomers={setCustomers}
               />
             );
-          case "จัดการผู้ใช้":
+          case "à¸ˆà¸±à¸”à¸à¸²à¸£à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰":
             return (
               <UserManagementPage
                 users={companyUsers}
@@ -4522,7 +4712,7 @@ const App: React.FC = () => {
                 allCompanies={companies}
               />
             );
-          case "จัดการสินค้า":
+          case "à¸ˆà¸±à¸”à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²":
             return (
               <ProductManagementPage
                 products={companyProducts}
@@ -4531,7 +4721,7 @@ const App: React.FC = () => {
                 allCompanies={companies}
               />
             );
-          case "ค้นหาลูกค้า":
+          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4541,7 +4731,17 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "นำเข้า/ส่งออกข้อมูล":
+          case "Search":
+            return (
+              <CustomerSearchPage
+                customers={companyCustomers}
+                orders={companyOrders}
+                users={companyUsers}
+                currentUser={currentUser}
+                onTakeCustomer={handleTakeCustomer}
+              />
+            );
+          case "à¸™à¸³à¹€à¸‚à¹‰à¸²/à¸ªà¹ˆà¸‡à¸­à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥":
             return (
               <ImportExportPage
                 allUsers={companyUsers}
@@ -4552,6 +4752,7 @@ const App: React.FC = () => {
               />
             );
           case "Import Export":
+          case "Import":
             return (
               <ImportExportPage
                 allUsers={companyUsers}
@@ -4563,16 +4764,6 @@ const App: React.FC = () => {
             );
           case "Export History":
             return <ExportHistoryPage />;
-          case "Customers":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={companyUsers}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
           case "Manage Customers":
             return (
               <ManageCustomersPage
@@ -4600,9 +4791,9 @@ const App: React.FC = () => {
             return <MarketingPage currentUser={currentUser} />;
           case "Upload":
             return <SlipUpload />;
-          case "สลิปทั้งหมด":
+          case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "รายละเอียดสลิป":
+          case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
           default:
             return (
@@ -4617,7 +4808,7 @@ const App: React.FC = () => {
 
       case UserRole.Admin:
         switch (activePage) {
-          case "แดชบอร์ด":
+          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
             return (
               <AdminDashboard
                 user={currentUser}
@@ -4637,24 +4828,25 @@ const App: React.FC = () => {
                 products={companyProducts}
                 promotions={promotions}
                 pages={pages}
+                platforms={platforms}
                 warehouses={warehouses}
                 onSave={handleCreateOrder}
-                onCancel={() => setActivePage("แดชบอร์ด")}
+                onCancel={() => setActivePage("Dashboard")}
                 initialData={createOrderInitialData}
               />
             );
-          case "รายการคำสั่งซื้อ":
+          case "à¸£à¸²à¸¢à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
                 orders={companyOrders}
                 customers={companyCustomers}
                 openModal={openModal}
-                title="คำสั่งซื้อ"
+                title="à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­"
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "ค้นหาลูกค้า":
+          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4682,7 +4874,7 @@ const App: React.FC = () => {
       case UserRole.Telesale:
       case UserRole.Supervisor:
         switch (activePage) {
-          case "แดชบอร์ด":
+          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
             return (
               <TelesaleSummaryDashboard
                 user={currentUser}
@@ -4699,13 +4891,14 @@ const App: React.FC = () => {
                 products={companyProducts}
                 promotions={promotions}
                 pages={pages}
+                platforms={platforms}
                 warehouses={warehouses}
                 onSave={handleCreateOrder}
-                onCancel={() => setActivePage("แดชบอร์ด")}
+                onCancel={() => setActivePage("Dashboard")}
                 initialData={createOrderInitialData}
               />
             );
-          case "แดชบอร์ดการขาย":
+          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”à¸à¸²à¸£à¸‚à¸²à¸¢":
             return (
               <TelesaleDashboard
                 user={currentUser}
@@ -4720,7 +4913,7 @@ const App: React.FC = () => {
                 systemTags={systemTags}
               />
             );
-          case "คำสั่งซื้อของฉัน":
+          case "à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¸‚à¸­à¸‡à¸‰à¸±à¸™":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
@@ -4730,7 +4923,7 @@ const App: React.FC = () => {
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "ค้นหาลูกค้า":
+          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4740,7 +4933,7 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "ทีม":
+          case "à¸—à¸µà¸¡":
             return currentUser.role === UserRole.Supervisor ? (
               <SupervisorTeamPage
                 user={currentUser}
@@ -4761,6 +4954,13 @@ const App: React.FC = () => {
                 systemTags={systemTags}
               />
             );
+
+          case "Upload":
+            return <SlipUpload />;
+          case SLIP_ALL_LABEL:
+            return <SlipAll />;
+          case SLIP_DETAIL_LABEL:
+            return <SlipDetail />;
 
           default:
             return (
@@ -4802,7 +5002,7 @@ const App: React.FC = () => {
           return <OrderAllocationPage />;
         }
         switch (activePage) {
-          case "แดชบอร์ด":
+          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
             return (
               <BackofficeDashboard
                 user={currentUser}
@@ -4811,7 +5011,7 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "รายการคำสั่งซื้อ":
+          case "à¸£à¸²à¸¢à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­":
             return (
               <ManageOrdersPage
                 user={currentUser}
@@ -4822,14 +5022,14 @@ const App: React.FC = () => {
                 onProcessOrders={handleProcessOrders}
               />
             );
-          case "เพิ่ม Tracking":
+          case "à¹€à¸žà¸´à¹ˆà¸¡ Tracking":
             return (
               <BulkTrackingPage
                 orders={companyOrders}
                 onBulkUpdateTracking={handleBulkUpdateTracking}
               />
             );
-          case "ติดหนี้":
+          case "à¸•à¸´à¸”à¸«à¸™à¸µà¹‰":
             return (
               <DebtCollectionPage
                 user={currentUser}
@@ -4839,9 +5039,18 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "รายงาน":
-            return <ReportsPage orders={companyOrders} />;
-          case "ค้นหาลูกค้า":
+          case "à¸£à¸²à¸¢à¸‡à¸²à¸™":
+            return (
+              <ReportsPage 
+                orders={companyOrders} 
+                customers={companyCustomers}
+                products={products}
+                warehouseStock={warehouseStocks}
+                stockMovements={stockMovements}
+                productLots={productLots}
+              />
+            );
+          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4853,16 +5062,16 @@ const App: React.FC = () => {
             );
           case "Upload":
             return <SlipUpload />;
-          case "สลิปทั้งหมด":
+          case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "รายละเอียดสลิป":
+          case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
           default:
-            return <div className="p-6">หน้านี้ไม่พร้อมใช้งาน</div>;
+            return <div className="p-6">à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸Šà¹‰à¸‡à¸²à¸™</div>;
         }
 
       default:
-        return <div className="p-6">หน้านี้ไม่พร้อมใช้งาน</div>;
+        return <div className="p-6">à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸Šà¹‰à¸‡à¸²à¸™</div>;
     }
   };
 
@@ -5001,7 +5210,7 @@ const App: React.FC = () => {
             className="px-6 py-2 rounded-full bg-green-600 text-white font-semibold shadow hover:bg-green-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={attendanceLoading}
           >
-            {attendanceLoading ? "กำลังบันทึก..." : "บันทึกเข้างาน"}
+            {attendanceLoading ? "กำลังเข้างาน..." : "เข้างาน"}
           </button>
         </div>
       );
@@ -5012,13 +5221,13 @@ const App: React.FC = () => {
           <Clock className="w-5 h-5 text-green-600" />
           <div className="flex items-center space-x-4">
             <div className="flex flex-col leading-tight">
-              <span className="text-[11px] text-gray-500">เริ่มงาน</span>
+              <span className="text-[11px] text-gray-500">à¹€à¸£à¸´à¹ˆà¸¡à¸‡à¸²à¸™</span>
               <span className="text-sm font-semibold text-gray-800">
                 {formatTimeText(attendanceStartIso)}
               </span>
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-[11px] text-gray-500">เวลาสะสม</span>
+              <span className="text-[11px] text-gray-500">à¹€à¸§à¸¥à¸²à¸ªà¸°à¸ªà¸¡</span>
               <span className="text-sm font-semibold text-gray-800">
                 {formatDurationText(attendanceDuration)}
               </span>
@@ -5075,7 +5284,7 @@ const App: React.FC = () => {
                   value={currentUserRole}
                   onChange={(e) => {
                     setCurrentUserRole(e.target.value as UserRole);
-                    setActivePage("แดชบอร์ด");
+                    setActivePage("Dashboard");
                     handleCloseCustomerDetail();
                   }}
                   className="appearance-none cursor-pointer bg-gray-100 border border-gray-200 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block w-full py-2 pl-3 pr-8"
@@ -5128,13 +5337,13 @@ const App: React.FC = () => {
                     <button
                       onClick={() => {
                         // TODO: Implement logout functionality
-                        alert("ฟังก์ชัน logout จะถูกเพิ่มในอนาคต");
+                        alert("à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™ logout à¸ˆà¸°à¸–à¸¹à¸à¹€à¸žà¸´à¹ˆà¸¡à¹ƒà¸™à¸­à¸™à¸²à¸„à¸•");
                         setIsUserDropdownOpen(false);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <LogOut className="w-4 h-4 mr-2 text-gray-500" />
-                      ออกจากระบบ
+                      à¸­à¸­à¸à¸ˆà¸²à¸à¸£à¸°à¸šà¸š
                     </button>
                   </div>
                 )}
@@ -5272,7 +5481,7 @@ const App: React.FC = () => {
                     className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
                     disabled={isChangingPassword}
                   >
-                    ยกเลิก
+                    à¸¢à¸à¹€à¸¥à¸´à¸
                   </button>
                   <button
                     type="submit"
@@ -5280,8 +5489,8 @@ const App: React.FC = () => {
                     disabled={isChangingPassword}
                   >
                     {isChangingPassword
-                      ? "กำลังเปลี่ยนรหัสผ่าน..."
-                      : "เปลี่ยนรหัสผ่าน"}
+                      ? "à¸à¸³à¸¥à¸±à¸‡à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™..."
+                      : "à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™"}
                   </button>
                 </div>
               </form>
@@ -5294,3 +5503,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

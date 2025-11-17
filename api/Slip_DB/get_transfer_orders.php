@@ -67,6 +67,42 @@ if (!empty($_GET["sale_year"])) {
   $bindParams[] = $filters["sale_year"];
 }
 
+// Payment method selector (default Transfer for backward compatibility)
+$allowedPaymentMethods = ["Transfer", "PayAfter"];
+$paymentMethodAliases = [
+  "Transfer" => ["Transfer", "โอน", "โอนเงิน", "transfer"],
+  "PayAfter" => ["PayAfter", "หลังจากรับสินค้า", "รับสินค้าก่อน"],
+];
+$paymentMethodInput = isset($_GET["payment_method"])
+  ? trim($_GET["payment_method"])
+  : "Transfer";
+$paymentMethodToken = strtolower($paymentMethodInput);
+
+if ($paymentMethodToken === "payafter" || $paymentMethodToken === "pay_after" || $paymentMethodToken === "pay-after") {
+  $paymentMethod = "PayAfter";
+} elseif ($paymentMethodToken === "transfer" || $paymentMethodToken === "transfer_bank") {
+  $paymentMethod = "Transfer";
+} else {
+  $paymentMethod = in_array($paymentMethodInput, $allowedPaymentMethods, true)
+    ? $paymentMethodInput
+    : "Transfer";
+}
+
+$selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
+$selectedPaymentValues = array_values(
+  array_unique(
+    array_filter(
+      array_map("trim", $selectedPaymentValues),
+      function ($value) {
+        return $value !== "";
+      },
+    ),
+  ),
+);
+if (empty($selectedPaymentValues)) {
+  $selectedPaymentValues = [$paymentMethod];
+}
+
 // Get company_id from session (for now, we'll get it from query parameter for testing)
 // In production, this should come from proper session management
 $company_id = isset($_GET["company_id"]) ? (int) $_GET["company_id"] : 0;
@@ -85,24 +121,52 @@ try {
   $conn->exec("SET NAMES utf8mb4");
   $conn->exec("SET CHARACTER SET utf8mb4");
 
-  // Build WHERE clause
-  $whereClause = "o.company_id = ? AND o.payment_method = 'Transfer'";
-  $allParams = [$company_id];
+  // Build WHERE clause - get all orders with desired payment method (support aliases)
+  // We'll filter out fully paid orders using HAVING clause based on slip totals
+  $methodPlaceholder = count($selectedPaymentValues) === 1
+    ? "o.payment_method = ?"
+    : "o.payment_method IN (" .
+      implode(",", array_fill(0, count($selectedPaymentValues), "?")) .
+      ")";
+  $whereClause = "o.company_id = ? AND {$methodPlaceholder}";
+  $allParams = array_merge([$company_id], $selectedPaymentValues);
 
   if (!empty($conditions)) {
     $whereClause .= " AND " . implode(" AND ", $conditions);
     $allParams = array_merge($allParams, $bindParams);
   }
 
+  // Check if order_slips.amount column exists (single check, reuse result)
+  // Use a more reliable check by trying to describe the table structure
+  $check_amount_col = 0;
+  try {
+    $check_result = $conn->query("SELECT COUNT(*) as cnt FROM information_schema.columns 
+      WHERE table_schema = DATABASE() 
+      AND table_name = 'order_slips' 
+      AND column_name = 'amount'");
+    $check_amount_col = (int) $check_result->fetchColumn();
+  } catch (Exception $e) {
+    // If check fails, assume column doesn't exist
+    $check_amount_col = 0;
+  }
+  
   // First query to get total count for pagination calculation
+  // Must match the HAVING clause from main query
   $countSql = "SELECT COUNT(*) as total
                FROM (
                    SELECT o.id
                    FROM orders o
                    LEFT JOIN customers c ON c.id = o.customer_id
+                   LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
-                   GROUP BY o.id
-               ) as grouped_orders";
+                   GROUP BY o.id";
+  
+  // Only add HAVING clause if amount column exists
+  if ($check_amount_col > 0) {
+    $countSql .= " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
+  }
+  
+  $countSql .= ") as grouped_orders";
 
   $countStmt = $conn->prepare($countSql);
   $countStmt->execute($allParams);
@@ -113,6 +177,7 @@ try {
   $offset = ($page - 1) * $pageSize;
 
   // Main query to fetch transfer orders with customer data and payment status (with pagination)
+  // Filter out orders that are already fully paid based on slip totals
   $sql = "SELECT
                 o.id,
                 o.order_date,
@@ -120,20 +185,37 @@ try {
                 o.total_amount,
                 c.first_name,
                 c.last_name,
-                c.phone,
+                c.phone";
+  
+  // Add slip_total calculation based on column existence
+  if ($check_amount_col > 0) {
+    $sql .= ",
                 COALESCE(SUM(os.amount), 0) as slip_total,
                 CASE
-                    WHEN COALESCE(SUM(os.amount), 0) >= o.total_amount THEN 'จ่ายแล้ว'
+                    WHEN COALESCE(SUM(os.amount), 0) >= COALESCE(o.total_amount, 0) THEN 'จ่ายแล้ว'
                     WHEN COALESCE(SUM(os.amount), 0) > 0 THEN 'จ่ายยังไม่ครบ'
                     ELSE 'ค้างจ่าย'
-                END as payment_status
+                END as payment_status";
+  } else {
+    // Column doesn't exist, show all as unpaid
+    $sql .= ",
+                0 as slip_total,
+                'ค้างจ่าย' as payment_status";
+  }
+  
+  $sql .= "
             FROM orders o
             LEFT JOIN customers c ON c.id = o.customer_id
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
-            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, c.first_name, c.last_name, c.phone
-            ORDER BY o.order_date DESC
-            LIMIT ? OFFSET ?";
+            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, c.first_name, c.last_name, c.phone";
+  
+  // Only add HAVING clause if amount column exists
+  if ($check_amount_col > 0) {
+    $sql .= " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
+  }
+  
+  $sql .= " ORDER BY o.order_date DESC LIMIT ? OFFSET ?";
 
   $stmt = $conn->prepare($sql);
 

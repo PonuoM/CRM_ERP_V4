@@ -1,3 +1,5 @@
+import resolveApiBasePath from "@/utils/apiBasePath";
+
 export type LoginResponse = {
   ok: boolean;
   user?: {
@@ -15,7 +17,9 @@ export type LoginResponse = {
   error?: string;
 };
 
-const base = "api/index.php/"; // works with or without Apache rewrite
+const apiBasePath =
+  typeof window === "undefined" ? "/api" : resolveApiBasePath();
+const base = `${apiBasePath.replace(/\/$/, "")}/index.php/`; // works with or without Apache rewrite
 
 export async function apiFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${base}${path}`, {
@@ -115,8 +119,10 @@ export async function listCustomersBySource(
   });
 }
 
-export async function listUsers() {
-  return apiFetch("users");
+export async function listUsers(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`users${companyId ? `?${qs}` : ""}`);
 }
 
 // Admin Page users (Active only)
@@ -189,8 +195,10 @@ export async function deleteUser(id: number) {
   });
 }
 
-export async function listProducts() {
-  return apiFetch("products");
+export async function listProducts(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`products${companyId ? `?${qs}` : ""}`);
 }
 
 export async function createProduct(payload: any) {
@@ -213,8 +221,10 @@ export async function deleteProduct(id: number) {
   });
 }
 
-export async function listPromotions() {
-  return apiFetch("promotions");
+export async function listPromotions(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`promotions${companyId ? `?${qs}` : ""}`);
 }
 
 export async function createPromotion(promotionData: any) {
@@ -239,6 +249,108 @@ export async function updatePromotion(id: number, promotionData: any) {
 
 export async function deletePromotion(id: number) {
   return apiFetch(`promotions/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listPlatforms(companyId?: number, activeOnly?: boolean) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  if (activeOnly) qs.set("active", "true");
+  return apiFetch(`platforms${qs.toString() ? `?${qs}` : ""}`);
+}
+
+export async function createPlatform(payload: {
+  name: string;
+  displayName?: string;
+  description?: string;
+  companyId: number;
+  active?: boolean;
+  sortOrder?: number;
+  showPagesFrom?: string | null;
+}) {
+  return apiFetch("platforms", {
+    method: "POST",
+    body: JSON.stringify({
+      name: payload.name,
+      displayName: payload.displayName || payload.name,
+      description: payload.description,
+      companyId: payload.companyId,
+      active: payload.active ?? true,
+      sortOrder: payload.sortOrder ?? 0,
+      showPagesFrom: payload.showPagesFrom && payload.showPagesFrom.trim() !== '' ? payload.showPagesFrom : null,
+    }),
+  });
+}
+
+export async function updatePlatform(id: number, payload: {
+  name?: string;
+  displayName?: string;
+  description?: string;
+  active?: boolean;
+  sortOrder?: number;
+  showPagesFrom?: string | null;
+}) {
+  // Build payload with showPagesFrom handling
+  const updatePayload: any = { ...payload };
+  
+  // If showPagesFrom is explicitly provided (even if null), include it in the update
+  if (payload.showPagesFrom !== undefined) {
+    updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== '' 
+      ? payload.showPagesFrom 
+      : null;
+  }
+  
+  return apiFetch(`platforms/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(updatePayload),
+  });
+}
+
+export async function deletePlatform(id: number) {
+  return apiFetch(`platforms/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// Bank Account API functions
+export async function listBankAccounts(companyId?: number, activeOnly?: boolean) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  if (activeOnly) qs.set("active", "true");
+  return apiFetch(`bank_accounts${qs.toString() ? `?${qs}` : ""}`);
+}
+
+export async function createBankAccount(payload: {
+  bank: string;
+  bankNumber: string;
+  companyId: number;
+  isActive?: boolean;
+}) {
+  return apiFetch("bank_accounts", {
+    method: "POST",
+    body: JSON.stringify({
+      bank: payload.bank,
+      bankNumber: payload.bankNumber,
+      companyId: payload.companyId,
+      isActive: payload.isActive !== undefined ? payload.isActive : true,
+    }),
+  });
+}
+
+export async function updateBankAccount(id: number, payload: {
+  bank?: string;
+  bankNumber?: string;
+  isActive?: boolean;
+}) {
+  return apiFetch(`bank_accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteBankAccount(id: number) {
+  return apiFetch(`bank_accounts/${id}`, {
     method: "DELETE",
   });
 }
@@ -275,8 +387,10 @@ export async function updatePage(
   });
 }
 
-export async function listOrders() {
-  return apiFetch("orders");
+export async function listOrders(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`orders${companyId ? `?${qs}` : ""}`);
 }
 
 export async function getOrder(id: string) {
@@ -482,10 +596,24 @@ export function downloadExportUrl(id: number | string) {
 }
 
 // Order slips (multi-image)
-export async function createOrderSlip(orderId: string, contentBase64: string) {
+export async function createOrderSlip(
+  orderId: string,
+  contentBase64: string,
+  options?: {
+    bankAccountId?: number;
+    transferDate?: string;
+    amount?: number;
+  }
+) {
   return apiFetch("order_slips", {
     method: "POST",
-    body: JSON.stringify({ orderId, contentBase64 }),
+    body: JSON.stringify({
+      orderId,
+      contentBase64,
+      ...(options?.bankAccountId !== undefined && { bankAccountId: options.bankAccountId }),
+      ...(options?.transferDate !== undefined && { transferDate: options.transferDate }),
+      ...(options?.amount !== undefined && { amount: options.amount }),
+    }),
   });
 }
 
@@ -498,6 +626,58 @@ export async function deleteOrderSlip(id: number) {
   return apiFetch(`order_slips/${encodeURIComponent(String(id))}`, {
     method: "DELETE",
   });
+}
+
+// Upload slip image using FormData (for file upload)
+export async function uploadSlipImageFile(orderId: string, file: File): Promise<{ success: boolean; url?: string; message?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("order_id", orderId);
+  
+  // Use direct fetch for FormData (not through apiFetch which expects JSON)
+  const res = await fetch("api/Slip_DB/upload_slip_image.php", {
+    method: "POST",
+    body: form,
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Upload failed: ${res.statusText}`);
+  }
+  
+  const data = await res.json();
+  return data;
+}
+
+// Create order slip with additional payment information
+export async function createOrderSlipWithPayment(data: {
+  orderId: string;
+  amount: number;
+  bankAccountId: number;
+  transferDate: string;
+  url?: string | null;
+  companyId?: number;
+}): Promise<{ success: boolean; message?: string; data?: any }> {
+  // Use direct fetch for legacy PHP endpoint (not through apiFetch router)
+  const res = await fetch("api/Slip_DB/insert_order_slip.php", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      order_id: data.orderId,
+      amount: data.amount,
+      bank_account_id: data.bankAccountId,
+      transfer_date: data.transferDate,
+      url: data.url,
+      company_id: data.companyId,
+    }),
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.statusText}`);
+  }
+  
+  return await res.json();
 }
 
 // ==================== Companies API ====================
@@ -721,6 +901,7 @@ export async function updateAllocation(
     lotNumber?: string;
     allocatedQuantity?: number;
     status?: string;
+    allowNegativeStock?: boolean;
   }>,
 ) {
   return apiFetch(`allocations/${encodeURIComponent(String(id))}`, {

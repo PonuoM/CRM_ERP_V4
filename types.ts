@@ -204,6 +204,8 @@ export enum CustomerGrade {
 }
 
 export interface Address {
+  recipientFirstName?: string;
+  recipientLastName?: string;
   street: string;
   subdistrict: string;
   district: string;
@@ -394,6 +396,8 @@ export interface Order {
   warehouseId?: number;
   salesChannel?: string;
   salesChannelPageId?: number;
+  bankAccountId?: number;
+  transferDate?: string;
   slips?: OrderSlip[];
   verificationInfo?: {
     verifiedBy: number;

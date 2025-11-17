@@ -40,6 +40,8 @@ CREATE TABLE `orders` (
   `district` varchar(128) DEFAULT NULL,
   `province` varchar(128) DEFAULT NULL,
   `postal_code` varchar(16) DEFAULT NULL,
+  `recipient_first_name` varchar(128) DEFAULT NULL,
+  `recipient_last_name` varchar(128) DEFAULT NULL,
   `shipping_cost` decimal(12,2) NOT NULL DEFAULT '0.00',
   `bill_discount` decimal(12,2) NOT NULL DEFAULT '0.00',
   `total_amount` decimal(12,2) NOT NULL DEFAULT '0.00',

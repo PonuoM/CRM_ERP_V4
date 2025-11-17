@@ -18,8 +18,11 @@ import {
 } from "../types";
 
 import { useRef } from "react";
+import { updateCustomer, listBankAccounts } from "../services/api";
 
 const emptyAddress: Address = {
+  recipientFirstName: "",
+  recipientLastName: "",
   street: "",
   subdistrict: "",
   district: "",
@@ -45,6 +48,8 @@ const sanitizeAddressValue = (value?: string | null): string => {
 };
 
 const normalizeAddress = (address?: Partial<Address> | null): Address => ({
+  recipientFirstName: sanitizeAddressValue(address?.recipientFirstName ?? null),
+  recipientLastName: sanitizeAddressValue(address?.recipientLastName ?? null),
   street: sanitizeAddressValue(address?.street ?? null),
   subdistrict: sanitizeAddressValue(address?.subdistrict ?? null),
   district: sanitizeAddressValue(address?.district ?? null),
@@ -55,6 +60,10 @@ const normalizeAddress = (address?: Partial<Address> | null): Address => ({
 const sanitizeSavedAddress = (addr: any) => ({
   ...addr,
   address: sanitizeAddressValue(addr?.address ?? null),
+  recipient_first_name: sanitizeAddressValue(addr?.recipient_first_name ?? null),
+  recipient_last_name: sanitizeAddressValue(addr?.recipient_last_name ?? null),
+  recipientFirstName: sanitizeAddressValue(addr?.recipient_first_name ?? null),
+  recipientLastName: sanitizeAddressValue(addr?.recipient_last_name ?? null),
   sub_district: sanitizeAddressValue(addr?.sub_district ?? null),
   district: sanitizeAddressValue(addr?.district ?? null),
   province: sanitizeAddressValue(addr?.province ?? null),
@@ -66,6 +75,7 @@ interface CreateOrderPageProps {
   products: Product[];
   promotions: Promotion[];
   pages?: Page[];
+  platforms?: any[];
   warehouses?: Warehouse[];
   onSave: (payload: {
     order: Partial<Omit<Order, "id" | "orderDate" | "companyId" | "creatorId">>;
@@ -214,6 +224,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   products,
   promotions,
   pages = [],
+  platforms = [],
   warehouses = [],
   onSave,
   onCancel,
@@ -227,6 +238,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [newCustomerLastName, setNewCustomerLastName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState("");
+  
+  // Edited customer info for existing customers
+  const [editedCustomerFirstName, setEditedCustomerFirstName] = useState("");
+  const [editedCustomerLastName, setEditedCustomerLastName] = useState("");
+  const [editedCustomerPhone, setEditedCustomerPhone] = useState("");
+  const [editedCustomerPhoneError, setEditedCustomerPhoneError] = useState("");
 
   // Address data state
   const [geographies, setGeographies] = useState<any[]>([]);
@@ -250,6 +267,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
   const [showDistrictDropdown, setShowDistrictDropdown] = useState(false);
   const [showSubDistrictDropdown, setShowSubDistrictDropdown] = useState(false);
+  const [postalCodeResults, setPostalCodeResults] = useState<any[]>([]);
+  const [showPostalCodeDropdown, setShowPostalCodeDropdown] = useState(false);
 
   const [orderData, setOrderData] = useState<Partial<Order>>({
     items: [
@@ -273,6 +292,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [transferSlipUploads, setTransferSlipUploads] = useState<
     TransferSlipUpload[]
   >([]);
+  
+  // Bank account state
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
+  const [transferDate, setTransferDate] = useState<string>("");
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -338,6 +362,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [leftFilter, setLeftFilter] = useState<number | null>(null);
   // track item ids with locked price (selected from product list)
   const [lockedItemIds, setLockedItemIds] = useState<number[]>([]);
+  // track which item is being edited (when clicking "เลือก" button in a row)
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
 
   const [facebookName, setFacebookName] = useState("");
   const [lineId, setLineId] = useState("");
@@ -472,6 +498,26 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     [subTotal, orderData.shippingCost, billDiscountAmount],
   );
 
+  // Fetch bank accounts on mount
+  useEffect(() => {
+    const fetchBankAccounts = async () => {
+      try {
+        const sessionUser = localStorage.getItem("sessionUser");
+        if (sessionUser) {
+          const user = JSON.parse(sessionUser);
+          const companyId = user.company_id;
+          if (companyId) {
+            const data = await listBankAccounts(companyId, true);
+            setBankAccounts(Array.isArray(data) ? data : []);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching bank accounts:", error);
+      }
+    };
+    fetchBankAccounts();
+  }, []);
+
   useEffect(() => {
     if (
       orderData.paymentMethod !== PaymentMethod.Transfer &&
@@ -482,6 +528,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
     if (orderData.paymentMethod !== PaymentMethod.Transfer) {
       clearValidationErrorFor("transferSlips");
+      setSelectedBankAccountId(null);
+      setTransferDate("");
     }
     if (orderData.paymentMethod !== PaymentMethod.COD) {
       clearValidationErrorFor("cod");
@@ -797,25 +845,81 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   }, [selectedCustomer]);
 
   // Filtered lists for search
+  // If postal code is entered, filter by postal code results
   const filteredProvinces = useMemo(() => {
+    // If postal code search has results, only show provinces from those results
+    if (postalCodeResults.length > 0) {
+      const allowedProvinceIds = new Set(
+        postalCodeResults.map((r) => r.province_id),
+      );
+      
+      // If provinces are not loaded yet, return empty array (will trigger warning)
+      if (provinces.length === 0) {
+        return [];
+      }
+      
+      const filtered = provinces.filter((p) => allowedProvinceIds.has(p.id));
+      
+      if (!provinceSearchTerm) return filtered;
+      const searchFiltered = filtered.filter(
+        (p) =>
+          p.name_th.toLowerCase().includes(provinceSearchTerm.toLowerCase()) ||
+          p.name_en.toLowerCase().includes(provinceSearchTerm.toLowerCase()),
+      );
+      return searchFiltered;
+    }
+    // Normal search
     if (!provinceSearchTerm) return provinces;
     return provinces.filter(
       (p) =>
         p.name_th.toLowerCase().includes(provinceSearchTerm.toLowerCase()) ||
         p.name_en.toLowerCase().includes(provinceSearchTerm.toLowerCase()),
     );
-  }, [provinces, provinceSearchTerm]);
+  }, [provinces, provinceSearchTerm, postalCodeResults]);
 
   const filteredDistricts = useMemo(() => {
+    // If postal code search has results, only show districts from those results
+    if (postalCodeResults.length > 0) {
+      const allowedDistrictIds = new Set(
+        postalCodeResults.map((r) => r.district_id),
+      );
+      const filtered = districts.filter((d) => allowedDistrictIds.has(d.id));
+      if (!districtSearchTerm) return filtered;
+      return filtered.filter(
+        (d) =>
+          d.name_th.toLowerCase().includes(districtSearchTerm.toLowerCase()) ||
+          d.name_en.toLowerCase().includes(districtSearchTerm.toLowerCase()),
+      );
+    }
+    // Normal search
     if (!districtSearchTerm) return districts;
     return districts.filter(
       (d) =>
         d.name_th.toLowerCase().includes(districtSearchTerm.toLowerCase()) ||
         d.name_en.toLowerCase().includes(districtSearchTerm.toLowerCase()),
     );
-  }, [districts, districtSearchTerm]);
+  }, [districts, districtSearchTerm, postalCodeResults]);
 
   const filteredSubDistricts = useMemo(() => {
+    // If postal code search has results, only show subdistricts from those results
+    if (postalCodeResults.length > 0) {
+      const postalCode = shippingAddress.postalCode;
+      const filtered = subDistricts.filter(
+        (sd) => sd.zip_code === postalCode,
+      );
+      if (!subDistrictSearchTerm) return filtered;
+      return filtered.filter(
+        (sd) =>
+          sd.name_th
+            .toLowerCase()
+            .includes(subDistrictSearchTerm.toLowerCase()) ||
+          sd.name_en
+            .toLowerCase()
+            .includes(subDistrictSearchTerm.toLowerCase()) ||
+          sd.zip_code.includes(subDistrictSearchTerm),
+      );
+    }
+    // Normal search
     if (!subDistrictSearchTerm) return subDistricts;
     return subDistricts.filter(
       (sd) =>
@@ -827,7 +931,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           .includes(subDistrictSearchTerm.toLowerCase()) ||
         sd.zip_code.includes(subDistrictSearchTerm),
     );
-  }, [subDistricts, subDistrictSearchTerm]);
+  }, [subDistricts, subDistrictSearchTerm, postalCodeResults, shippingAddress.postalCode]);
 
   const codTotal = useMemo(() => {
     return (
@@ -1005,6 +1109,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const address = addressOptions.find((a) => a.id === parseInt(option));
       if (address) {
         setShippingAddress({
+          recipientFirstName: sanitizeAddressValue(
+            address.recipient_first_name ?? address.recipientFirstName,
+          ),
+          recipientLastName: sanitizeAddressValue(
+            address.recipient_last_name ?? address.recipientLastName,
+          ),
           street: sanitizeAddressValue(address.address),
           subdistrict: sanitizeAddressValue(address.sub_district),
           district: sanitizeAddressValue(address.district),
@@ -1122,6 +1232,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           setSelectedCustomer({
             ...selectedCustomer,
             address: {
+              recipientFirstName: sanitizeAddressValue(
+                newPrimaryAddress.recipient_first_name ??
+                  newPrimaryAddress.recipientFirstName,
+              ),
+              recipientLastName: sanitizeAddressValue(
+                newPrimaryAddress.recipient_last_name ??
+                  newPrimaryAddress.recipientLastName,
+              ),
               street: sanitizeAddressValue(newPrimaryAddress.address),
               subdistrict: sanitizeAddressValue(newPrimaryAddress.sub_district),
               district: sanitizeAddressValue(newPrimaryAddress.district),
@@ -1133,6 +1251,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         setShippingAddress(
           normalizeAddress({
+            recipientFirstName:
+              newPrimaryAddress.recipient_first_name ??
+              newPrimaryAddress.recipientFirstName,
+            recipientLastName:
+              newPrimaryAddress.recipient_last_name ??
+              newPrimaryAddress.recipientLastName,
             street: newPrimaryAddress.address,
             subdistrict: newPrimaryAddress.sub_district,
             district: newPrimaryAddress.district,
@@ -1152,6 +1276,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             {
               id: result.oldAddressId || Date.now(), // Use returned ID or generate temp one
               address: sanitizeAddressValue(currentCustomerAddress.street),
+              recipient_first_name: sanitizeAddressValue(
+                currentCustomerAddress.recipientFirstName,
+              ),
+              recipient_last_name: sanitizeAddressValue(
+                currentCustomerAddress.recipientLastName,
+              ),
               sub_district: sanitizeAddressValue(
                 currentCustomerAddress.subdistrict,
               ),
@@ -1215,6 +1345,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (!target.closest(".subdistrict-dropdown-container")) {
         setShowSubDistrictDropdown(false);
       }
+      if (!target.closest(".postal-code-dropdown-container")) {
+        setShowPostalCodeDropdown(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -1224,15 +1357,27 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   }, []);
 
   // ปรับ boxNumber ของแต่ละรายการสินค้าให้อยู่ในช่วง 1..numBoxes เมื่อจำนวนกล่องเปลี่ยน
+  // เมื่อลดจำนวนกล่อง สินค้าที่อยู่ในกล่องที่ถูกลบจะย้ายไปกล่องสุดท้าย (กล่อง numBoxes)
   useEffect(() => {
     if (!orderData.items) return;
-    const clamped = orderData.items.map((it) => ({
-      ...it,
-      boxNumber: Math.min(Math.max(it.boxNumber || 1, 1), numBoxes),
-    }));
-    const changed = JSON.stringify(clamped) !== JSON.stringify(orderData.items);
-    if (changed) updateOrderData("items", clamped);
-  }, [numBoxes, orderData.items]);
+    const updatedItems = orderData.items.map((it) => {
+      const currentBoxNumber = it.boxNumber || 1;
+      // ถ้า boxNumber เกิน numBoxes (ลดจำนวนกล่อง) ให้ย้ายไปกล่องสุดท้าย
+      if (currentBoxNumber > numBoxes) {
+        return {
+          ...it,
+          boxNumber: numBoxes,
+        };
+      }
+      // ถ้า boxNumber อยู่ในช่วงที่ถูกต้อง ให้คงเดิม
+      return {
+        ...it,
+        boxNumber: Math.min(Math.max(currentBoxNumber, 1), numBoxes),
+      };
+    });
+    const changed = JSON.stringify(updatedItems) !== JSON.stringify(orderData.items);
+    if (changed) updateOrderData("items", updatedItems);
+  }, [numBoxes]);
 
   // Helper function to map API response (snake_case) to frontend format (camelCase)
   const mapCustomerData = (apiData: any): Customer => {
@@ -1268,6 +1413,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       waitingBasketStartDate: apiData.waiting_basket_start_date,
       followupBonusRemaining: apiData.followup_bonus_remaining,
       address: {
+        // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+        recipientFirstName: sanitizeAddressValue(
+          apiData.recipient_first_name || apiData.first_name || "",
+        ),
+        recipientLastName: sanitizeAddressValue(
+          apiData.recipient_last_name || apiData.last_name || "",
+        ),
         street: sanitizeAddressValue(apiData.street),
         subdistrict: sanitizeAddressValue(apiData.subdistrict),
         district: sanitizeAddressValue(apiData.district),
@@ -1301,18 +1453,35 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           // Map snake_case fields from API to camelCase for frontend
           const mappedCustomerData = mapCustomerData(freshCustomerData);
           setCustomerData(mappedCustomerData);
+          // Initialize edited customer fields with current values
+          setEditedCustomerFirstName(mappedCustomerData.firstName || "");
+          setEditedCustomerLastName(mappedCustomerData.lastName || "");
+          setEditedCustomerPhone(mappedCustomerData.phone || "");
+          setEditedCustomerPhoneError("");
         } else {
           // Fallback to original customer data if fetch fails
           setCustomerData(customer);
+          setEditedCustomerFirstName(customer.firstName || "");
+          setEditedCustomerLastName(customer.lastName || "");
+          setEditedCustomerPhone(customer.phone || "");
+          setEditedCustomerPhoneError("");
         }
       } else {
         // Fallback to original customer data if API call fails
         setCustomerData(customer);
+        setEditedCustomerFirstName(customer.firstName || "");
+        setEditedCustomerLastName(customer.lastName || "");
+        setEditedCustomerPhone(customer.phone || "");
+        setEditedCustomerPhoneError("");
       }
     } catch (error) {
       console.error("Error fetching fresh customer data:", error);
       // Fallback to original customer data if fetch fails
       setCustomerData(customer);
+      setEditedCustomerFirstName(customer.firstName || "");
+      setEditedCustomerLastName(customer.lastName || "");
+      setEditedCustomerPhone(customer.phone || "");
+      setEditedCustomerPhoneError("");
     } finally {
       setLoadingCustomerData(false);
     }
@@ -1332,10 +1501,23 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     if (customer.address) {
       setUseProfileAddress(true);
-      setShippingAddress(normalizeAddress(customer.address));
+      const normalized = normalizeAddress(customer.address);
+      const fallbackFirst = sanitizeAddressValue(customer.firstName || "");
+      const fallbackLast = sanitizeAddressValue(customer.lastName || "");
+      setShippingAddress({
+        ...normalized,
+        recipientFirstName:
+          normalized.recipientFirstName || fallbackFirst || "",
+        recipientLastName:
+          normalized.recipientLastName || fallbackLast || "",
+      });
     } else {
       setUseProfileAddress(false);
-      setShippingAddress(emptyAddress);
+      setShippingAddress({
+        ...emptyAddress,
+        recipientFirstName: sanitizeAddressValue(customer.firstName || ""),
+        recipientLastName: sanitizeAddressValue(customer.lastName || ""),
+      });
     }
   };
 
@@ -1344,6 +1526,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setIsCreatingNewCustomer(true);
     setSelectedCustomer(null);
     setOrderData((prev) => ({ ...prev, customerId: undefined }));
+    // Reset edited customer fields
+    setEditedCustomerFirstName("");
+    setEditedCustomerLastName("");
+    setEditedCustomerPhone("");
+    setEditedCustomerPhoneError("");
 
     // Reset address selections
     setSelectedProvince(null);
@@ -1357,6 +1544,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setShowDistrictDropdown(false);
     setShowSubDistrictDropdown(false);
 
+    let derivedFirstName = "";
+    let derivedLastName = "";
     if (/^0[0-9]{9}$/.test(searchTerm)) {
       setNewCustomerPhone(searchTerm);
       setNewCustomerFirstName("");
@@ -1364,14 +1553,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setNewCustomerPhoneError("");
     } else {
       const nameParts = searchTerm.split(" ").filter((p) => p);
-      setNewCustomerFirstName(nameParts.shift() || "");
-      setNewCustomerLastName(nameParts.join(" "));
+      derivedFirstName = nameParts.shift() || "";
+      derivedLastName = nameParts.join(" ");
+      setNewCustomerFirstName(derivedFirstName);
+      setNewCustomerLastName(derivedLastName);
       setNewCustomerPhone("");
-      setNewCustomerPhoneError("กรุณากรอกเบอร์โทรศัพท์");
+      setNewCustomerPhoneError("");
     }
     setFacebookName("");
     setLineId("");
-    setShippingAddress(emptyAddress);
+    setShippingAddress({
+      ...emptyAddress,
+      recipientFirstName: sanitizeAddressValue(derivedFirstName),
+      recipientLastName: sanitizeAddressValue(derivedLastName),
+    });
     setUseProfileAddress(false);
   };
 
@@ -1392,14 +1587,259 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     clearValidationErrorFor("shippingAddress");
+    const { name, value } = e.target;
     setShippingAddress((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
 
     // Set modification flag if profile address is selected
     if (selectedAddressOption === "profile") {
       setProfileAddressModified(true);
+    }
+
+    // If postal code is entered and has 5 digits, search for address
+    if (name === "postalCode") {
+      // Only allow numbers
+      const numericValue = value.replace(/[^0-9]/g, "");
+      if (numericValue !== value) {
+        setShippingAddress((prev) => ({
+          ...prev,
+          postalCode: numericValue,
+        }));
+        return;
+      }
+
+      if (numericValue.length === 5) {
+        setAddressLoading(true);
+        
+        // Ensure provinces are loaded first
+        let provincesPromise = Promise.resolve(provinces);
+        if (provinces.length === 0) {
+          console.log("⏳ Provinces not loaded, loading now...");
+          provincesPromise = fetch(
+            `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+          )
+            .then((res) => res.json())
+            .then((provinceData) => {
+              if (provinceData.success) {
+                console.log("✅ Provinces loaded:", provinceData.data?.length || 0);
+                setProvinces(provinceData.data || []);
+                return provinceData.data || [];
+              }
+              return [];
+            });
+        }
+        
+        // Search for postal code
+        const searchPromise = fetch(
+          `/api/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
+        ).then((res) => res.json());
+        
+        // Wait for both to complete
+        Promise.all([provincesPromise, searchPromise])
+          .then(([loadedProvinces, data]) => {
+            console.log("🔍 Postal code search result:", data);
+            if (data.success && data.data && data.data.length > 0) {
+              const results = data.data;
+              console.log("📮 Found results:", results);
+              setPostalCodeResults(results);
+              setShowPostalCodeDropdown(true);
+              
+              // Get unique province IDs from results
+              const provinceIds = [...new Set(results.map((r: any) => r.province_id))];
+              console.log("📍 Province IDs from results:", provinceIds);
+              
+              // Always show dropdown first, then try auto-fill if only one result
+              // If multiple results, user must select from dropdown
+              if (results.length === 1) {
+                const result = results[0];
+                console.log("✅ Only one result, attempting auto-fill:", result);
+                
+                // Use loaded provinces (from Promise.all)
+                const province = Array.isArray(loadedProvinces) 
+                  ? loadedProvinces.find((p: any) => p.id === result.province_id)
+                  : provinces.find((p) => p.id === result.province_id);
+                
+                if (province) {
+                  console.log("✅ Province found, auto-filling...");
+                  setSelectedProvince(province.id);
+                  setSelectedGeography(province.geography_id);
+                  setProvinceSearchTerm(province.name_th);
+                  setShowProvinceDropdown(false);
+
+                  // Load districts for this province
+                  fetch(
+                    `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                  )
+                    .then((res) => res.json())
+                    .then((districtData) => {
+                      if (districtData.success) {
+                        setDistricts(districtData.data || []);
+                        // Find and set district
+                        const district = districtData.data.find(
+                          (d: any) => d.id === result.district_id,
+                        );
+                        if (district) {
+                          setSelectedDistrict(district.id);
+                          setDistrictSearchTerm(district.name_th);
+                          setShowDistrictDropdown(false);
+
+                          // Load subdistricts for this district
+                          return fetch(
+                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                          ).then((res) => res.json());
+                        }
+                      }
+                      setAddressLoading(false);
+                      return { success: false, data: [] };
+                    })
+                    .then((subDistrictData) => {
+                      if (subDistrictData.success) {
+                        setSubDistricts(subDistrictData.data || []);
+                        // Find and set subdistrict
+                        const subDistrict = subDistrictData.data.find(
+                          (sd: any) =>
+                            sd.id === result.id && sd.zip_code === numericValue,
+                        );
+                        if (subDistrict) {
+                          setSelectedSubDistrict(subDistrict.id);
+                          setSubDistrictSearchTerm(subDistrict.name_th);
+                          setShowSubDistrictDropdown(false);
+                          setShippingAddress((prev) => ({
+                            ...prev,
+                            province: result.province || prev.province,
+                            district: result.district || prev.district,
+                            subdistrict:
+                              result.sub_district || prev.subdistrict,
+                            postalCode: result.zip_code || prev.postalCode,
+                          }));
+                        }
+                      }
+                      setAddressLoading(false);
+                    })
+                    .catch((error) => {
+                      console.error("Error loading address data:", error);
+                      setAddressLoading(false);
+                    });
+                } else {
+                  // Province not found in loaded provinces, try to load it
+                  console.log("⚠️ Province not found in loaded provinces, loading all provinces...");
+                  setAddressLoading(true);
+                  fetch(
+                    `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                  )
+                    .then((res) => res.json())
+                    .then((provinceData) => {
+                      if (provinceData.success) {
+                        setProvinces(provinceData.data || []);
+                        const province = provinceData.data.find(
+                          (p: any) => p.id === result.province_id,
+                        );
+                        if (province) {
+                          console.log("✅ Province loaded, auto-filling...");
+                          setSelectedProvince(province.id);
+                          setSelectedGeography(province.geography_id);
+                          setProvinceSearchTerm(province.name_th);
+                          setShowProvinceDropdown(false);
+
+                          // Continue with loading districts
+                          return fetch(
+                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                          ).then((res) => res.json());
+                        }
+                      }
+                      setAddressLoading(false);
+                      return { success: false, data: [] };
+                    })
+                    .then((districtData) => {
+                      if (districtData && districtData.success) {
+                        setDistricts(districtData.data || []);
+                        const result = results[0];
+                        const district = districtData.data.find(
+                          (d: any) => d.id === result.district_id,
+                        );
+                        if (district) {
+                          setSelectedDistrict(district.id);
+                          setDistrictSearchTerm(district.name_th);
+                          setShowDistrictDropdown(false);
+
+                          // Load subdistricts
+                          return fetch(
+                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                          ).then((res) => res.json());
+                        }
+                      }
+                      setAddressLoading(false);
+                      return { success: false, data: [] };
+                    })
+                    .then((subDistrictData) => {
+                      if (subDistrictData && subDistrictData.success) {
+                        setSubDistricts(subDistrictData.data || []);
+                        const result = results[0];
+                        const subDistrict = subDistrictData.data.find(
+                          (sd: any) =>
+                            sd.id === result.id && sd.zip_code === numericValue,
+                        );
+                        if (subDistrict) {
+                          setSelectedSubDistrict(subDistrict.id);
+                          setSubDistrictSearchTerm(subDistrict.name_th);
+                          setShowSubDistrictDropdown(false);
+                          setShippingAddress((prev) => ({
+                            ...prev,
+                            province: result.province || prev.province,
+                            district: result.district || prev.district,
+                            subdistrict:
+                              result.sub_district || prev.subdistrict,
+                            postalCode: result.zip_code || prev.postalCode,
+                          }));
+                          console.log("✅ Auto-fill completed!");
+                        }
+                      }
+                      setAddressLoading(false);
+                    })
+                    .catch((error) => {
+                      console.error("❌ Error loading address data:", error);
+                      setAddressLoading(false);
+                    });
+                }
+              } else {
+                // Multiple results - show dropdown for user to select
+                console.log(`📋 Multiple results found (${results.length}), showing dropdown`);
+                setAddressLoading(false);
+              }
+            } else {
+              setPostalCodeResults([]);
+              setShowPostalCodeDropdown(false);
+              setAddressLoading(false);
+            }
+          })
+          .catch((error) => {
+            console.error("Error searching postal code:", error);
+            setAddressLoading(false);
+            setPostalCodeResults([]);
+            setShowPostalCodeDropdown(false);
+          });
+      } else {
+        // Clear results if postal code is not complete
+        if (numericValue.length < 5) {
+          setPostalCodeResults([]);
+          setShowPostalCodeDropdown(false);
+          // Clear selections if postal code is deleted
+          if (numericValue.length === 0) {
+            setSelectedProvince(null);
+            setSelectedDistrict(null);
+            setSelectedSubDistrict(null);
+            setShippingAddress((prev) => ({
+              ...prev,
+              province: "",
+              district: "",
+              subdistrict: "",
+              postalCode: "",
+            }));
+          }
+        }
+      }
     }
   };
 
@@ -1422,6 +1862,25 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   };
 
+  // Handler for editing existing customer phone
+  const handleEditedCustomerPhoneChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const value = e.target.value.replace(/[^0-9]/g, "");
+    if (value.length > 10) return;
+    setEditedCustomerPhone(value);
+
+    if (value.length === 0) {
+      setEditedCustomerPhoneError("");
+    } else if (value.length !== 10) {
+      setEditedCustomerPhoneError("เบอร์โทรต้องมี 10 หลัก");
+    } else if (value[0] !== "0") {
+      setEditedCustomerPhoneError("เบอร์โทรต้องขึ้นต้นด้วย 0");
+    } else {
+      setEditedCustomerPhoneError("");
+    }
+  };
+
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
@@ -1439,6 +1898,22 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       alert("กรุณาเลือกวันที่จัดส่ง");
       return;
     }
+    // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
+    const getMaxDeliveryDate = (): string => {
+      const now = new Date();
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+      return nextMonth.toISOString().split("T")[0];
+    };
+    const maxDeliveryDate = getMaxDeliveryDate();
+    if (orderData.deliveryDate > maxDeliveryDate) {
+      highlightField("deliveryDate");
+      const maxDate = new Date(maxDeliveryDate);
+      const maxDateStr = `${maxDate.getDate()}/${maxDate.getMonth() + 1}/${maxDate.getFullYear()}`;
+      alert(
+        `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+      );
+      return;
+    }
     if (
       !orderData.items ||
       orderData.items.length === 0 ||
@@ -1453,20 +1928,37 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       alert("กรุณาเลือกวิธีการชำระเงิน");
       return;
     }
-    if (
-      orderData.paymentMethod === PaymentMethod.Transfer &&
-      transferSlipUploads.length === 0
-    ) {
-      highlightField("transferSlips");
-      alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
-      return;
+    if (orderData.paymentMethod === PaymentMethod.Transfer) {
+      if (!selectedBankAccountId) {
+        alert("กรุณาเลือกธนาคารที่รับโอน");
+        return;
+      }
+      if (!transferDate) {
+        alert("กรุณาเลือกเวลาที่รับโอน");
+        return;
+      }
+      if (transferSlipUploads.length === 0) {
+        highlightField("transferSlips");
+        alert("กรุณาอัปโหลดสลิปการโอนอย่างน้อย 1 รูป");
+        return;
+      }
     }
     if (!salesChannel) {
       highlightField("salesChannel");
       alert("กรุณาเลือกช่องทางการสั่งซื้อ");
       return;
     }
-    if (salesChannel !== "โทร" && !salesChannelPageId) {
+    const selectedPlatform = platforms.find((p) => p.name === salesChannel);
+    // Check if platform requires page selection
+    // - Platform name is not "โทร"
+    // - Platform has showPagesFrom set (or uses its own pages by default)
+    const hasShowPagesFrom = selectedPlatform?.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
+    const usesOwnPages = !selectedPlatform?.showPagesFrom || selectedPlatform.showPagesFrom === '';
+    const shouldHavePage = selectedPlatform && 
+      selectedPlatform.name !== "โทร" && 
+      (hasShowPagesFrom || usesOwnPages);
+    
+    if (shouldHavePage && !salesChannelPageId) {
       highlightField("salesChannelPage");
       alert("กรุณาเลือกเพจของช่องทางการสั่งซื้อ");
       return;
@@ -1475,6 +1967,37 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       highlightField("cod");
       alert("ยอด COD ในแต่ละกล่องรวมกันไม่เท่ากับยอดสุทธิ");
       return;
+    }
+    // ตรวจสอบจำนวนกล่องสำหรับ COD
+    if (orderData.paymentMethod === PaymentMethod.COD) {
+      const parentItems = (orderData.items || []).filter(
+        (it) => !it.parentItemId,
+      );
+      const maxBoxes = parentItems.length || 1;
+      if (numBoxes > maxBoxes) {
+        highlightField("cod");
+        alert(
+          `จำนวนกล่อง (${numBoxes}) ต้องไม่เกินจำนวนรายการสินค้า (${maxBoxes} รายการ)`,
+        );
+        return;
+      }
+      // ตรวจสอบว่าทุกกล่องมีสินค้าอย่างน้อย 1 รายการ
+      const boxesWithItems = new Set<number>();
+      parentItems.forEach((item) => {
+        if (item.boxNumber && item.boxNumber >= 1 && item.boxNumber <= numBoxes) {
+          boxesWithItems.add(item.boxNumber);
+        }
+      });
+      // ตรวจสอบว่าทุกกล่องตั้งแต่ 1 ถึง numBoxes มีสินค้า
+      for (let boxNum = 1; boxNum <= numBoxes; boxNum++) {
+        if (!boxesWithItems.has(boxNum)) {
+          highlightField("cod");
+          alert(
+            `กล่องที่ ${boxNum} ไม่มีสินค้า กรุณาเพิ่มสินค้าในกล่องนี้หรือลดจำนวนกล่อง`,
+          );
+          return;
+        }
+      }
     }
 
     const finalOrderData: Partial<Order> = {
@@ -1491,10 +2014,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       orderStatus: OrderStatus.Pending,
       salesChannel: salesChannel,
       // @ts-ignore - backend supports this field; added in schema
-      salesChannelPageId:
-        salesChannel && salesChannel !== "โทร"
-          ? salesChannelPageId || undefined
-          : undefined,
+      salesChannelPageId: (() => {
+        const selectedPlatform = platforms.find((p) => p.name === salesChannel);
+        if (!selectedPlatform || selectedPlatform.name === "โทร") return undefined;
+        const hasShowPagesFrom = selectedPlatform?.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
+        const usesOwnPages = !selectedPlatform?.showPagesFrom || selectedPlatform.showPagesFrom === '';
+        // Only set pageId if platform should have pages (has showPagesFrom or uses own pages)
+        return (hasShowPagesFrom || usesOwnPages) ? (salesChannelPageId || undefined) : undefined;
+      })(),
       warehouseId: warehouseId || undefined,
     };
 
@@ -1504,6 +2031,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       (payload as any).slipUploads = transferSlipUploads.map(
         (slip) => slip.dataUrl,
       );
+    }
+    
+    // Add bank account and transfer date for transfer payment
+    if (orderData.paymentMethod === PaymentMethod.Transfer && selectedBankAccountId && transferDate) {
+      (payload as any).bankAccountId = selectedBankAccountId;
+      (payload as any).transferDate = transferDate;
     }
 
     if (isCreatingNewCustomer) {
@@ -1541,6 +2074,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         alert("กรุณาเลือกลูกค้า");
         return;
       }
+      
+      // Validate edited phone if it's changed
+      if (editedCustomerPhoneError) {
+        highlightField("editedCustomerPhone");
+        alert(`เบอร์โทรศัพท์ไม่ถูกต้อง: ${editedCustomerPhoneError}`);
+        return;
+      }
+      
       const hasSocialsChanged =
         facebookName !== (selectedCustomer?.facebookName || "") ||
         lineId !== (selectedCustomer?.lineId || "");
@@ -1548,6 +2089,21 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       if (hasSocialsChanged) {
         // Social media changes will be handled via the new API endpoint
         (payload as any).updateCustomerSocials = true;
+      }
+
+      // Check if customer name or phone has been changed
+      const hasNameChanged =
+        editedCustomerFirstName.trim() !== (selectedCustomer?.firstName || "").trim() ||
+        editedCustomerLastName.trim() !== (selectedCustomer?.lastName || "").trim();
+      const hasPhoneChanged =
+        editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim();
+
+      if (hasNameChanged || hasPhoneChanged) {
+        (payload as any).updateCustomerInfo = {
+          firstName: editedCustomerFirstName.trim(),
+          lastName: editedCustomerLastName.trim(),
+          phone: editedCustomerPhone.trim(),
+        };
       }
 
       // Handle address saving
@@ -1560,6 +2116,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           // Save new address to customer_address table
           (payload as any).newCustomerAddress = {
             customer_id: selectedCustomer.id,
+            recipient_first_name: sanitizeAddressValue(
+              shippingAddress.recipientFirstName,
+            ),
+            recipient_last_name: sanitizeAddressValue(
+              shippingAddress.recipientLastName,
+            ),
             address: sanitizeAddressValue(shippingAddress.street),
             province: sanitizeAddressValue(shippingAddress.province),
             district: sanitizeAddressValue(shippingAddress.district),
@@ -1588,10 +2150,19 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
 
     // Handle customer address update if checkbox is checked
+    // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+    // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
     if ((payload as any).updateCustomerAddress && selectedCustomer) {
       try {
         const updateData = {
           customer_id: selectedCustomer.id,
+          // Include recipient name for primary address in customers table
+          recipient_first_name: sanitizeAddressValue(
+            shippingAddress.recipientFirstName,
+          ),
+          recipient_last_name: sanitizeAddressValue(
+            shippingAddress.recipientLastName,
+          ),
           street: sanitizeAddressValue(shippingAddress.street),
           subdistrict: sanitizeAddressValue(shippingAddress.subdistrict),
           district: sanitizeAddressValue(shippingAddress.district),
@@ -1616,10 +2187,21 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           console.log("Customer address updated successfully:", result.data);
 
           // Update the selectedCustomer state with the latest data from database
+          // Primary address (profile address) uses recipient_first_name and recipient_last_name from customers table
+          // Additional addresses use recipient_first_name and recipient_last_name from customer_address table
           if (result.data && selectedCustomer) {
             const updatedCustomer = {
               ...selectedCustomer,
               address: {
+                // Get recipient name from customers table (primary address)
+                recipientFirstName:
+                  sanitizeAddressValue(result.data.recipient_first_name) ||
+                  shippingAddress.recipientFirstName ||
+                  selectedCustomer.address?.recipientFirstName,
+                recipientLastName:
+                  sanitizeAddressValue(result.data.recipient_last_name) ||
+                  shippingAddress.recipientLastName ||
+                  selectedCustomer.address?.recipientLastName,
                 street:
                   sanitizeAddressValue(result.data.street) ||
                   sanitizeAddressValue(selectedCustomer.address?.street),
@@ -1700,6 +2282,46 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       }
     }
 
+    // Handle customer name and phone update if changed
+    if ((payload as any).updateCustomerInfo && selectedCustomer) {
+      try {
+        const updateData: any = {};
+        
+        // Only include fields that have changed
+        if (editedCustomerFirstName.trim() !== (selectedCustomer?.firstName || "").trim()) {
+          updateData.firstName = editedCustomerFirstName.trim();
+        }
+        if (editedCustomerLastName.trim() !== (selectedCustomer?.lastName || "").trim()) {
+          updateData.lastName = editedCustomerLastName.trim();
+        }
+        if (editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim()) {
+          updateData.phone = editedCustomerPhone.trim();
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await updateCustomer(selectedCustomer.id, updateData);
+          console.log("Customer info updated successfully:", updateData);
+
+          // Update the selectedCustomer state with the latest data
+          const updatedCustomer = {
+            ...selectedCustomer,
+            firstName: updateData.firstName || selectedCustomer.firstName,
+            lastName: updateData.lastName || selectedCustomer.lastName,
+            phone: updateData.phone || selectedCustomer.phone,
+          };
+          setSelectedCustomer(updatedCustomer);
+          
+          // Also update edited fields to match updated values
+          setEditedCustomerFirstName(updatedCustomer.firstName || "");
+          setEditedCustomerLastName(updatedCustomer.lastName || "");
+          setEditedCustomerPhone(updatedCustomer.phone || "");
+        }
+      } catch (error) {
+        console.error("Error updating customer info:", error);
+        alert("เกิดข้อผิดพลาดในการอัพเดตข้อมูลลูกค้า");
+      }
+    }
+
     // If we need to save a new customer address (not updating the profile), make a separate API call
     if (
       selectedAddressOption === "new" &&
@@ -1774,11 +2396,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   // --- Product selection helpers ---
-  const openProductSelector = (tab: "products" | "promotions" = "products") => {
+  const openProductSelector = (
+    tab: "products" | "promotions" = "products",
+    itemId?: number | null
+  ) => {
     setSelectorTab(tab);
+    setEditingItemId(itemId || null); // ถ้ามี itemId แสดงว่ากำลังแก้ไขรายการเดิม
     setProductSelectorOpen(true);
   };
-  const closeProductSelector = () => setProductSelectorOpen(false);
+  const closeProductSelector = () => {
+    setProductSelectorOpen(false);
+    setEditingItemId(null); // เคลียร์ editingItemId เมื่อปิด modal
+  };
 
   // Use real data from props (no client-side hardcode). If backend hasn't returned yet use empty arrays until loaded.
   const productsSafe = Array.isArray(products) ? products : [];
@@ -1995,32 +2624,58 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     // ตั้งราคารวมของชุดไว้ที่ parent
     parentItem.pricePerUnit = calcPromotionSetPrice(promo);
     const existing = orderData.items || [];
-    const emptyIndex = existing.findIndex(
-      (it) => !it.productName || String(it.productName).trim() === "",
-    );
-    let next: LineItem[];
-    let actualParentId = parentId; // Default to new parent ID
-    if (emptyIndex !== -1) {
-      next = existing.slice();
-      // preserve the existing id for stability when replacing the empty row
-      const existingId = next[emptyIndex].id;
-      next[emptyIndex] = { ...parentItem, id: existingId };
-      actualParentId = existingId; // Use existing ID as actual parent ID
+    
+    let updatedChildItems: LineItem[] = [];
+    
+    // ถ้ามี editingItemId แสดงว่ากำลังแก้ไขรายการเดิม
+    if (editingItemId !== null) {
+      // ลบรายการเดิมและรายการย่อย (children) ทั้งหมด
+      const filtered = existing.filter(
+        (it) => it.id !== editingItemId && it.parentItemId !== editingItemId
+      );
+      
+      // ใช้ ID เดิมของรายการที่กำลังแก้ไข
+      const existingId = editingItemId;
+      parentItem.id = existingId;
+      const actualParentId = existingId;
       newLockedIds.push(existingId);
+      
+      // Update child items to use the correct parent ID
+      updatedChildItems = newItemsToAdd.map((item) => ({
+        ...item,
+        parentItemId: actualParentId,
+      }));
+      
+      const next = [{ ...parentItem, id: existingId }, ...filtered, ...updatedChildItems];
+      updateOrderData("items", next);
     } else {
-      next = [...existing, parentItem];
-      newLockedIds.push(parentId);
+      // ถ้าไม่มี editingItemId แสดงว่าเป็นการเพิ่มรายการใหม่
+      const emptyIndex = existing.findIndex(
+        (it) => !it.productName || String(it.productName).trim() === "",
+      );
+      let next: LineItem[];
+      let actualParentId = parentId; // Default to new parent ID
+      if (emptyIndex !== -1) {
+        next = existing.slice();
+        // preserve the existing id for stability when replacing the empty row
+        const existingId = next[emptyIndex].id;
+        next[emptyIndex] = { ...parentItem, id: existingId };
+        actualParentId = existingId; // Use existing ID as actual parent ID
+        newLockedIds.push(existingId);
+      } else {
+        next = [...existing, parentItem];
+        newLockedIds.push(parentId);
+      }
+
+      // Update child items to use the correct parent ID
+      updatedChildItems = newItemsToAdd.map((item) => ({
+        ...item,
+        parentItemId: actualParentId,
+      }));
+
+      next = [...next, ...updatedChildItems];
+      updateOrderData("items", next);
     }
-
-    // Update child items to use the correct parent ID
-    const updatedChildItems = newItemsToAdd.map((item) => ({
-      ...item,
-      parentItemId: actualParentId,
-    }));
-
-    next = [...next, ...updatedChildItems];
-
-    updateOrderData("items", next);
     setLockedItemIds((prev) => [
       ...prev,
       ...newLockedIds,
@@ -2032,19 +2687,45 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const addProductById = (productId: number) => {
     const p = productsSafe.find((pr) => pr.id === productId);
     if (!p) return;
-    const newId = Date.now() + Math.floor(Math.random() * 1000);
-    const newItem: LineItem = {
-      id: newId,
-      productName: p.name,
-      quantity: 1,
-      pricePerUnit: p.price,
-      discount: 0,
-      isFreebie: false,
-      boxNumber: 1,
-      productId: p.id,
-      isPromotionParent: false,
-    };
-    replaceEmptyRowOrAppend(newItem);
+    
+    // ถ้ามี editingItemId แสดงว่ากำลังแก้ไขรายการเดิม
+    if (editingItemId !== null) {
+      updateOrderData(
+        "items",
+        orderData.items?.map((it) =>
+          it.id === editingItemId
+            ? {
+                ...it,
+                productName: p.name,
+                productId: p.id,
+                pricePerUnit: p.price,
+                quantity: it.quantity || 1, // เก็บจำนวนเดิม
+                discount: it.discount || 0, // เก็บส่วนลดเดิม
+                boxNumber: it.boxNumber || 1, // เก็บกล่องเดิม
+                isFreebie: it.isFreebie || false, // เก็บสถานะของแถมเดิม
+                isPromotionParent: false, // เคลียร์ promotion parent status
+                promotionId: undefined, // เคลียร์ promotionId
+                parentItemId: undefined, // เคลียร์ parentItemId
+              }
+            : it,
+        ),
+      );
+    } else {
+      // ถ้าไม่มี editingItemId แสดงว่าเป็นการเพิ่มรายการใหม่
+      const newId = Date.now() + Math.floor(Math.random() * 1000);
+      const newItem: LineItem = {
+        id: newId,
+        productName: p.name,
+        quantity: 1,
+        pricePerUnit: p.price,
+        discount: 0,
+        isFreebie: false,
+        boxNumber: 1,
+        productId: p.id,
+        isPromotionParent: false,
+      };
+      replaceEmptyRowOrAppend(newItem);
+    }
     closeProductSelector();
   };
 
@@ -2133,12 +2814,28 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     // Update parent item with total price
     parentItem.pricePerUnit = totalPromotionPrice;
 
-    // Add all new items to the order (parent first, then children)
-    updateOrderData("items", [
-      ...(orderData.items || []),
-      parentItem,
-      ...newItemsToAdd,
-    ]);
+    // ถ้ามี editingItemId แสดงว่ากำลังแก้ไขรายการเดิม
+    if (editingItemId !== null) {
+      // ลบรายการเดิมและรายการย่อย (children) ทั้งหมด
+      const existing = orderData.items || [];
+      const filtered = existing.filter(
+        (it) => it.id !== editingItemId && it.parentItemId !== editingItemId
+      );
+      
+      // แทนที่ด้วยโปรโมชั่นใหม่
+      updateOrderData("items", [
+        ...filtered,
+        parentItem,
+        ...newItemsToAdd,
+      ]);
+    } else {
+      // ถ้าไม่มี editingItemId แสดงว่าเป็นการเพิ่มรายการใหม่
+      updateOrderData("items", [
+        ...(orderData.items || []),
+        parentItem,
+        ...newItemsToAdd,
+      ]);
+    }
     setLockedItemIds((prev) => [...prev, ...newLockedIds]);
     closeProductSelector();
   };
@@ -2316,21 +3013,53 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <p>
-                              <strong className="font-medium text-[#0e141b]">
-                                ชื่อ:
-                              </strong>{" "}
-                              <span className="text-[#4e7397]">{`${selectedCustomer?.firstName} ${selectedCustomer?.lastName}`}</span>
-                            </p>
-                            <p>
-                              <strong className="font-medium text-[#0e141b]">
-                                เบอร์โทร:
-                              </strong>{" "}
-                              <span className="text-[#4e7397]">
-                                {selectedCustomer?.phone}
-                              </span>
-                            </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className={commonLabelClass}>
+                                ชื่อ <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={editedCustomerFirstName}
+                                onChange={(e) =>
+                                  setEditedCustomerFirstName(e.target.value)
+                                }
+                                className={commonInputClass}
+                                placeholder="กรุณากรอกชื่อ"
+                              />
+                            </div>
+                            <div>
+                              <label className={commonLabelClass}>
+                                นามสกุล
+                              </label>
+                              <input
+                                type="text"
+                                value={editedCustomerLastName}
+                                onChange={(e) =>
+                                  setEditedCustomerLastName(e.target.value)
+                                }
+                                className={commonInputClass}
+                                placeholder="กรุณากรอกนามสกุล"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className={commonLabelClass}>
+                                เบอร์โทรศัพท์{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={editedCustomerPhone}
+                                onChange={handleEditedCustomerPhoneChange}
+                                className={commonInputClass}
+                                placeholder="กรุณากรอกเบอร์โทรศัพท์"
+                              />
+                              {editedCustomerPhoneError && (
+                                <p className="text-xs text-red-500 mt-1">
+                                  {editedCustomerPhoneError}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2370,7 +3099,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               clearValidationErrorFor("salesChannel");
                               const channel = e.target.value;
                               setSalesChannel(channel);
-                              if (channel !== "Facebook") {
+                              // Check if selected platform requires a page selection (e.g., not phone call)
+                              const selectedPlatform = platforms.find((p) => p.name === channel);
+                              if (!selectedPlatform || selectedPlatform.name === "โทร") {
                                 setSalesChannelPageId(null);
                                 clearValidationErrorFor("salesChannelPage");
                               }
@@ -2378,12 +3109,24 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             className={commonInputClass}
                           >
                             <option value="">เลือกช่องทางการขาย</option>
-                            <option value="Facebook">Facebook</option>
-                            <option value="Line">Line</option>
-                            <option value="TikTok">TikTok</option>
-                            <option value="โทร">โทร</option>
+                            {platforms
+                              .filter((p) => p.active)
+                              .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                              .map((platform) => (
+                                <option key={platform.id} value={platform.name}>
+                                  {platform.displayName || platform.name}
+                                </option>
+                              ))}
                           </select>
-                          {salesChannel && salesChannel !== "โทร" && (
+                          {(() => {
+                            if (!salesChannel) return false;
+                            const selectedPlatform = platforms.find((p) => p.name === salesChannel);
+                            // Show page dropdown if:
+                            // 1. Platform is not "โทร" AND has showPagesFrom set
+                            // 2. OR platform doesn't have showPagesFrom (uses its own pages)
+                            const hasShowPagesFrom = selectedPlatform?.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
+                            return selectedPlatform && selectedPlatform.name !== "โทร" && (hasShowPagesFrom || !selectedPlatform.showPagesFrom);
+                          })() && (
                             <select
                               ref={salesChannelPageRef}
                               value={salesChannelPageId ?? ""}
@@ -2399,30 +3142,49 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             >
                               <option value="">เลือกเพจ</option>
                               {(() => {
-                                // Map sales channel to platform values (case insensitive)
-                                const platformMap: { [key: string]: string[] } =
-                                  {
-                                    Facebook: ["facebook", "Facebook"],
-                                    Line: ["line", "Line"],
-                                    TikTok: [
-                                      "tiktok",
-                                      "tiktok_business_messaging",
-                                      "TikTok",
-                                    ],
-                                  };
-                                const validPlatforms =
-                                  platformMap[salesChannel] || [];
-
-                                // Debug: Log the filtering process
+                                // Filter pages by selected platform (dynamic, no hardcode)
+                                // If platform has show_pages_from, use that instead of the platform name
+                                if (!salesChannel) return [];
+                                
+                                const selectedPlatform = platforms.find((p) => p.name === salesChannel);
+                                if (!selectedPlatform) {
+                                  console.log("🔍 Platform not found:", salesChannel);
+                                  return [];
+                                }
+                                
+                                // Determine which platform name to use for filtering pages
+                                // If showPagesFrom is set and not empty, use it; otherwise use the platform's own name
+                                const hasShowPagesFrom = selectedPlatform.showPagesFrom && 
+                                  typeof selectedPlatform.showPagesFrom === 'string' &&
+                                  selectedPlatform.showPagesFrom.trim() !== '';
+                                
+                                // Only return empty if showPagesFrom is explicitly set to empty string
+                                // If showPagesFrom is null or undefined, use the platform's own name
+                                if (selectedPlatform.showPagesFrom === '') {
+                                  console.log("🔍 Platform has showPagesFrom set to empty string:", selectedPlatform);
+                                  return [];
+                                }
+                                
+                                const platformToFilter = hasShowPagesFrom 
+                                  ? selectedPlatform.showPagesFrom 
+                                  : salesChannel;
+                                
+                                console.log("🔍 Filtering pages:", {
+                                  salesChannel,
+                                  showPagesFrom: selectedPlatform.showPagesFrom,
+                                  platformToFilter,
+                                  totalPages: pages.length,
+                                  pages: pages.map((p: any) => ({ name: p.name, platform: p.platform, active: p.active }))
+                                });
+                                
                                 const filteredPages = pages.filter((pg) => {
-                                  // Convert both to lowercase for case-insensitive comparison
-                                  const pagePlatformLower =
-                                    (pg as any).platform?.toLowerCase() || "";
-                                  const isPlatformMatch = validPlatforms.some(
-                                    (platform) =>
-                                      platform.toLowerCase() ===
-                                      pagePlatformLower,
-                                  );
+                                  const pagePlatform = (pg as any).platform;
+                                  if (!pagePlatform) return false;
+                                  
+                                  // Case-insensitive comparison: compare page platform with platformToFilter
+                                  const isPlatformMatch = 
+                                    pagePlatform.toLowerCase() === platformToFilter.toLowerCase();
+                                  
                                   // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
                                   const v: any = (pg as any).active;
                                   const isActive =
@@ -2435,14 +3197,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                             v !== "0" &&
                                             v.toLowerCase() !== "false"
                                           : Boolean(v);
+                                  
                                   return isPlatformMatch && isActive;
                                 });
 
-                                // Debug: Log the results
-                                console.log("Sales Channel:", salesChannel);
-                                console.log("Valid Platforms:", validPlatforms);
-                                console.log("All Pages:", pages);
-                                console.log("Filtered Pages:", filteredPages);
+                                console.log("🔍 Filtered pages result:", {
+                                  count: filteredPages.length,
+                                  pages: filteredPages.map((p: any) => p.name)
+                                });
 
                                 return filteredPages.map((pg) => (
                                   <option key={pg.id} value={pg.id}>
@@ -2504,6 +3266,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               ที่อยู่หลัก
                             </div>
                           </div>
+                          {(selectedCustomer?.address?.recipientFirstName ||
+                            selectedCustomer?.address?.recipientLastName) && (
+                            <div className="text-xs text-gray-500">
+                              ชื่อผู้รับ:{" "}
+                              {`${selectedCustomer.address.recipientFirstName || ""} ${selectedCustomer.address.recipientLastName || ""}`.trim()}
+                            </div>
+                          )}
                           {selectedCustomer?.address && (
                             <div className="text-sm text-gray-600 mt-1">
                               {selectedCustomer.address.street || ""}{" "}
@@ -2543,6 +3312,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   {address.zip_code}
                                 </div>
                               </div>
+                              {(address.recipient_first_name ||
+                                address.recipient_last_name) && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  ชื่อผู้รับ:{" "}
+                                  {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""}`.trim()}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center space-x-1">
                               <button
@@ -2620,6 +3396,34 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
 
                   <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className={commonLabelClass}>
+                          ชื่อ (ผู้รับ) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="recipientFirstName"
+                          value={shippingAddress.recipientFirstName || ""}
+                          onChange={handleShippingAddressChange}
+                          className={commonInputClass}
+                          placeholder="กรุณากรอกชื่อผู้รับ"
+                        />
+                      </div>
+                      <div>
+                        <label className={commonLabelClass}>
+                          นามสกุล (ผู้รับ)
+                        </label>
+                        <input
+                          type="text"
+                          name="recipientLastName"
+                          value={shippingAddress.recipientLastName || ""}
+                          onChange={handleShippingAddressChange}
+                          className={commonInputClass}
+                          placeholder="กรุณากรอกนามสกุลผู้รับ"
+                        />
+                      </div>
+                    </div>
                     <div>
                       <label className={commonLabelClass}>
                         บ้านเลขที่, ถนน
@@ -2638,16 +3442,66 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         <input
                           type="text"
                           value={
-                            selectedProvince
+                            selectedProvince && !provinceSearchTerm
                               ? provinces.find((p) => p.id === selectedProvince)
                                   ?.name_th || ""
                               : provinceSearchTerm
                           }
-                          onChange={(e) => {
-                            setProvinceSearchTerm(e.target.value);
+                            onChange={(e) => {
+                            const newValue = e.target.value;
+                            setProvinceSearchTerm(newValue);
                             setShowProvinceDropdown(true);
+                            // If postal code is entered, clear results when editing province manually
+                            if (postalCodeResults.length > 0) {
+                              setPostalCodeResults([]);
+                              setShowPostalCodeDropdown(false);
+                              setShippingAddress((prev) => ({
+                                ...prev,
+                                postalCode: "",
+                              }));
+                            }
+                            // If user is typing/deleting, clear selectedProvince to allow editing
+                            if (selectedProvince) {
+                              const currentProvinceName = provinces.find((p) => p.id === selectedProvince)?.name_th || "";
+                              // If the typed value doesn't match the selected province, clear selection
+                              if (newValue !== currentProvinceName) {
+                                setSelectedProvince(null);
+                                setSelectedGeography(null);
+                                setSelectedDistrict(null);
+                                setSelectedSubDistrict(null);
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  province: "",
+                                  district: "",
+                                  subdistrict: "",
+                                }));
+                              }
+                            }
                           }}
                           onFocus={() => setShowProvinceDropdown(true)}
+                          onKeyDown={(e) => {
+                            // Allow backspace and delete to clear selection
+                            if ((e.key === "Backspace" || e.key === "Delete") && selectedProvince) {
+                              const currentProvinceName = provinces.find((p) => p.id === selectedProvince)?.name_th || "";
+                              const input = e.target as HTMLInputElement;
+                              // If cursor is at the end or all text is selected, allow clearing
+                              if (input.selectionStart === currentProvinceName.length || 
+                                  input.selectionEnd - input.selectionStart === currentProvinceName.length) {
+                                setSelectedProvince(null);
+                                setSelectedGeography(null);
+                                setSelectedDistrict(null);
+                                setSelectedSubDistrict(null);
+                                setProvinceSearchTerm("");
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  province: "",
+                                  district: "",
+                                  subdistrict: "",
+                                  postalCode: "",
+                                }));
+                              }
+                            }
+                          }}
                           disabled={addressLoading}
                           className={
                             commonInputClass +
@@ -2657,14 +3511,26 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         />
                         {showProvinceDropdown && (
                           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                            {filteredProvinces.length > 0 ? (
+                            {postalCodeResults.length > 0 && filteredProvinces.length === 0 && provinces.length > 0 ? (
+                              <div className="px-3 py-2 text-yellow-600 text-sm bg-yellow-50">
+                                ⚠️ กรุณาเลือกรหัสไปรษณีย์ก่อน หรือไม่มีจังหวัดที่ตรงกับรหัสไปรษณีย์ {shippingAddress.postalCode}
+                              </div>
+                            ) : filteredProvinces.length > 0 ? (
                               filteredProvinces.map((province) => (
                                 <div
                                   key={province.id}
                                   className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
                                   onClick={() => {
+                                    // If postal code is entered, clear it when changing province
+                                    if (postalCodeResults.length > 0) {
+                                      setPostalCodeResults([]);
+                                      setShippingAddress((prev) => ({
+                                        ...prev,
+                                        postalCode: "",
+                                      }));
+                                    }
                                     setSelectedProvince(province.id);
-                                    setProvinceSearchTerm("");
+                                    setProvinceSearchTerm(province.name_th);
                                     setShowProvinceDropdown(false);
                                     setSelectedDistrict(null);
                                     setSelectedSubDistrict(null);
@@ -2672,7 +3538,6 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       ...prev,
                                       district: "",
                                       subdistrict: "",
-                                      postalCode: "",
                                     }));
                                   }}
                                 >
@@ -2692,16 +3557,60 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         <input
                           type="text"
                           value={
-                            selectedDistrict
+                            selectedDistrict && !districtSearchTerm
                               ? districts.find((d) => d.id === selectedDistrict)
                                   ?.name_th || ""
                               : districtSearchTerm
                           }
                           onChange={(e) => {
-                            setDistrictSearchTerm(e.target.value);
+                            const newValue = e.target.value;
+                            setDistrictSearchTerm(newValue);
                             setShowDistrictDropdown(true);
+                            // If postal code is entered, clear results when editing district manually
+                            if (postalCodeResults.length > 0) {
+                              setPostalCodeResults([]);
+                              setShowPostalCodeDropdown(false);
+                              setShippingAddress((prev) => ({
+                                ...prev,
+                                postalCode: "",
+                              }));
+                            }
+                            // If user is typing/deleting, clear selectedDistrict to allow editing
+                            if (selectedDistrict) {
+                              const currentDistrictName = districts.find((d) => d.id === selectedDistrict)?.name_th || "";
+                              // If the typed value doesn't match the selected district, clear selection
+                              if (newValue !== currentDistrictName) {
+                                setSelectedDistrict(null);
+                                setSelectedSubDistrict(null);
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  district: "",
+                                  subdistrict: "",
+                                }));
+                              }
+                            }
                           }}
                           onFocus={() => setShowDistrictDropdown(true)}
+                          onKeyDown={(e) => {
+                            // Allow backspace and delete to clear selection
+                            if ((e.key === "Backspace" || e.key === "Delete") && selectedDistrict) {
+                              const currentDistrictName = districts.find((d) => d.id === selectedDistrict)?.name_th || "";
+                              const input = e.target as HTMLInputElement;
+                              // If cursor is at the end or all text is selected, allow clearing
+                              if (input.selectionStart === currentDistrictName.length || 
+                                  input.selectionEnd - input.selectionStart === currentDistrictName.length) {
+                                setSelectedDistrict(null);
+                                setSelectedSubDistrict(null);
+                                setDistrictSearchTerm("");
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  district: "",
+                                  subdistrict: "",
+                                  postalCode: "",
+                                }));
+                              }
+                            }
+                          }}
                           disabled={!selectedProvince || addressLoading}
                           className={
                             commonInputClass +
@@ -2743,17 +3652,49 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         <input
                           type="text"
                           value={
-                            selectedSubDistrict
+                            selectedSubDistrict && !subDistrictSearchTerm
                               ? subDistricts.find(
                                   (sd) => sd.id === selectedSubDistrict,
                                 )?.name_th || ""
                               : subDistrictSearchTerm
                           }
                           onChange={(e) => {
-                            setSubDistrictSearchTerm(e.target.value);
+                            const newValue = e.target.value;
+                            setSubDistrictSearchTerm(newValue);
                             setShowSubDistrictDropdown(true);
+                            // If user is typing/deleting, clear selectedSubDistrict to allow editing
+                            if (selectedSubDistrict) {
+                              const currentSubDistrictName = subDistricts.find((sd) => sd.id === selectedSubDistrict)?.name_th || "";
+                              // If the typed value doesn't match the selected subdistrict, clear selection
+                              if (newValue !== currentSubDistrictName) {
+                                setSelectedSubDistrict(null);
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  subdistrict: "",
+                                  postalCode: "",
+                                }));
+                              }
+                            }
                           }}
                           onFocus={() => setShowSubDistrictDropdown(true)}
+                          onKeyDown={(e) => {
+                            // Allow backspace and delete to clear selection
+                            if ((e.key === "Backspace" || e.key === "Delete") && selectedSubDistrict) {
+                              const currentSubDistrictName = subDistricts.find((sd) => sd.id === selectedSubDistrict)?.name_th || "";
+                              const input = e.target as HTMLInputElement;
+                              // If cursor is at the end or all text is selected, allow clearing
+                              if (input.selectionStart === currentSubDistrictName.length || 
+                                  input.selectionEnd - input.selectionStart === currentSubDistrictName.length) {
+                                setSelectedSubDistrict(null);
+                                setSubDistrictSearchTerm("");
+                                setShippingAddress((prev) => ({
+                                  ...prev,
+                                  subdistrict: "",
+                                  postalCode: "",
+                                }));
+                              }
+                            }
+                          }}
                           disabled={!selectedDistrict || addressLoading}
                           className={
                             commonInputClass +
@@ -2795,23 +3736,143 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           </div>
                         )}
                       </div>
-                      <div>
+                      <div className="relative postal-code-dropdown-container">
                         <label className={commonLabelClass}>รหัสไปรษณีย์</label>
                         <input
                           type="text"
                           name="postalCode"
                           value={shippingAddress.postalCode}
                           onChange={handleShippingAddressChange}
-                          disabled={!selectedSubDistrict || addressLoading}
-                          readOnly={!selectedSubDistrict || addressLoading}
+                          onFocus={() => {
+                            if (postalCodeResults.length > 0) {
+                              setShowPostalCodeDropdown(true);
+                            }
+                          }}
+                          disabled={addressLoading}
+                          maxLength={5}
                           className={
                             commonInputClass +
-                            (!selectedSubDistrict || addressLoading
-                              ? " bg-slate-100"
-                              : "")
+                            (addressLoading ? " bg-slate-100" : "")
                           }
-                          placeholder="กรุณาเลือกตำบล/แขวงเพื่อกรอกรหัสไปรษณีย์"
+                          placeholder="กรอกรหัสไปรษณีย์เพื่อค้นหาที่อยู่ (5 หลัก)"
                         />
+                        {showPostalCodeDropdown && postalCodeResults.length > 0 && (
+                          <div 
+                            className="absolute z-[100] w-full mt-1 bg-white border-2 border-blue-500 rounded-md shadow-xl max-h-60 overflow-auto"
+                            style={{ top: '100%', left: 0 }}
+                          >
+                            <div className="px-3 py-2 bg-blue-50 border-b border-blue-200 text-xs font-medium text-blue-700 sticky top-0">
+                              พบ {postalCodeResults.length} ที่อยู่สำหรับรหัสไปรษณีย์ {shippingAddress.postalCode}
+                            </div>
+                            {postalCodeResults.map((result, index) => (
+                              <div
+                                key={index}
+                                className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                onClick={() => {
+                                  // Auto-fill province, district, and subdistrict from postal code
+                                  setAddressLoading(true);
+                                  setShowPostalCodeDropdown(false);
+                                  
+                                  // Ensure provinces are loaded
+                                  let provincesPromise = Promise.resolve(provinces);
+                                  if (provinces.length === 0) {
+                                    provincesPromise = fetch(
+                                      `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                                    )
+                                      .then((res) => res.json())
+                                      .then((data) => {
+                                        if (data.success) {
+                                          setProvinces(data.data || []);
+                                          return data.data || [];
+                                        }
+                                        return [];
+                                      });
+                                  }
+
+                                  provincesPromise.then((provs) => {
+                                    const province = provs.find(
+                                      (p: any) => p.id === result.province_id,
+                                    );
+                                    if (province) {
+                                      setSelectedProvince(province.id);
+                                      setSelectedGeography(province.geography_id);
+                                      setProvinceSearchTerm(province.name_th);
+                                      setShowProvinceDropdown(false);
+
+                                      // Load districts for this province
+                                      return fetch(
+                                        `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                                      ).then((res) => res.json());
+                                    }
+                                    setAddressLoading(false);
+                                    return { success: false, data: [] };
+                                  })
+                                    .then((data) => {
+                                      if (data.success) {
+                                        setDistricts(data.data || []);
+                                        // Find and set district
+                                        const district = data.data.find(
+                                          (d: any) => d.id === result.district_id,
+                                        );
+                                        if (district) {
+                                          setSelectedDistrict(district.id);
+                                          setDistrictSearchTerm(district.name_th);
+                                          setShowDistrictDropdown(false);
+
+                                          // Load subdistricts for this district
+                                          return fetch(
+                                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                                          ).then((res) => res.json());
+                                        }
+                                      }
+                                      setAddressLoading(false);
+                                      return { success: false, data: [] };
+                                    })
+                                    .then((data) => {
+                                      if (data.success) {
+                                        setSubDistricts(data.data || []);
+                                        // Find and set subdistrict
+                                        const subDistrict = data.data.find(
+                                          (sd: any) =>
+                                            sd.id === result.id && sd.zip_code === result.zip_code,
+                                        );
+                                        if (subDistrict) {
+                                          setSelectedSubDistrict(subDistrict.id);
+                                          setSubDistrictSearchTerm(subDistrict.name_th);
+                                          setShowSubDistrictDropdown(false);
+                                          setShippingAddress((prev) => ({
+                                            ...prev,
+                                            province: result.province || prev.province,
+                                            district: result.district || prev.district,
+                                            subdistrict:
+                                              result.sub_district || prev.subdistrict,
+                                            postalCode:
+                                              result.zip_code || prev.postalCode,
+                                          }));
+                                        }
+                                      }
+                                      setAddressLoading(false);
+                                      setPostalCodeResults([]);
+                                    })
+                                    .catch((error) => {
+                                      console.error(
+                                        "Error loading address data:",
+                                        error,
+                                      );
+                                      setAddressLoading(false);
+                                    });
+                                }}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {result.sub_district} ({result.zip_code})
+                                </div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {result.district}, {result.province}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {selectedAddressOption === "new" && (
@@ -2842,11 +3903,53 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         type="date"
                         ref={deliveryDateRef}
                         value={orderData.deliveryDate}
-                        onChange={(e) =>
-                          updateOrderData("deliveryDate", e.target.value)
-                        }
+                        min={(() => {
+                          // วันที่ต่ำสุดคือวันนี้
+                          return new Date().toISOString().split("T")[0];
+                        })()}
+                        max={(() => {
+                          // วันที่สูงสุดคือวันที่ 7 ของเดือนถัดไป
+                          const now = new Date();
+                          const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+                          return nextMonth.toISOString().split("T")[0];
+                        })()}
+                        onChange={(e) => {
+                          const selectedDate = e.target.value;
+                          // ตรวจสอบว่าวันที่เลือกไม่เกินวันที่ 7 ของเดือนถัดไป
+                          const now = new Date();
+                          const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+                          const maxDate = nextMonth.toISOString().split("T")[0];
+                          if (selectedDate > maxDate) {
+                            const maxDateObj = new Date(maxDate);
+                            const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                            alert(
+                              `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                            );
+                            // ตั้งค่าเป็นวันที่สูงสุดที่อนุญาต
+                            updateOrderData("deliveryDate", maxDate);
+                            return;
+                          }
+                          updateOrderData("deliveryDate", selectedDate);
+                        }}
                         className={commonInputClass}
                       />
+                      {(() => {
+                        // แสดงข้อความเตือนถ้าวันที่เลือกเกินวันที่ 7 ของเดือนถัดไป
+                        if (!orderData.deliveryDate) return null;
+                        const now = new Date();
+                        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
+                        const maxDate = nextMonth.toISOString().split("T")[0];
+                        if (orderData.deliveryDate > maxDate) {
+                          const maxDateObj = new Date(maxDate);
+                          const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                          return (
+                            <p className="text-red-600 text-xs mt-1">
+                              วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด {maxDateStr})
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div>
                       <label className={commonLabelClass}>หมายเหตุ</label>
@@ -2928,9 +4031,29 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     .map((item, index) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-12 gap-2 items-start p-3 border border-gray-200 rounded-md bg-slate-50"
+                        className="grid gap-2 items-start p-3 border border-gray-200 rounded-md bg-slate-50"
+                        style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
                       >
-                        <div className="col-span-4">
+                        <div className="col-span-2">
+                          <label className="text-xs text-[#4e7397] mb-1 block">
+                            SKU
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="SKU"
+                            value={(() => {
+                              if (item.productId) {
+                                const product = products.find(p => p.id === item.productId);
+                                return product?.sku || '';
+                              }
+                              return '';
+                            })()}
+                            readOnly
+                            className="w-full p-2 border border-gray-300 rounded-md bg-slate-100 text-[#0e141b] text-sm"
+                            disabled={true}
+                          />
+                        </div>
+                        <div className="col-span-3">
                           <label className="text-xs text-[#4e7397] mb-1 block">
                             ชื่อสินค้า
                           </label>
@@ -2954,7 +4077,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             />
                             {/* button to open product selector */}
                             <button
-                              onClick={() => openProductSelector(selectorTab)}
+                              onClick={() => openProductSelector(selectorTab, item.id)}
                               className="px-2 py-1 bg-white border rounded text-sm"
                             >
                               เลือก
@@ -2973,6 +4096,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             step={1}
                             onChange={(e) => {
                               const nextQty = clampQuantity(e.target.value);
+                              const baseTotal = item.isFreebie ? 0 : nextQty * (item.pricePerUnit || 0);
+                              // ป้องกันไม่ให้ส่วนลดเกินยอดขายรวมทั้งหมดเมื่อจำนวนเปลี่ยน
+                              const currentDiscount = item.discount || 0;
+                              const clampedDiscount = Math.max(0, Math.min(currentDiscount, baseTotal));
                               updateOrderData(
                                 "items",
                                 orderData.items?.map((it) =>
@@ -2980,6 +4107,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     ? {
                                         ...it,
                                         quantity: nextQty,
+                                        discount: clampedDiscount,
                                       }
                                     : it,
                                 ),
@@ -3009,22 +4137,66 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           <input
                             type="number"
                             placeholder="ส่วนลด"
-                            value={item.discount}
-                            onChange={(e) =>
+                            value={item.discount || 0}
+                            onChange={(e) => {
+                              const discountValue = Number(e.target.value) || 0;
+                              const baseTotal = item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0);
+                              // ป้องกันไม่ให้ส่วนลดเกินยอดขายรวมทั้งหมด
+                              const clampedDiscount = Math.max(0, Math.min(discountValue, baseTotal));
                               updateOrderData(
                                 "items",
                                 orderData.items?.map((it) =>
                                   it.id === item.id
                                     ? {
                                         ...it,
-                                        discount: Number(e.target.value),
+                                        discount: clampedDiscount,
                                       }
                                     : it,
                                 ),
-                              )
-                            }
+                              );
+                            }}
                             onFocus={onFocusSelectAll}
                             className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
+                            min={0}
+                            max={item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="text-xs text-[#4e7397] mb-1 block">
+                            ยอดรวม
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="ยอดรวม"
+                            value={(() => {
+                              if (item.isFreebie) return 0;
+                              const baseTotal = (item.quantity || 0) * (item.pricePerUnit || 0);
+                              return Math.max(0, baseTotal - (item.discount || 0));
+                            })()}
+                            onChange={(e) => {
+                              const totalValue = Number(e.target.value) || 0;
+                              if (item.isFreebie) return;
+                              const baseTotal = (item.quantity || 0) * (item.pricePerUnit || 0);
+                              // ป้องกันไม่ให้ยอดรวมเกินยอดขายรวมทั้งหมด
+                              const clampedTotal = Math.max(0, Math.min(totalValue, baseTotal));
+                              const calculatedDiscount = Math.max(0, baseTotal - clampedTotal);
+                              updateOrderData(
+                                "items",
+                                orderData.items?.map((it) =>
+                                  it.id === item.id
+                                    ? {
+                                        ...it,
+                                        discount: calculatedDiscount,
+                                      }
+                                    : it,
+                                ),
+                              );
+                            }}
+                            onFocus={onFocusSelectAll}
+                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
+                            disabled={item.isFreebie}
+                            min={0}
+                            max={item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)}
                           />
                         </div>
                         <div className="col-span-1">
@@ -3413,6 +4585,37 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       ref={transferSlipSectionRef}
                       className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50"
                     >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className={commonLabelClass}>
+                            ธนาคารที่รับโอน <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={selectedBankAccountId ?? ""}
+                            onChange={(e) => setSelectedBankAccountId(Number(e.target.value) || null)}
+                            className={commonInputClass}
+                          >
+                            <option value="">เลือกธนาคาร</option>
+                            {bankAccounts.map((bank) => (
+                              <option key={bank.id} value={bank.id}>
+                                {bank.bank} - {bank.bank_number}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={commonLabelClass}>
+                            เวลาที่รับโอน <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={transferDate}
+                            onChange={(e) => setTransferDate(e.target.value)}
+                            className={commonInputClass}
+                            required={orderData.paymentMethod === PaymentMethod.Transfer}
+                          />
+                        </div>
+                      </div>
                       <p className="text-sm text-[#0e141b]">
                         แนบสลิปโอนเงินได้หลายภาพตามต้องการ
                       </p>
@@ -3506,14 +4709,47 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         <input
                           type="number"
                           min="1"
+                          max={(() => {
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                            const parentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            return parentItems.length || 1;
+                          })()}
                           value={numBoxes}
                           onChange={(e) => {
                             clearValidationErrorFor("cod");
-                            setNumBoxes(Math.max(1, Number(e.target.value)));
+                            const newValue = Math.max(1, Number(e.target.value));
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                            const parentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            const maxBoxes = parentItems.length || 1;
+                            if (newValue > maxBoxes) {
+                              alert(
+                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
+                              );
+                              return;
+                            }
+                            setNumBoxes(newValue);
                           }}
                           onFocus={onFocusSelectAll}
                           className={commonInputClass}
                         />
+                        {(() => {
+                          const parentItems = (orderData.items || []).filter(
+                            (it) => !it.parentItemId,
+                          );
+                          const maxBoxes = parentItems.length || 1;
+                          if (numBoxes > maxBoxes) {
+                            return (
+                              <p className="text-red-600 text-xs mt-1">
+                                จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด {maxBoxes} กล่อง)
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       <button
                         onClick={divideCodEqually}
@@ -3555,8 +4791,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             )}
 
             {/* Order Summary */}
-            {
-              <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
+            <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
                 <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">
                   สรุปคำสั่งซื้อ
                 </h3>
@@ -3631,7 +4866,6 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
                 )}
               </div>
-            }
           </div>
         </div>
 
@@ -3699,3 +4933,5 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 };
 
 export default CreateOrderPage;
+
+

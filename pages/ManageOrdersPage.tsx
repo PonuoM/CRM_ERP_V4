@@ -333,6 +333,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             orderDate: r.order_date ?? '',
             deliveryDate: r.delivery_date ?? '',
             shippingAddress: {
+              recipientFirstName: r.recipient_first_name || '',
+              recipientLastName: r.recipient_last_name || '',
               street: r.street || '',
               subdistrict: r.subdistrict || '',
               district: r.district || '',
@@ -398,7 +400,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       const rows = selectedOrders.flatMap(order => {
           const customer = customers.find(c => c.id === order.customerId);
           const seller = users.find(u => u.id === order.creatorId);
-          const address = order.shippingAddress || { street: '', subdistrict: '', district: '', province: '', postalCode: '' };
+          const address =
+            order.shippingAddress || {
+              recipientFirstName: '',
+              recipientLastName: '',
+              street: '',
+              subdistrict: '',
+              district: '',
+              province: '',
+              postalCode: '',
+            };
 
 
           return order.items.map(item => {
@@ -507,11 +518,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             orderDate: r.order_date ?? fallback.orderDate,
             deliveryDate: r.delivery_date ?? fallback.deliveryDate,
             shippingAddress: {
+              recipientFirstName:
+                (r.recipient_first_name ??
+                  (fallback as any).shippingAddress?.recipientFirstName) || '',
+              recipientLastName:
+                (r.recipient_last_name ??
+                  (fallback as any).shippingAddress?.recipientLastName) || '',
               street: (r.street ?? (fallback as any).shippingAddress?.street) || '',
-              subdistrict: (r.subdistrict ?? (fallback as any).shippingAddress?.subdistrict) || '',
-              district: (r.district ?? (fallback as any).shippingAddress?.district) || '',
-              province: (r.province ?? (fallback as any).shippingAddress?.province) || '',
-              postalCode: (r.postal_code ?? (fallback as any).shippingAddress?.postalCode) || '',
+              subdistrict:
+                (r.subdistrict ?? (fallback as any).shippingAddress?.subdistrict) || '',
+              district:
+                (r.district ?? (fallback as any).shippingAddress?.district) || '',
+              province:
+                (r.province ?? (fallback as any).shippingAddress?.province) || '',
+              postalCode:
+                (r.postal_code ?? (fallback as any).shippingAddress?.postalCode) || '',
             },
             items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
               id: Number(it.id ?? i + 1),

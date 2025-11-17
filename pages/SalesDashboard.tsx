@@ -101,7 +101,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
 
   return (
     <>
-      <style jsx>{legendStyles}</style>
+      <style>{legendStyles}</style>
       <div className="p-6">
         {/* Filters (layout only) */}
         <div className="bg-white border rounded-lg p-4 mb-6">

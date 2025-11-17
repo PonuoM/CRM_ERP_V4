@@ -3,6 +3,7 @@ import { Calendar, Pencil, Download } from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
+  listPlatforms,
   createPage,
   updatePage,
   listPromotions,
@@ -67,6 +68,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
   >("dashboard");
   const [pages, setPages] = useState<Page[]>([]);
+  const [platforms, setPlatforms] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
   // Pages user has access to for filters
@@ -346,8 +348,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     async function load() {
       setLoading(true);
       try {
-        const [pg, promo, userPages] = await Promise.all([
+        const [pg, plats, promo, userPages] = await Promise.all([
           listActivePages(currentUser.companyId),
+          listPlatforms(currentUser.companyId, true),
           listPromotions(),
           loadPagesWithUserAccess(),
         ]);
@@ -361,6 +364,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 url: r.url ?? undefined,
                 companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
                 active: Boolean(r.active),
+              }))
+            : [],
+        );
+        setPlatforms(
+          Array.isArray(plats)
+            ? plats.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                displayName: p.display_name,
+                description: p.description,
+                active: p.active,
+                sortOrder: p.sort_order,
               }))
             : [],
         );
@@ -1449,9 +1464,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     setNewPage((v) => ({ ...v, platform: e.target.value }))
                   }
                 >
-                  <option value="Facebook">Facebook</option>
-                  <option value="TikTok">TikTok</option>
-                  <option value="Line">Line</option>
+                  {platforms
+                    .filter((p) => p.active)
+                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                    .map((platform) => (
+                      <option key={platform.id} value={platform.name}>
+                        {platform.displayName || platform.name}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div>

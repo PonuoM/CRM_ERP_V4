@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, User } from "@/types";
 import Modal from "@/components/Modal";
-import { createPage, updatePage, listPages } from "@/services/api";
+import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
 
 // Function to sync pages from pages.fm API to database
@@ -315,10 +315,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [showHiddenPages, setShowHiddenPages] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Platforms state
+  const [platforms, setPlatforms] = useState<any[]>([]);
+
   // Add Page modal state
   const [addPageModalOpen, setAddPageModalOpen] = useState(false);
   const [newPageName, setNewPageName] = useState("");
-  const [newPagePlatform, setNewPagePlatform] = useState("facebook");
+  const [newPagePlatform, setNewPagePlatform] = useState("");
   const [newPageUrl, setNewPageUrl] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
 
@@ -401,6 +404,36 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
       </span>
     );
   };
+
+  // Fetch platforms from API
+  useEffect(() => {
+    const loadPlatforms = async () => {
+      try {
+        const plats = await listPlatforms(currentUser?.companyId, true);
+        setPlatforms(
+          Array.isArray(plats)
+            ? plats.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                displayName: p.display_name,
+                description: p.description,
+                active: p.active,
+                sortOrder: p.sort_order,
+              }))
+            : []
+        );
+        // Set default platform if available
+        if (plats && plats.length > 0 && !newPagePlatform) {
+          setNewPagePlatform(plats[0].name);
+        }
+      } catch (error) {
+        console.error("Error loading platforms:", error);
+      }
+    };
+    if (currentUser?.companyId) {
+      loadPlatforms();
+    }
+  }, [currentUser?.companyId]);
 
   // Fetch pages from API
   const fetchPages = async () => {
@@ -800,12 +833,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   value={newPagePlatform}
                   onChange={(e) => setNewPagePlatform(e.target.value)}
                 >
-                  <option value="facebook">Facebook</option>
-                  <option value="line">LINE</option>
-                  <option value="tiktok">TikTok</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="youtube">YouTube</option>
-                  <option value="website">Website</option>
+                  <option value="">เลือกแพลตฟอร์ม</option>
+                  {platforms
+                    .filter((p) => p.active)
+                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                    .map((platform) => (
+                      <option key={platform.id} value={platform.name}>
+                        {platform.displayName || platform.name}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div>
@@ -830,6 +866,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   onClick={async () => {
                     if (!newPageName.trim()) {
                       alert("กรุณากรอกชื่อเพจ");
+                      return;
+                    }
+                    if (!newPagePlatform) {
+                      alert("กรุณาเลือกแพลตฟอร์ม");
                       return;
                     }
                     if (!currentUser?.companyId) {
@@ -867,7 +907,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
                       // Reset form and close modal
                       setNewPageName("");
-                      setNewPagePlatform("facebook");
+                      setNewPagePlatform(platforms.length > 0 ? platforms[0].name : "");
                       setNewPageUrl("");
                       setAddPageModalOpen(false);
 

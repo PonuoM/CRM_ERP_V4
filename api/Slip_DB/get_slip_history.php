@@ -12,11 +12,20 @@ require_once "../config.php";
 
 // Get parameters
 $order_id = isset($_GET["order_id"]) ? trim($_GET["order_id"]) : "";
+$company_id = isset($_GET["company_id"]) ? (int) $_GET["company_id"] : 0;
 
 if (empty($order_id)) {
   echo json_encode([
     "success" => false,
     "message" => "Order ID is required",
+  ]);
+  exit();
+}
+
+if ($company_id <= 0) {
+  echo json_encode([
+    "success" => false,
+    "message" => "Company ID is required",
   ]);
   exit();
 }
@@ -40,12 +49,13 @@ try {
               ba.bank,
               ba.bank_number
           FROM order_slips os
+          INNER JOIN orders o ON o.id = os.order_id
           LEFT JOIN bank_account ba ON ba.id = os.bank_account_id
-          WHERE os.order_id = ? AND os.url IS NOT NULL
+          WHERE os.order_id = ? AND o.company_id = ? AND os.url IS NOT NULL
           ORDER BY os.created_at DESC";
 
   $stmt = $conn->prepare($sql);
-  $stmt->execute([$order_id]);
+  $stmt->execute([$order_id, $company_id]);
 
   $slipHistory = [];
 

@@ -385,11 +385,11 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 className="w-full p-2 border rounded"
               >
                 <option value="">ทั้งหมด</option>
-                <option value="A+">A+</option>
                 <option value="A">A</option>
                 <option value="B">B</option>
                 <option value="C">C</option>
                 <option value="D">D</option>
+                <option value="E">E</option>
               </select>
             </div>
             <div>

@@ -46,6 +46,7 @@ const OrderAllocationPage: React.FC = () => {
   const [selectedAllocIds, setSelectedAllocIds] = useState<Set<number>>(new Set());
   const [orderWarehouseValues, setOrderWarehouseValues] = useState<Record<string, number | null>>({});
   const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
+  const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const pendingLotFetch = useRef<Set<string>>(new Set());
 
   const makeLotKey = (productId: number, warehouseId?: number | null) =>
@@ -328,6 +329,13 @@ const OrderAllocationPage: React.FC = () => {
       return;
     }
 
+    // Expand the order to show details
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      newSet.add(orderId);
+      return newSet;
+    });
+
     setOrderWarehouseOverride(orderId, warehouseId);
     setPendingAllocations((prev) => {
       const next = { ...prev };
@@ -349,43 +357,83 @@ const OrderAllocationPage: React.FC = () => {
     if (!selectedItems.length) return;
 
     setConfirmingOrderId(orderId);
+    const successfulItems: Allocation[] = [];
+    const failedItems: { item: Allocation; error: string }[] = [];
+    
     try {
       for (const item of selectedItems) {
-        const pending = pendingAllocations[item.id] ?? {};
-        const warehouseId =
-          pending.warehouseId ??
-          item.warehouse_id ??
-          (orderWarehouseValue ?? order?.warehouse_id ?? null) ??
-          suggested ??
-          null;
-        if (!warehouseId) {
-          console.warn('Missing warehouse for allocation', item.id);
-          continue;
-        }
-        const quantity =
-          pending.quantity ??
-          (item.allocated_quantity > 0 ? item.allocated_quantity : item.required_quantity);
-        const lotChoice = pending.lotNumber ?? (item.lot_number ?? '__AUTO__');
+        try {
+          const pending = pendingAllocations[item.id] ?? {};
+          const warehouseId =
+            pending.warehouseId ??
+            item.warehouse_id ??
+            (orderWarehouseValue ?? order?.warehouse_id ?? null) ??
+            suggested ??
+            null;
+          if (!warehouseId) {
+            console.warn('Missing warehouse for allocation', item.id);
+            failedItems.push({ item, error: 'ไม่ได้เลือกคลังสินค้า' });
+            continue;
+          }
+          const quantity =
+            pending.quantity ??
+            (item.allocated_quantity > 0 ? item.allocated_quantity : item.required_quantity);
+          const lotChoice = pending.lotNumber ?? (item.lot_number ?? '__AUTO__');
 
-        const payload: any = {
-          warehouseId,
-          allocatedQuantity: quantity,
-          status: 'ALLOCATED',
-        };
-        if (lotChoice !== '__AUTO__') {
-          payload.lotNumber = lotChoice;
-        }
+          const payload: any = {
+            warehouseId,
+            allocatedQuantity: quantity,
+            status: 'ALLOCATED',
+            allowNegativeStock: allowNegativeStock,
+          };
+          if (lotChoice !== '__AUTO__') {
+            payload.lotNumber = lotChoice;
+          }
 
-        await updateAllocation(item.id, payload);
+          await updateAllocation(item.id, payload);
+          successfulItems.push(item);
+        } catch (itemError: any) {
+          console.error('Failed to allocate item', item.id, itemError);
+          const errorMessage = itemError?.data?.message || itemError?.message || 'ไม่ทราบสาเหตุ';
+          let userMessage = '';
+          
+          if (errorMessage.includes('INSUFFICIENT_STOCK')) {
+            const productName = (item as any).product_name || `สินค้า #${item.product_id}`;
+            userMessage = `${productName}: สต็อกไม่พอ (ต้องการ ${item.required_quantity})`;
+          } else if (errorMessage.includes('WAREHOUSE_REQUIRED')) {
+            userMessage = 'กรุณาเลือกคลังสินค้า';
+          } else {
+            userMessage = `เกิดข้อผิดพลาด: ${errorMessage}`;
+          }
+          
+          failedItems.push({ item, error: userMessage });
+        }
       }
 
+      // Refresh allocations to get updated status
       const refreshed = await listAllocations({ status });
       setAllocations(refreshed as any);
 
-      const affectedIds = selectedItems.map((item: Allocation) => item.id);
-      clearPendingForItems(affectedIds);
-      selectAllocationItems(affectedIds, false);
-      setOrderWarehouseOverride(orderId, undefined);
+      // Show result message
+      if (successfulItems.length > 0 && failedItems.length === 0) {
+        // All succeeded
+        const affectedIds = successfulItems.map((item: Allocation) => item.id);
+        clearPendingForItems(affectedIds);
+        selectAllocationItems(affectedIds, false);
+        setOrderWarehouseOverride(orderId, undefined);
+        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
+      } else if (successfulItems.length > 0 && failedItems.length > 0) {
+        // Partial success
+        const affectedIds = successfulItems.map((item: Allocation) => item.id);
+        clearPendingForItems(affectedIds);
+        selectAllocationItems(affectedIds, false);
+        const failedMessages = failedItems.map(f => f.error).join('\n');
+        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
+      } else if (failedItems.length > 0) {
+        // All failed
+        const failedMessages = failedItems.map(f => f.error).join('\n');
+        alert(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
+      }
     } catch (error) {
       console.error('Failed to confirm allocations', error);
       alert('ยืนยันการจัดสรรไม่สำเร็จ');
@@ -402,15 +450,97 @@ const OrderAllocationPage: React.FC = () => {
     setOrderWarehouseOverride(orderId, undefined);
   };
 
+  // Function to allocate and confirm all items in an order immediately
+  const handleAllocateAndConfirm = async (orderData: any) => {
+    const { orderId, items, order, suggested, orderWarehouseValue } = orderData;
+    
+    const warehouseId =
+      orderWarehouseValue ??
+      (orderData.headerWarehouseSelectValue ? Number(orderData.headerWarehouseSelectValue) : null) ??
+      order?.warehouse_id ??
+      suggested ??
+      null;
+
+    if (!warehouseId) {
+      alert('กรุณาเลือกคลังสินค้า');
+      return;
+    }
+
+    setConfirmingOrderId(orderId);
+    const successfulItems: Allocation[] = [];
+    const failedItems: { item: Allocation; error: string }[] = [];
+
+    try {
+      // Expand order to show progress
+      setExpandedOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.add(orderId);
+        return newSet;
+      });
+
+      for (const item of items) {
+        try {
+          const quantity = item.allocated_quantity > 0 ? item.allocated_quantity : item.required_quantity;
+          
+          const payload: any = {
+            warehouseId,
+            allocatedQuantity: quantity,
+            status: 'ALLOCATED',
+            allowNegativeStock: allowNegativeStock,
+          };
+
+          await updateAllocation(item.id, payload);
+          successfulItems.push(item);
+        } catch (itemError: any) {
+          console.error('Failed to allocate item', item.id, itemError);
+          const errorMessage = itemError?.data?.message || itemError?.message || 'ไม่ทราบสาเหตุ';
+          const productName = (item as any).product_name || `สินค้า #${item.product_id}`;
+          failedItems.push({ item, error: `${productName}: ${errorMessage}` });
+        }
+      }
+
+      // Refresh allocations
+      const refreshed = await listAllocations({ status });
+      setAllocations(refreshed as any);
+
+      // Show result
+      if (successfulItems.length > 0 && failedItems.length === 0) {
+        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ`);
+      } else if (successfulItems.length > 0 && failedItems.length > 0) {
+        const failedMessages = failedItems.map(f => f.error).join('\n');
+        alert(`จัดสรรสำเร็จ ${successfulItems.length} รายการ\n\nไม่สำเร็จ:\n${failedMessages}`);
+      } else if (failedItems.length > 0) {
+        const failedMessages = failedItems.map(f => f.error).join('\n');
+        alert(`ไม่สามารถจัดสรรได้:\n${failedMessages}`);
+      }
+    } catch (error) {
+      console.error('Failed to allocate and confirm', error);
+      alert('จัดสรรไม่สำเร็จ');
+    } finally {
+      setConfirmingOrderId(null);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-[#0e141b]">จัดสรรคลังสำหรับออเดอร์</h2>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-[#4e7397]">สถานะ:</label>
-          <select value={status} onChange={e => setStatus(e.target.value as any)} className="border rounded px-2 py-1">
-            {['PENDING','ALLOCATED','PICKED','SHIPPED','CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowNegativeStock}
+              onChange={(e) => setAllowNegativeStock(e.target.checked)}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+            />
+            <span className="text-sm text-[#4e7397]">อนุญาตให้จัดสรรติดลบได้ (สำหรับบริษัทที่ไม่ใช้ระบบคลัง)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-[#4e7397]">สถานะ:</label>
+            <select value={status} onChange={e => setStatus(e.target.value as any)} className="border rounded px-2 py-1">
+              {['PENDING','ALLOCATED','PICKED','SHIPPED','CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -494,21 +624,39 @@ const OrderAllocationPage: React.FC = () => {
                       {isFullyAllocated ? (
                         <span className="px-3 py-1 bg-green-600 text-white rounded text-sm">จัดสรรแล้ว</span>
                       ) : (
-                        <button
-                          onClick={() => {
-                            const warehouseId =
-                              orderWarehouseValue ??
-                              (headerWarehouseSelectValue ? Number(headerWarehouseSelectValue) : null);
-                            if (warehouseId != null) {
-                              handleAllocateOrder(orderData, warehouseId);
-                            } else {
-                              alert('กรุณาเลือกคลังสินค้า');
-                            }
-                          }}
-                          className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                        >
-                          จัดสรรทั้งหมด
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const warehouseId =
+                                orderWarehouseValue ??
+                                (headerWarehouseSelectValue ? Number(headerWarehouseSelectValue) : null);
+                              if (warehouseId != null) {
+                                handleAllocateOrder(orderData, warehouseId);
+                              } else {
+                                alert('กรุณาเลือกคลังสินค้า');
+                              }
+                            }}
+                            className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 cursor-pointer"
+                          >
+                            จัดสรรทั้งหมด
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (confirmingOrderId === orderId) return;
+                              handleAllocateAndConfirm(orderData);
+                            }}
+                            disabled={confirmingOrderId === orderId}
+                            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                          >
+                            {confirmingOrderId === orderId ? 'กำลังจัดสรร...' : 'จัดสรรและยืนยันทันที'}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -531,7 +679,7 @@ const OrderAllocationPage: React.FC = () => {
                               const resolvedWarehouseId =
                                 pending.warehouseId ??
                                 item.warehouse_id ??
-                                orderLevelWarehouse ??
+                                orderWarehouseValue ??
                                 suggested ??
                                 null;
                               const warehouseSelectValue = resolvedWarehouseId != null ? String(resolvedWarehouseId) : '';

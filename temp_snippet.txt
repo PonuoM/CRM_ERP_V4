@@ -1,0 +1,9 @@
+﻿<div className="space-y-3">
+                    <div>
+                      <label className={commonLabelClass}>
+                        บ้านเลขที่, ถนน
+                      </label>
+                      <input
+                        type="text"
+                        name="street"
+     

@@ -3,7 +3,7 @@ import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Ac
 import Modal from './Modal';
 import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip } from './OrderTable';
-import { apiFetch, createOrderSlip, deleteOrderSlip } from '../services/api';
+import { apiFetch, createOrderSlip, deleteOrderSlip, listBankAccounts } from '../services/api';
 
 interface OrderManagementModalProps {
   order: Order;
@@ -90,6 +90,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
   const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || null);
   const [slips, setSlips] = useState<{ id: number; url: string }[]>(Array.isArray((order as any).slips) ? (order as any).slips.map((s:any)=>({id:Number(s.id),url:String(s.url)})) : []);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   
   
   useEffect(() => {
@@ -97,6 +98,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     setSlipPreview(order.slipUrl || null);
     setSlips(Array.isArray((order as any).slips) ? (order as any).slips.map((s:any)=>({id:Number(s.id),url:String(s.url)})) : []);
   }, [order]);
+
+  // Fetch bank accounts for display
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const accounts = await listBankAccounts(currentUser.companyId, true);
+        if (!cancelled) {
+          setBankAccounts(accounts || []);
+        }
+      } catch (e) {
+        console.error('Failed to load bank accounts', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.companyId]);
 
   // Fetch full order details if minimal data is passed in
   useEffect(() => {
@@ -114,7 +132,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           slipUrl: r.slip_url ?? prev.slipUrl,
           amountPaid: typeof r.amount_paid !== 'undefined' ? Number(r.amount_paid) : prev.amountPaid,
           codAmount: typeof r.cod_amount !== 'undefined' ? Number(r.cod_amount) : (prev as any).codAmount,
+          bankAccountId: typeof r.bank_account_id !== 'undefined' ? Number(r.bank_account_id) : prev.bankAccountId,
+          transferDate: r.transfer_date ?? prev.transferDate,
           shippingAddress: {
+            recipientFirstName: mergeAddressPart(r.recipient_first_name, prev.shippingAddress?.recipientFirstName),
+            recipientLastName: mergeAddressPart(r.recipient_last_name, prev.shippingAddress?.recipientLastName),
             street: mergeAddressPart(r.street, prev.shippingAddress?.street),
             subdistrict: mergeAddressPart(r.subdistrict, prev.shippingAddress?.subdistrict),
             district: mergeAddressPart(r.district, prev.shippingAddress?.district),
@@ -270,6 +292,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           return trimmed;
       };
 
+      const recipientFirst = sanitize(address?.recipientFirstName);
+      const recipientLast = sanitize(address?.recipientLastName);
       const street = sanitize(address?.street);
       const subdistrict = sanitize(address?.subdistrict);
       const district = sanitize(address?.district);
@@ -277,13 +301,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       const postalCode = sanitize(address?.postalCode);
 
       const parts: string[] = [];
+      if (recipientFirst || recipientLast)
+        parts.push(
+          `Recipient: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()}`,
+        );
       if (street) parts.push(street);
-      if (subdistrict) parts.push(`ต.${subdistrict}`);
-      if (district) parts.push(`อ.${district}`);
-      if (province) parts.push(`จ.${province}`);
+      if (subdistrict) parts.push(subdistrict);
+      if (district) parts.push(district);
+      if (province) parts.push(province);
       if (postalCode) parts.push(postalCode);
 
-      return parts.length > 0 ? parts.join(' ') : '-';
+      return parts.length > 0 ? parts.join(", ") : "-";
   }
   
   const remainingBalance = useMemo(() => {
@@ -397,6 +425,33 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                             <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
                         </div>
                     </div>
+                    {/* แสดงข้อมูลธนาคารและเวลาโอน */}
+                    {(currentOrder.bankAccountId || currentOrder.transferDate) && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
+                        <div className="text-xs text-blue-700 space-y-1">
+                          {currentOrder.bankAccountId && (() => {
+                            const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+                            return (
+                              <p>
+                                ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number}` : `ID: ${currentOrder.bankAccountId}`}
+                              </p>
+                            );
+                          })()}
+                          {currentOrder.transferDate && (
+                            <p>
+                              เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                 </div>
                 
                 {/* แสดงข้อมูลการตรวจสอบสลิป */}

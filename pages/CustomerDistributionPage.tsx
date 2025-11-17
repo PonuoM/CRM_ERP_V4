@@ -24,6 +24,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { listCustomersBySource, updateCustomer } from "@/services/api";
+import { calculateCustomerGrade } from "@/utils/customerGrade";
 
 interface CustomerDistributionPageProps {
   allCustomers: Customer[];
@@ -55,11 +56,11 @@ const DateFilterButton: React.FC<{
 );
 
 const gradeOrder = [
-  CustomerGrade.APlus,
   CustomerGrade.A,
   CustomerGrade.B,
   CustomerGrade.C,
   CustomerGrade.D,
+  CustomerGrade.E,
 ];
 
 const toLifecycleStatus = (
@@ -166,7 +167,7 @@ const normalizeApiCustomer = (api: any): Customer => {
     ownershipExpires: api?.ownership_expires ?? "",
     lifecycleStatus: toLifecycleStatus(api?.lifecycle_status),
     behavioralStatus: toBehavioralStatus(api?.behavioral_status),
-    grade: (api?.grade ?? CustomerGrade.C) as CustomerGrade,
+    grade: calculateCustomerGrade(Number(api?.total_purchases ?? 0)),
     tags,
     assignmentHistory,
     totalPurchases: Number(api?.total_purchases ?? 0),
@@ -205,7 +206,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const [targetStatus, setTargetStatus] = useState<CustomerLifecycleStatus>(
     CustomerLifecycleStatus.DailyDistribution,
   );
-  const [excludeGradeAPlus, setExcludeGradeAPlus] = useState(true);
+  const excludeGradeA = true;
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
   const [distributionCount, setDistributionCount] = useState<string>("");
   const [distributionCountError, setDistributionCountError] =
@@ -310,11 +311,11 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     return {
       total: agentCustomers.length,
-      [CustomerGrade.APlus]: gradeCounts[CustomerGrade.APlus] || 0,
       [CustomerGrade.A]: gradeCounts[CustomerGrade.A] || 0,
       [CustomerGrade.B]: gradeCounts[CustomerGrade.B] || 0,
       [CustomerGrade.C]: gradeCounts[CustomerGrade.C] || 0,
       [CustomerGrade.D]: gradeCounts[CustomerGrade.D] || 0,
+      [CustomerGrade.E]: gradeCounts[CustomerGrade.E] || 0,
     };
   };
 
@@ -390,25 +391,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     switch (activeTab) {
       case "average":
-        if (excludeGradeAPlus) {
-          customers = customers.filter(
-            (c) =>
-              c.grade !== CustomerGrade.A && c.grade !== CustomerGrade.APlus,
-          );
+        if (excludeGradeA) {
+          customers = customers.filter((c) => c.grade !== CustomerGrade.A);
         }
         break;
       case "gradeA":
-        customers = customers.filter(
-          (c) => c.grade === CustomerGrade.A || c.grade === CustomerGrade.APlus,
-        );
+        customers = customers.filter((c) => c.grade === CustomerGrade.A);
         break;
       case "backlog":
         // แจกย้อนหลัง - สามารถเพิ่ม logic พิเศษได้ที่นี่
-        if (excludeGradeAPlus) {
-          customers = customers.filter(
-            (c) =>
-              c.grade !== CustomerGrade.A && c.grade !== CustomerGrade.APlus,
-          );
+        if (excludeGradeA) {
+          customers = customers.filter((c) => c.grade !== CustomerGrade.A);
         }
         break;
     }
@@ -417,7 +410,6 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     dataCustomers,
     activeTab,
     customerType,
-    excludeGradeAPlus,
     activeDatePreset,
     dateRange,
     poolSource,
@@ -913,7 +905,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   htmlFor="grade-a-mode"
                   className="ml-2 text-sm text-gray-700"
                 >
-                  แจกเกรด A/A+ เท่านั้น
+                  แจกเกรด A เท่านั้น
                 </label>
               </div>
             </div>

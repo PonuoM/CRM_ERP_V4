@@ -52,11 +52,11 @@ interface CustomerGradeChartProps {
 }
 
 const gradeColors: Record<string, string> = {
-  [CustomerGrade.APlus]: "#6EE7B7",
   [CustomerGrade.A]: "#34D399",
-  [CustomerGrade.B]: "#A7F3D0",
+  [CustomerGrade.B]: "#6EE7B7",
   [CustomerGrade.C]: "#FCD34D",
   [CustomerGrade.D]: "#FCA5A5",
+  [CustomerGrade.E]: "#F87171",
 };
 
 export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({

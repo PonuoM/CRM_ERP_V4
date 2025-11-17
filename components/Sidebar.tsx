@@ -43,10 +43,10 @@ const PAGE_STATS_OVERVIEW = "Page Performance";
 const PAGE_ENGAGEMENT_STATS = "Engagement Insights";
 const CALL_MGMT = "Call Management";
 const PROMO_MGMT = "Promotions";
-const PAYMENT_SLIP_MGMT = "Upload สลิปโอนเงิน";
-const PAYMENT_SLIP_UPLOAD = "Upload";
-const PAYMENT_SLIP_ALL = "สลิปทั้งหมด";
-const PAYMENT_SLIP_DETAILS = "รายละเอียดสลิป";
+const PAYMENT_SLIP_MGMT = "Slip Uploads";
+const PAYMENT_SLIP_UPLOAD = "Slip Upload";
+const PAYMENT_SLIP_ALL = "All Slips";
+const PAYMENT_SLIP_DETAILS = "Slip Details";
 
 const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -85,6 +85,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     Teams: "ทีม",
     Team: "ทีม",
     Pages: "หน้า",
+    Platforms: "แพลตฟอร์ม",
+    "Bank Accounts": "จัดการธนาคาร",
     Tags: "แท็ก",
     Orders: "การสั่งซื้อ",
     Customers: "ลูกค้า",
@@ -117,10 +119,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Page Performance": "ประสิทธิภาพหน้า",
     "Engagement Insights": "ข้อมูลเชิงลึกการมีส่วนร่วม",
     "Customer Pools": "กลุ่มลูกค้า",
-    "Upload สลิปโอนเงิน": "Upload สลิปโอนเงิน",
+    "Slip Uploads": "Upload สลิปโอนเงิน",
+    "Slip Upload": "Upload",
     Upload: "Upload",
-    สลิปทั้งหมด: "สลิปทั้งหมด",
-    รายละเอียดสลิป: "รายละเอียดสลิป",
+    "All Slips": "สลิปทั้งหมด",
+    "Slip Details": "รายละเอียดสลิป",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -199,6 +202,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         key === "data.users" ||
         key === "data.products" ||
         key === "data.pages" ||
+        key === "data.platforms" ||
+        key === "data.bank_accounts" ||
         key === "data.tags"
       );
     }
@@ -220,6 +225,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       : []),
     ...(allowDataItem("data.pages") && canView("data.pages")
       ? ([{ icon: Share2, label: "Pages" }] as NavItem[])
+      : []),
+    ...(allowDataItem("data.platforms") && canView("data.platforms")
+      ? ([{ icon: Share2, label: "Platforms" }] as NavItem[])
+      : []),
+    ...(allowDataItem("data.bank_accounts") && canView("data.bank_accounts")
+      ? ([{ icon: Database, label: "Bank Accounts" }] as NavItem[])
       : []),
     ...(allowDataItem("data.tags") && canView("data.tags")
       ? ([{ icon: FileText, label: "Tags" }] as NavItem[])
@@ -355,7 +366,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.search")
             ? ([{ icon: Search, label: "Search" }] as NavItem[])
             : []),
-          callGroup,
+          paymentSlipGroup,
         ];
       case UserRole.Telesale:
       case UserRole.Supervisor: {
@@ -370,6 +381,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.search")
             ? ([{ icon: Search, label: "Search" }] as NavItem[])
             : []),
+          paymentSlipGroup,
           callGroup,
         ];
         if (user.role === UserRole.Supervisor) {

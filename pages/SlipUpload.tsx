@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { AlertCircle, CheckCircle, FileText } from "lucide-react";
+import { uploadSlipImageFile, createOrderSlipWithPayment } from "../services/api";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface Order {
   id: number;
@@ -59,7 +61,11 @@ interface SlipHistory {
   updated_at: string;
 }
 
+// Fetch only orders that chose the "receive goods first" payment path
+const PAY_AFTER_METHOD = "PayAfter";
+
 const SlipUpload: React.FC = () => {
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -72,7 +78,17 @@ const SlipUpload: React.FC = () => {
     pageSize: 10,
     maxPage: 1,
   });
-  const [filters, setFilters] = useState<FilterOptions>({
+  // Input filters - what user is typing (not applied until search button clicked)
+  const [inputFilters, setInputFilters] = useState<FilterOptions>({
+    order_id: "",
+    customer_name: "",
+    phone: "",
+    sale_month: "",
+    sale_year: "",
+  });
+  
+  // Active filters - what's actually being used for search
+  const [activeFilters, setActiveFilters] = useState<FilterOptions>({
     order_id: "",
     customer_name: "",
     phone: "",
@@ -123,7 +139,7 @@ const SlipUpload: React.FC = () => {
       }
 
       const response = await fetch(
-        `/api/Bank_DB/get_bank_accounts.php?company_id=${companyId}`,
+        `${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${companyId}`,
       );
       const data = await response.json();
 
@@ -176,7 +192,7 @@ const SlipUpload: React.FC = () => {
       const companyId = user.company_id;
 
       const response = await fetch(
-        `/api/Slip_DB/get_slip_history.php?order_id=${orderId}`,
+        `${apiBase}/Slip_DB/get_slip_history.php?order_id=${orderId}&company_id=${companyId}`,
       );
       const data = await response.json();
 
@@ -217,19 +233,12 @@ const SlipUpload: React.FC = () => {
     if (!slipImage) return null;
     try {
       setUploadingImage(true);
-      const form = new FormData();
-      form.append("file", slipImage);
-      form.append("order_id", orderId);
-      const res = await fetch("/api/Slip_DB/upload_slip_image.php", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!data.success) {
-        showMessage("error", data.message || "อัปโหลดรูปสลิปไม่สำเร็จ");
+      const result = await uploadSlipImageFile(orderId, slipImage);
+      if (!result.success) {
+        showMessage("error", result.message || "อัปโหลดรูปสลิปไม่สำเร็จ");
         return null;
       }
-      return data.url as string;
+      return result.url || null;
     } catch (err) {
       console.error("Upload slip image error", err);
       showMessage("error", "เกิดข้อผิดพลาดระหว่างอัปโหลดรูปสลิป");
@@ -282,25 +291,15 @@ const SlipUpload: React.FC = () => {
         }
       }
 
-      // Insert the order slip record directly
-      const slipData = {
-        order_id: slipFormData.order_id,
+      // Insert the order slip record using API service
+      const insertResult = await createOrderSlipWithPayment({
+        orderId: slipFormData.order_id,
         amount: parseInt(slipFormData.amount),
-        bank_account_id: parseInt(slipFormData.bank_account_id),
-        transfer_date: slipFormData.transfer_date,
-        company_id: companyId,
+        bankAccountId: parseInt(slipFormData.bank_account_id),
+        transferDate: slipFormData.transfer_date,
         url: slipUrl,
-      };
-
-      const insertResponse = await fetch("/api/Slip_DB/insert_order_slip.php", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(slipData),
+        companyId: companyId,
       });
-
-      const insertResult = await insertResponse.json();
 
       if (insertResult.success) {
         showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
@@ -355,29 +354,36 @@ const SlipUpload: React.FC = () => {
         company_id: companyId.toString(),
         page: pagination.currentPage.toString(),
         pageSize: pagination.pageSize.toString(),
+        payment_method: PAY_AFTER_METHOD,
       });
 
-      // Add filters to query if they have values
-      if (filters.order_id) queryParams.append("order_id", filters.order_id);
-      if (filters.customer_name)
-        queryParams.append("customer_name", filters.customer_name);
-      if (filters.phone) queryParams.append("phone", filters.phone);
-      if (filters.sale_month)
-        queryParams.append("sale_month", filters.sale_month);
-      if (filters.sale_year) queryParams.append("sale_year", filters.sale_year);
+      // Add active filters to query if they have values
+      if (activeFilters.order_id) queryParams.append("order_id", activeFilters.order_id);
+      if (activeFilters.customer_name)
+        queryParams.append("customer_name", activeFilters.customer_name);
+      if (activeFilters.phone) queryParams.append("phone", activeFilters.phone);
+      if (activeFilters.sale_month)
+        queryParams.append("sale_month", activeFilters.sale_month);
+      if (activeFilters.sale_year) queryParams.append("sale_year", activeFilters.sale_year);
 
       const response = await fetch(
-        `/api/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
+        `${apiBase}/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
       );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('Fetched orders data:', data);
 
       if (data.success) {
-        setOrders(data.data);
+        setOrders(data.data || []);
         setPagination({
-          totalCount: data.totalCount,
-          currentPage: data.currentPage,
-          pageSize: data.pageSize,
-          maxPage: data.maxPage,
+          totalCount: data.totalCount || 0,
+          currentPage: data.currentPage || 1,
+          pageSize: data.pageSize || 10,
+          maxPage: data.maxPage || 1,
         });
 
         // Reset to first page if filters change and currentPage > maxPage
@@ -386,13 +392,15 @@ const SlipUpload: React.FC = () => {
           fetchOrders();
           return;
         }
-        if (data.count === 0) {
-          showMessage(
-            "error",
-            "ไม่พบรายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอน",
-          );
+        
+        // Only show error message if there are no orders AND it's not a filter result
+        if ((data.count === 0 || (data.data || []).length === 0) && 
+            !activeFilters.order_id && !activeFilters.customer_name && !activeFilters.phone && 
+            !activeFilters.sale_month && !activeFilters.sale_year) {
+          // Don't show error, just show empty state - this is normal if no unpaid orders
         }
       } else {
+        console.error('API error:', data);
         showMessage("error", data.message || "ไม่สามารถดึงข้อมูลคำสั่งซื้อได้");
       }
     } catch (error) {
@@ -408,27 +416,31 @@ const SlipUpload: React.FC = () => {
     fetchBankAccounts();
   }, []);
 
-  // Fetch orders on component mount and when pagination or filters change
+  // Fetch orders on component mount and when pagination or activeFilters change
   useEffect(() => {
     fetchOrders();
-  }, [pagination.currentPage, pagination.pageSize, filters]); // Re-fetch when pagination or filters change
+  }, [pagination.currentPage, pagination.pageSize, activeFilters]); // Re-fetch when pagination or activeFilters change
 
   const handleFilterChange = (field: keyof FilterOptions, value: string) => {
-    setFilters((prev) => ({ ...prev, [field]: value }));
+    setInputFilters((prev) => ({ ...prev, [field]: value }));
   };
 
   const clearFilters = () => {
-    setFilters({
+    const emptyFilters = {
       order_id: "",
       customer_name: "",
       phone: "",
       sale_month: "",
       sale_year: "",
-    });
+    };
+    setInputFilters(emptyFilters);
+    setActiveFilters(emptyFilters);
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const applyFilters = () => {
+    // Apply input filters to active filters when search button is clicked
+    setActiveFilters(inputFilters);
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
@@ -588,7 +600,7 @@ const SlipUpload: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full">
         {/* Orders Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
@@ -627,7 +639,7 @@ const SlipUpload: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value={filters.order_id}
+                  value={inputFilters.order_id}
                   onChange={(e) =>
                     handleFilterChange("order_id", e.target.value)
                   }
@@ -643,7 +655,7 @@ const SlipUpload: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value={filters.customer_name}
+                  value={inputFilters.customer_name}
                   onChange={(e) =>
                     handleFilterChange("customer_name", e.target.value)
                   }
@@ -659,7 +671,7 @@ const SlipUpload: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value={filters.phone}
+                  value={inputFilters.phone}
                   onChange={(e) => handleFilterChange("phone", e.target.value)}
                   placeholder="เบอร์โทร"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
@@ -672,7 +684,7 @@ const SlipUpload: React.FC = () => {
                   เดือนที่ขาย
                 </label>
                 <select
-                  value={filters.sale_month}
+                  value={inputFilters.sale_month}
                   onChange={(e) =>
                     handleFilterChange("sale_month", e.target.value)
                   }
@@ -700,7 +712,7 @@ const SlipUpload: React.FC = () => {
                   ปีที่ขาย
                 </label>
                 <select
-                  value={filters.sale_year}
+                  value={inputFilters.sale_year}
                   onChange={(e) =>
                     handleFilterChange("sale_year", e.target.value)
                   }
@@ -1074,7 +1086,12 @@ const SlipUpload: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             <a
-                              href={slip.url}
+                              href={(() => {
+                                if (!slip.url) return '#';
+                                if (slip.url.startsWith('api/')) return '/' + slip.url;
+                                if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
+                                return '/' + slip.url;
+                              })()}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -1083,11 +1100,21 @@ const SlipUpload: React.FC = () => {
                             </a>
                             <span className="text-xs text-gray-400">|</span>
                             <img
-                              src={slip.url}
+                              src={(() => {
+                                if (!slip.url) return '';
+                                if (slip.url.startsWith('api/')) return '/' + slip.url;
+                                if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
+                                return '/' + slip.url;
+                              })()}
                               alt="สลิปการโอนเงิน"
                               className="w-12 h-12 object-cover rounded border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
-                              onClick={() => window.open(slip.url, "_blank")}
+                              onClick={() => {
+                                const url = slip.url;
+                                const normalizedUrl = url.startsWith('api/') ? '/' + url : (url.startsWith('/') || url.startsWith('http://') || url.startsWith('https://') ? url : '/' + url);
+                                window.open(normalizedUrl, "_blank");
+                              }}
                               onError={(e) => {
+                                console.error('Failed to load slip image:', slip.url);
                                 e.currentTarget.style.display = "none";
                                 e.currentTarget.nextElementSibling?.removeProperty(
                                   "display",

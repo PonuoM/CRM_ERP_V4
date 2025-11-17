@@ -97,6 +97,12 @@ if ($resource === '' || $resource === 'health') {
     case 'pages':
         handle_pages($pdo, $id);
         break;
+    case 'platforms':
+        handle_platforms($pdo, $id);
+        break;
+    case 'bank_accounts':
+        handle_bank_accounts($pdo, $id);
+        break;
     case 'warehouses':
         handle_warehouses($pdo, $id);
         break;
@@ -141,6 +147,14 @@ if ($resource === '' || $resource === 'health') {
         break;
     case 'order_slips':
         handle_order_slips($pdo, $id);
+        break;
+    case 'uploads':
+        // Handle static file serving for uploads (e.g., slips)
+        if ($id === 'slips' && $action !== null) {
+            handle_serve_slip_file($action);
+        } else {
+            json_response(['error' => 'NOT_FOUND'], 404);
+        }
         break;
     case 'ownership':
         require_once __DIR__ . '/ownership_handler.php';
@@ -680,7 +694,20 @@ function handle_products(PDO $pdo, ?string $id): void {
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $stmt = $pdo->query('SELECT * FROM products ORDER BY id DESC LIMIT 500');
+                $companyId = $_GET['companyId'] ?? null;
+                $sql = 'SELECT * FROM products';
+                $params = [];
+                if ($companyId) {
+                    $sql .= ' WHERE company_id = ?';
+                    $params[] = $companyId;
+                }
+                $sql .= ' ORDER BY id DESC LIMIT 500';
+                $stmt = $pdo->prepare($sql);
+                if (!empty($params)) {
+                    $stmt->execute($params);
+                } else {
+                    $stmt->execute();
+                }
                 json_response($stmt->fetchAll());
             }
             break;
@@ -761,8 +788,23 @@ function handle_promotions(PDO $pdo, ?string $id): void {
                 json_response($promo);
             } else {
                 // Get all promotions with items (both active and inactive)
-                $stmt = $pdo->query('SELECT * FROM promotions ORDER BY id DESC');
+                $companyId = $_GET['companyId'] ?? null;
+                $sql = 'SELECT * FROM promotions';
+                $params = [];
+                if ($companyId) {
+                    $sql .= ' WHERE company_id = ?';
+                    $params[] = $companyId;
+                }
+                $sql .= ' ORDER BY id DESC';
+                
+                $stmt = $pdo->prepare($sql);
+                if (!empty($params)) {
+                    $stmt->execute($params);
+                } else {
+                    $stmt->execute();
+                }
                 $promos = $stmt->fetchAll();
+                
                 // Fetch items for each promotion
                 foreach ($promos as &$promo) {
                     $itemsStmt = $pdo->prepare('
@@ -1068,6 +1110,86 @@ function allocate_allocation_fifo(PDO $pdo, array $allocationRow, int $warehouse
     return [];
 }
 
+function allocate_allocation_fifo_allow_negative(PDO $pdo, array $allocationRow, int $warehouseId, ?int $desiredQuantity = null, ?string $preferredLot = null): array {
+    $required = $desiredQuantity !== null ? max(0, (int)$desiredQuantity) : max(0, (int)$allocationRow['required_quantity']);
+    if ($required <= 0) {
+        return [];
+    }
+
+    if ((int)$allocationRow['allocated_quantity'] > 0 && !empty($allocationRow['lot_number'])) {
+        release_single_allocation($pdo, $allocationRow);
+    }
+
+    // Try to allocate with available stock first (FIFO)
+    if ($preferredLot !== null && $preferredLot !== '') {
+        $lotStmt = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' AND quantity_remaining > 0 AND lot_number = ? ORDER BY purchase_date ASC, id ASC FOR UPDATE');
+        $lotStmt->execute([(int)$allocationRow['product_id'], $warehouseId, $preferredLot]);
+    } else {
+        $lotStmt = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' AND quantity_remaining > 0 ORDER BY purchase_date ASC, id ASC FOR UPDATE');
+        $lotStmt->execute([(int)$allocationRow['product_id'], $warehouseId]);
+    }
+    $lots = $lotStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Try to allocate with available stock
+    foreach ($lots as $lot) {
+        if ((float)$lot['quantity_remaining'] + 1e-6 < $required) {
+            continue;
+        }
+        $qtyDecimal = format_decimal_quantity($required);
+        $updateLot = $pdo->prepare('UPDATE product_lots SET quantity_remaining = quantity_remaining - ? WHERE id = ? AND quantity_remaining >= ?');
+        $updateLot->execute([$qtyDecimal, (int)$lot['id'], $qtyDecimal]);
+        if ($updateLot->rowCount() === 0) {
+            continue;
+        }
+
+        reserve_stock_for_allocation($pdo, $warehouseId, (int)$allocationRow['product_id'], (string)$lot['lot_number'], $required);
+
+        $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
+            ->execute([$warehouseId, (string)$lot['lot_number'], $required, 'ALLOCATED', (int)$allocationRow['id']]);
+
+        return [
+            'allocationId' => (int)$allocationRow['id'],
+            'lotNumber' => (string)$lot['lot_number'],
+            'allocatedQuantity' => $required,
+        ];
+    }
+
+    // If no sufficient stock, allow negative allocation (for companies not using warehouse system)
+    // Use the first available lot or create a virtual allocation
+    $lotForNegative = null;
+    if ($preferredLot !== null && $preferredLot !== '') {
+        $lotStmtNeg = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' AND lot_number = ? ORDER BY purchase_date ASC, id ASC LIMIT 1');
+        $lotStmtNeg->execute([(int)$allocationRow['product_id'], $warehouseId, $preferredLot]);
+        $lotForNegative = $lotStmtNeg->fetch(PDO::FETCH_ASSOC);
+    }
+    
+    if (!$lotForNegative) {
+        $lotStmtNeg = $pdo->prepare('SELECT id, lot_number, quantity_remaining FROM product_lots WHERE product_id=? AND warehouse_id=? AND status = \'Active\' ORDER BY purchase_date ASC, id ASC LIMIT 1');
+        $lotStmtNeg->execute([(int)$allocationRow['product_id'], $warehouseId]);
+        $lotForNegative = $lotStmtNeg->fetch(PDO::FETCH_ASSOC);
+    }
+
+    $lotNumberToUse = $lotForNegative ? (string)$lotForNegative['lot_number'] : '__VIRTUAL__';
+    
+    // Update lot to negative if exists, otherwise just allocate without stock check
+    if ($lotForNegative) {
+        $qtyDecimal = format_decimal_quantity($required);
+        $updateLotNeg = $pdo->prepare('UPDATE product_lots SET quantity_remaining = quantity_remaining - ? WHERE id = ?');
+        $updateLotNeg->execute([$qtyDecimal, (int)$lotForNegative['id']]);
+    }
+
+    reserve_stock_for_allocation($pdo, $warehouseId, (int)$allocationRow['product_id'], $lotNumberToUse !== '__VIRTUAL__' ? $lotNumberToUse : null, $required);
+
+    $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
+        ->execute([$warehouseId, $lotNumberToUse !== '__VIRTUAL__' ? $lotNumberToUse : null, $required, 'ALLOCATED', (int)$allocationRow['id']]);
+
+    return [
+        'allocationId' => (int)$allocationRow['id'],
+        'lotNumber' => $lotNumberToUse !== '__VIRTUAL__' ? $lotNumberToUse : null,
+        'allocatedQuantity' => $required,
+    ];
+}
+
 function auto_allocate_order(PDO $pdo, string $orderId, int $warehouseId, ?int $companyId = null): array {
     if ($warehouseId <= 0) {
         throw new RuntimeException('WAREHOUSE_REQUIRED');
@@ -1141,16 +1263,82 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $o = get_order($pdo, $id);
                 $o ? json_response($o) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $sql = 'SELECT o.id, o.customer_id, o.company_id, o.creator_id, o.order_date, o.delivery_date, o.total_amount, o.payment_method, o.payment_status, o.order_status,
+                $companyId = $_GET['companyId'] ?? null;
+                
+                $sql = 'SELECT o.id, o.customer_id, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
+                               o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
+                               o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
-                               o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id
+                               o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
+                               o.bank_account_id, o.transfer_date
                         FROM orders o
-                        LEFT JOIN order_tracking_numbers t ON t.order_id = o.id
-                        GROUP BY o.id
-                        ORDER BY o.order_date DESC
-                        LIMIT 200';
-                $stmt = $pdo->query($sql);
-                json_response($stmt->fetchAll());
+                        LEFT JOIN order_tracking_numbers t ON t.order_id = o.id';
+                
+                $params = [];
+                if ($companyId) {
+                    $sql .= ' WHERE o.company_id = ?';
+                    $params[] = $companyId;
+                }
+                
+                $sql .= ' GROUP BY o.id
+                          ORDER BY o.order_date DESC
+                          LIMIT 200';
+                
+                $stmt = $pdo->prepare($sql);
+                if (!empty($params)) {
+                    $stmt->execute($params);
+                } else {
+                    $stmt->execute();
+                }
+                $orders = $stmt->fetchAll();
+                
+                // Fetch items for each order
+                $orderIds = array_column($orders, 'id');
+                $itemsMap = [];
+                $slipsMap = [];
+                
+                if (!empty($orderIds)) {
+                    // Fetch items
+                    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+                    $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
+                                       oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number, 
+                                       oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                                       p.sku as product_sku
+                                FROM order_items oi
+                                LEFT JOIN products p ON oi.product_id = p.id
+                                WHERE oi.order_id IN ($placeholders)
+                                ORDER BY oi.order_id, oi.id";
+                    
+                    $itemStmt = $pdo->prepare($itemSql);
+                    $itemStmt->execute($orderIds);
+                    $items = $itemStmt->fetchAll();
+                    
+                    foreach ($items as $item) {
+                        $itemsMap[$item['order_id']][] = $item;
+                    }
+                    
+                    // Fetch slips
+                    $slipSql = "SELECT id, order_id, url, created_at 
+                                FROM order_slips 
+                                WHERE order_id IN ($placeholders)
+                                ORDER BY created_at DESC";
+                    
+                    $slipStmt = $pdo->prepare($slipSql);
+                    $slipStmt->execute($orderIds);
+                    $slips = $slipStmt->fetchAll();
+                    
+                    foreach ($slips as $slip) {
+                        $slipsMap[$slip['order_id']][] = $slip;
+                    }
+                }
+                
+                // Add items and slips to each order
+                foreach ($orders as &$order) {
+                    $order['items'] = $itemsMap[$order['id']] ?? [];
+                    $order['slips'] = $slipsMap[$order['id']] ?? [];
+                }
+                
+                json_response($orders);
             }
             break;
         case 'POST':
@@ -1158,15 +1346,53 @@ function handle_orders(PDO $pdo, ?string $id): void {
             error_log('Order creation request: ' . json_encode($in));
             $pdo->beginTransaction();
             try {
-                $stmt = $pdo->prepare('INSERT INTO orders (id, customer_id, company_id, creator_id, order_date, delivery_date, street, subdistrict, district, province, postal_code, shipping_cost, bill_discount, total_amount, payment_method, payment_status, slip_url, amount_paid, cod_amount, order_status, notes, sales_channel, sales_channel_page_id, warehouse_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                // Check if bank_account_id and transfer_date columns exist
+                $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+                $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                                WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
+                
+                $hasBankAccountId = in_array('bank_account_id', $existingColumns);
+                $hasTransferDate = in_array('transfer_date', $existingColumns);
+                
+                // Build INSERT query dynamically based on available columns
+                $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name', 'shipping_cost', 'bill_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id'];
+                $values = [];
+                $placeholders = [];
+                
+                if ($hasBankAccountId) {
+                    $columns[] = 'bank_account_id';
+                }
+                if ($hasTransferDate) {
+                    $columns[] = 'transfer_date';
+                }
+                
+                foreach ($columns as $col) {
+                    $placeholders[] = '?';
+                }
+                
+                $stmt = $pdo->prepare('INSERT INTO orders (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')');
                 $addr = $in['shippingAddress'] ?? [];
-                $stmt->execute([
+                $recipientFirstName = $addr['recipientFirstName'] ?? ($addr['recipient_first_name'] ?? null);
+                $recipientLastName = $addr['recipientLastName'] ?? ($addr['recipient_last_name'] ?? null);
+                
+                $values = [
                     $in['id'], $in['customerId'], $in['companyId'], $in['creatorId'], $in['orderDate'], $in['deliveryDate'],
                     $addr['street'] ?? null, $addr['subdistrict'] ?? null, $addr['district'] ?? null, $addr['province'] ?? null, $addr['postalCode'] ?? null,
+                    $recipientFirstName,
+                    $recipientLastName,
                     $in['shippingCost'] ?? 0, $in['billDiscount'] ?? 0, $in['totalAmount'] ?? 0,
                     $in['paymentMethod'] ?? null, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $in['codAmount'] ?? null,
                     $in['orderStatus'] ?? null, $in['notes'] ?? null, $in['salesChannel'] ?? null, $in['salesChannelPageId'] ?? null, $in['warehouseId'] ?? null,
-                ]);
+                ];
+                
+                if ($hasBankAccountId) {
+                    $values[] = isset($in['bankAccountId']) && $in['bankAccountId'] !== null && $in['bankAccountId'] !== '' ? (int)$in['bankAccountId'] : null;
+                }
+                if ($hasTransferDate) {
+                    $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
+                }
+                
+                $stmt->execute($values);
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two‑phase insert to satisfy FK parent_item_id -> order_items(id)
@@ -1386,10 +1612,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($orderStatus !== null) {
                     $normalizedStatus = strtoupper($orderStatus);
                     if ($normalizedStatus === 'PICKING' && strcasecmp($previousStatus, 'Picking') !== 0) {
-                        if (!$warehouseIdForAllocation) {
-                            throw new RuntimeException('WAREHOUSE_REQUIRED');
+                        // Only auto-allocate if warehouse_id exists, otherwise skip (for companies not using warehouse system)
+                        if ($warehouseIdForAllocation) {
+                            try {
+                                $allocationSummary = auto_allocate_order($pdo, $id, $warehouseIdForAllocation, $companyIdForAllocation);
+                            } catch (Throwable $allocErr) {
+                                // Log but don't fail the order status update if allocation fails
+                                error_log('Auto-allocation failed for order ' . $id . ': ' . $allocErr->getMessage());
+                            }
                         }
-                        $allocationSummary = auto_allocate_order($pdo, $id, $warehouseIdForAllocation, $companyIdForAllocation);
+                        // If no warehouse_id, just update status without allocation (for companies not using warehouse system)
                     } elseif ($normalizedStatus === 'CANCELLED' && strcasecmp($previousStatus, 'Cancelled') !== 0) {
                         $releaseSummary = release_order_allocations($pdo, $id);
                     }
@@ -1484,10 +1716,19 @@ function handle_allocations(PDO $pdo, ?string $id, ?string $action): void {
                         throw new RuntimeException('INVALID_ALLOCATED_QUANTITY');
                     }
                     $preferredLot = ($lotNumber !== null && $lotNumber !== '') ? (string)$lotNumber : null;
-                    $allocationResult = allocate_allocation_fifo($pdo, $allocation, $effectiveWarehouseId, $desiredQty, $preferredLot);
-                    if (!$allocationResult) {
-                        throw new RuntimeException('INSUFFICIENT_STOCK');
+                    
+                    // Check if allowNegativeStock is set in request body
+                    $allowNegativeStock = isset($in['allowNegativeStock']) && $in['allowNegativeStock'] === true;
+                    
+                    if ($allowNegativeStock) {
+                        $allocationResult = allocate_allocation_fifo_allow_negative($pdo, $allocation, $effectiveWarehouseId, $desiredQty, $preferredLot);
+                    } else {
+                        $allocationResult = allocate_allocation_fifo($pdo, $allocation, $effectiveWarehouseId, $desiredQty, $preferredLot);
+                        if (!$allocationResult) {
+                            throw new RuntimeException('INSUFFICIENT_STOCK');
+                        }
                     }
+                    
                     $pdo->commit();
                     json_response(['ok' => true, 'autoAllocated' => $allocationResult]);
                 }
@@ -1572,6 +1813,239 @@ function handle_pages(PDO $pdo, ?string $id): void {
         }
     } catch (Throwable $e) {
         json_response(['error' => 'PAGES_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
+
+function handle_bank_accounts(PDO $pdo, ?string $id): void {
+    try {
+        $companyId = $_GET['companyId'] ?? null;
+        if (!$companyId && method() !== 'GET') {
+            // For POST, PATCH, DELETE, get companyId from request body
+            $in = json_input();
+            $companyId = $in['companyId'] ?? null;
+        }
+        
+        switch (method()) {
+            case 'GET':
+                if ($id) {
+                    $sql = 'SELECT * FROM bank_account WHERE id = ? AND deleted_at IS NULL';
+                    $params = [$id];
+                    if ($companyId) {
+                        $sql .= ' AND company_id = ?';
+                        $params[] = $companyId;
+                    }
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $row = $stmt->fetch();
+                    $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+                } else {
+                    $activeOnly = isset($_GET['active']) && $_GET['active'] === 'true';
+                    $sql = 'SELECT * FROM bank_account WHERE deleted_at IS NULL';
+                    $params = [];
+                    $conditions = [];
+                    if ($companyId) {
+                        $conditions[] = 'company_id = ?';
+                        $params[] = $companyId;
+                    }
+                    if ($activeOnly) {
+                        $conditions[] = 'is_active = 1';
+                    }
+                    if ($conditions) {
+                        $sql .= ' AND ' . implode(' AND ', $conditions);
+                    }
+                    $sql .= ' ORDER BY bank ASC, bank_number ASC';
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    json_response($stmt->fetchAll());
+                }
+                break;
+            case 'POST':
+                $in = json_input();
+                if (!$companyId) {
+                    $companyId = $in['companyId'] ?? null;
+                }
+                if (!$companyId) {
+                    json_response(['error' => 'COMPANY_ID_REQUIRED'], 400);
+                    return;
+                }
+                $stmt = $pdo->prepare('INSERT INTO bank_account (bank, bank_number, company_id, is_active) VALUES (?,?,?,?)');
+                $active = isset($in['isActive']) ? (!empty($in['isActive']) ? 1 : 0) : 1;
+                $stmt->execute([
+                    $in['bank'] ?? '',
+                    $in['bankNumber'] ?? '',
+                    $companyId,
+                    $active
+                ]);
+                json_response(['id' => $pdo->lastInsertId()]);
+                break;
+            case 'PATCH':
+                if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+                $in = json_input();
+                // Verify company_id matches if provided
+                if ($companyId) {
+                    $checkStmt = $pdo->prepare('SELECT company_id FROM bank_account WHERE id = ? AND deleted_at IS NULL');
+                    $checkStmt->execute([$id]);
+                    $bankCompanyId = $checkStmt->fetchColumn();
+                    if ($bankCompanyId != $companyId) {
+                        json_response(['error' => 'FORBIDDEN'], 403);
+                        return;
+                    }
+                }
+                $set = [];
+                $params = [];
+                if (isset($in['bank'])) { $set[] = 'bank = ?'; $params[] = $in['bank']; }
+                if (isset($in['bankNumber'])) { $set[] = 'bank_number = ?'; $params[] = $in['bankNumber']; }
+                if (isset($in['isActive'])) { $set[] = 'is_active = ?'; $params[] = !empty($in['isActive']) ? 1 : 0; }
+                if (!$set) json_response(['error' => 'NO_FIELDS'], 400);
+                $params[] = $id;
+                $sql = 'UPDATE bank_account SET '.implode(', ', $set).' WHERE id = ? AND deleted_at IS NULL';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response(['ok' => true]);
+                break;
+            case 'DELETE':
+                if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+                // Verify company_id matches if provided
+                if ($companyId) {
+                    $checkStmt = $pdo->prepare('SELECT company_id FROM bank_account WHERE id = ? AND deleted_at IS NULL');
+                    $checkStmt->execute([$id]);
+                    $bankCompanyId = $checkStmt->fetchColumn();
+                    if ($bankCompanyId != $companyId) {
+                        json_response(['error' => 'FORBIDDEN'], 403);
+                        return;
+                    }
+                }
+                // Soft delete
+                $stmt = $pdo->prepare('UPDATE bank_account SET deleted_at = NOW() WHERE id = ?');
+                $stmt->execute([$id]);
+                json_response(['ok' => true]);
+                break;
+            default:
+                json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        }
+    } catch (Exception $e) {
+        error_log("Bank accounts handler error: " . $e->getMessage());
+        json_response(['error' => 'INTERNAL_ERROR', 'message' => $e->getMessage()], 500);
+    }
+}
+
+function handle_platforms(PDO $pdo, ?string $id): void {
+    try {
+        $companyId = $_GET['companyId'] ?? null;
+        if (!$companyId && method() !== 'GET') {
+            // For POST, PATCH, DELETE, get companyId from request body
+            $in = json_input();
+            $companyId = $in['companyId'] ?? null;
+        }
+        
+        switch (method()) {
+            case 'GET':
+                if ($id) {
+                    $sql = 'SELECT * FROM platforms WHERE id = ?';
+                    $params = [$id];
+                    if ($companyId) {
+                        $sql .= ' AND company_id = ?';
+                        $params[] = $companyId;
+                    }
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $row = $stmt->fetch();
+                    $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+                } else {
+                    $activeOnly = isset($_GET['active']) && $_GET['active'] === 'true';
+                    $sql = 'SELECT * FROM platforms';
+                    $params = [];
+                    $conditions = [];
+                    if ($companyId) {
+                        $conditions[] = 'company_id = ?';
+                        $params[] = $companyId;
+                    }
+                    if ($activeOnly) {
+                        $conditions[] = 'active = 1';
+                    }
+                    if ($conditions) {
+                        $sql .= ' WHERE ' . implode(' AND ', $conditions);
+                    }
+                    $sql .= ' ORDER BY sort_order ASC, id ASC';
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    json_response($stmt->fetchAll());
+                }
+                break;
+            case 'POST':
+                $in = json_input();
+                if (!$companyId) {
+                    $companyId = $in['companyId'] ?? null;
+                }
+                if (!$companyId) {
+                    json_response(['error' => 'COMPANY_ID_REQUIRED'], 400);
+                    return;
+                }
+                $stmt = $pdo->prepare('INSERT INTO platforms (name, display_name, description, company_id, active, sort_order, show_pages_from) VALUES (?,?,?,?,?,?,?)');
+                $active = isset($in['active']) ? (!empty($in['active']) ? 1 : 0) : 1;
+                $sortOrder = isset($in['sortOrder']) ? (int)$in['sortOrder'] : 0;
+                $showPagesFrom = isset($in['showPagesFrom']) ? (trim($in['showPagesFrom']) ?: null) : null;
+                $stmt->execute([
+                    $in['name'] ?? '',
+                    $in['displayName'] ?? $in['name'] ?? '',
+                    $in['description'] ?? null,
+                    $companyId,
+                    $active,
+                    $sortOrder,
+                    $showPagesFrom
+                ]);
+                json_response(['id' => $pdo->lastInsertId()]);
+                break;
+            case 'PATCH':
+                if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+                $in = json_input();
+                // Verify company_id matches if provided
+                if ($companyId) {
+                    $checkStmt = $pdo->prepare('SELECT company_id FROM platforms WHERE id = ?');
+                    $checkStmt->execute([$id]);
+                    $platformCompanyId = $checkStmt->fetchColumn();
+                    if ($platformCompanyId != $companyId) {
+                        json_response(['error' => 'FORBIDDEN'], 403);
+                        return;
+                    }
+                }
+                $set = [];
+                $params = [];
+                if (isset($in['name'])) { $set[] = 'name = ?'; $params[] = $in['name']; }
+                if (isset($in['displayName'])) { $set[] = 'display_name = ?'; $params[] = $in['displayName']; }
+                if (isset($in['description'])) { $set[] = 'description = ?'; $params[] = $in['description']; }
+                if (isset($in['active'])) { $set[] = 'active = ?'; $params[] = !empty($in['active']) ? 1 : 0; }
+                if (isset($in['sortOrder'])) { $set[] = 'sort_order = ?'; $params[] = (int)$in['sortOrder']; }
+                if (isset($in['showPagesFrom'])) { $set[] = 'show_pages_from = ?'; $params[] = trim($in['showPagesFrom']) ?: null; }
+                if (!$set) json_response(['error' => 'NO_FIELDS'], 400);
+                $params[] = $id;
+                $sql = 'UPDATE platforms SET '.implode(', ', $set).' WHERE id = ?';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response(['ok' => true]);
+                break;
+            case 'DELETE':
+                if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+                // Verify company_id matches if provided
+                if ($companyId) {
+                    $checkStmt = $pdo->prepare('SELECT company_id FROM platforms WHERE id = ?');
+                    $checkStmt->execute([$id]);
+                    $platformCompanyId = $checkStmt->fetchColumn();
+                    if ($platformCompanyId != $companyId) {
+                        json_response(['error' => 'FORBIDDEN'], 403);
+                        return;
+                    }
+                }
+                // Soft delete by setting active = 0 instead of actually deleting
+                $stmt = $pdo->prepare('UPDATE platforms SET active = 0 WHERE id = ?');
+                $stmt->execute([$id]);
+                json_response(['ok' => true]);
+                break;
+            default:
+                json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        }
+    } catch (Throwable $e) {
+        json_response(['error' => 'PLATFORMS_FAILED', 'message' => $e->getMessage()], 500);
     }
 }
 
@@ -1669,14 +2143,78 @@ function handle_ad_spend(PDO $pdo, ?string $id): void {
     }
 }
 function ensure_order_slips_table(PDO $pdo): void {
-    $pdo->exec('CREATE TABLE IF NOT EXISTS order_slips (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id VARCHAR(32) NOT NULL,
-        url VARCHAR(1024) NOT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_order_slips_order (order_id),
-        CONSTRAINT fk_order_slips_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    // Check if table exists
+    $tableExists = $pdo->query("SELECT COUNT(*) FROM information_schema.tables 
+                                WHERE table_schema = DATABASE() AND table_name = 'order_slips'")->fetchColumn();
+    
+    if ($tableExists == 0) {
+        $pdo->exec('CREATE TABLE order_slips (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id VARCHAR(32) NOT NULL,
+            url VARCHAR(1024) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_order_slips_order (order_id),
+            CONSTRAINT fk_order_slips_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    }
+    
+    // Check if columns exist and add them if needed
+    $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+    $columnCheck = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_slips'")->fetchAll(PDO::FETCH_COLUMN);
+    $columns = $columnCheck ?: [];
+    
+    if (!in_array('amount', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN amount INT NULL AFTER order_id');
+            $columns[] = 'amount';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
+    if (!in_array('bank_account_id', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN bank_account_id INT NULL AFTER amount');
+            $columns[] = 'bank_account_id';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
+    if (!in_array('transfer_date', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN transfer_date DATETIME NULL AFTER bank_account_id');
+            $columns[] = 'transfer_date';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
+    
+    // Add index for bank_account_id if it doesn't exist
+    if (in_array('bank_account_id', $columns)) {
+        $indexCheck = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+                                    WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_slips' 
+                                    AND INDEX_NAME = 'idx_order_slips_bank_account_id'")->fetchColumn();
+        if ($indexCheck == 0) {
+            try {
+                $pdo->exec('ALTER TABLE order_slips ADD INDEX idx_order_slips_bank_account_id (bank_account_id)');
+            } catch (Exception $e) {
+                // Index may already exist, ignore
+            }
+        }
+        
+        // Add foreign key constraint if it doesn't exist
+        $constraintCheck = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS 
+                                        WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_slips' 
+                                        AND CONSTRAINT_NAME = 'fk_order_slips_bank_account_id'")->fetchColumn();
+        if ($constraintCheck == 0) {
+            try {
+                $pdo->exec('ALTER TABLE order_slips ADD CONSTRAINT fk_order_slips_bank_account_id 
+                           FOREIGN KEY (bank_account_id) REFERENCES bank_account(id) ON DELETE SET NULL');
+            } catch (Exception $e) {
+                // Foreign key may fail if bank_account table doesn't exist, ignore
+            }
+        }
+    }
 }
 
 function handle_order_slips(PDO $pdo, ?string $id): void {
@@ -1696,8 +2234,13 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
             $in = json_input();
             $orderId = $in['orderId'] ?? '';
             $content = $in['contentBase64'] ?? '';
+            $bankAccountId = isset($in['bankAccountId']) ? (int)$in['bankAccountId'] : null;
+            $transferDate = $in['transferDate'] ?? null;
+            $amount = isset($in['amount']) ? (int)$in['amount'] : null;
+            
             if ($orderId === '' || $content === '') { json_response(['error' => 'INVALID_INPUT'], 400); }
             $url = null;
+            // Handle both data URL format (data:image/...) and raw base64
             if (preg_match('/^data:(image\/(png|jpeg|jpg|gif));base64,(.*)$/', $content, $m)) {
                 $ext = $m[2] === 'jpeg' ? 'jpg' : $m[2];
                 $data = base64_decode($m[3]);
@@ -1708,10 +2251,57 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
                         $url = 'api/uploads/slips/' . $fname;
                     }
                 }
+            } else if (preg_match('/^[A-Za-z0-9+\/]+=*$/', $content)) {
+                // Raw base64 string (without data URL prefix)
+                $data = base64_decode($content);
+                if ($data !== false) {
+                    // Try to detect image type from data
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    $mimeType = finfo_buffer($finfo, $data);
+                    finfo_close($finfo);
+                    $ext = 'jpg'; // default
+                    if (strpos($mimeType, 'png') !== false) $ext = 'png';
+                    else if (strpos($mimeType, 'jpeg') !== false || strpos($mimeType, 'jpg') !== false) $ext = 'jpg';
+                    else if (strpos($mimeType, 'gif') !== false) $ext = 'gif';
+                    
+                    $fname = 'slip_' . preg_replace('/[^A-Za-z0-9_-]+/','', $orderId) . '_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)),0,6) . '.' . $ext;
+                    $path = $baseDir . DIRECTORY_SEPARATOR . $fname;
+                    if (file_put_contents($path, $data) !== false) {
+                        $url = 'api/uploads/slips/' . $fname;
+                    }
+                }
             }
             if (!$url) { json_response(['error' => 'DECODE_FAILED'], 400); }
-            $st = $pdo->prepare('INSERT INTO order_slips (order_id, url) VALUES (?, ?)');
-            $st->execute([$orderId, $url]);
+            
+            // Build INSERT query dynamically based on available columns
+            $columns = ['order_id', 'url'];
+            $values = [$orderId, $url];
+            $placeholders = ['?', '?'];
+            
+            // Check if columns exist
+            $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+            $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                            WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_slips'")->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (in_array('amount', $existingColumns) && $amount !== null) {
+                $columns[] = 'amount';
+                $values[] = $amount;
+                $placeholders[] = '?';
+            }
+            if (in_array('bank_account_id', $existingColumns) && $bankAccountId !== null) {
+                $columns[] = 'bank_account_id';
+                $values[] = $bankAccountId;
+                $placeholders[] = '?';
+            }
+            if (in_array('transfer_date', $existingColumns) && $transferDate !== null) {
+                $columns[] = 'transfer_date';
+                $values[] = $transferDate;
+                $placeholders[] = '?';
+            }
+            
+            $sql = 'INSERT INTO order_slips (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';
+            $st = $pdo->prepare($sql);
+            $st->execute($values);
             json_response(['ok' => true, 'id' => $pdo->lastInsertId(), 'url' => $url]);
             break;
         case 'DELETE':
@@ -1734,6 +2324,52 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
+}
+
+function handle_serve_slip_file(string $filename): void {
+    // Security: only allow alphanumeric, dash, underscore, and dot in filename
+    if (!preg_match('/^[a-zA-Z0-9._-]+$/', $filename)) {
+        http_response_code(400);
+        echo 'Invalid filename';
+        exit;
+    }
+    
+    $baseDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
+    $filePath = $baseDir . DIRECTORY_SEPARATOR . $filename;
+    
+    // Check if file exists and is within the uploads/slips directory
+    if (!file_exists($filePath) || !is_file($filePath)) {
+        http_response_code(404);
+        echo 'File not found';
+        exit;
+    }
+    
+    // Ensure the file is within the allowed directory (prevent directory traversal)
+    $realBaseDir = realpath($baseDir);
+    $realFilePath = realpath($filePath);
+    if (!$realBaseDir || !$realFilePath || strpos($realFilePath, $realBaseDir) !== 0) {
+        http_response_code(403);
+        echo 'Access denied';
+        exit;
+    }
+    
+    // Determine content type based on file extension
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $mimeTypes = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
+    
+    // Set headers and serve file
+    header('Content-Type: ' . $contentType);
+    header('Content-Length: ' . filesize($filePath));
+    header('Cache-Control: public, max-age=31536000, immutable');
+    readfile($filePath);
+    exit;
 }
 
 function ensure_exports_table(PDO $pdo): void {
@@ -1823,6 +2459,7 @@ function handle_exports(PDO $pdo, ?string $id): void {
 }
 
 function get_order(PDO $pdo, string $id): ?array {
+    // Select all columns including bank_account_id and transfer_date
     $stmt = $pdo->prepare('SELECT * FROM orders WHERE id=?');
     $stmt->execute([$id]);
     $o = $stmt->fetch();

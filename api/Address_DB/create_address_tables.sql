@@ -547,6 +547,8 @@ CREATE TABLE IF NOT EXISTS `customer_address` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `customer_id` varchar(255) NOT NULL,
   `address` varchar(255) DEFAULT NULL,
+  `recipient_first_name` varchar(128) DEFAULT NULL,
+  `recipient_last_name` varchar(128) DEFAULT NULL,
   `province` varchar(100) DEFAULT NULL,
   `district` varchar(100) DEFAULT NULL,
   `sub_district` varchar(100) DEFAULT NULL,
@@ -602,6 +604,38 @@ SET @preparedStatement = (SELECT IF(
   ) > 0,
   'SELECT 1',
   CONCAT('ALTER TABLE ', @tablename, ' ADD COLUMN `', @columnname, '` VARCHAR(255) DEFAULT NULL')
+));
+PREPARE alterIfNotExists FROM @preparedStatement;
+EXECUTE alterIfNotExists;
+DEALLOCATE PREPARE alterIfNotExists;
+
+SET @columnname = 'recipient_first_name';
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE
+      (table_schema = @dbname)
+      AND (table_name = @tablename)
+      AND (column_name = @columnname)
+  ) > 0,
+  'SELECT 1',
+  CONCAT('ALTER TABLE ', @tablename, ' ADD COLUMN `', @columnname, '` VARCHAR(128) DEFAULT NULL')
+));
+PREPARE alterIfNotExists FROM @preparedStatement;
+EXECUTE alterIfNotExists;
+DEALLOCATE PREPARE alterIfNotExists;
+
+SET @columnname = 'recipient_last_name';
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE
+      (table_schema = @dbname)
+      AND (table_name = @tablename)
+      AND (column_name = @columnname)
+  ) > 0,
+  'SELECT 1',
+  CONCAT('ALTER TABLE ', @tablename, ' ADD COLUMN `', @columnname, '` VARCHAR(128) DEFAULT NULL')
 ));
 PREPARE alterIfNotExists FROM @preparedStatement;
 EXECUTE alterIfNotExists;

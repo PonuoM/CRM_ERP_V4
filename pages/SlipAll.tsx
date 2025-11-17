@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FileText,
   Search,
@@ -16,14 +16,21 @@ import {
 interface PaymentSlip {
   id: string;
   name: string;
-  url: string;
+  url?: string;
   uploadedAt: string;
   status: "pending" | "verified" | "rejected";
   uploadedBy?: string;
   customerName?: string;
+  customerPhone?: string;
   amount?: number;
+  orderTotal?: number;
   notes?: string;
   orderId?: string;
+  bankName?: string;
+  bankNumber?: string;
+  transferDate?: string;
+  fileExists?: boolean;
+  originalUrl?: string;
 }
 
 const SlipAll: React.FC = () => {
@@ -44,74 +51,105 @@ const SlipAll: React.FC = () => {
   >("all");
   const [selectedSlip, setSelectedSlip] = useState<PaymentSlip | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data loading
-  useEffect(() => {
-    loadSlips();
-  }, []);
-
-  const loadSlips = async () => {
+  const loadSlips = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (!sessionUser) {
+        throw new Error("ไม่พบข้อมูลผู้ใช้ในระบบ");
+      }
+      const parsed = JSON.parse(sessionUser);
+      const companyId = parsed?.company_id;
+      if (!companyId) {
+        throw new Error("ไม่พบรหัสบริษัทของผู้ใช้");
+      }
 
-      // Mock data
-      const mockSlips: PaymentSlip[] = [
-        {
-          id: "1",
-          name: "slip_001.jpg",
-          url: "https://picsum.photos/seed/slip1/800/600.jpg",
-          uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          status: "pending",
-          uploadedBy: "สมชาย ใจดี",
-          customerName: "วรรณพร สุขสันต์",
-          amount: 1500,
-          orderId: "ORD-001",
-        },
-        {
-          id: "2",
-          name: "slip_002.jpg",
-          url: "https://picsum.photos/seed/slip2/800/600.jpg",
-          uploadedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          status: "verified",
-          uploadedBy: "สมศรี มีความ",
-          customerName: "อนุชิต รักษาดี",
-          amount: 3200,
-          orderId: "ORD-002",
-        },
-        {
-          id: "3",
-          name: "slip_003.jpg",
-          url: "https://picsum.photos/seed/slip3/800/600.jpg",
-          uploadedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          status: "rejected",
-          uploadedBy: "สมหญิง แจ่มใส",
-          customerName: "ธิติวัฒน์ รุ่งเรือง",
-          amount: 2800,
-          orderId: "ORD-003",
-          notes: "รูปภาพไม่ชัดเจน ไม่สามารถอ่านข้อมูลได้",
-        },
-        {
-          id: "4",
-          name: "slip_004.jpg",
-          url: "https://picsum.photos/seed/slip4/800/600.jpg",
-          uploadedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-          status: "verified",
-          uploadedBy: "สมฤทธิ์ มั่งคั่ง",
-          customerName: "นาตาลี่ จันทร์เจริญ",
-          amount: 5000,
-          orderId: "ORD-004",
-        },
-      ];
+      const params = new URLSearchParams({
+        company_id: String(companyId),
+      });
 
-      setSlips(mockSlips);
-    } catch (error) {
-      console.error("Failed to load slips:", error);
+      const response = await fetch(
+        `/api/Slip_DB/list_company_slips.php?${params.toString()}`,
+      );
+      if (!response.ok) {
+        throw new Error(`โหลดข้อมูลล้มเหลว (${response.status})`);
+      }
+      const data = await response.json();
+      if (!data?.success) {
+        throw new Error(data?.message || "ไม่สามารถโหลดข้อมูลสลิป");
+      }
+
+      const normalized: PaymentSlip[] = Array.isArray(data.data)
+        ? data.data.map((item: any) => {
+            const apiUrl =
+              typeof item.url === "string" && item.url.length > 0
+                ? item.url
+                : undefined;
+            const fallbackName = item.file_name
+              ? String(item.file_name)
+              : apiUrl
+                ? apiUrl.split("/").pop() || `slip_${item.id}`
+                : `slip_${item.id}`;
+            const statusValue =
+              item.status === "verified" || item.status === "rejected"
+                ? item.status
+                : "pending";
+            const fileExists = Boolean(
+              item.file_exists ?? item.fileExists ?? apiUrl,
+            );
+            return {
+              id: String(item.id),
+              name: fallbackName,
+              url: fileExists ? apiUrl : undefined,
+              uploadedAt:
+                item.uploaded_at || item.created_at || new Date().toISOString(),
+              status: statusValue,
+              uploadedBy: item.uploaded_by || undefined,
+              customerName: item.customer_name || undefined,
+              customerPhone: item.customer_phone || undefined,
+              amount:
+                typeof item.amount === "number"
+                  ? item.amount
+                  : item.amount
+                    ? Number(item.amount)
+                    : undefined,
+              orderTotal:
+                typeof item.order_total === "number"
+                  ? item.order_total
+                  : item.order_total
+                    ? Number(item.order_total)
+                    : undefined,
+              notes: item.notes || undefined,
+              orderId: item.order_id ? String(item.order_id) : undefined,
+              bankName: item.bank_name || undefined,
+              bankNumber: item.bank_number || undefined,
+              transferDate: item.transfer_date || undefined,
+              fileExists,
+              originalUrl: item.original_url || apiUrl,
+            };
+          })
+        : [];
+
+      setSlips(normalized);
+    } catch (err) {
+      console.error("Failed to load slips:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "เกิดข้อผิดพลาดระหว่างโหลดข้อมูลสลิป",
+      );
+      setSlips([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSlips();
+  }, [loadSlips]);
 
   const filteredSlips = slips.filter((slip) => {
     const matchesSearch =
@@ -265,6 +303,11 @@ const SlipAll: React.FC = () => {
           </div>
         </div>
       </div>
+      {error && (
+        <div className="mb-6 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
@@ -367,12 +410,18 @@ const SlipAll: React.FC = () => {
                   <tr key={slip.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 border border-gray-200 rounded-lg overflow-hidden">
-                          <img
-                            src={toAbsoluteApiUrl(slip.url)}
-                            alt={slip.name}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-10 h-10 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                          {slip.url ? (
+                            <img
+                              src={toAbsoluteApiUrl(slip.url)}
+                              alt={slip.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-gray-500 text-center px-1 leading-tight">
+                              ไม่มีไฟล์
+                            </span>
+                          )}
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
@@ -457,11 +506,23 @@ const SlipAll: React.FC = () => {
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
                     รูปภาพสลิป
                   </h3>
-                  <img
-                    src={toAbsoluteApiUrl(selectedSlip.url)}
-                    alt={selectedSlip.name}
-                    className="w-full border border-gray-200 rounded-lg"
-                  />
+                  {selectedSlip.url ? (
+                    <img
+                      src={toAbsoluteApiUrl(selectedSlip.url)}
+                      alt={selectedSlip.name}
+                      className="w-full border border-gray-200 rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-full border border-dashed border-gray-300 rounded-lg bg-gray-50 py-12 flex flex-col items-center justify-center text-gray-500">
+                      <Image className="w-10 h-10 mb-3 text-gray-400" />
+                      <p className="font-medium">ไม่พบไฟล์สลิป</p>
+                      {selectedSlip.originalUrl && (
+                        <p className="text-xs text-gray-400 mt-2 break-all px-6 text-center">
+                          ตำแหน่งเดิม: {selectedSlip.originalUrl}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Details */}
