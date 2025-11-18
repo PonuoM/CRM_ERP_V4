@@ -413,6 +413,7 @@ async function main() {
     update: {},
     create: {
       order_id: "ORD-100000001",
+      parent_order_id: "ORD-100000001",
       product_id: 1,
       product_name: "Seed A",
       quantity: 10,
@@ -428,6 +429,7 @@ async function main() {
     update: {},
     create: {
       order_id: "ORD-100000002",
+      parent_order_id: "ORD-100000002",
       product_id: 1,
       product_name: "Seed A",
       quantity: 8,
@@ -443,6 +445,7 @@ async function main() {
     update: {},
     create: {
       order_id: "ORD-100000003",
+      parent_order_id: "ORD-100000003",
       product_id: 1,
       product_name: "Seed A",
       quantity: 6,
@@ -458,6 +461,7 @@ async function main() {
     update: {},
     create: {
       order_id: "ORD-100000004",
+      parent_order_id: "ORD-100000004",
       product_id: 1,
       product_name: "Seed A",
       quantity: 9,
