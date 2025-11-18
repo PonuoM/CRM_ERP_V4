@@ -3,7 +3,9 @@
 -- Fields: user, role, phone(0-prefix), working_days(sum of attendance_value),
 --         total_minutes (onecall_log.duration/60), connected_calls (duration>=40s),
 --         total_calls, minutes_per_workday = total_minutes / working_days
--- Notes: Joins onecall_log.phone_telesale (starts with 66...) to users.phone (starts with 0...)
+-- Notes: Joins onecall_log.phone_telesale to users.phone by normalizing both
+--        sides into 0-prefixed local format. Handles inputs starting with 66
+--        (and the edge case 660...) as well as numbers already starting with 0.
 
 USE `mini_erp`;
 
@@ -37,13 +39,30 @@ DROP VIEW IF EXISTS `v_telesale_call_overview_monthly`;
 CREATE VIEW `v_telesale_call_overview_monthly` AS
 WITH
   users_ts AS (
+    -- Normalize users.phone to 0-prefixed local digits only
     SELECT
-      u.id,
-      u.first_name,
-      u.role,
-      CAST(REPLACE(REPLACE(u.phone, '-', ''), ' ', '') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS phone0
-    FROM users u
-    WHERE u.role IN ('Telesale','Supervisor Telesale')
+      src.id,
+      src.first_name,
+      src.role,
+      CAST(
+        CASE
+          WHEN src.d LIKE '66%'
+            THEN CONCAT('0', SUBSTRING(src.d, CASE WHEN SUBSTRING(src.d, 3, 1) = '0' THEN 4 ELSE 3 END))
+          WHEN src.d LIKE '0%'
+            THEN src.d
+          ELSE CONCAT('0', src.d)
+        END AS CHAR CHARACTER SET utf8mb4
+      ) COLLATE utf8mb4_unicode_ci AS phone0
+    FROM (
+      SELECT
+        u.id,
+        u.first_name,
+        u.role,
+        -- Keep digits only (MySQL 8+): remove spaces, dashes, plus, parentheses, etc.
+        REGEXP_REPLACE(COALESCE(u.phone, ''), '[^0-9]+', '') AS d
+      FROM users u
+      WHERE u.role IN ('Telesale','Supervisor Telesale')
+    ) AS src
   ),
   calls AS (
     SELECT
@@ -55,7 +74,17 @@ WITH
     FROM onecall_log ocl
     JOIN users_ts uts
       ON (
-        CAST(CONCAT('0', SUBSTRING(REPLACE(REPLACE(ocl.phone_telesale, '-', ''), ' ', ''), 3)) AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
+        -- Normalize onecall_log.phone_telesale to 0-prefixed local digits only
+        CAST(
+          CASE
+            WHEN REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', '') LIKE '66%'
+              THEN CONCAT('0', SUBSTRING(REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', ''),
+                                         CASE WHEN SUBSTRING(REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', ''), 3, 1) = '0' THEN 4 ELSE 3 END))
+            WHEN REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', '') LIKE '0%'
+              THEN REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', '')
+            ELSE CONCAT('0', REGEXP_REPLACE(COALESCE(ocl.phone_telesale, ''), '[^0-9]+', ''))
+          END AS CHAR CHARACTER SET utf8mb4
+        ) COLLATE utf8mb4_unicode_ci
       ) = uts.phone0
     GROUP BY uts.id, DATE_FORMAT(ocl.`timestamp`, '%Y-%m')
   ),

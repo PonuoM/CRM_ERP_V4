@@ -404,7 +404,9 @@ const CustomDatePicker: React.FC<{
   };
 
   const existingDates = getExistingDates();
-  const today = new Date().toISOString().split("T")[0];
+  // Use local date string for today to avoid timezone issues
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // Generate calendar days
   const generateCalendarDays = () => {
@@ -427,7 +429,11 @@ const CustomDatePicker: React.FC<{
   };
 
   const handleDateSelect = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    // Use local date string to avoid timezone issues
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${year}-${month}-${day}`;
 
     // Check if it's today
     if (dateStr === today) {
@@ -445,12 +451,7 @@ const CustomDatePicker: React.FC<{
 
   const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return placeholder;
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("th-TH", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    return dateStr; // Show the raw date string (e.g., "2025-11-09")
   };
 
   return (
@@ -520,7 +521,8 @@ const CustomDatePicker: React.FC<{
           {/* Calendar Days */}
           <div className="grid grid-cols-7 gap-1">
             {generateCalendarDays().map((date, index) => {
-              const dateStr = date.toISOString().split("T")[0];
+              // Use local date string to match handleDateSelect format
+              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
               const isCurrentMonth =
                 date.getMonth() === currentMonth.getMonth();
               const isExisting = existingDates.has(dateStr);
@@ -612,7 +614,37 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
   // State for users
   const [users, setUsers] = useState<any[]>([]);
+  // Selected employee (must be declared before use)
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  // Derive current company id from prop or session
+  const currentCompanyId = useMemo(() => {
+    if (user && typeof user.companyId === "number") return user.companyId;
+    try {
+      const sessionUserStr = localStorage.getItem("sessionUser");
+      if (sessionUserStr) {
+        const su = JSON.parse(sessionUserStr);
+        if (su && typeof su.company_id === "number") return su.company_id;
+      }
+    } catch {}
+    return undefined as number | undefined;
+  }, [user]);
+
+  // Only show employees from the same company as current user
+  const usersForFilter = useMemo(() => {
+    if (!Array.isArray(users)) return [] as any[];
+    if (currentCompanyId == null) return users;
+    return users.filter((u) => {
+      const cid = typeof u.company_id === "number" ? u.company_id : u.companyId;
+      return cid === currentCompanyId;
+    });
+  }, [users, currentCompanyId]);
+
+  // Ensure selected user stays within the filtered list
+  useEffect(() => {
+    if (!selectedUserId) return;
+    const exists = usersForFilter.some((u) => String(u.id) === String(selectedUserId));
+    if (!exists) setSelectedUserId("");
+  }, [usersForFilter, selectedUserId]);
 
   // State for sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -637,8 +669,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch dashboard stats
   const fetchDashboardStats = async () => {
     try {
+      const userParam = selectedUserId
+        ? `&user_id=${encodeURIComponent(selectedUserId)}`
+        : "";
       const response = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -656,8 +691,11 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
 
   const fetchEmployeeSummary = async () => {
     try {
+      const userParam = selectedUserId
+        ? `&user_id=${encodeURIComponent(selectedUserId)}`
+        : "";
       const resp = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}`,
+        `${import.meta.env.BASE_URL}api/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -1087,27 +1125,19 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   };
 
   // Fetch batches and users on component mount
-  useState(() => {
+  useEffect(() => {
     fetchBatches();
     fetchUsers();
-    fetchDashboardStats();
-    fetchEmployeeSummary();
-    fetchDailySeries();
-    fetchTalkSummary();
-  });
+  }, []);
 
-  // Update dashboard stats when month or year changes
-  useState(() => {
+  // Update dashboard stats when component mounts or when month/year changes
+  useEffect(() => {
     if (month && year) {
       fetchDashboardStats();
       fetchEmployeeSummary();
+      fetchDailySeries();
+      fetchTalkSummary();
     }
-  }, [month, year]);
-
-  // Update daily chart when month/year/user filter changes
-  useEffect(() => {
-    fetchDailySeries();
-    fetchTalkSummary();
   }, [month, year, selectedUserId]);
 
   // Handle Onecall login
@@ -1340,7 +1370,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                 className="w-full border rounded-md px-3 py-2 text-sm"
               >
                 <option value="">ทั้งหมด</option>
-                {users.map((user) => (
+                {usersForFilter.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.firstname} {user.lastname} ({user.role})
                   </option>
