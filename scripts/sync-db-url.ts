@@ -37,9 +37,26 @@ function readDbConfig(): DbConfig {
     );
 
     if (!dbHost || !dbPort || !dbName || !dbUser || !dbPass) {
-      throw new Error(
-        "Could not extract all required database configuration values from api/config.php",
-      );
+      // Try an alternative pattern if the first one doesn't match
+      const dbHostAlt = configContent.match(/\$DB_HOST\s*=\s*["']([^"']+)["']/);
+      const dbPortAlt = configContent.match(/\$DB_PORT\s*=\s*["']([^"']+)["']/);
+      const dbNameAlt = configContent.match(/\$DB_NAME\s*=\s*["']([^"']+)["']/);
+      const dbUserAlt = configContent.match(/\$DB_USER\s*=\s*["']([^"']+)["']/);
+      const dbPassAlt = configContent.match(/\$DB_PASS\s*=\s*["']([^"']+)["']/);
+
+      if (!dbHostAlt || !dbPortAlt || !dbNameAlt || !dbUserAlt || !dbPassAlt) {
+        throw new Error(
+          "Could not extract all required database configuration values from api/config.php",
+        );
+      }
+
+      return {
+        host: dbHostAlt[1],
+        port: dbPortAlt[1],
+        name: dbNameAlt[1],
+        user: dbUserAlt[1],
+        pass: dbPassAlt[1],
+      };
     }
 
     return {

@@ -6,9 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:sync": "npx tsx scripts/sync-db-url.ts",
+    "db:pull": "npx tsx scripts/prisma/db-pull.ts",
+    "db:push": "npx tsx scripts/prisma/db-push.ts",
+    "db:seed": "npx tsx scripts/prisma/db-seed.ts",
+    "db:migrate": "npm run db:sync && npx prisma migrate dev",
+    "db:generate": "npx prisma generate",
+    "db:studio": "npx prisma studio"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "apexcharts": "^5.3.5",
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
@@ -19,6 +27,8 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

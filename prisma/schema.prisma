@@ -127,6 +127,7 @@ model companies {
   customers  customers[]
   orders     orders[]
   pages      pages[]
+  platforms  platforms[]
   products   products[]
   promotions promotions[]
   users      users[]
@@ -901,6 +902,26 @@ model page_stats_log {
   @@index([batch_id], map: "idx_batch_id")
   @@index([page_id], map: "idx_page_id")
   @@index([time_column], map: "idx_time_column")
+}
+
+model platforms {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(64)
+  display_name    String    @db.VarChar(128)
+  description     String?   @db.VarChar(255)
+  company_id      Int       @default(1)
+  active          Boolean   @default(true)
+  sort_order      Int       @default(0)
+  show_pages_from String?   @db.VarChar(64)
+  created_at      DateTime? @default(now()) @db.Timestamp(0)
+  updated_at      DateTime? @default(now()) @db.Timestamp(0)
+  companies       companies @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_platforms_company")
+
+  @@unique([company_id, name], map: "uk_platforms_company_name")
+  @@index([active], map: "idx_platforms_active")
+  @@index([company_id], map: "idx_platforms_company_id")
+  @@index([show_pages_from], map: "idx_platforms_show_pages_from")
+  @@index([sort_order], map: "idx_platforms_sort_order")
 }
 
 enum tags_type {
