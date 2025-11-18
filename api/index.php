@@ -1260,6 +1260,55 @@ function release_order_allocations(PDO $pdo, string $orderId): array {
 }
 
 function handle_orders(PDO $pdo, ?string $id): void {
+    // Handle sequence endpoint for order ID generation
+    if ($id === 'sequence') {
+        $datePrefix = $_GET['datePrefix'] ?? '';
+        $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : 0;
+        $period = $_GET['period'] ?? 'day';
+        $monthPrefixParam = $_GET['monthPrefix'] ?? '';
+        
+        if (empty($datePrefix) || $companyId <= 0) {
+            json_response(['error' => 'INVALID_PARAMS'], 400);
+            return;
+        }
+        
+        // Determine prefix key based on requested period
+        if ($period === 'month') {
+            $sequencePrefix = $monthPrefixParam !== ''
+                ? preg_replace('/[^0-9]/', '', $monthPrefixParam)
+                : substr($datePrefix, 0, 4);
+            if (strlen($sequencePrefix) < 4) {
+                json_response(['error' => 'INVALID_MONTH_PREFIX'], 400);
+                return;
+            }
+        } else {
+            if (strlen($datePrefix) < 6) {
+                json_response(['error' => 'INVALID_DATE_PREFIX'], 400);
+                return;
+            }
+            $sequencePrefix = substr($datePrefix, 0, 6);
+        }
+        
+        try {
+            $pdo->beginTransaction();
+            // Insert row or atomically increase last_sequence
+            $insert = $pdo->prepare('INSERT INTO order_sequences (company_id, period, prefix, last_sequence) VALUES (?,?,?,1)
+                                     ON DUPLICATE KEY UPDATE last_sequence = last_sequence + 1, updated_at = NOW()');
+            $insert->execute([$companyId, $period, $sequencePrefix]);
+            
+            $seqStmt = $pdo->prepare('SELECT last_sequence FROM order_sequences WHERE company_id=? AND period=? AND prefix=? FOR UPDATE');
+            $seqStmt->execute([$companyId, $period, $sequencePrefix]);
+            $nextSequence = (int)$seqStmt->fetchColumn();
+            $pdo->commit();
+            json_response(['sequence' => max(1, $nextSequence)]);
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            error_log('Order sequence generation failed: ' . $e->getMessage());
+            json_response(['error' => 'SEQUENCE_FAILED'], 500);
+        }
+        return;
+    }
+    
     switch (method()) {
         case 'GET':
             if ($id) {
@@ -1278,9 +1327,21 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         LEFT JOIN order_tracking_numbers t ON t.order_id = o.id';
                 
                 $params = [];
+                $whereConditions = [];
+                
+                // Filter out sub orders (orders with -1, -2, -3, etc. suffix)
+                // Sub orders have pattern: mainOrderId-number (e.g., 251118-00001admin19z-1)
+                // We exclude orders where id matches pattern: ends with - followed by digits
+                // Use both REGEXP and LIKE for better compatibility
+                $whereConditions[] = "o.id NOT REGEXP '^.+-[0-9]+$'";
+                
                 if ($companyId) {
-                    $sql .= ' WHERE o.company_id = ?';
+                    $whereConditions[] = 'o.company_id = ?';
                     $params[] = $companyId;
+                }
+                
+                if (!empty($whereConditions)) {
+                    $sql .= ' WHERE ' . implode(' AND ', $whereConditions);
                 }
                 
                 $sql .= ' GROUP BY o.id
@@ -1296,13 +1357,25 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $orders = $stmt->fetchAll();
                 
                 // Fetch items for each order
+                // Need to include items from sub orders (mainOrderId-1, mainOrderId-2, etc.)
                 $orderIds = array_column($orders, 'id');
                 $itemsMap = [];
                 $slipsMap = [];
                 
                 if (!empty($orderIds)) {
-                    // Fetch items
-                    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+                    // Build list of order IDs including sub orders
+                    // For each main order ID, also include potential sub order IDs (-1, -2, -3, etc.)
+                    $allOrderIds = [];
+                    foreach ($orderIds as $mainOrderId) {
+                        $allOrderIds[] = $mainOrderId;
+                        // Add potential sub order IDs (up to 10 boxes should be enough)
+                        for ($i = 1; $i <= 10; $i++) {
+                            $allOrderIds[] = "{$mainOrderId}-{$i}";
+                        }
+                    }
+                    
+                    // Fetch items from main orders and sub orders
+                    $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
                     $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
                                        oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number, 
                                        oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
@@ -1313,25 +1386,50 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 ORDER BY oi.order_id, oi.id";
                     
                     $itemStmt = $pdo->prepare($itemSql);
-                    $itemStmt->execute($orderIds);
+                    $itemStmt->execute($allOrderIds);
                     $items = $itemStmt->fetchAll();
                     
+                    // Map items to main order IDs
+                    // Items from sub orders (mainOrderId-1, mainOrderId-2) should be mapped to main order (mainOrderId)
                     foreach ($items as $item) {
-                        $itemsMap[$item['order_id']][] = $item;
+                        $itemOrderId = $item['order_id'];
+                        // Check if this is a sub order (ends with -number)
+                        if (preg_match('/^(.+)-(\d+)$/', $itemOrderId, $matches)) {
+                            $mainOrderId = $matches[1]; // Extract main order ID
+                            // Map sub order items to main order
+                            if (in_array($mainOrderId, $orderIds)) {
+                                $itemsMap[$mainOrderId][] = $item;
+                            }
+                        } else {
+                            // Direct mapping for main order items
+                            $itemsMap[$itemOrderId][] = $item;
+                        }
                     }
                     
-                    // Fetch slips
+                    // Fetch slips from main orders and sub orders
                     $slipSql = "SELECT id, order_id, url, created_at 
                                 FROM order_slips 
                                 WHERE order_id IN ($placeholders)
                                 ORDER BY created_at DESC";
                     
                     $slipStmt = $pdo->prepare($slipSql);
-                    $slipStmt->execute($orderIds);
+                    $slipStmt->execute($allOrderIds);
                     $slips = $slipStmt->fetchAll();
                     
+                    // Map slips to main order IDs (similar to items)
                     foreach ($slips as $slip) {
-                        $slipsMap[$slip['order_id']][] = $slip;
+                        $slipOrderId = $slip['order_id'];
+                        // Check if this is a sub order (ends with -number)
+                        if (preg_match('/^(.+)-(\d+)$/', $slipOrderId, $matches)) {
+                            $mainOrderId = $matches[1]; // Extract main order ID
+                            // Map sub order slips to main order
+                            if (in_array($mainOrderId, $orderIds)) {
+                                $slipsMap[$mainOrderId][] = $slip;
+                            }
+                        } else {
+                            // Direct mapping for main order slips
+                            $slipsMap[$slipOrderId][] = $slip;
+                        }
                     }
                 }
                 
@@ -1395,11 +1493,70 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
                 }
                 
-                $stmt->execute($values);
+                // Get main order ID and validate it doesn't have sub order suffix
+                $mainOrderId = $in['id'];
+                // Ensure main order ID doesn't have sub order suffix (e.g., -1, -2)
+                if (preg_match('/^(.+)-(\d+)$/', $mainOrderId, $matches)) {
+                    // If main order ID has suffix, use the base ID instead
+                    $mainOrderId = $matches[1];
+                    error_log("Warning: Main order ID had sub order suffix, using base ID: {$mainOrderId}");
+                }
+                
+                // Update the id in values array to use the correct main order ID
+                $values[0] = $mainOrderId;
+                $in['id'] = $mainOrderId;
+
+                // Determine number of boxes (fallback to provided subOrderIds / boxCount where possible)
+                $boxCount = 1;
+                if (!empty($in['boxes']) && is_array($in['boxes'])) {
+                    $boxCount = max(1, count($in['boxes']));
+                } elseif (isset($in['boxCount'])) {
+                    $boxCount = max(1, (int)$in['boxCount']);
+                }
+
+                // Generate per-box order IDs used only for order_items/order allocations
+                $subOrderIds = [];
+                if (!empty($in['subOrderIds']) && is_array($in['subOrderIds'])) {
+                    foreach ($in['subOrderIds'] as $candidate) {
+                        $candidateId = trim((string)$candidate);
+                        if ($candidateId !== '') {
+                            $subOrderIds[] = $candidateId;
+                        }
+                    }
+                }
+                if (empty($subOrderIds)) {
+                    for ($i = 1; $i <= $boxCount; $i++) {
+                        $subOrderIds[] = "{$mainOrderId}-{$i}";
+                    }
+                }
+
+                try {
+                    $stmt->execute($values);
+                } catch (PDOException $e) {
+                    // If duplicate entry error for main order, rollback and return error
+                    if ($e->getCode() == 23000 && strpos($e->getMessage(), 'Duplicate entry') !== false) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'DUPLICATE_ORDER', 'message' => 'Order ID already exists: ' . $mainOrderId], 400);
+                        return;
+                    }
+                    throw $e;
+                }
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two‑phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+
+                    // Helper function to get order_id based on box_number (using synthesized per-box IDs)
+                    $getOrderIdForBox = function($boxNumber) use ($mainOrderId, $subOrderIds) {
+                        $boxNum = (int)$boxNumber;
+                        if ($boxNum <= 0) {
+                            return $subOrderIds[0] ?? "{$mainOrderId}-1";
+                        }
+                        if (isset($subOrderIds[$boxNum - 1])) {
+                            return $subOrderIds[$boxNum - 1];
+                        }
+                        return "{$mainOrderId}-{$boxNum}";
+                    };
 
                     $clientToDbParent = [];
                     $clientToDbItem = [];
@@ -1408,9 +1565,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     foreach ($in['items'] as $it) {
                         $isParent = !empty($it['isPromotionParent']);
                         if ($isParent) {
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
                             $ins->execute([
-                                $in['id'], $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $it['boxNumber'] ?? null,
+                                $orderIdForItem, $mainOrderId,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
+                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
                                 $it['promotionId'] ?? null, null, 1,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1426,9 +1586,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         $isParent = !empty($it['isPromotionParent']);
                         $hasParent = isset($it['parentItemId']) && $it['parentItemId'] !== null && $it['parentItemId'] !== '';
                         if (!$isParent && !$hasParent) {
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
                             $ins->execute([
-                                $in['id'], $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $it['boxNumber'] ?? null,
+                                $orderIdForItem, $mainOrderId,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
+                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
                                 $it['promotionId'] ?? null, null, 0,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1445,9 +1608,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             if ($clientParent !== null && isset($clientToDbParent[(string)$clientParent])) {
                                 $resolved = $clientToDbParent[(string)$clientParent];
                             }
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
                             $ins->execute([
-                                $in['id'], $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $it['boxNumber'] ?? null,
+                                $orderIdForItem, $mainOrderId,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
+                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
                                 $it['promotionId'] ?? null, $resolved, 0,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1466,8 +1632,9 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         if (isset($it['id']) && isset($clientToDbItem[(string)$it['id']])) {
                             $orderItemId = $clientToDbItem[(string)$it['id']];
                         }
+                        // Allocations remain tied to the main order for warehouse processing
                         $alloc->execute([
-                            $in['id'],
+                            $mainOrderId,
                             $orderItemId,
                             $productId,
                             max(0, (int)($it['quantity'] ?? 0)),
@@ -2463,26 +2630,55 @@ function handle_exports(PDO $pdo, ?string $id): void {
 
 function get_order(PDO $pdo, string $id): ?array {
     // Select all columns including bank_account_id and transfer_date
+    // Check if this is a main order (not a sub order)
+    $isSubOrder = preg_match('/^(.+)-(\d+)$/', $id, $matches);
+    $mainOrderId = $isSubOrder ? $matches[1] : $id;
+    
+    // Always fetch main order record (not sub order)
     $stmt = $pdo->prepare('SELECT * FROM orders WHERE id=?');
-    $stmt->execute([$id]);
+    $stmt->execute([$mainOrderId]);
     $o = $stmt->fetch();
     if (!$o) return null;
-    $items = $pdo->prepare('SELECT * FROM order_items WHERE order_id=?');
-    $items->execute([$id]);
-    $o['items'] = $items->fetchAll();
-    $tn = $pdo->prepare('SELECT tracking_number FROM order_tracking_numbers WHERE order_id=?');
-    $tn->execute([$id]);
+    
+    // Fetch items from main order and all sub orders
+    // Build list of order IDs: main order + potential sub orders (up to 10 boxes)
+    $allOrderIds = [$mainOrderId];
+    for ($i = 1; $i <= 10; $i++) {
+        $allOrderIds[] = "{$mainOrderId}-{$i}";
+    }
+    $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
+    
+    $items = $pdo->prepare("SELECT * FROM order_items WHERE order_id IN ($placeholders) ORDER BY order_id, id");
+    $items->execute($allOrderIds);
+    $allItems = $items->fetchAll();
+    
+    // Filter items: if this is a sub order request, only return items for that sub order
+    // Otherwise, return all items from main order and sub orders
+    if ($isSubOrder) {
+        $o['items'] = array_filter($allItems, function($item) use ($id) {
+            return $item['order_id'] === $id;
+        });
+    } else {
+        $o['items'] = $allItems;
+    }
+    
+    // Fetch tracking numbers from main order and all sub orders
+    $tn = $pdo->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE order_id IN ($placeholders)");
+    $tn->execute($allOrderIds);
     $tnRows = $tn->fetchAll();
     $tnList = [];
     foreach ($tnRows as $r) { $tnList[] = $r['tracking_number']; }
-    $o['trackingNumbers'] = $tnList;
+    $o['trackingNumbers'] = array_unique($tnList);
+    
+    // Fetch boxes from main order
     $bx = $pdo->prepare('SELECT box_number, cod_amount FROM order_boxes WHERE order_id=?');
-    $bx->execute([$id]);
+    $bx->execute([$mainOrderId]);
     $o['boxes'] = $bx->fetchAll();
-    // Include slips if table exists
+    
+    // Include slips from main order and all sub orders
     try {
-        $sl = $pdo->prepare('SELECT id, url, created_at FROM order_slips WHERE order_id=? ORDER BY id DESC');
-        $sl->execute([$id]);
+        $sl = $pdo->prepare("SELECT id, order_id, url, created_at FROM order_slips WHERE order_id IN ($placeholders) ORDER BY id DESC");
+        $sl->execute($allOrderIds);
         $o['slips'] = $sl->fetchAll();
     } catch (Throwable $e) { /* ignore if table not present */ }
     return $o;
