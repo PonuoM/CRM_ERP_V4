@@ -25,3 +25,5 @@ dist-ssr
 .env
 
 api/uploads/slips/*
+
+/src/generated/prisma
