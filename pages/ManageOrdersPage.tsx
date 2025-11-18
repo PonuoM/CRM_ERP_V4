@@ -32,13 +32,13 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, openModal, onProcessOrders, onCancelOrders }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeDatePreset, setActiveDatePreset] = useState('all');
+  const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('pending');
   const [itemsPerPage, setItemsPerPage] = useState<number>(PAGE_SIZE_OPTIONS[1]); // Default 10
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
-  const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all');
+  const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
   const [fTracking, setFTracking] = useState('');
@@ -71,7 +71,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (!savedRaw) return;
       const saved = JSON.parse(savedRaw);
       if (saved && typeof saved === 'object') {
-        setActiveDatePreset(saved.activeDatePreset ?? 'all');
+        setActiveDatePreset(saved.activeDatePreset ?? 'today'); // Default to 'today' instead of 'all'
         setDateRange(saved.dateRange ?? { start: '', end: '' });
         setActiveTab(
           saved.activeTab === 'completed' ? 'completed' :
@@ -81,17 +81,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           saved.activeTab === 'verified' ? 'verified' :
           saved.activeTab === 'shipping' ? 'shipping' : 'pending'
         );
-        setPayTab(saved.payTab === 'unpaid' || saved.payTab === 'paid' ? saved.payTab : 'all');
+        setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
         setFTracking(saved.fTracking ?? '');
         setFOrderDate(saved.fOrderDate ?? { start: '', end: '' });
         setFDeliveryDate(saved.fDeliveryDate ?? { start: '', end: '' });
         setFPaymentMethod(saved.fPaymentMethod ?? '');
-        // fPaymentStatus is controlled by payTab when not 'all'; when 'all' restore saved
-        if (saved.payTab === 'all') {
-          setFPaymentStatus(saved.fPaymentStatus ?? '');
-        }
+        setFPaymentStatus(saved.fPaymentStatus ?? ''); // Always restore saved payment status
         setFCustomerName(saved.fCustomerName ?? '');
         setFCustomerPhone(saved.fCustomerPhone ?? '');
         // Applied values (fallback to edited values if not present)
@@ -114,15 +111,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         activeDatePreset,
         dateRange,
         activeTab,
-        payTab,
-        showAdvanced,
+        showAdvanced, // Removed payTab
         fOrderId,
         fTracking,
         fOrderDate,
         fDeliveryDate,
         fPaymentMethod,
-        // Save fPaymentStatus for 'all' tab; for unpaid/paid it is implied
-        fPaymentStatus: payTab === 'all' ? fPaymentStatus : undefined,
+        fPaymentStatus, // No longer conditional on payTab
         fCustomerName,
         fCustomerPhone,
         // Applied values
@@ -137,7 +132,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch {}
-  }, [activeDatePreset, dateRange, activeTab, payTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -252,6 +247,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       sourceOrders = [];
     }
     
+    // กรองตามวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" เท่านั้น
+    if (activeTab !== 'verified') {
+      return sourceOrders;
+    }
+    
     if (activeDatePreset === 'all') {
       return sourceOrders;
     }
@@ -291,6 +291,47 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     });
   }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
 
+  // Filter orders by delivery date for "รอดึงข้อมูล" tab only (for display count in date filter section)
+  const filteredAwaitingExportOrders = useMemo(() => {
+    if (activeDatePreset === 'all') {
+      return awaitingExportOrders;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return awaitingExportOrders.filter(order => {
+      const deliveryDate = new Date(order.deliveryDate);
+      deliveryDate.setHours(0, 0, 0, 0);
+      
+      switch (activeDatePreset) {
+        case 'today':
+          return deliveryDate.getTime() === today.getTime();
+        case 'tomorrow':
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          return deliveryDate.getTime() === tomorrow.getTime();
+        case 'next7days':
+          const sevenDaysLater = new Date(today);
+          sevenDaysLater.setDate(today.getDate() + 7);
+          return deliveryDate >= today && deliveryDate <= sevenDaysLater;
+        case 'next30days':
+          const thirtyDaysLater = new Date(today);
+          thirtyDaysLater.setDate(today.getDate() + 30);
+          return deliveryDate >= today && deliveryDate <= thirtyDaysLater;
+        case 'range':
+          if (!dateRange.start || !dateRange.end) return true;
+          const startDate = new Date(dateRange.start);
+          startDate.setHours(0,0,0,0);
+          const endDate = new Date(dateRange.end);
+          endDate.setHours(0,0,0,0);
+          return deliveryDate >= startDate && deliveryDate <= endDate;
+        default:
+          return true;
+      }
+    });
+  }, [awaitingExportOrders, activeDatePreset, dateRange]);
+
   // Apply advanced filters on top of displayedOrders (non-destructive to existing logic)
   const customerById = useMemo(() => {
     const m = new Map<string, Customer>();
@@ -309,8 +350,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
     if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
     if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
-    const effectiveStatus = payTab === 'unpaid' ? PaymentStatus.Unpaid : (payTab === 'paid' ? PaymentStatus.Paid : afPaymentStatus);
-    if (effectiveStatus) list = list.filter(o => o.paymentStatus === effectiveStatus);
+    // Payment status filtering is done via advanced filters only
+    if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
     const nameTerm = afCustomerName.trim().toLowerCase();
     if (nameTerm) {
       list = list.filter(o => {
@@ -330,7 +371,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       });
     }
     return list;
-  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
+  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, customerById]);
 
   // Pagination logic
   const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[1];
@@ -791,22 +832,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         if (newRange.start && newRange.end) {
             setActiveDatePreset('range');
         } else if (!newRange.start && !newRange.end) {
-             setActiveDatePreset('all');
+             setActiveDatePreset('today'); // Reset to 'today' instead of 'all' when date range is cleared
         }
         return newRange;
     });
   };
 
-  // Sync payment status filter with payTab selection
-  useEffect(() => {
-    if (payTab === 'unpaid') {
-      setFPaymentStatus(PaymentStatus.Unpaid);
-    } else if (payTab === 'paid') {
-      setFPaymentStatus(PaymentStatus.Paid);
-    } else {
-      // payTab === 'all' -> keep user-selected payment status (persisted)
-    }
-  }, [payTab]);
+  // Payment status filtering is now done via advanced filters only (no payTab sync needed)
 
   // Compute ตัวกรองขั้นสูง badge count (exclude implied payTab status)
   const advancedCount = useMemo(() => {
@@ -822,23 +854,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       afCustomerPhone,
     ];
     let c = baseFields.filter(v => !!v && String(v).trim() !== '').length;
-    const statusCountable = payTab === 'all' ? afPaymentStatus : '';
-    if (statusCountable && String(statusCountable).trim() !== '') c += 1;
+    if (afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1; // No longer conditional on payTab
     return c;
-  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone]);
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   const clearFilters = () => {
-    // Reset all filters but keep the tab's implied payment status
+    // Reset all filters
     setFOrderId('');
     setFTracking('');
     setFOrderDate({ start: '', end: '' });
     setFDeliveryDate({ start: '', end: '' });
     setFPaymentMethod('' as any);
-    if (payTab === 'all') {
-      setFPaymentStatus('' as any);
-    }
+    setFPaymentStatus('' as any); // Unconditional reset
     // Reset date presets
-    setActiveDatePreset('all');
+    setActiveDatePreset('today'); // Reset to 'today' instead of 'all'
     setDateRange({ start: '', end: '' });
     // Also clear applied values immediately
     setAfOrderId('');
@@ -846,7 +875,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfOrderDate({ start: '', end: '' });
     setAfDeliveryDate({ start: '', end: '' });
     setAfPaymentMethod('' as any);
-    if (payTab === 'all') setAfPaymentStatus('' as any);
+    setAfPaymentStatus('' as any); // Unconditional reset
     setFCustomerName('');
     setFCustomerPhone('');
     setAfCustomerName('');
@@ -860,7 +889,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfOrderDate({ ...fOrderDate });
     setAfDeliveryDate({ ...fDeliveryDate });
     setAfPaymentMethod(fPaymentMethod || '' as any);
-    setAfPaymentStatus(payTab === 'all' ? (fPaymentStatus || '' as any) : afPaymentStatus);
+    setAfPaymentStatus(fPaymentStatus || '' as any); // Unconditional set
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
     setShowAdvanced(false);
@@ -880,11 +909,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   }, [showAdvanced]);
 
   const datePresets = [
-    { label: 'ทั้งหมด', value: 'all' },
     { label: 'วันนี้', value: 'today' },
-    { label: 'พรุ่งนี้', value: 'tomorrow' },
+    { label: 'พรุ่งนี้', value: 'tomorrow', hasSpacing: true }, // เพิ่ม flag สำหรับเว้นระยะห่าง
     { label: 'ล่วงหน้า 7 วัน', value: 'next7days' },
     { label: 'ล่วงหน้า 30 วัน', value: 'next30days' },
+    { label: 'ทั้งหมด', value: 'all' },
   ];
 
   return (
@@ -990,17 +1019,18 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
               </select>
             </div>
-            {payTab === 'all' && (
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
-                <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
-                  <option value="">ทั้งหมด</option>
-                  <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
-                  <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
-                  <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
+              <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
+                <option value="">ทั้งหมด</option>
+                <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
+                <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
+                <option value={PaymentStatus.Verified}>ยืนยันแล้ว</option>
+                <option value={PaymentStatus.PreApproved}>Pre Approved</option>
+                <option value={PaymentStatus.Approved}>Approved</option>
+                <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (จาก)</label>
               <input type="date" value={fOrderDate.start} onChange={e=>setFOrderDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />
@@ -1021,31 +1051,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         )}
       </div>
 
-      {/* Payment tabs: All / Unpaid / Paid */}
-      <div className="flex border-b border-gray-200 mb-4">
-        <button
-          onClick={() => setPayTab('all')}
-          className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='all' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <History size={16} />
-          <span>ทั้งหมด</span>
-        </button>
-        <button
-          onClick={() => setPayTab('unpaid')}
-          className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='unpaid' ? 'border-b-2 border-red-600 text-red-600' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <ListChecks size={16} />
-          <span>ยังไม่ชำระ</span>
-        </button>
-        <button
-          onClick={() => setPayTab('paid')}
-          className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='paid' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <ListChecks size={16} />
-          <span>ชำระแล้ว</span>
-        </button>
-      </div>
-
       <div className="flex border-b border-gray-200 mb-6">
           <button
             onClick={() => setActiveTab('pending')}
@@ -1059,7 +1064,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>รอตรวจสอบสลิป</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
-            }`}>{pendingOrders.length}</span>
+             }`}>{pendingOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('verified')}
@@ -1073,7 +1078,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>รอดึงข้อมูล</span>
               <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
-            }`}>{awaitingExportOrders.length}</span>
+             }`}>{awaitingExportOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('preparing')}
@@ -1087,7 +1092,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>กำลังจัดเตรียม</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
-            }`}>{preparingOrders.length}</span>
+             }`}>{preparingOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('shipping')}
@@ -1101,7 +1106,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>กำลังจัดส่ง</span>
               <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
-            }`}>{shippingOrders.length}</span>
+             }`}>{shippingOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('awaiting_account')}
@@ -1115,7 +1120,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>รอตรวจสอบจากบัญชี</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-            }`}>{awaitingAccountCheckOrders.length}</span>
+             }`}>{awaitingAccountCheckOrders.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('completed')}
@@ -1129,44 +1134,50 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <span>เสร็จสิ้น</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
                 activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
-            }`}>{completedOrders.length}</span>
+             }`}>{completedOrders.length}</span>
           </button>
       </div>
 
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center mr-4">
-                <Calendar size={16} className="text-gray-500 mr-2"/>
-                <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
-            </div>
-            {datePresets.map(preset => (
-                <DateFilterButton 
-                    key={preset.value}
-                    label={preset.label}
-                    value={preset.value}
-                    activeValue={activeDatePreset}
-                    onClick={handleDatePresetClick}
-                />
-            ))}
-            <div className="flex items-center gap-2 ml-auto">
-                  <input 
-                    type="date" 
-                    name="start"
-                    value={dateRange.start}
-                    onChange={handleDateRangeChange}
-                    className="p-1 border border-gray-300 rounded-md text-sm"
-                  />
-                  <span className="text-gray-500 text-sm">ถึง</span>
-                   <input 
-                    type="date" 
-                    name="end"
-                    value={dateRange.end}
-                    onChange={handleDateRangeChange}
-                    className="p-1 border border-gray-300 rounded-md text-sm"
-                  />
-            </div>
+      {/* แสดงตัวกรองวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" */}
+      {activeTab === 'verified' && (
+        <div className="bg-white p-4 rounded-lg shadow mb-6">
+          <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center mr-4">
+                  <Calendar size={16} className="text-gray-500 mr-2"/>
+                  <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
+                  <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} รายการ)</span>
+              </div>
+              {datePresets.map((preset, index) => (
+                  <React.Fragment key={preset.value}>
+                      <DateFilterButton 
+                          label={preset.label}
+                          value={preset.value}
+                          activeValue={activeDatePreset}
+                          onClick={handleDatePresetClick}
+                      />
+                      {preset.hasSpacing && <div className="w-8" />}
+                  </React.Fragment>
+              ))}
+              <div className="flex items-center gap-2 ml-auto">
+                    <input 
+                      type="date" 
+                      name="start"
+                      value={dateRange.start}
+                      onChange={handleDateRangeChange}
+                      className="p-1 border border-gray-300 rounded-md text-sm"
+                    />
+                    <span className="text-gray-500 text-sm">ถึง</span>
+                     <input 
+                      type="date" 
+                      name="end"
+                      value={dateRange.end}
+                      onChange={handleDateRangeChange}
+                      className="p-1 border border-gray-300 rounded-md text-sm"
+                    />
+              </div>
+          </div>
         </div>
-      </div>
+      )}
       
       <div className="bg-white rounded-lg shadow">
         <OrderTable 

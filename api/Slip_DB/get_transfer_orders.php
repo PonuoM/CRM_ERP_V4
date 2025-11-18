@@ -202,6 +202,7 @@ try {
   
   // First query to get total count for pagination calculation
   // Must match the HAVING clause from main query
+  // Filter out sub orders (orders with -1, -2, -3, etc. suffix)
   $countSql = "SELECT COUNT(*) as total
                FROM (
                    SELECT o.id, o.total_amount, o.payment_status
@@ -209,6 +210,7 @@ try {
                    LEFT JOIN customers c ON c.id = o.customer_id
                    LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
+                   AND o.id NOT REGEXP '^.+-[0-9]+$'
                    AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
                    GROUP BY o.id, o.total_amount, o.payment_status";
   
@@ -261,6 +263,7 @@ try {
             LEFT JOIN customers c ON c.id = o.customer_id
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
+            AND o.id NOT REGEXP '^.+-[0-9]+$'
             AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
             GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, c.first_name, c.last_name, c.phone";
   

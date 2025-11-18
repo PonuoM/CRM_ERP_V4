@@ -199,6 +199,7 @@ import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
 import CODRecordPage from "./pages/CODRecordPage";
 import usePersistentState from "./utils/usePersistentState";
+import { generateMainOrderId } from "./utils/orderIdGenerator";
 
 const SLIP_ALL_LABEL = String.raw`���,������,������,'���,>���,-���,���1%���,O.,������,������,\\\\"\\`;
 const SLIP_DETAIL_LABEL = String.raw`���,������,������,������,������,������1?���,-���,���,������,\\"���,������,������,'���,>`;
@@ -900,7 +901,15 @@ const App: React.FC = () => {
 
         setUsers(Array.isArray(u) ? u.map(mapUser) : []);
         setCustomers(Array.isArray(c) ? c.map(mapCustomer) : []);
-        setOrders(Array.isArray(o) ? o.map(mapOrder) : []);
+        // Filter out sub orders (orders with -1, -2, -3, etc. suffix) before mapping
+        const mainOrders = Array.isArray(o) 
+          ? o.filter((order: any) => {
+              // Exclude orders where id ends with - followed by digits (sub orders)
+              const orderId = String(order.id || '');
+              return !/-\d+$/.test(orderId);
+            })
+          : [];
+        setOrders(mainOrders.map(mapOrder));
         setProducts(Array.isArray(p) ? p.map(mapProductFromApi) : []);
         setPages(
           Array.isArray(pg)
@@ -1978,8 +1987,15 @@ const App: React.FC = () => {
       return;
     }
 
+    // Generate main order ID
+    const mainOrderId = await generateMainOrderId(
+      currentUser,
+      currentUser.companyId,
+    );
+
+    // Use main order ID (without box suffix) for the main order record
     const newOrder: Order = {
-      id: `ORD-${Date.now()}`,
+      id: mainOrderId,
       orderDate: new Date().toISOString(),
       companyId: currentUser.companyId,
       creatorId: currentUser.id,
@@ -2003,7 +2019,7 @@ const App: React.FC = () => {
       warehouseId: newOrderData.warehouseId,
     };
     const orderPayload = {
-      id: newOrder.id,
+      id: mainOrderId, // Use main order ID (without box suffix)
       customerId: newOrder.customerId,
       companyId: newOrder.companyId,
       creatorId: newOrder.creatorId,
@@ -2190,16 +2206,36 @@ const App: React.FC = () => {
               : order,
           );
         }
-        setOrders(mappedOrders);
+        // Filter out sub orders before setting
+        const filteredMappedOrders = mappedOrders.filter((order: Order) => {
+          const orderId = String(order.id || '');
+          return !/-\d+$/.test(orderId);
+        });
+        setOrders(filteredMappedOrders);
         console.log("Orders refreshed from API");
       } catch (refreshError) {
         console.error("Failed to refresh orders:", refreshError);
         // Fallback to local state update
-        setOrders((prevOrders) => [newOrder, ...prevOrders]);
+        // Filter out sub orders before adding new order
+        setOrders((prevOrders) => {
+          const filteredPrev = prevOrders.filter((order: Order) => {
+            const orderId = String(order.id || '');
+            return !/-\d+$/.test(orderId);
+          });
+          // Also check if newOrder is a sub order
+          const newOrderId = String(newOrder.id || '');
+          const isSubOrder = /-\d+$/.test(newOrderId);
+          return isSubOrder ? filteredPrev : [newOrder, ...filteredPrev];
+        });
       }
     } catch (e) {
       console.error("create order API failed", e);
-      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹à¸¥à¸°à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      if (errorMessage.includes('Duplicate entry')) {
+        alert("ไม่สามารถสร้างออเดอร์ได้: เลขที่ออเดอร์ซ้ำกัน กรุณาลองใหม่อีกครั้ง");
+      } else {
+        alert("ไม่สามารถสร้างออเดอร์ได้: " + errorMessage);
+      }
       return; // Don't add to local state if API fails
     }
 
@@ -4099,7 +4135,17 @@ const App: React.FC = () => {
         slips: [],
       };
 
-      setOrders((prev) => [newOrder, ...prev]);
+      // Filter out sub orders before adding new order
+      setOrders((prev) => {
+        const filteredPrev = prev.filter((order: Order) => {
+          const orderId = String(order.id || '');
+          return !/-\d+$/.test(orderId);
+        });
+        // Also check if newOrder is a sub order
+        const newOrderId = String(newOrder.id || '');
+        const isSubOrder = /-\d+$/.test(newOrderId);
+        return isSubOrder ? filteredPrev : [newOrder, ...filteredPrev];
+      });
       summary.createdOrders += 1;
     }
 
