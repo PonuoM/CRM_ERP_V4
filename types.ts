@@ -3,6 +3,7 @@ export enum UserRole {
   Telesale = "Telesale",
   Supervisor = "Supervisor Telesale",
   Backoffice = "Backoffice",
+  Finance = "Finance",
   AdminControl = "Admin Control",
   SuperAdmin = "Super Admin",
   Marketing = "Marketing",
@@ -332,9 +333,12 @@ export enum PaymentMethod {
 
 export enum OrderStatus {
   Pending = "Pending",
+  AwaitingVerification = "AwaitingVerification", // รอตรวจสอบ (หลัง Admin สร้างออเดอร์)
   Confirmed = "Confirmed",
+  Preparing = "Preparing", // กำลังจัดเตรียม (หลัง Back office ดึงข้อมูล)
   Picking = "Picking",
-  Shipping = "Shipping",
+  Shipping = "Shipping", // กำลังจัดส่ง (หลังใส่ tracking)
+  PreApproved = "PreApproved", // Pre Approve (สำหรับ COD และ PayAfter)
   Delivered = "Delivered",
   Returned = "Returned",
   Cancelled = "Cancelled",
@@ -344,6 +348,8 @@ export enum PaymentStatus {
   Unpaid = "Unpaid",
   PendingVerification = "PendingVerification",
   Verified = "Verified", // ผ่านการตรวจสอบสลิปแล้ว แต่ยังไม่ได้ Export
+  PreApproved = "PreApproved", // Pre Approve (สำหรับ COD และ PayAfter)
+  Approved = "Approved", // Approve โดย Finance (ตรวจสอบเงินโอนเข้าจริงแล้ว)
   Paid = "Paid",
 }
 

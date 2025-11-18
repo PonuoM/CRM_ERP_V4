@@ -47,7 +47,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
   }, [savedFilters]);
 
   const [activeTab, setActiveTab] = useState<'all' | 'pendingSlip'>('all');
-  const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('unpaid');
+  const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
   const [fTracking, setFTracking] = useState('');
@@ -81,16 +81,14 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       const saved = JSON.parse(raw);
       if (saved && typeof saved === 'object') {
         setActiveTab(saved.activeTab === 'pendingSlip' ? 'pendingSlip' : 'all');
-        setPayTab(saved.payTab === 'unpaid' || saved.payTab === 'paid' ? saved.payTab : 'unpaid');
+        setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
         setFTracking(saved.fTracking ?? '');
         setFOrderDate(saved.fOrderDate ?? { start: '', end: '' });
         setFDeliveryDate(saved.fDeliveryDate ?? { start: '', end: '' });
         setFPaymentMethod(saved.fPaymentMethod ?? '');
-        if (saved.payTab === 'all') {
-          setFPaymentStatus(saved.fPaymentStatus ?? '');
-        }
+        setFPaymentStatus(saved.fPaymentStatus ?? '');
         setFCustomerName(saved.fCustomerName ?? '');
         setFCustomerPhone(saved.fCustomerPhone ?? '');
         // Applied values (fallback to edited values if absent)
@@ -121,14 +119,13 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     try {
       const payload = {
         activeTab,
-        payTab,
         showAdvanced,
         fOrderId,
         fTracking,
         fOrderDate,
         fDeliveryDate,
         fPaymentMethod,
-        fPaymentStatus: payTab === 'all' ? fPaymentStatus : undefined,
+        fPaymentStatus,
         fCustomerName,
         fCustomerPhone,
         afOrderId,
@@ -144,7 +141,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch {}
-  }, [activeTab, payTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
+  }, [activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
   
   const myOrders = useMemo(() => {
     return orders.filter(order => order.creatorId === user.id);
@@ -156,14 +153,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
 
   const displayedOrders = activeTab === 'pendingSlip' ? pendingSlipOrders : myOrders;
 
-  // Sync payment status with payTab (do not clear when switching back to 'all')
-  useEffect(() => {
-    if (payTab === 'unpaid') setFPaymentStatus(PaymentStatus.Unpaid);
-    else if (payTab === 'paid') setFPaymentStatus(PaymentStatus.Paid);
-    else {
-      // keep user-selected status for 'all'
-    }
-  }, [payTab]);
+  // payTab is always 'all' now - payment status filtering is done via advanced filters
 
   // Advanced filter badge count (based on applied values; exclude implied status)
   const advancedCount = useMemo(() => {
@@ -179,9 +169,9 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       afCustomerPhone,
     ];
     let c = base.filter(v => !!v && String(v).trim() !== '').length;
-    if (payTab === 'all' && afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1;
+    if (afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1;
     return c;
-  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone]);
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   const clearFilters = () => {
     // reset draft filters
@@ -190,7 +180,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     setFOrderDate({ start: '', end: '' });
     setFDeliveryDate({ start: '', end: '' });
     setFPaymentMethod('' as any);
-    if (payTab === 'all') setFPaymentStatus('' as any);
+    setFPaymentStatus('' as any);
     setFCustomerName('');
     setFCustomerPhone('');
     // reset applied filters
@@ -199,7 +189,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     setAfOrderDate({ start: '', end: '' });
     setAfDeliveryDate({ start: '', end: '' });
     setAfPaymentMethod('' as any);
-    if (payTab === 'all') setAfPaymentStatus('' as any);
+    setAfPaymentStatus('' as any);
     setAfCustomerName('');
     setAfCustomerPhone('');
   };
@@ -211,7 +201,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     setAfOrderDate({ ...fOrderDate });
     setAfDeliveryDate({ ...fDeliveryDate });
     setAfPaymentMethod(fPaymentMethod || '' as any);
-    setAfPaymentStatus(payTab === 'all' ? (fPaymentStatus || '' as any) : afPaymentStatus);
+    setAfPaymentStatus(fPaymentStatus || '' as any);
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
     setShowAdvanced(false);
@@ -247,8 +237,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
     if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
     if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
-    const effectiveStatus = payTab === 'unpaid' ? PaymentStatus.Unpaid : (payTab === 'paid' ? PaymentStatus.Paid : afPaymentStatus);
-    if (effectiveStatus) list = list.filter(o => o.paymentStatus === effectiveStatus);
+    if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
     const nameTerm = afCustomerName.trim().toLowerCase();
     if (nameTerm) {
       list = list.filter(o => {
@@ -368,16 +357,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
             <CreditCard size={16} />
             <span>รอสลิป</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+              activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
             }`}>{pendingSlipOrders.length}</span>
-          </button>
-          <button onClick={() => { if (payTab==='unpaid') { setPayTab('all'); setAfPaymentStatus('' as any); setFPaymentStatus('' as any); } else { setPayTab('unpaid'); } }} className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${payTab==='unpaid'?'border-b-2 border-red-600 text-red-600':'text-gray-500 hover:text-gray-700'}`}>
-            <ListChecks size={16} />
-            <span>ยังไม่ชำระ</span>
-          </button>
-          <button onClick={() => { if (payTab==='paid') { setPayTab('all'); setAfPaymentStatus('' as any); setFPaymentStatus('' as any); } else { setPayTab('paid'); } }} className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${payTab==='paid'?'border-b-2 border-green-600 text-green-600':'text-gray-500 hover:text-gray-700'}`}>
-            <ListChecks size={16} />
-            <span>ชำระแล้ว</span>
           </button>
       </div>
 
@@ -439,17 +420,18 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
                 <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
               </select>
             </div>
-            {payTab === 'all' && (
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
-                <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
-                  <option value="">ทั้งหมด</option>
-                  <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
-                  <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
-                  <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
+              <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
+                <option value="">ทั้งหมด</option>
+                <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
+                <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
+                <option value={PaymentStatus.Verified}>ยืนยันแล้ว</option>
+                <option value={PaymentStatus.PreApproved}>Pre Approved</option>
+                <option value={PaymentStatus.Approved}>Approved</option>
+                <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (จาก)</label>
               <input type="date" value={fOrderDate.start} onChange={e=>setFOrderDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />

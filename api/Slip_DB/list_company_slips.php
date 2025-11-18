@@ -16,6 +16,11 @@ $date_range = isset($_GET["date_range"]) ? strtolower(trim($_GET["date_range"]))
 $date_from = isset($_GET["date_from"]) ? trim($_GET["date_from"]) : "";
 $date_to = isset($_GET["date_to"]) ? trim($_GET["date_to"]) : "";
 
+// Get user_id and role for order visibility filtering
+$user_id = isset($_GET["user_id"]) ? (int) $_GET["user_id"] : null;
+$user_role = isset($_GET["role"]) ? trim($_GET["role"]) : null;
+$user_team_id = isset($_GET["team_id"]) ? (int) $_GET["team_id"] : null;
+
 if ($company_id <= 0) {
   echo json_encode([
     "success" => false,
@@ -68,13 +73,52 @@ if ($date_to !== "") {
   $params[] = $date_to;
 }
 
-$whereClause = implode(" AND ", $conditions);
 
 try {
   $conn = db_connect();
   $conn->exec("SET NAMES utf8mb4");
   $conn->exec("SET CHARACTER SET utf8mb4");
   $uploadsDir = realpath(__DIR__ . "/../uploads/slips");
+  
+  // Add role-based order visibility filtering (ต้องมี $conn ก่อนเพื่อ query team members)
+  if ($user_id !== null && $user_role !== null) {
+    if ($user_role === "Admin Page") {
+      // Admin: แสดงสลิปของออเดอร์ที่สร้างโดย Admin เท่านั้น
+      $conditions[] = "o.creator_id = ?";
+      $params[] = $user_id;
+    } elseif ($user_role === "Telesale") {
+      // Telesale: แสดงสลิปของออเดอร์ที่สร้างโดยตนเองเท่านั้น
+      $conditions[] = "o.creator_id = ?";
+      $params[] = $user_id;
+    } elseif ($user_role === "Supervisor Telesale") {
+      // Supervisor: แสดงสลิปของออเดอร์ที่สร้างโดยตนเองและลูกทีม
+      if ($user_team_id !== null) {
+        // Get team member IDs
+        $teamStmt = $conn->prepare("SELECT id FROM users WHERE team_id = ? AND role = 'Telesale'");
+        $teamStmt->execute([$user_team_id]);
+        $teamMemberIds = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
+        $teamMemberIds[] = $user_id; // Include supervisor's own orders
+        
+        if (!empty($teamMemberIds)) {
+          $placeholders = implode(",", array_fill(0, count($teamMemberIds), "?"));
+          $conditions[] = "o.creator_id IN ({$placeholders})";
+          $params = array_merge($params, $teamMemberIds);
+        } else {
+          // No team members, only supervisor's orders
+          $conditions[] = "o.creator_id = ?";
+          $params[] = $user_id;
+        }
+      } else {
+        // No team_id, only supervisor's orders
+        $conditions[] = "o.creator_id = ?";
+        $params[] = $user_id;
+      }
+    }
+    // Backoffice, Finance, และ roles อื่นๆ แสดงสลิปทั้งหมดของ company (ไม่ต้อง filter)
+  }
+  
+  // Update whereClause after adding role-based filters
+  $whereClause = implode(" AND ", $conditions);
 
   $hasBankAccountTable = false;
   try {
@@ -224,10 +268,19 @@ try {
       }
     }
 
+    // Use amount if available, otherwise fallback to order_total
+    $amountValue = null;
+    if (isset($row["amount"]) && $row["amount"] !== null && $row["amount"] !== "") {
+      $amountValue = (float) $row["amount"];
+    } elseif (isset($row["total_amount"]) && $row["total_amount"] !== null) {
+      // Fallback to order_total if amount is not available
+      $amountValue = (float) $row["total_amount"];
+    }
+    
     $rows[] = [
       "id" => (int) $row["id"],
       "order_id" => (string) $row["order_id"],
-      "amount" => isset($row["amount"]) ? (float) $row["amount"] : null,
+      "amount" => $amountValue,
       "order_total" => isset($row["total_amount"])
         ? (float) $row["total_amount"]
         : null,

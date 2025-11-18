@@ -71,6 +71,18 @@ const SlipAll: React.FC = () => {
         company_id: String(companyId),
       });
 
+      // Add user info for role-based filtering
+      // Backoffice และ Finance เห็นสลิปทั้งหมดของทุกคน (ไม่ต้องส่ง user_id, role, team_id)
+      if (parsed.role && parsed.role !== "Backoffice" && parsed.role !== "Finance") {
+        if (parsed.id) {
+          params.append("user_id", String(parsed.id));
+        }
+        params.append("role", parsed.role);
+        if (parsed.team_id) {
+          params.append("team_id", String(parsed.team_id));
+        }
+      }
+
       const response = await fetch(
         `/api/Slip_DB/list_company_slips.php?${params.toString()}`,
       );
@@ -442,7 +454,11 @@ const SlipAll: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {slip.amount ? `฿${slip.amount.toLocaleString()}` : "-"}
+                        {slip.amount 
+                          ? `฿${slip.amount.toLocaleString()}` 
+                          : slip.orderTotal 
+                            ? `฿${slip.orderTotal.toLocaleString()}` 
+                            : "-"}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -563,7 +579,9 @@ const SlipAll: React.FC = () => {
                       <p className="text-lg font-semibold text-gray-900">
                         {selectedSlip.amount
                           ? `฿${selectedSlip.amount.toLocaleString()}`
-                          : "-"}
+                          : selectedSlip.orderTotal
+                            ? `฿${selectedSlip.orderTotal.toLocaleString()}`
+                            : "-"}
                       </p>
                     </div>
 

@@ -195,6 +195,9 @@ import OrderAllocationPage from "./pages/OrderAllocationPage";
 import SlipUpload from "./pages/SlipUpload";
 import SlipAll from "./pages/SlipAll";
 import SlipDetail from "./pages/SlipDetail";
+import FinanceApprovalPage from "./pages/FinanceApprovalPage";
+import CODManagementPage from "./pages/CODManagementPage";
+import CODRecordPage from "./pages/CODRecordPage";
 import usePersistentState from "./utils/usePersistentState";
 
 const SLIP_ALL_LABEL = String.raw`���,������,������,'���,>���,-���,���1%���,O.,������,������,\\\\"\\`;
@@ -4789,10 +4792,13 @@ const App: React.FC = () => {
 
           case "Marketing":
             return <MarketingPage currentUser={currentUser} />;
-          case "Upload":
+          case "Slip Upload":
+          case "Upload": // สำหรับ backward compatibility
             return <SlipUpload />;
+          case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
+          case "Slip Details":
           case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
           default:
@@ -4856,6 +4862,15 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
+          case "Slip Upload":
+          case "Upload": // สำหรับ backward compatibility
+            return <SlipUpload />;
+          case "All Slips":
+          case SLIP_ALL_LABEL:
+            return <SlipAll />;
+          case "Slip Details":
+          case SLIP_DETAIL_LABEL:
+            return <SlipDetail />;
           default:
             return (
               <AdminDashboard
@@ -4955,10 +4970,13 @@ const App: React.FC = () => {
               />
             );
 
-          case "Upload":
+          case "Slip Upload":
+          case "Upload": // สำหรับ backward compatibility
             return <SlipUpload />;
+          case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
+          case "Slip Details":
           case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
 
@@ -4977,6 +4995,29 @@ const App: React.FC = () => {
       case UserRole.Marketing:
         // Dedicated marketing management page
         return <MarketingPage currentUser={currentUser} />;
+
+      case UserRole.Finance:
+        if (activePage === "Finance Approval") {
+          return (
+            <FinanceApprovalPage
+              user={currentUser}
+              orders={companyOrders}
+              customers={companyCustomers}
+              users={companyUsers}
+              openModal={openModal}
+            />
+          );
+        }
+        // Default to Finance Approval page
+        return (
+          <FinanceApprovalPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+            openModal={openModal}
+          />
+        );
 
       case UserRole.Backoffice:
         if (activePage === "Export History") {
@@ -5060,12 +5101,26 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "Upload":
+          case "Slip Upload":
+          case "Upload": // สำหรับ backward compatibility
             return <SlipUpload />;
+          case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
+          case "Slip Details":
           case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
+          case "COD Management":
+            return (
+              <CODManagementPage
+                user={currentUser}
+                orders={companyOrders}
+                customers={companyCustomers}
+                users={companyUsers}
+              />
+            );
+          case "COD Record":
+            return <CODRecordPage user={currentUser} />;
           default:
             return <div className="p-6">à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸Šà¹‰à¸‡à¸²à¸™</div>;
         }

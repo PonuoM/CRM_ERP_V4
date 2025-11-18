@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter } from 'lucide-react';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createExportLog, listOrderSlips } from '../services/api';
 import { apiFetch } from '../services/api';
 
@@ -28,11 +28,15 @@ const DateFilterButton: React.FC<{label: string, value: string, activeValue: str
     </button>
 );
 
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
+
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, openModal, onProcessOrders, onCancelOrders }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'processed'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('pending');
+  const [itemsPerPage, setItemsPerPage] = useState<number>(PAGE_SIZE_OPTIONS[1]); // Default 10
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -69,7 +73,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (saved && typeof saved === 'object') {
         setActiveDatePreset(saved.activeDatePreset ?? 'all');
         setDateRange(saved.dateRange ?? { start: '', end: '' });
-        setActiveTab(saved.activeTab === 'processed' ? 'processed' : saved.activeTab === 'verified' ? 'verified' : 'pending');
+        setActiveTab(
+          saved.activeTab === 'completed' ? 'completed' :
+          saved.activeTab === 'awaiting_account' ? 'awaiting_account' :
+          saved.activeTab === 'preparing' ? 'preparing' :
+          saved.activeTab === 'processed' ? 'preparing' : // Migrate old 'processed' to 'preparing'
+          saved.activeTab === 'verified' ? 'verified' :
+          saved.activeTab === 'shipping' ? 'shipping' : 'pending'
+        );
         setPayTab(saved.payTab === 'unpaid' || saved.payTab === 'paid' ? saved.payTab : 'all');
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
@@ -150,13 +161,29 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     [orders],
   );
   
-  const processedOrders = useMemo(() => orders.filter(o => 
-      // แสดงออเดอร์ที่ดำเนินการแล้วทั้งหมด (ไม่ใช่ Pending, Delivered, Cancelled หรือ Returned)
-      o.orderStatus !== OrderStatus.Pending &&
-      o.orderStatus !== OrderStatus.Delivered && 
-      o.orderStatus !== OrderStatus.Cancelled && 
-      o.orderStatus !== OrderStatus.Returned
-  ), [orders]);
+  // กำลังจัดเตรียม: หลัง export/ดึงข้อมูลแล้ว (Preparing, Picking)
+  const preparingOrders = useMemo(() => 
+    orders.filter(o => 
+      (o.orderStatus === OrderStatus.Preparing || o.orderStatus === OrderStatus.Picking) &&
+      (!o.trackingNumbers || o.trackingNumbers.length === 0) // ยังไม่มี tracking
+    ), [orders]
+  );
+
+  // รอตรวจสอบจากบัญชี: PreApproved (COD หลังใส่ยอด, PayAfter หลัง upload รูป, Transfer หลัง tracking 1 วัน)
+  const awaitingAccountCheckOrders = useMemo(() => 
+    orders.filter(o => 
+      o.paymentStatus === PaymentStatus.PreApproved
+    ), [orders]
+  );
+
+  // เสร็จสิ้น: Approved หรือ Paid
+  const completedOrders = useMemo(() => 
+    orders.filter(o => 
+      o.paymentStatus === PaymentStatus.Approved || 
+      o.paymentStatus === PaymentStatus.Paid ||
+      o.orderStatus === OrderStatus.Delivered
+    ), [orders]
+  );
   
   const awaitingExportOrders = useMemo(
     () =>
@@ -181,6 +208,31 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }),
     [orders],
   );
+
+  // กำลังจัดส่ง: ออเดอร์ที่มี tracking number แล้ว (COD และ PayAfter auto เปลี่ยน, Transfer ต้องมี tracking)
+  const shippingOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        // ต้องมี tracking number
+        if (!o.trackingNumbers || o.trackingNumbers.length === 0) {
+          return false;
+        }
+        // ต้องยังไม่ PreApproved (ถ้า PreApproved จะไป tab รอตรวจสอบจากบัญชี)
+        if (o.paymentStatus === PaymentStatus.PreApproved) {
+          return false;
+        }
+        // ต้องยังไม่ Approved/Paid (ถ้า Approved/Paid จะไป tab เสร็จสิ้น)
+        if (o.paymentStatus === PaymentStatus.Approved || o.paymentStatus === PaymentStatus.Paid) {
+          return false;
+        }
+        return (
+          o.orderStatus === OrderStatus.Shipping ||
+          o.orderStatus === OrderStatus.Preparing ||
+          (o.orderStatus === OrderStatus.Pending && o.trackingNumbers.length > 0)
+        );
+      }),
+    [orders],
+  );
   
   const displayedOrders = useMemo(() => {
     let sourceOrders;
@@ -188,8 +240,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       sourceOrders = pendingOrders;
     } else if (activeTab === 'verified') {
       sourceOrders = awaitingExportOrders;
+    } else if (activeTab === 'preparing') {
+      sourceOrders = preparingOrders;
+    } else if (activeTab === 'shipping') {
+      sourceOrders = shippingOrders;
+    } else if (activeTab === 'awaiting_account') {
+      sourceOrders = awaitingAccountCheckOrders;
+    } else if (activeTab === 'completed') {
+      sourceOrders = completedOrders;
     } else {
-      sourceOrders = processedOrders;
+      sourceOrders = [];
     }
     
     if (activeDatePreset === 'all') {
@@ -229,7 +289,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 return true;
         }
     });
-  }, [pendingOrders, awaitingExportOrders, processedOrders, activeTab, activeDatePreset, dateRange]);
+  }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
 
   // Apply advanced filters on top of displayedOrders (non-destructive to existing logic)
   const customerById = useMemo(() => {
@@ -271,6 +331,72 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
     return list;
   }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
+
+  // Pagination logic
+  const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[1];
+  const totalItems = finalDisplayedOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
+  const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
+  const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;
+  const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
+  
+  const paginatedOrders = useMemo(() => 
+    finalDisplayedOrders.slice(startIndex, endIndex), 
+    [finalDisplayedOrders, startIndex, endIndex]
+  );
+
+  const displayStart = totalItems === 0 ? 0 : startIndex + 1;
+  const displayEnd = totalItems === 0 ? 0 : endIndex;
+
+  // Reset to page 1 when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  // Reset to page 1 when items per page changes
+  const handleItemsPerPageChange = (value: number) => {
+    const nextValue = value > 0 ? value : PAGE_SIZE_OPTIONS[1];
+    setItemsPerPage(nextValue);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (page: number) => {
+    const next = Math.min(Math.max(page, 1), totalPages);
+    setCurrentPage(next);
+  };
+
+  const getPageNumbers = () => {
+    const pages: Array<number | '...'> = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i += 1) {
+        pages.push(i);
+      }
+    } else if (effectivePage <= 3) {
+      for (let i = 1; i <= 4; i += 1) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    } else if (effectivePage >= totalPages - 2) {
+      pages.push(1);
+      pages.push('...');
+      for (let i = totalPages - 3; i <= totalPages; i += 1) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      pages.push('...');
+      for (let i = effectivePage - 1; i <= effectivePage + 1; i += 1) {
+        pages.push(i);
+      }
+      pages.push('...');
+      pages.push(totalPages);
+    }
+
+    return pages;
+  };
 
   useEffect(() => {
     setSelectedIds(prev => {
@@ -950,18 +1076,60 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}>{awaitingExportOrders.length}</span>
           </button>
           <button
-            onClick={() => setActiveTab('processed')}
+            onClick={() => setActiveTab('preparing')}
             className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'processed'
+              activeTab === 'preparing'
                 ? 'border-b-2 border-green-600 text-green-600'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            <History size={16} />
-            <span>ดำเนินการแล้ว</span>
+            <Package size={16} />
+            <span>กำลังจัดเตรียม</span>
              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'processed' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
-            }`}>{processedOrders.length}</span>
+                activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
+            }`}>{preparingOrders.length}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('shipping')}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'shipping'
+                ? 'border-b-2 border-purple-600 text-purple-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Send size={16} />
+            <span>กำลังจัดส่ง</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
+            }`}>{shippingOrders.length}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('awaiting_account')}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'awaiting_account'
+                ? 'border-b-2 border-orange-600 text-orange-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Clock size={16} />
+            <span>รอตรวจสอบจากบัญชี</span>
+             <span className={`px-2 py-0.5 rounded-full text-xs ${
+                activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+            }`}>{awaitingAccountCheckOrders.length}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'completed'
+                ? 'border-b-2 border-gray-600 text-gray-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <CheckCircle2 size={16} />
+            <span>เสร็จสิ้น</span>
+             <span className={`px-2 py-0.5 rounded-full text-xs ${
+                activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
+            }`}>{completedOrders.length}</span>
           </button>
       </div>
 
@@ -1002,7 +1170,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       
       <div className="bg-white rounded-lg shadow">
         <OrderTable 
-            orders={finalDisplayedOrders} 
+            orders={paginatedOrders} 
             customers={customers} 
             openModal={openModal}
             users={users}
@@ -1010,6 +1178,73 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
         />
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+            {/* Left side - Display range */}
+            <div className="text-sm text-gray-700">
+              แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+            </div>
+
+            {/* Right side - Pagination controls */}
+            <div className="flex items-center space-x-2">
+              {/* Items per page selector */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-700">แสดง:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                  className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {PAGE_SIZE_OPTIONS.map((sz) => (
+                    <option key={sz} value={sz}>
+                      {sz}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Page navigation */}
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => handlePageChange(effectivePage - 1)}
+                  disabled={effectivePage === 1}
+                  className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                {getPageNumbers().map((page, index) => (
+                  <button
+                    key={index}
+                    onClick={() =>
+                      typeof page === "number" ? handlePageChange(page) : undefined
+                    }
+                    disabled={page === "..."}
+                    className={`px-3 py-1 text-sm rounded ${
+                      page === effectivePage
+                        ? "bg-blue-600 text-white"
+                        : page === "..."
+                          ? "text-gray-400 cursor-default"
+                          : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => handlePageChange(effectivePage + 1)}
+                  disabled={effectivePage === totalPages}
+                  className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

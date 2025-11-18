@@ -68,6 +68,7 @@ if (!empty($_GET["sale_year"])) {
 }
 
 // Payment method selector (default Transfer for backward compatibility)
+// ถ้าไม่ส่ง payment_method หรือส่ง "all" จะแสดงทั้ง Transfer และ PayAfter
 $allowedPaymentMethods = ["Transfer", "PayAfter"];
 $paymentMethodAliases = [
   "Transfer" => ["Transfer", "โอน", "โอนเงิน", "transfer"],
@@ -77,18 +78,25 @@ $paymentMethodInput = isset($_GET["payment_method"])
   ? trim($_GET["payment_method"])
   : "Transfer";
 $paymentMethodToken = strtolower($paymentMethodInput);
+$showAllPaymentMethods = false;
 
-if ($paymentMethodToken === "payafter" || $paymentMethodToken === "pay_after" || $paymentMethodToken === "pay-after") {
+if ($paymentMethodToken === "all" || $paymentMethodToken === "") {
+  // แสดงทั้ง Transfer และ PayAfter
+  $showAllPaymentMethods = true;
+  $selectedPaymentValues = $allowedPaymentMethods;
+} elseif ($paymentMethodToken === "payafter" || $paymentMethodToken === "pay_after" || $paymentMethodToken === "pay-after") {
   $paymentMethod = "PayAfter";
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
 } elseif ($paymentMethodToken === "transfer" || $paymentMethodToken === "transfer_bank") {
   $paymentMethod = "Transfer";
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
 } else {
   $paymentMethod = in_array($paymentMethodInput, $allowedPaymentMethods, true)
     ? $paymentMethodInput
     : "Transfer";
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
 }
 
-$selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
 $selectedPaymentValues = array_values(
   array_unique(
     array_filter(
@@ -100,7 +108,7 @@ $selectedPaymentValues = array_values(
   ),
 );
 if (empty($selectedPaymentValues)) {
-  $selectedPaymentValues = [$paymentMethod];
+  $selectedPaymentValues = $allowedPaymentMethods; // Default to all if empty
 }
 
 // Get company_id from session (for now, we'll get it from query parameter for testing)
@@ -114,6 +122,11 @@ if ($company_id <= 0) {
   ]);
   exit();
 }
+
+// Get user_id and role for order visibility filtering
+$user_id = isset($_GET["user_id"]) ? (int) $_GET["user_id"] : null;
+$user_role = isset($_GET["role"]) ? trim($_GET["role"]) : null;
+$user_team_id = isset($_GET["team_id"]) ? (int) $_GET["team_id"] : null;
 
 try {
   // Database connection using PDO with UTF-8
@@ -130,6 +143,43 @@ try {
       ")";
   $whereClause = "o.company_id = ? AND {$methodPlaceholder}";
   $allParams = array_merge([$company_id], $selectedPaymentValues);
+
+  // Add role-based order visibility filtering
+  if ($user_id !== null && $user_role !== null) {
+    if ($user_role === "Admin Page") {
+      // Admin: แสดงแค่ออเดอร์ของ Admin
+      $whereClause .= " AND o.creator_id = ?";
+      $allParams[] = $user_id;
+    } elseif ($user_role === "Telesale") {
+      // Telesale: แสดงแค่ออเดอร์ของตนเอง
+      $whereClause .= " AND o.creator_id = ?";
+      $allParams[] = $user_id;
+    } elseif ($user_role === "Supervisor Telesale") {
+      // Supervisor: แสดงออเดอร์ของตนเองและลูกทีม
+      if ($user_team_id !== null) {
+        // Get team member IDs
+        $teamStmt = $conn->prepare("SELECT id FROM users WHERE team_id = ? AND role = 'Telesale'");
+        $teamStmt->execute([$user_team_id]);
+        $teamMemberIds = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
+        $teamMemberIds[] = $user_id; // Include supervisor's own orders
+        
+        if (!empty($teamMemberIds)) {
+          $placeholders = implode(",", array_fill(0, count($teamMemberIds), "?"));
+          $whereClause .= " AND o.creator_id IN ({$placeholders})";
+          $allParams = array_merge($allParams, $teamMemberIds);
+        } else {
+          // No team members, only supervisor's orders
+          $whereClause .= " AND o.creator_id = ?";
+          $allParams[] = $user_id;
+        }
+      } else {
+        // No team_id, only supervisor's orders
+        $whereClause .= " AND o.creator_id = ?";
+        $allParams[] = $user_id;
+      }
+    }
+    // Backoffice, Finance, และ roles อื่นๆ แสดงออเดอร์ทั้งหมดของ company (ไม่ต้อง filter)
+  }
 
   if (!empty($conditions)) {
     $whereClause .= " AND " . implode(" AND ", $conditions);
@@ -154,12 +204,13 @@ try {
   // Must match the HAVING clause from main query
   $countSql = "SELECT COUNT(*) as total
                FROM (
-                   SELECT o.id
+                   SELECT o.id, o.total_amount, o.payment_status
                    FROM orders o
                    LEFT JOIN customers c ON c.id = o.customer_id
                    LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
-                   GROUP BY o.id";
+                   AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
+                   GROUP BY o.id, o.total_amount, o.payment_status";
   
   // Only add HAVING clause if amount column exists
   if ($check_amount_col > 0) {
@@ -178,11 +229,13 @@ try {
 
   // Main query to fetch transfer orders with customer data and payment status (with pagination)
   // Filter out orders that are already fully paid based on slip totals
+  // Also exclude orders with payment_status that indicates completion (Verified, PreApproved, Approved, Paid)
   $sql = "SELECT
                 o.id,
                 o.order_date,
                 o.delivery_date,
                 o.total_amount,
+                o.payment_status,
                 c.first_name,
                 c.last_name,
                 c.phone";
@@ -195,12 +248,12 @@ try {
                     WHEN COALESCE(SUM(os.amount), 0) >= COALESCE(o.total_amount, 0) THEN 'จ่ายแล้ว'
                     WHEN COALESCE(SUM(os.amount), 0) > 0 THEN 'จ่ายยังไม่ครบ'
                     ELSE 'ค้างจ่าย'
-                END as payment_status";
+                END as payment_status_display";
   } else {
     // Column doesn't exist, show all as unpaid
     $sql .= ",
                 0 as slip_total,
-                'ค้างจ่าย' as payment_status";
+                'ค้างจ่าย' as payment_status_display";
   }
   
   $sql .= "
@@ -208,9 +261,11 @@ try {
             LEFT JOIN customers c ON c.id = o.customer_id
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
-            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, c.first_name, c.last_name, c.phone";
+            AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
+            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, c.first_name, c.last_name, c.phone";
   
   // Only add HAVING clause if amount column exists
+  // Filter out orders that are fully paid based on slip totals
   if ($check_amount_col > 0) {
     $sql .= " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
   }

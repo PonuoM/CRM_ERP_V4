@@ -61,9 +61,6 @@ interface SlipHistory {
   updated_at: string;
 }
 
-// Fetch only orders that chose the "receive goods first" payment path
-const PAY_AFTER_METHOD = "PayAfter";
-
 const SlipUpload: React.FC = () => {
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [message, setMessage] = useState<{
@@ -354,8 +351,28 @@ const SlipUpload: React.FC = () => {
         company_id: companyId.toString(),
         page: pagination.currentPage.toString(),
         pageSize: pagination.pageSize.toString(),
-        payment_method: PAY_AFTER_METHOD,
       });
+
+      // Payment method: Backoffice และ Finance เห็นทั้ง Transfer และ PayAfter, roles อื่นๆ เห็นแค่ PayAfter
+      if (user.role === "Backoffice" || user.role === "Finance") {
+        // Backoffice และ Finance เห็นทั้ง Transfer และ PayAfter
+        queryParams.append("payment_method", "all");
+      } else {
+        // Roles อื่นๆ เห็นแค่ PayAfter
+        queryParams.append("payment_method", "PayAfter");
+      }
+
+      // Add user info for role-based filtering
+      // Backoffice และ Finance เห็นสลิปทั้งหมดของทุกคน (ไม่ต้องส่ง user_id, role, team_id)
+      if (user.role && user.role !== "Backoffice" && user.role !== "Finance") {
+        if (user.id) {
+          queryParams.append("user_id", user.id.toString());
+        }
+        queryParams.append("role", user.role);
+        if (user.team_id) {
+          queryParams.append("team_id", user.team_id.toString());
+        }
+      }
 
       // Add active filters to query if they have values
       if (activeFilters.order_id) queryParams.append("order_id", activeFilters.order_id);
@@ -573,10 +590,10 @@ const SlipUpload: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              รายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอน
+              อัปโหลดสลิปโอนเงิน
             </h1>
             <p className="text-gray-600">
-              แสดงรายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอนเงิน
+              จัดการสลิปการโอนเงินสำหรับคำสั่งซื้อ
             </p>
           </div>
         </div>
@@ -605,7 +622,7 @@ const SlipUpload: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <h2 className="text-lg font-semibold text-gray-900">
-              รายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอน
+              รายการคำสั่งซื้อ
             </h2>
             <button
               onClick={fetchOrders}
@@ -866,7 +883,7 @@ const SlipUpload: React.FC = () => {
             <div className="text-center py-8">
               <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">
-                ไม่พบรายการคำสั่งซื้อที่ต้องชำระเงินผ่านการโอน
+                ไม่พบรายการคำสั่งซื้อ
               </p>
             </div>
           )}

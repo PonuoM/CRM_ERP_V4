@@ -480,24 +480,139 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 </>
             )}
             
-            {order.paymentMethod === PaymentMethod.PayAfter && currentOrder.paymentStatus !== PaymentStatus.Paid && (
-                 <div className="space-y-2">
-                    <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          value={currentOrder.amountPaid ?? ''}
-                          onFocus={(e) => e.currentTarget.select()}
-                          onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
-                          className="w-full p-2 border rounded-md"
-                        />
+            {order.paymentMethod === PaymentMethod.PayAfter && (
+                <>
+                    <div className="space-y-2">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={currentOrder.amountPaid ?? ''}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+                              className="w-full p-2 border rounded-md"
+                              disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
+                            />
+                        </div>
+                        <div className="flex justify-between font-semibold">
+                            <span className="text-red-600">ยอดค้างชำระ</span>
+                            <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+                        </div>
                     </div>
-                    <div className="flex justify-between font-semibold">
-                        <span className="text-red-600">ยอดค้างชำระ</span>
-                        <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+                    
+                    {/* ส่วนอัปโหลดสลิปสำหรับ PayAfter */}
+                    <div className="space-y-2 mt-4">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
+                            {slips.length > 0 ? (
+                                <div className="flex flex-wrap gap-3 mb-2">
+                                    {slips.map(slip => (
+                                        <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
+                                            <img 
+                                                onClick={() => setLightboxUrl(slip.url)} 
+                                                src={slip.url} 
+                                                alt="Slip preview" 
+                                                className="w-full h-full object-contain cursor-pointer" 
+                                            />
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center space-x-2">
+                                                <a 
+                                                    href={slip.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="p-2 bg-white/80 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Eye size={16}/>
+                                                </a>
+                                                <button 
+                                                    onClick={() => handleDeleteSlip(slip.id)} 
+                                                    className="p-2 bg-white/80 rounded-full text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 size={16}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-400 mb-2">ยังไม่มีหลักฐานการชำระเงิน</p>
+                            )}
+                            <div className="flex items-center space-x-2">
+                                <label 
+                                    htmlFor={`${slipUploadInputId}-payafter`} 
+                                    className={`cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg text-gray-600 flex items-center justify-center ${
+                                        currentOrder.paymentStatus === PaymentStatus.Paid 
+                                            ? 'opacity-50 cursor-not-allowed' 
+                                            : 'hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <Image size={16} className="mr-2"/>
+                                    อัปโหลดสลิป
+                                </label>
+                                <input 
+                                    id={`${slipUploadInputId}-payafter`} 
+                                    type="file" 
+                                    accept="image/*" 
+                                    multiple 
+                                    onChange={handleSlipUpload} 
+                                    disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
+                                    className="hidden" 
+                                />
+                            </div>
+                        </div>
+                        
+                        {/* แสดงข้อมูลธนาคารและเวลาโอน (ถ้ามี) */}
+                        {(currentOrder.bankAccountId || currentOrder.transferDate) && (
+                            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
+                                <div className="text-xs text-blue-700 space-y-1">
+                                    {currentOrder.bankAccountId && (() => {
+                                        const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+                                        return (
+                                            <p>
+                                                ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number}` : `ID: ${currentOrder.bankAccountId}`}
+                                            </p>
+                                        );
+                                    })()}
+                                    {currentOrder.transferDate && (
+                                        <p>
+                                            เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
+                                                year: 'numeric',
+                                                month: '2-digit',
+                                                day: '2-digit',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* แสดงข้อมูลการตรวจสอบสลิป (ถ้ามี) */}
+                        {currentOrder.verificationInfo && (
+                            <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                                <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
+                                <div className="text-xs text-green-700 space-y-1">
+                                    <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
+                                    <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* ปุ่มยืนยันสลิปสำหรับ Backoffice/Admin */}
+                        {canVerifySlip && slips.length > 0 && currentOrder.paymentStatus !== PaymentStatus.Paid && (
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={handleAcceptSlip}
+                                    className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                >
+                                    ยืนยันสลิป
+                                </button>
+                            </div>
+                        )}
                     </div>
-                 </div>
+                </>
             )}
             
             {order.paymentMethod === PaymentMethod.COD && order.boxes && order.boxes.length > 0 && (
@@ -518,7 +633,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 </div>
             )}
 
-            {slips.length > 0 && (
+            {/* แสดงสลิปที่อัปโหลดสำหรับ payment methods อื่นๆ (ที่ไม่ใช่ Transfer หรือ PayAfter) */}
+            {slips.length > 0 && 
+             order.paymentMethod !== PaymentMethod.Transfer && 
+             order.paymentMethod !== PaymentMethod.PayAfter && (
               <div className="mt-2">
                 <h4 className="text-xs font-medium text-gray-500 mb-1">สลิปที่อัปโหลด</h4>
                 <div className="flex flex-wrap gap-3">

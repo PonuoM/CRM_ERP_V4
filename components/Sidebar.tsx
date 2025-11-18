@@ -19,6 +19,8 @@ import {
   Home,
   ChevronDown,
   Phone,
+  CheckCircle,
+  DollarSign,
 } from "lucide-react";
 interface SidebarProps {
   user: UserType;
@@ -408,7 +410,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.bulk_tracking")
             ? ([{ icon: FileUp, label: "Bulk Tracking" }] as NavItem[])
             : []),
+          ...(canView("nav.cod_management")
+            ? ([{ icon: FileText, label: "COD Management" }] as NavItem[])
+            : []),
+          ...(canView("nav.cod_record")
+            ? ([{ icon: DollarSign, label: "COD Record" }] as NavItem[])
+            : []),
           paymentSlipGroup,
+        ];
+      case UserRole.Finance:
+        return [
+          homeGroup,
+          { icon: CheckCircle, label: "Finance Approval" },
+          ...(canView("nav.search")
+            ? ([{ icon: Search, label: "Search" }] as NavItem[])
+            : []),
         ];
       default:
         return [homeGroup];

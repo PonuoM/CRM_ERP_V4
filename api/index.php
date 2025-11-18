@@ -133,6 +133,9 @@ if ($resource === '' || $resource === 'health') {
     case 'call_history':
         handle_calls($pdo, $id);
         break;
+    case 'cod_records':
+        handle_cod_records($pdo, $id);
+        break;
     case 'activities':
         handle_activities($pdo, $id);
         break;
@@ -2573,6 +2576,113 @@ function handle_calls(PDO $pdo, ?string $id): void {
                 } catch (Throwable $e) { /* ignore */ }
             }
             json_response(['id' => $pdo->lastInsertId()]);
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
+function handle_cod_records(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            if ($id) {
+                $stmt = $pdo->prepare('SELECT * FROM cod_records WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+            } else {
+                $companyId = $_GET['companyId'] ?? null;
+                $trackingNumber = $_GET['trackingNumber'] ?? null;
+                $status = $_GET['status'] ?? null;
+                $sql = 'SELECT * FROM cod_records WHERE 1=1';
+                $params = [];
+                if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
+                if ($trackingNumber) { $sql .= ' AND tracking_number LIKE ?'; $params[] = '%' . $trackingNumber . '%'; }
+                if ($status) { $sql .= ' AND status = ?'; $params[] = $status; }
+                $sql .= ' ORDER BY created_at DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $trackingNumber = $in['tracking_number'] ?? '';
+            $deliveryStartDate = $in['delivery_start_date'] ?? null;
+            $deliveryEndDate = $in['delivery_end_date'] ?? null;
+            $codAmount = isset($in['cod_amount']) ? (float)$in['cod_amount'] : 0;
+            $receivedAmount = isset($in['received_amount']) ? (float)$in['received_amount'] : 0;
+            $companyId = $in['company_id'] ?? null;
+            $createdBy = $in['created_by'] ?? null;
+            
+            if (!$trackingNumber || !$companyId) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'tracking_number and company_id are required'], 400);
+            }
+            
+            $difference = $codAmount - $receivedAmount;
+            $status = 'pending';
+            if ($receivedAmount === 0) {
+                $status = 'missing';
+            } elseif ($receivedAmount === $codAmount) {
+                $status = 'received';
+            } elseif ($receivedAmount > 0) {
+                $status = 'partial';
+            }
+            
+            $stmt = $pdo->prepare('INSERT INTO cod_records (tracking_number, delivery_start_date, delivery_end_date, cod_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([
+                $trackingNumber, $deliveryStartDate, $deliveryEndDate, $codAmount, $receivedAmount, $difference, $status, $companyId, $createdBy
+            ]);
+            json_response(['id' => $pdo->lastInsertId()]);
+            break;
+        case 'PATCH':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $in = json_input();
+            $updates = [];
+            $params = [];
+            
+            if (isset($in['received_amount'])) {
+                $receivedAmount = (float)$in['received_amount'];
+                $updates[] = 'received_amount = ?';
+                $params[] = $receivedAmount;
+                
+                // Recalculate difference and status
+                $stmt = $pdo->prepare('SELECT cod_amount FROM cod_records WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $codAmount = (float)$row['cod_amount'];
+                    $difference = $codAmount - $receivedAmount;
+                    $status = 'pending';
+                    if ($receivedAmount === 0) {
+                        $status = 'missing';
+                    } elseif ($receivedAmount === $codAmount) {
+                        $status = 'received';
+                    } elseif ($receivedAmount > 0) {
+                        $status = 'partial';
+                    }
+                    
+                    $updates[] = 'difference = ?';
+                    $params[] = $difference;
+                    $updates[] = 'status = ?';
+                    $params[] = $status;
+                }
+            }
+            
+            if (isset($in['status'])) {
+                $updates[] = 'status = ?';
+                $params[] = $in['status'];
+            }
+            
+            if (empty($updates)) {
+                json_response(['ok' => true]);
+            }
+            
+            $params[] = $id;
+            $sql = 'UPDATE cod_records SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
