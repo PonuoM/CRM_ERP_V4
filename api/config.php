@@ -4,7 +4,7 @@ date_default_timezone_set("Asia/Bangkok");
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "127.0.0.1";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
-$DB_NAME = getenv("DB_NAME") ?: "mini_erp2";
+$DB_NAME = getenv("DB_NAME") ?: "mini_erp";
 $DB_USER = getenv("DB_USER") ?: "root";
 $DB_PASS = getenv("DB_PASS") ?: "12345678";
 
