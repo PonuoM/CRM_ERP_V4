@@ -166,7 +166,7 @@ function main(): void {
 
     // Copy .htaccess if it exists
     console.log("🔧 Copying .htaccess (if exists)...");
-    copyFileIfExists(
+    copyFileOrDirIfExists(
       htaccessFile,
       path.join(hostDir, ".htaccess"),
       ".htaccess - Apache configuration",
