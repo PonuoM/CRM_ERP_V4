@@ -326,6 +326,7 @@ model onecall_batch {
   startdate     DateTime      @db.Date
   enddate       DateTime      @db.Date
   amount_record Int
+  amount_come Int?
   created_at    DateTime?     @default(now()) @db.Timestamp(0)
   onecall_log   onecall_log[]
 }
