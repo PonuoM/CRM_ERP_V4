@@ -1,18 +1,14 @@
 
 <file_path>
-C:\AppServ\www\CRM_ERP_V4\scripts\seed-simple.ts
+C:\AppServ\www\CRM_ERP_V4\scripts\seed-all-tables-new.ts
 </file_path>
-
-<edit_description>
-Write entire seed-simple.ts file
-</edit_description>
 
 <content>
 #!/usr/bin/env node
 
 /**
- * Simple Database Seeding Script
- * This script seeds essential tables in the database
+ * Comprehensive Database Seeding Script
+ * This script seeds all tables in the database with appropriate sample data
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -21,8 +17,27 @@ import path from "path";
 
 const prisma = new PrismaClient();
 
+// Helper function to read Thai address JSON files
+function readJsonFile(filename: string): any[] {
+  const filePath = path.join(process.cwd(), "api", "Address_DB", filename);
+
+  if (!fs.existsSync(filePath)) {
+    console.error(`File not found: ${filePath}`);
+    return [];
+  }
+
+  try {
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(fileContent);
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Error reading or parsing ${filename}:`, error);
+    return [];
+  }
+}
+
 async function main() {
-  console.log("Start simple database seeding...");
+  console.log("Start comprehensive database seeding...");
 
   try {
     // ===== CORE ENTITY SEEDING =====
@@ -144,14 +159,6 @@ async function main() {
           date_assigned: new Date(),
           date_registered: new Date(),
           lifecycle_status: "active",
-          grade: "A",
-          area_size: "5 hectares",
-          plant_type: "Rice",
-          subdistrict: "Suriyawong",
-          district: "Bang Rak",
-          postal_code: "10500",
-          address: "123 Main Street",
-          is_active: true,
         },
         {
           id: "CUS-100000002",
@@ -165,14 +172,6 @@ async function main() {
           date_assigned: new Date(),
           date_registered: new Date(),
           lifecycle_status: "active",
-          grade: "A",
-          area_size: "10 hectares",
-          plant_type: "Corn",
-          subdistrict: "Chang Moi",
-          district: "Mueang",
-          postal_code: "50000",
-          address: "456 Farm Road",
-          is_active: true,
         },
       ],
     });
@@ -225,6 +224,25 @@ async function main() {
     });
     console.log("Seeded 1 appointment");
 
+    // 9. Appointments
+    console.log("Seeding call history...");
+    await prisma.call_history.createMany({
+      data: [
+        {
+          customer_id: "CUS-100000001",
+          date: new Date(),
+          caller: "Sales Representative",
+          status: "completed",
+          result: "Order placed",
+          crop_type: "Rice",
+          area_size: "5 hectares",
+          notes: "Customer interested in premium rice seed",
+          duration: 15,
+        },
+      ],
+    });
+    console.log("Seeded 1 call history entry");
+
     // ===== SALES SEEDING =====
 
     // 11. Promotions
@@ -273,10 +291,10 @@ async function main() {
           subdistrict: "Suriyawong",
           district: "Bang Rak",
           province: "Bangkok",
-          postal_code: "10500",
           recipient_first_name: "สมชาย",
           recipient_last_name: "ใจดี",
           shipping_cost: 50.0,
+          bill_discount: 0.0,
           total_amount: 200.0,
           payment_method: "cod",
           payment_status: "pending",
@@ -302,22 +320,9 @@ async function main() {
           is_freebie: false,
           box_number: 1,
         },
-        {
-          order_id: "ORD-100000001",
-          parent_order_id: "ORD-100000001",
-          product_id: 1,
-          product_name: "Premium Rice Seed",
-          quantity: 1,
-          price_per_unit: 0.0,
-          discount: 0.0,
-          is_freebie: true,
-          box_number: 1,
-          is_promotion_parent: true,
-          promotion_id: 1,
-        },
       ],
     });
-    console.log("Seeded 2 order items");
+    console.log("Seeded 1 order item");
 
     // 15. Order Tracking Numbers
     console.log("Seeding order tracking numbers...");
@@ -538,19 +543,7 @@ async function main() {
     });
     console.log("Seeded 3 environment variables");
 
-    // 27. Role Permissions
-    console.log("Seeding role permissions...");
-    await prisma.role_permissions.createMany({
-      data: [
-        {
-          role: "admin",
-          data: JSON.stringify({ all: true }),
-        },
-      ],
-    });
-    console.log("Seeded 1 role permission");
-
-    console.log("✅ Simple database seeding completed successfully!");
+    console.log("✅ Comprehensive database seeding completed successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
     throw error;
