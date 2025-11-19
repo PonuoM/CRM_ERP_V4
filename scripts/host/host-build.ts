@@ -58,6 +58,11 @@ const requiredFiles = [
     dest: path.join(hostDir, "api", "config.php"),
     description: "api/config.php - Database configuration",
   },
+  {
+    src: path.join(apiDir, "npm"),
+    dest: path.join(hostDir, "api", "npm"),
+    description: "api/npm - Database management API endpoints",
+  },
 ];
 
 /**
@@ -105,9 +110,9 @@ function copyDirectory(
 }
 
 /**
- * Copy a file if it exists, creating the directory structure if needed
+ * Copy a file or directory if it exists, creating the directory structure if needed
  */
-function copyFileIfExists(
+function copyFileOrDirIfExists(
   src: string,
   dest: string,
   description?: string,
@@ -117,7 +122,14 @@ function copyFileIfExists(
     if (!fs.existsSync(destDir)) {
       fs.mkdirSync(destDir, { recursive: true });
     }
-    fs.copyFileSync(src, dest);
+
+    // Check if src is a directory
+    if (fs.statSync(src).isDirectory()) {
+      copyDirectory(src, dest);
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+
     if (description) {
       console.log(`   ${description}`);
     }
@@ -163,7 +175,7 @@ function main(): void {
     // Copy necessary files for Prisma
     console.log("🗃️ Copying necessary files for Prisma...");
     for (const file of requiredFiles) {
-      copyFileIfExists(file.src, file.dest, file.description);
+      copyFileOrDirIfExists(file.src, file.dest, file.description);
     }
 
     // Final step: Replace config.php with the production version
@@ -182,6 +194,7 @@ This folder contains the essential files for deploying the CRM_ERP_V4 applicatio
 - \`dist/\`: The built React application
 - \`api/\`: PHP API backend
   - Note: The uploads directory has been excluded and will need to be created on the server
+  - \`api/npm/\`: HTTP API endpoints for database operations
 - \`.htaccess\`: Apache configuration for routing (if exists)
 - \`package.json\`: Node.js dependencies
 - \`prisma/schema.prisma\`: Database schema
