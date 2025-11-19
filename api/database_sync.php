@@ -54,13 +54,15 @@ if (isset($_GET['action'])) {
       $cmd = 'start "" /B cmd /C "cd /D ' .
         escapeshellarg($projectRoot) .
         ' && ' . $npmCmd .
-        ' >> ' . escapeshellarg($logFile) . ' 2>&1"';
+        ' >> ' . escapeshellarg($logFile) .
+        ' 2>&1 && echo __COMMAND_DONE__ >> ' . escapeshellarg($logFile) . '"';
       @pclose(@popen($cmd, 'r'));
     } else {
       // Unix-like (fallback if ever used): background with &.
       $cmd = 'cd ' . escapeshellarg($projectRoot) .
         ' && ' . $npmCmd .
-        ' >> ' . escapeshellarg($logFile) . ' 2>&1 &';
+        ' >> ' . escapeshellarg($logFile) .
+        ' 2>&1 && echo __COMMAND_DONE__ >> ' . escapeshellarg($logFile) . ' &';
       @pclose(@popen($cmd, 'r'));
     }
 
@@ -87,7 +89,13 @@ if (isset($_GET['action'])) {
       $content = '';
     }
 
-    send_json(['ok' => true, 'log' => $content]);
+    $finished = false;
+    if (strpos($content, '__COMMAND_DONE__') !== false) {
+      $finished = true;
+      $content = str_replace('__COMMAND_DONE__', '', $content);
+    }
+
+    send_json(['ok' => true, 'log' => $content, 'finished' => $finished]);
     exit;
   }
 
@@ -253,8 +261,14 @@ if (isset($_GET['action'])) {
           outputEl.textContent = data.log || '';
           outputEl.scrollTop = outputEl.scrollHeight;
 
-          // ยังไม่รู้ว่าเสร็จหรือยัง เลย polling ต่อไปทุก 1 วิ
-          setTimeout(pollLog, 1000);
+          if (data.finished) {
+            polling = false;
+            setButtonsDisabled(false);
+            statusEl.textContent = 'คำสั่งเสร็จสิ้น';
+          } else {
+            // ยังรันอยู่ อ่าน log ต่อทุก 1 วินาที
+            setTimeout(pollLog, 1000);
+          }
         } catch (e) {
           console.error(e);
           statusEl.textContent = 'เกิดข้อผิดพลาดระหว่างอ่าน log';
