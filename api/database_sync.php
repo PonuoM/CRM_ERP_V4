@@ -1,7 +1,8 @@
 <?php
-// Simple web frontend to run database sync npm scripts.
+// Simple web frontend to run database sync npm scripts
+// and show "live" output in the browser.
 
-// Change working directory to project root so npm scripts run correctly.
+// Project root so npm scripts run correctly.
 $projectRoot = realpath(__DIR__ . '/..');
 if ($projectRoot === false) {
   http_response_code(500);
@@ -11,25 +12,88 @@ if ($projectRoot === false) {
 
 chdir($projectRoot);
 
-// Map allowed commands to actual shell commands.
+// Map allowed commands to actual npm scripts.
 $allowedCommands = [
   'db-pull' => 'npm run db:pull',
   'db-push' => 'npm run db:push',
   'db-seed' => 'npm run db:seed',
 ];
 
-$selectedKey = null;
-$command = null;
-$error = null;
+// Directory for log files.
+$logDir = __DIR__ . '/logs';
+if (!is_dir($logDir)) {
+  @mkdir($logDir, 0777, true);
+}
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['command'])) {
-  $selectedKey = $_POST['command'];
+// Small helper to send JSON.
+function send_json($data, int $status = 200): void {
+  http_response_code($status);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
 
-  if (!array_key_exists($selectedKey, $allowedCommands)) {
-    $error = 'คำสั่งไม่ถูกต้อง';
-  } else {
-    $command = $allowedCommands[$selectedKey] . ' 2>&1';
+// API mode: start command or read log.
+if (isset($_GET['action'])) {
+  $action = $_GET['action'];
+
+  if ($action === 'start') {
+    $key = $_POST['command'] ?? $_GET['command'] ?? null;
+
+    if (!$key || !isset($allowedCommands[$key])) {
+      send_json(['ok' => false, 'error' => 'คำสั่งไม่ถูกต้อง'], 400);
+      exit;
+    }
+
+    $logId = date('Ymd_His') . '_' . $key . '_' . bin2hex(random_bytes(4));
+    $logFile = $logDir . DIRECTORY_SEPARATOR . $logId . '.log';
+
+    $npmCmd = $allowedCommands[$key];
+
+    // Windows background execution: use start /B with cmd.
+    if (stripos(PHP_OS, 'WIN') === 0) {
+      $cmd = 'start "" /B cmd /C "cd /D ' .
+        escapeshellarg($projectRoot) .
+        ' && ' . $npmCmd .
+        ' >> ' . escapeshellarg($logFile) . ' 2>&1"';
+      @pclose(@popen($cmd, 'r'));
+    } else {
+      // Unix-like (fallback if ever used): background with &.
+      $cmd = 'cd ' . escapeshellarg($projectRoot) .
+        ' && ' . $npmCmd .
+        ' >> ' . escapeshellarg($logFile) . ' 2>&1 &';
+      @pclose(@popen($cmd, 'r'));
+    }
+
+    send_json(['ok' => true, 'logId' => $logId]);
+    exit;
   }
+
+  if ($action === 'read') {
+    $logId = $_GET['log'] ?? '';
+
+    if (!preg_match('/^[A-Za-z0-9_\-]+$/', $logId)) {
+      send_json(['ok' => false, 'error' => 'log id ไม่ถูกต้อง'], 400);
+      exit;
+    }
+
+    $logFile = $logDir . DIRECTORY_SEPARATOR . $logId . '.log';
+    if (!is_file($logFile)) {
+      send_json(['ok' => false, 'error' => 'ยังไม่มี log หรือคำสั่งยังไม่เริ่มทำงาน'], 404);
+      exit;
+    }
+
+    $content = @file_get_contents($logFile);
+    if ($content === false) {
+      $content = '';
+    }
+
+    send_json(['ok' => true, 'log' => $content]);
+    exit;
+  }
+
+  // Unknown action.
+  send_json(['ok' => false, 'error' => 'action ไม่ถูกต้อง'], 400);
+  exit;
 }
 
 ?>
@@ -63,6 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['command'])) {
       button:hover {
         background: #eef;
       }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
       pre {
         background: #111;
         color: #0f0;
@@ -78,6 +146,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['command'])) {
         color: #555;
         margin-bottom: 0.5rem;
       }
+      #status {
+        font-size: 13px;
+        margin-bottom: 0.5rem;
+      }
     </style>
   </head>
   <body>
@@ -87,90 +159,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['command'])) {
       <code>db:pull</code>, <code>db:push</code>, <code>db:seed</code>
     </p>
 
-    <form method="post">
-      <div class="buttons">
-        <button type="submit" name="command" value="db-pull">
-          npm run db:pull
-        </button>
-        <button type="submit" name="command" value="db-push">
-          npm run db:push
-        </button>
-        <button type="submit" name="command" value="db-seed">
-          npm run db:seed
-        </button>
-      </div>
-    </form>
+    <div id="status"></div>
 
-    <?php if ($selectedKey !== null): ?>
-      <h2>
-        ผลลัพธ์คำสั่ง:
-        <?php echo htmlspecialchars($allowedCommands[$selectedKey] ?? '', ENT_QUOTES, 'UTF-8'); ?>
-      </h2>
+    <div class="buttons">
+      <button type="button" data-command="db-pull">
+        npm run db:pull
+      </button>
+      <button type="button" data-command="db-push">
+        npm run db:push
+      </button>
+      <button type="button" data-command="db-seed">
+        npm run db:seed
+      </button>
+    </div>
 
-      <?php if ($error !== null): ?>
-        <p style="color: red;">
-          <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
-        </p>
-      <?php elseif ($command !== null): ?>
-        <pre>
-<?php
-          // Ensure output is not buffered so the browser sees updates as they happen.
-          @ini_set('output_buffering', 'off');
-          @ini_set('zlib.output_compression', false);
-          while (ob_get_level() > 0) {
-            ob_end_flush();
+    <pre id="output"></pre>
+
+    <script>
+      const buttons = document.querySelectorAll('button[data-command]');
+      const outputEl = document.getElementById('output');
+      const statusEl = document.getElementById('status');
+
+      let currentLogId = null;
+      let polling = false;
+
+      function setButtonsDisabled(disabled) {
+        buttons.forEach((btn) => {
+          btn.disabled = disabled;
+        });
+      }
+
+      async function startCommand(key, label) {
+        setButtonsDisabled(true);
+        outputEl.textContent = '';
+        statusEl.textContent = 'กำลังรันคำสั่ง: ' + label;
+
+        try {
+          const res = await fetch(
+            'database_sync.php?action=start&command=' + encodeURIComponent(key),
+            {
+              method: 'POST',
+              headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            },
+          );
+
+          const data = await res.json();
+          if (!data.ok) {
+            statusEl.textContent = 'เริ่มคำสั่งไม่สำเร็จ: ' + (data.error || '');
+            setButtonsDisabled(false);
+            return;
           }
-          ob_implicit_flush(true);
 
-          // Some servers (e.g. Nginx) buffer until a certain size, so send a padding chunk first.
-          echo str_repeat(' ', 1024) . "\n";
-          flush();
+          currentLogId = data.logId;
+          polling = true;
+          pollLog();
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = 'เกิดข้อผิดพลาดในการเริ่มคำสั่ง';
+          setButtonsDisabled(false);
+        }
+      }
 
-          $descriptorspec = [
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
-          ];
+      async function pollLog() {
+        if (!polling || !currentLogId) {
+          return;
+        }
 
-          $process = proc_open($command, $descriptorspec, $pipes, $projectRoot);
+        try {
+          const res = await fetch(
+            'database_sync.php?action=read&log=' +
+              encodeURIComponent(currentLogId) +
+              '&_t=' +
+              Date.now(),
+            {
+              method: 'GET',
+              headers: { 'X-Requested-With': 'XMLHttpRequest' },
+              cache: 'no-store',
+            },
+          );
 
-          if (!is_resource($process)) {
-            echo htmlspecialchars('ไม่สามารถรันคำสั่งได้', ENT_QUOTES, 'UTF-8');
-            flush();
-          } else {
-            stream_set_blocking($pipes[1], false);
-            stream_set_blocking($pipes[2], false);
-
-            // Read output while the process is running, similar to terminal.
-            while (true) {
-              $status = proc_get_status($process);
-
-              $stdout = stream_get_contents($pipes[1]);
-              $stderr = stream_get_contents($pipes[2]);
-
-              if ($stdout !== false && $stdout !== '') {
-                echo htmlspecialchars($stdout, ENT_QUOTES, 'UTF-8');
-                flush();
-              }
-              if ($stderr !== false && $stderr !== '') {
-                echo htmlspecialchars($stderr, ENT_QUOTES, 'UTF-8');
-                flush();
-              }
-
-              if (!$status['running']) {
-                break;
-              }
-
-              usleep(100000); // 0.1 วินาที
-            }
-
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-            proc_close($process);
+          if (!res.ok) {
+            // ถ้า server ยังไม่สร้างไฟล์ log ให้รอสักพักแล้วลองใหม่
+            setTimeout(pollLog, 1000);
+            return;
           }
-?>
-        </pre>
-      <?php endif; ?>
-    <?php endif; ?>
+
+          const data = await res.json();
+          if (!data.ok) {
+            setTimeout(pollLog, 1000);
+            return;
+          }
+
+          outputEl.textContent = data.log || '';
+          outputEl.scrollTop = outputEl.scrollHeight;
+
+          // ยังไม่รู้ว่าเสร็จหรือยัง เลย polling ต่อไปทุก 1 วิ
+          setTimeout(pollLog, 1000);
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = 'เกิดข้อผิดพลาดระหว่างอ่าน log';
+          polling = false;
+          setButtonsDisabled(false);
+        }
+      }
+
+      buttons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-command');
+          const label = btn.textContent.trim();
+          startCommand(key, label);
+        });
+      });
+    </script>
   </body>
   </html>
 
