@@ -29,3 +29,4 @@ api/uploads/slips/*
 /src/generated/prisma
 
 host
+!scripts/host
