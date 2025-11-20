@@ -1120,8 +1120,12 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     }
   };
 
-  // Function to download audio file
-  const downloadRecording = async (recordingURL: string, id: number) => {
+    // Function to download audio file
+    const downloadRecording = async (
+      recordingURL: string,
+      id: number,
+      apiFilename?: string,
+    ) => {
     if (!accessToken) {
       // Try to authenticate again if we don't have a token
       try {
@@ -1168,10 +1172,25 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       // Create a URL for the blob
       const audioUrl = URL.createObjectURL(blob);
 
-      // Create a download link
-      const link = document.createElement("a");
-      link.href = audioUrl;
-      link.setAttribute("download", `recording_${id}.mp3`);
+        // Determine download file name
+        let downloadName = `recording_${id}.mp3`;
+        if (apiFilename && typeof apiFilename === "string") {
+          // Use filename from API response; strip any path prefix
+          const parts = apiFilename.split("/");
+          let lastPart = parts[parts.length - 1] || apiFilename;
+
+          // Remove trailing .crypt extension if present
+          if (lastPart.toLowerCase().endsWith(".crypt")) {
+            lastPart = lastPart.slice(0, -".crypt".length);
+          }
+
+          downloadName = lastPart;
+        }
+
+        // Create a download link
+        const link = document.createElement("a");
+        link.href = audioUrl;
+        link.setAttribute("download", downloadName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -3350,12 +3369,13 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                                 <div className="min-w-[250px] flex items-center gap-2">
                                   <button
                                     className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
-                                    onClick={() =>
-                                      downloadRecording(
-                                        recording.recordingURL,
-                                        recording.id,
-                                      )
-                                    }
+                                      onClick={() =>
+                                        downloadRecording(
+                                          recording.recordingURL,
+                                          recording.id,
+                                          recording.filename,
+                                        )
+                                      }
                                     title="ดาวน์โหลดไฟล์เสียง"
                                   >
                                     <Download className="w-4 h-4" />
