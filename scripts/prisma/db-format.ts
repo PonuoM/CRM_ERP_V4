@@ -173,12 +173,26 @@ function generateSql(models: Model[]): string {
 
     statements.push(createTable);
 
-    // Generate ALTER TABLE ADD COLUMN IF NOT EXISTS for non-PK columns
+    // Generate ALTER TABLE ADD COLUMN for non-PK columns,
+    // wrapped in a dynamic check so it only runs if the column
+    // does not already exist (works even without IF NOT EXISTS).
     for (const field of model.fields) {
       if (pkField && field.name === pkField.name) continue;
       const colType = mapColumnType(field);
-      const alter = `ALTER TABLE \`${tableName}\` ADD COLUMN IF NOT EXISTS \`${field.name}\` ${colType} NULL;`;
-      statements.push(alter);
+      const ddl = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.name}\` ${colType} NULL`;
+      const alterWithCheck = [
+        "SET @sql := IF((",
+        "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS",
+        `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND COLUMN_NAME = '${field.name}'`,
+        ") = 0,",
+        `  '${ddl.replace(/'/g, "''")}',`,
+        "  'SELECT 1'",
+        ");",
+        "PREPARE stmt FROM @sql;",
+        "EXECUTE stmt;",
+        "DEALLOCATE PREPARE stmt;",
+      ].join("\n");
+      statements.push(alterWithCheck);
     }
 
     statements.push(""); // blank line between tables
