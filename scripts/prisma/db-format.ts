@@ -54,13 +54,14 @@ function parseModels(schema: string): Model[] {
       const attributeTokens = parts.slice(2);
       const attributes = attributeTokens.join(" ");
 
-      // Skip list fields (relations)
+      // Skip list fields (relations arrays)
       if (prismaType.endsWith("[]")) continue;
 
       // Handle optional marker
       prismaType = prismaType.replace("?", "");
 
-      if (!SCALAR_TYPES.has(prismaType)) continue;
+      // Skip pure relation fields (those that only define @relation and no actual column)
+      if (attributes.includes("@relation(")) continue;
 
       const isId = attributes.includes("@id");
       const isAutoIncrement = attributes.includes("autoincrement()");
@@ -139,15 +140,25 @@ function mapColumnType(field: Field): string {
   }
 }
 
-function generateSql(models: Model[]): string {
-  const statements: string[] = [];
+type SqlOutput = {
+  ddl: string;
+  checks: string;
+};
+
+function generateSql(models: Model[]): SqlOutput {
+  const ddlStatements: string[] = [];
+  const checkStatements: string[] = [];
+  const tableNames: string[] = [];
+  const tableColumns: string[] = [];
 
   for (const model of models) {
     const tableName = model.name;
+    tableNames.push(tableName);
     const pkField = model.fields.find((f) => f.isId);
 
     const columnDefs: string[] = [];
     for (const field of model.fields) {
+      tableColumns.push(`${tableName}.${field.name}`);
       const colType = mapColumnType(field);
       const isPk = pkField && pkField.name === field.name;
       const nullability = isPk ? "NOT NULL" : "NULL";
@@ -171,7 +182,7 @@ function generateSql(models: Model[]): string {
       ");",
     ].join("\n");
 
-    statements.push(createTable);
+    ddlStatements.push(createTable);
 
     // Generate ALTER TABLE ADD COLUMN for non-PK columns,
     // wrapped in a dynamic check so it only runs if the column
@@ -192,13 +203,44 @@ function generateSql(models: Model[]): string {
         "EXECUTE stmt;",
         "DEALLOCATE PREPARE stmt;",
       ].join("\n");
-      statements.push(alterWithCheck);
+      ddlStatements.push(alterWithCheck);
     }
 
-    statements.push(""); // blank line between tables
+    ddlStatements.push(""); // blank line between tables
   }
 
-  return statements.join("\n");
+  if (tableNames.length && tableColumns.length) {
+    const tableList = tableNames.map((t) => `'${t}'`).join(", ");
+    const columnList = tableColumns.map((c) => `'${c}'`).join(", ");
+
+    checkStatements.push(
+      "-- Schema check helper (generated from Prisma schema)",
+      "-- Set target database to check against",
+      "-- By default this uses the currently selected database.",
+      "-- To force a specific database, replace DATABASE() with your DB name, e.g. 'test_mini_erp'.",
+      "SET @target_db := DATABASE();",
+      "",
+      "-- 1) Tables that exist in the target database but are NOT defined in the Prisma schema",
+      "-- Tables that exist in the current database but are NOT defined in the Prisma schema",
+      "SELECT TABLE_NAME",
+      "FROM INFORMATION_SCHEMA.TABLES",
+      "WHERE TABLE_SCHEMA = @target_db",
+      `  AND TABLE_NAME NOT IN (${tableList});`,
+      "",
+      "-- 2) Columns that exist in the target database but are NOT defined in the Prisma schema",
+      "-- Columns that exist in the current database but are NOT defined in the Prisma schema",
+      "SELECT TABLE_NAME, COLUMN_NAME",
+      "FROM INFORMATION_SCHEMA.COLUMNS",
+      "WHERE TABLE_SCHEMA = @target_db",
+      `  AND CONCAT(TABLE_NAME, '.', COLUMN_NAME) NOT IN (${columnList});`,
+      "",
+    );
+  }
+
+  return {
+    ddl: ddlStatements.join("\n"),
+    checks: checkStatements.join("\n"),
+  };
 }
 
 async function main() {
@@ -213,10 +255,14 @@ async function main() {
     throw new Error("No models found in schema.prisma");
   }
 
-  const sql = generateSql(models);
-  await fs.writeFile(outputPath, sql, "utf8");
+  const { ddl, checks } = generateSql(models);
+  await fs.writeFile(outputPath, ddl, "utf8");
+
+  const checkPath = path.resolve(__dirname, "../../prisma/schema-check.sql");
+  await fs.writeFile(checkPath, checks, "utf8");
 
   console.log(`SQL schema generated at: ${outputPath}`);
+  console.log(`Schema check SQL generated at: ${checkPath}`);
 }
 
 main().catch((err) => {
