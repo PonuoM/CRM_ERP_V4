@@ -942,8 +942,6 @@ model platforms {
   name            String    @db.VarChar(64)
   display_name    String    @db.VarChar(128)
   description     String?   @db.VarChar(255)
-  description1     String?   @db.VarChar(255)
-  description2     String?   @db.VarChar(255)
   company_id      Int       @default(1)
   active          Boolean   @default(true)
   sort_order      Int       @default(0)
