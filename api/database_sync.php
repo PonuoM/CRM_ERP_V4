@@ -17,6 +17,7 @@ $allowedCommands = [
   'db-pull' => 'npm run db:pull',
   'db-push' => 'npm run db:push',
   'db-seed' => 'npm run db:seed',
+  'db-format' => 'npm run db:format',
 ];
 
 // Directory for log files.
@@ -178,6 +179,9 @@ if (isset($_GET['action'])) {
       </button>
       <button type="button" data-command="db-seed">
         npm run db:seed
+      </button>
+      <button type="button" data-command="db-format">
+        npm run db:format
       </button>
     </div>
 
