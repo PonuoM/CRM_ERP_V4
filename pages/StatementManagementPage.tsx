@@ -58,6 +58,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -166,7 +167,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
 
     setIsSaving(true);
     try {
-      await fetch("api/Statement_DB/save_statement.php", {
+      const res = await fetch("api/Statement_DB/save_statement.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,10 +176,20 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           rows: validRows,
         }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        const msg =
+          data?.detail ||
+          data?.error ||
+          "เกิดข้อผิดพลาดระหว่างบันทึกข้อมูล Statement";
+        setErrorMessage(msg);
+        return;
+      }
       clearRows();
       setShowSuccess(true);
     } catch (e) {
       console.error("Failed to save statement logs", e);
+      setErrorMessage("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsSaving(false);
     }
@@ -440,6 +451,24 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         </Modal>
       )}
 
+      {errorMessage && (
+        <Modal title="เกิดข้อผิดพลาด" onClose={() => setErrorMessage(null)}>
+          <div className="p-4 flex flex-col items-center gap-3">
+            <XCircle className="w-10 h-10 text-red-500" />
+            <div className="text-sm text-center text-red-700 whitespace-pre-line">
+              {errorMessage}
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="mt-2 px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+            >
+              ปิด
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {showHistory && (
         <Modal
           title="ประวัติการใส่ข้อมูล Statement (ตาม Batch)"
@@ -644,4 +673,3 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
 };
 
 export default StatementManagementPage;
-

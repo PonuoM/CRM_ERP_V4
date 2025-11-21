@@ -9,6 +9,42 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = json_input();
 
+/**
+ * Validate and combine date + time into a MySQL-compatible DATETIME string.
+ * Returns string "Y-m-d H:i:s" if valid, or null if invalid.
+ */
+function build_valid_transfer_at(?string $date, ?string $time): ?string {
+  $date = trim((string) $date);
+  $time = trim((string) $time);
+
+  if ($date === '' || $time === '') {
+    return null;
+  }
+
+  // Validate date
+  $dtDate = DateTime::createFromFormat('Y-m-d', $date);
+  $dateErrors = DateTime::getLastErrors();
+  if ($dtDate === false || $dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0) {
+    return null;
+  }
+
+  // Validate time HH:MM or HH:MM:SS
+  if (!preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $time, $m)) {
+    return null;
+  }
+  $h = (int) $m[1];
+  $i = (int) $m[2];
+  $s = isset($m[3]) ? (int) $m[3] : 0;
+
+  // Hour 0–23, minute 0–59, second 0–59
+  if ($h < 0 || $h > 23 || $i < 0 || $i > 59 || $s < 0 || $s > 59) {
+    return null;
+  }
+
+  $timeNorm = sprintf('%02d:%02d:%02d', $h, $i, $s);
+  return $date . ' ' . $timeNorm;
+}
+
 try {
   $pdo = db_connect();
 
@@ -42,13 +78,6 @@ try {
       );
     }
 
-    // Determine batch for this round (same for all rows in this request)
-    $batchStmt = $pdo->query(
-      "SELECT COALESCE(MAX(batch), 0) + 1 AS next_batch FROM statement_logs",
-    );
-    $batchRow = $batchStmt->fetch(PDO::FETCH_ASSOC);
-    $batch = (int) ($batchRow['next_batch'] ?? 1);
-
     // Check whether new column transfer_at (preferred) or legacy entry_at exists
     $hasTransferAt = false;
     $hasEntryAt = false;
@@ -66,6 +95,57 @@ try {
         $hasEntryAt = true;
       }
     }
+
+    // Validate all rows first; if any row is invalid, abort without inserting anything.
+    $preparedRows = [];
+    $rowIndex = 0;
+    foreach ($rows as $row) {
+      $rowIndex++;
+      $date = $row['date'] ?? null;
+      $time = $row['time'] ?? null;
+      $amount = $row['amount'] ?? null;
+      $channel = $row['channel'] ?? '';
+      $description = $row['description'] ?? '';
+
+      if ($date === null || $time === null || $amount === null) {
+        json_response(
+          [
+            'ok' => false,
+            'error' => 'Invalid row data',
+            'detail' => "Row {$rowIndex}: missing date, time or amount",
+          ],
+          400,
+        );
+      }
+
+      $transferAt = build_valid_transfer_at($date, $time);
+      if ($transferAt === null) {
+        json_response(
+          [
+            'ok' => false,
+            'error' => 'Invalid date or time format',
+            'detail' => "Row {$rowIndex}: invalid date/time '{$date} {$time}'",
+          ],
+          400,
+        );
+      }
+
+      $preparedRows[] = [
+        'transfer_at' => $transferAt,
+        'date' => $date,
+        'time' => $time,
+        'amount' => (float) $amount,
+        'channel' => $channel !== '' ? $channel : null,
+        'description' => $description !== '' ? $description : null,
+      ];
+    }
+
+    // All rows are valid: determine batch and perform inserts
+    $batchStmt = $pdo->query(
+      "SELECT COALESCE(MAX(batch), 0) + 1 AS next_batch FROM statement_logs",
+    );
+    $batchRow = $batchStmt->fetch(PDO::FETCH_ASSOC);
+    $batch = (int) ($batchRow['next_batch'] ?? 1);
 
     if ($hasTransferAt || $hasEntryAt) {
       $stmt = $pdo->prepare(
@@ -85,38 +165,27 @@ try {
     }
 
     $inserted = 0;
-    foreach ($rows as $row) {
-      $date = $row['date'] ?? null;
-      $time = $row['time'] ?? null;
-      $amount = $row['amount'] ?? null;
-      $channel = $row['channel'] ?? '';
-      $description = $row['description'] ?? '';
-
-      if (!$date || !$time || $amount === null) {
-        continue;
-      }
-
+    foreach ($preparedRows as $row) {
       if ($hasTransferAt || $hasEntryAt) {
-        $transferAt = trim($date . ' ' . $time);
         $stmt->execute([
           ':company_id' => (int) $companyId,
           ':user_id' => $userId !== null ? (int) $userId : null,
           ':batch' => $batch,
-          ':transfer_at' => $transferAt,
-          ':amount' => (float) $amount,
-          ':channel' => $channel !== '' ? $channel : null,
-          ':description' => $description !== '' ? $description : null,
+          ':transfer_at' => $row['transfer_at'],
+          ':amount' => $row['amount'],
+          ':channel' => $row['channel'],
+          ':description' => $row['description'],
         ]);
       } else {
         $stmt->execute([
           ':company_id' => (int) $companyId,
           ':user_id' => $userId !== null ? (int) $userId : null,
           ':batch' => $batch,
-          ':entry_date' => $date,
-          ':entry_time' => $time,
-          ':amount' => (float) $amount,
-          ':channel' => $channel !== '' ? $channel : null,
-          ':description' => $description !== '' ? $description : null,
+          ':entry_date' => $row['date'],
+          ':entry_time' => $row['time'],
+          ':amount' => $row['amount'],
+          ':channel' => $row['channel'],
+          ':description' => $row['description'],
         ]);
       }
       $inserted++;
@@ -140,6 +209,14 @@ try {
     if (!$date || !$time || $amount === null || $companyId === null) {
       json_response(
         ['ok' => false, 'error' => 'Missing required fields'],
+        400,
+      );
+    }
+
+    $transferAt = build_valid_transfer_at($date, $time);
+    if ($transferAt === null) {
+      json_response(
+        ['ok' => false, 'error' => 'Invalid date or time format'],
         400,
       );
     }
@@ -176,7 +253,6 @@ try {
          VALUES
           (:company_id, :user_id, :batch, :transfer_at, :amount, :channel, :description)",
       );
-      $transferAt = trim($date . ' ' . $time);
       $stmtSingle->execute([
         ':company_id' => (int) $companyId,
         ':user_id' => $userId !== null ? (int) $userId : null,
