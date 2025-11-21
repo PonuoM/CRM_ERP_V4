@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { User } from "../types";
 import { CheckCircle, Trash2, Plus } from "lucide-react";
+import Modal from "@/components/Modal";
 
 interface StatementManagementPageProps {
   user: User;
@@ -35,6 +36,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleInputChange = (
     index: number,
@@ -107,13 +109,21 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   };
 
   const handleSave = async () => {
-    const validRows = rows.filter(
-      (r) =>
-        r.date.trim() &&
-        r.time.trim() &&
-        r.amount.trim() &&
-        !Number.isNaN(Number(r.amount)),
-    );
+    const validRows = rows
+      .filter(
+        (r) =>
+          r.date.trim() &&
+          r.time.trim() &&
+          r.amount.trim() &&
+          !Number.isNaN(Number(r.amount)),
+      )
+      .map((r) => ({
+        date: r.date.trim(),
+        time: r.time.trim(),
+        amount: Number(r.amount),
+        channel: r.channel.trim(),
+        description: r.description.trim(),
+      }));
 
     if (!validRows.length) {
       return;
@@ -121,22 +131,17 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
 
     setIsSaving(true);
     try {
-      for (const row of validRows) {
-        await fetch("api/Statement_DB/save_statement.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            date: row.date,
-            time: row.time,
-            amount: Number(row.amount),
-            channel: row.channel,
-            description: row.description,
-            company_id: user.companyId,
-            user_id: user.id,
-          }),
-        });
-      }
+      await fetch("api/Statement_DB/save_statement.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id: user.companyId,
+          user_id: user.id,
+          rows: validRows,
+        }),
+      });
       clearRows();
+      setShowSuccess(true);
     } catch (e) {
       console.error("Failed to save statement logs", e);
     } finally {
@@ -151,7 +156,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           <h1 className="text-xl font-semibold">Statement Management</h1>
           <p className="text-sm text-gray-500">
             ตารางสำหรับกรอก / วางข้อมูลจาก Excel: วันที่ เวลา จำนวนเงิน ช่องทาง
-            และรายละเอียด
+            และรายละเอียด แล้วบันทึกลงฐานข้อมูล
           </p>
         </div>
         <div className="flex gap-2">
@@ -165,6 +170,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
             onClick={addRow}
             className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
           >
+            <Plus className="w-4 h-4 mr-1" />
             เพิ่มแถว
           </button>
           <button
@@ -289,7 +295,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                     onClick={() => removeRow(index)}
                     className="text-gray-400 hover:text-red-500 p-1"
                   >
-                    ลบ
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </td>
               </tr>
@@ -297,6 +303,34 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           </tbody>
         </table>
       </div>
+
+      {showSuccess && (
+        <Modal title="เพิ่มข้อมูลสำเร็จ" onClose={() => setShowSuccess(false)}>
+          <div className="p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100 text-green-700">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm text-gray-800">
+                  บันทึกข้อมูล Statement เรียบร้อยแล้ว
+                </div>
+                <div className="text-xs text-gray-500">
+                  แถวที่กรอกครบถูกส่งไปบันทึกในฐานข้อมูลแล้ว
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowSuccess(false)}
+                className="px-4 py-2 text-sm rounded-md bg-green-600 text-white hover:bg-green-700"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
