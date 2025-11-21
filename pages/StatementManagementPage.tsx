@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { User } from "../types";
-import { CheckCircle, Trash2, Plus } from "lucide-react";
+import { CheckCircle, Trash2, Plus, History, Eye, XCircle } from "lucide-react";
 import Modal from "@/components/Modal";
 
 interface StatementManagementPageProps {
@@ -20,6 +20,25 @@ interface RowData {
   description: string;
 }
 
+interface BatchSummary {
+  batch: number;
+  row_count: number;
+  first_at: string | null;
+  last_at: string | null;
+}
+
+interface BatchRow {
+  id: number;
+  entry_date: string;
+  entry_time: string;
+  amount: number;
+  channel: string | null;
+  description: string | null;
+  company_id: number;
+  user_id: number | null;
+  created_at: string;
+}
+
 const createEmptyRow = (id: number): RowData => ({
   id,
   date: "",
@@ -37,6 +56,20 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
+
+  const [selectedBatch, setSelectedBatch] = useState<number | null>(null);
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [batchRowsLoading, setBatchRowsLoading] = useState(false);
+
+  const [confirmDeleteBatch, setConfirmDeleteBatch] = useState<number | null>(
+    null,
+  );
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const handleInputChange = (
     index: number,
@@ -149,6 +182,69 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     }
   };
 
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch("api/Statement_DB/list_batches.php", {
+        method: "GET",
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setHistoryError(data.error || "โหลดประวัติไม่สำเร็จ");
+      } else {
+        setBatches(Array.isArray(data.batches) ? data.batches : []);
+      }
+    } catch {
+      setHistoryError("โหลดประวัติไม่สำเร็จ");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const loadBatchDetails = async (batch: number) => {
+    setSelectedBatch(batch);
+    setBatchRows([]);
+    setBatchRowsLoading(true);
+    try {
+      const res = await fetch(
+        `api/Statement_DB/get_batch.php?batch=${encodeURIComponent(
+          String(batch),
+        )}`,
+        {
+          method: "GET",
+        },
+      );
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.rows)) {
+        setBatchRows(data.rows);
+      } else {
+        setBatchRows([]);
+      }
+    } catch {
+      setBatchRows([]);
+    } finally {
+      setBatchRowsLoading(false);
+    }
+  };
+
+  const handleDeleteBatch = async (batch: number) => {
+    setDeleteLoading(true);
+    try {
+      await fetch("api/Statement_DB/delete_batch.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch }),
+      });
+      await loadHistory();
+    } catch {
+      // แค่ไม่รีเฟรชก็ได้ ถ้าลบไม่สำเร็จ
+    } finally {
+      setDeleteLoading(false);
+      setConfirmDeleteBatch(null);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -180,6 +276,17 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           >
             <CheckCircle className="w-4 h-4 mr-2" />
             {isSaving ? "กำลังบันทึก..." : "บันทึกลงฐานข้อมูล"}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setShowHistory(true);
+              await loadHistory();
+            }}
+            className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
+          >
+            <History className="w-4 h-4 mr-1" />
+            ประวัติการใส่ข้อมูล
           </button>
         </div>
       </div>
@@ -331,8 +438,194 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           </div>
         </Modal>
       )}
+
+      {showHistory && (
+        <Modal title="ประวัติการใส่ข้อมูล (ตาม Batch)" onClose={() => setShowHistory(false)}>
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                แสดงประวัติการบันทึกข้อมูลแบ่งตาม batch
+              </div>
+              <button
+                type="button"
+                onClick={loadHistory}
+                className="text-xs px-2 py-1 border rounded-md hover:bg-gray-50"
+              >
+                รีเฟรช
+              </button>
+            </div>
+            {historyLoading && (
+              <div className="text-xs text-gray-500">กำลังโหลดข้อมูล...</div>
+            )}
+            {historyError && (
+              <div className="text-xs text-red-600">{historyError}</div>
+            )}
+            {!historyLoading && !historyError && batches.length === 0 && (
+              <div className="text-xs text-gray-500">
+                ยังไม่มีข้อมูล Statement ที่บันทึกไว้
+              </div>
+            )}
+            {batches.length > 0 && (
+              <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      Batch
+                    </th>
+                    <th className="px-2 py-1 text-right font-medium text-gray-600">
+                      จำนวนรายการ
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ช่วงเวลา
+                    </th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600">
+                      จัดการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((b) => (
+                    <tr key={b.batch} className="border-t border-gray-200">
+                      <td className="px-2 py-1 text-sm">Batch {b.batch}</td>
+                      <td className="px-2 py-1 text-sm text-right">
+                        {b.row_count}
+                      </td>
+                      <td className="px-2 py-1 text-xs text-gray-500">
+                        {b.first_at && b.last_at
+                          ? `${b.first_at} - ${b.last_at}`
+                          : "-"}
+                      </td>
+                      <td className="px-2 py-1 text-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => loadBatchDetails(b.batch)}
+                          className="inline-flex items-center px-2 py-1 text-xs border rounded-md hover:bg-gray-50"
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          ดูรายละเอียด
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteBatch(b.batch)}
+                          className="inline-flex items-center px-2 py-1 text-xs border border-red-300 text-red-700 rounded-md hover:bg-red-50"
+                        >
+                          <XCircle className="w-3 h-3 mr-1" />
+                          ลบทั้ง batch
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {selectedBatch !== null && (
+        <Modal
+          title={`รายละเอียด Batch ${selectedBatch}`}
+          onClose={() => {
+            setSelectedBatch(null);
+            setBatchRows([]);
+          }}
+        >
+          <div className="p-4 space-y-3">
+            {batchRowsLoading && (
+              <div className="text-xs text-gray-500">กำลังโหลดข้อมูล...</div>
+            )}
+            {!batchRowsLoading && batchRows.length === 0 && (
+              <div className="text-xs text-gray-500">
+                ไม่พบข้อมูลใน batch นี้
+              </div>
+            )}
+            {batchRows.length > 0 && (
+              <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      วันที่
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      เวลา
+                    </th>
+                    <th className="px-2 py-1 text-right font-medium text-gray-600">
+                      จำนวนเงิน
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ช่องทาง
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      รายละเอียด
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchRows.map((r) => (
+                    <tr key={r.id} className="border-t border-gray-200">
+                      <td className="px-2 py-1">
+                        {r.entry_date?.toString().substring(0, 10)}
+                      </td>
+                      <td className="px-2 py-1">
+                        {r.entry_time?.toString().substring(0, 8)}
+                      </td>
+                      <td className="px-2 py-1 text-right">
+                        {r.amount.toLocaleString("th-TH", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="px-2 py-1">
+                        {r.channel ?? "-"}
+                      </td>
+                      <td className="px-2 py-1">
+                        {r.description ?? "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {confirmDeleteBatch !== null && (
+        <Modal
+          title={`ลบ Batch ${confirmDeleteBatch}`}
+          onClose={() => setConfirmDeleteBatch(null)}
+        >
+          <div className="p-4 space-y-4">
+            <div className="text-sm text-gray-700">
+              ต้องการลบข้อมูลทั้งหมดใน Batch {confirmDeleteBatch} หรือไม่?
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteBatch(null)}
+                className="px-4 py-2 text-sm rounded-md border hover:bg-gray-50"
+                disabled={deleteLoading}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  confirmDeleteBatch !== null &&
+                  handleDeleteBatch(confirmDeleteBatch)
+                }
+                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? "กำลังลบ..." : "ลบทั้ง batch"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
 
 export default StatementManagementPage;
+
