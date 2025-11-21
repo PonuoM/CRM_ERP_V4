@@ -199,6 +199,7 @@ import SlipAll from "./pages/SlipAll";
 import SlipDetail from "./pages/SlipDetail";
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
+import StatementManagementPage from "./pages/StatementManagementPage";
 import CODRecordPage from "./pages/CODRecordPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
@@ -5419,6 +5420,15 @@ const App: React.FC = () => {
             );
           case "COD Record":
             return <CODRecordPage user={currentUser} />;
+          case "Statement Management":
+            return (
+              <StatementManagementPage
+                user={currentUser}
+                orders={companyOrders}
+                customers={companyCustomers}
+                users={companyUsers}
+              />
+            );
           default:
             return (
               <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>
