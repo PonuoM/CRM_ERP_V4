@@ -18,6 +18,7 @@ $allowedCommands = [
   'db-push' => 'npm run db:push',
   'db-seed' => 'npm run db:seed',
   'db-format' => 'npm run db:format',
+  'db-export' => 'npm run db:export',
 ];
 
 // Directory for log files.
@@ -81,7 +82,7 @@ if (isset($_GET['action'])) {
 
     $logFile = $logDir . DIRECTORY_SEPARATOR . $logId . '.log';
     if (!is_file($logFile)) {
-      send_json(['ok' => false, 'error' => 'ยังไม่มี log หรือคำสั่งยังไม่เริ่มทำงาน'], 404);
+      send_json(['ok' => false, 'error' => 'ไม่พบไฟล์ log'], 404);
       exit;
     }
 
@@ -164,8 +165,12 @@ if (isset($_GET['action'])) {
   <body>
     <h1>Database Sync</h1>
     <p class="note">
-      หน้านี้ใช้รันคำสั่ง npm สำหรับซิงค์ฐานข้อมูล:
-      <code>db:pull</code>, <code>db:push</code>, <code>db:seed</code>
+      คำสั่ง npm ที่สามารถรันจากหน้านี้ได้:
+      <code>db:pull</code>,
+      <code>db:push</code>,
+      <code>db:seed</code>,
+      <code>db:format</code>,
+      <code>db:export</code>
     </p>
 
     <div id="status"></div>
@@ -182,6 +187,9 @@ if (isset($_GET['action'])) {
       </button>
       <button type="button" data-command="db-format">
         npm run db:format
+      </button>
+      <button type="button" data-command="db-export">
+        npm run db:export
       </button>
     </div>
 
@@ -217,7 +225,8 @@ if (isset($_GET['action'])) {
 
           const data = await res.json();
           if (!data.ok) {
-            statusEl.textContent = 'เริ่มคำสั่งไม่สำเร็จ: ' + (data.error || '');
+            statusEl.textContent =
+              'เริ่มคำสั่งไม่สำเร็จ: ' + (data.error || '');
             setButtonsDisabled(false);
             return;
           }
@@ -227,7 +236,8 @@ if (isset($_GET['action'])) {
           pollLog();
         } catch (e) {
           console.error(e);
-          statusEl.textContent = 'เกิดข้อผิดพลาดในการเริ่มคำสั่ง';
+          statusEl.textContent =
+            'เกิดข้อผิดพลาดระหว่างเริ่มคำสั่ง กรุณาลองใหม่อีกครั้ง';
           setButtonsDisabled(false);
         }
       }
@@ -251,7 +261,6 @@ if (isset($_GET['action'])) {
           );
 
           if (!res.ok) {
-            // ถ้า server ยังไม่สร้างไฟล์ log ให้รอสักพักแล้วลองใหม่
             setTimeout(pollLog, 1000);
             return;
           }
@@ -268,14 +277,14 @@ if (isset($_GET['action'])) {
           if (data.finished) {
             polling = false;
             setButtonsDisabled(false);
-            statusEl.textContent = 'คำสั่งเสร็จสิ้น';
+            statusEl.textContent = 'คำสั่งเสร็จสมบูรณ์';
           } else {
-            // ยังรันอยู่ อ่าน log ต่อทุก 1 วินาที
             setTimeout(pollLog, 1000);
           }
         } catch (e) {
           console.error(e);
-          statusEl.textContent = 'เกิดข้อผิดพลาดระหว่างอ่าน log';
+          statusEl.textContent =
+            'เกิดข้อผิดพลาดระหว่างอ่าน log กรุณาลองใหม่อีกครั้ง';
           polling = false;
           setButtonsDisabled(false);
         }

@@ -1,36 +1,49 @@
 #!/usr/bin/env node
 
 /**
- * Database seed script for Prisma
- * This script seeds the database with initial data
+ * Database seed script for Prisma.
+ *
+ * This script:
+ * 1) Syncs DATABASE_URL from api/config.php into Prisma/.env
+ * 2) Runs scripts/seed-db.ts which seeds data via PrismaClient
+ *    using the models defined in prisma/schema.prisma.
  */
 
 import { execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the sync-db-url script
 const syncScriptPath = path.join(__dirname, "..", "sync-db-url.ts");
-// Path to the seed-db script
 const seedScriptPath = path.join(__dirname, "..", "seed-db.ts");
 
-console.log("🌱 Seeding database...");
-
-try {
-  // First sync the database URL
-  console.log("🔗 Syncing database URL...");
-  execSync(`npx tsx "${syncScriptPath}"`, { stdio: "inherit" });
-
-  // Now seed the database
-  console.log("🌱 Seeding database...");
-  execSync(`npx tsx "${seedScriptPath}"`, { stdio: "inherit" });
-
-  console.log("✅ Database seeding completed successfully!");
-} catch (error) {
-  console.error(`❌ Operation failed: ${error.message}`);
-  process.exit(1);
+function runStep(description: string, command: string) {
+  console.log(`[db:seed] ${description}`);
+  execSync(command, { stdio: "inherit" });
 }
+
+async function main() {
+  console.log("[db:seed] Starting database seed...");
+
+  // Ensure Prisma uses the same database URL as the PHP app
+  runStep(
+    "Syncing database URL from api/config.php...",
+    `npx tsx "${syncScriptPath}"`,
+  );
+
+  // Run the actual Prisma-based seeding logic
+  runStep(
+    "Running seed-db.ts (Prisma seeding)...",
+    `npx tsx "${seedScriptPath}"`,
+  );
+
+  console.log("[db:seed] Database seeding completed successfully.");
+}
+
+main().catch((error) => {
+  console.error("[db:seed] Seeding failed:", error);
+  process.exit(1);
+});
+

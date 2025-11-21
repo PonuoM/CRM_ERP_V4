@@ -13,6 +13,7 @@
     "db:push": "npx tsx scripts/prisma/db-push.ts",
     "db:format": "npx tsx scripts/prisma/db-format.ts",
     "db:seed": "npx tsx scripts/prisma/db-seed.ts",
+    "db:export": "npx tsx scripts/prisma/db-export.ts",
     "db:migrate": "npm run db:sync && npx prisma migrate dev",
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio"
