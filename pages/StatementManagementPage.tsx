@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { User } from "../types";
+import { CheckCircle, Trash2, Plus } from "lucide-react";
 
 interface StatementManagementPageProps {
   user: User;
@@ -27,10 +28,13 @@ const createEmptyRow = (id: number): RowData => ({
   description: "",
 });
 
-const StatementManagementPage: React.FC<StatementManagementPageProps> = () => {
+const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
+  user,
+}) => {
   const [rows, setRows] = useState<RowData[]>(
     Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)),
   );
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleInputChange = (
     index: number,
@@ -102,6 +106,44 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = () => {
     );
   };
 
+  const handleSave = async () => {
+    const validRows = rows.filter(
+      (r) =>
+        r.date.trim() &&
+        r.time.trim() &&
+        r.amount.trim() &&
+        !Number.isNaN(Number(r.amount)),
+    );
+
+    if (!validRows.length) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      for (const row of validRows) {
+        await fetch("api/Statement_DB/save_statement.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: row.date,
+            time: row.time,
+            amount: Number(row.amount),
+            channel: row.channel,
+            description: row.description,
+            company_id: user.companyId,
+            user_id: user.id,
+          }),
+        });
+      }
+      clearRows();
+    } catch (e) {
+      console.error("Failed to save statement logs", e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -124,6 +166,14 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = () => {
             className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
           >
             เพิ่มแถว
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="inline-flex items-center px-3 py-2 bg-green-600 text-white border rounded-md text-sm shadow-sm hover:bg-green-700 disabled:opacity-50"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            {isSaving ? "กำลังบันทึก..." : "บันทึกลงฐานข้อมูล"}
           </button>
         </div>
       </div>
@@ -252,4 +302,3 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = () => {
 };
 
 export default StatementManagementPage;
-
