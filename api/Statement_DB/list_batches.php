@@ -32,6 +32,8 @@ try {
     "SELECT 
         batch,
         COUNT(*) AS row_count,
+        MIN(CONCAT(entry_date, ' ', entry_time)) AS transfer_from,
+        MAX(CONCAT(entry_date, ' ', entry_time)) AS transfer_to,
         MIN(created_at) AS first_at,
         MAX(created_at) AS last_at
      FROM statement_logs
@@ -52,4 +54,3 @@ try {
     'detail' => $e->getMessage(),
   ], 500);
 }
-

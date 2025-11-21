@@ -23,6 +23,8 @@ interface RowData {
 interface BatchSummary {
   batch: number;
   row_count: number;
+  transfer_from?: string | null;
+  transfer_to?: string | null;
   first_at: string | null;
   last_at: string | null;
 }
@@ -191,12 +193,12 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
       });
       const data = await res.json();
       if (!data.ok) {
-        setHistoryError(data.error || "โหลดประวัติไม่สำเร็จ");
+        setHistoryError(data.error || "ไม่สามารถโหลดประวัติการใส่ข้อมูลได้");
       } else {
         setBatches(Array.isArray(data.batches) ? data.batches : []);
       }
     } catch {
-      setHistoryError("โหลดประวัติไม่สำเร็จ");
+      setHistoryError("ไม่สามารถโหลดประวัติการใส่ข้อมูลได้");
     } finally {
       setHistoryLoading(false);
     }
@@ -238,11 +240,21 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
       });
       await loadHistory();
     } catch {
-      // แค่ไม่รีเฟรชก็ได้ ถ้าลบไม่สำเร็จ
+      // ignore
     } finally {
       setDeleteLoading(false);
       setConfirmDeleteBatch(null);
     }
+  };
+
+  const formatDateTime = (value: string | null | undefined) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString("th-TH", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
   };
 
   return (
@@ -251,8 +263,8 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         <div>
           <h1 className="text-xl font-semibold">Statement Management</h1>
           <p className="text-sm text-gray-500">
-            ตารางสำหรับกรอก / วางข้อมูลจาก Excel: วันที่ เวลา จำนวนเงิน ช่องทาง
-            และรายละเอียด แล้วบันทึกลงฐานข้อมูล
+            วางข้อมูลจาก Excel ลงในตารางด้านล่าง โดยเรียงคอลัมน์เป็น
+            วันที่, เวลา, จำนวนเงิน, ช่องทาง, รายละเอียด แล้วกดบันทึกเพื่อเก็บข้อมูล
           </p>
         </div>
         <div className="flex gap-2">
@@ -260,7 +272,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
             onClick={clearRows}
             className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
           >
-            ล้างตาราง
+            ล้างข้อมูลตาราง
           </button>
           <button
             onClick={addRow}
@@ -275,7 +287,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
             className="inline-flex items-center px-3 py-2 bg-green-600 text-white border rounded-md text-sm shadow-sm hover:bg-green-700 disabled:opacity-50"
           >
             <CheckCircle className="w-4 h-4 mr-2" />
-            {isSaving ? "กำลังบันทึก..." : "บันทึกลงฐานข้อมูล"}
+            {isSaving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
           </button>
           <button
             type="button"
@@ -295,7 +307,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">
-              ตารางบันทึกรายการ Statement
+              ตารางใส่ข้อมูล Statement
             </span>
           </div>
         </div>
@@ -326,83 +338,82 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 bg-white">
             {rows.map((row, index) => (
-              <tr key={row.id} className="hover:bg-gray-50">
-                <td className="px-2 py-1 text-gray-400 text-center">
-                  {row.id}
-                </td>
+              <tr key={row.id}>
+                <td className="px-2 py-1 text-xs text-gray-500">{row.id}</td>
                 <td className="px-2 py-1">
                   <input
                     type="text"
-                    data-index={index}
                     value={row.date}
+                    data-index={index}
                     onChange={(e) =>
                       handleInputChange(index, "date", e.target.value)
                     }
                     onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
+                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-xs"
                     placeholder="YYYY-MM-DD"
                   />
                 </td>
                 <td className="px-2 py-1">
                   <input
                     type="text"
-                    data-index={index}
                     value={row.time}
+                    data-index={index}
                     onChange={(e) =>
                       handleInputChange(index, "time", e.target.value)
                     }
                     onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
+                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-xs"
                     placeholder="HH:MM"
                   />
                 </td>
                 <td className="px-2 py-1 text-right">
                   <input
                     type="text"
-                    data-index={index}
                     value={row.amount}
+                    data-index={index}
                     onChange={(e) =>
                       handleInputChange(index, "amount", e.target.value)
                     }
                     onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-right"
+                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-right text-xs"
                     placeholder="0.00"
                   />
                 </td>
                 <td className="px-2 py-1">
                   <input
                     type="text"
-                    data-index={index}
                     value={row.channel}
+                    data-index={index}
                     onChange={(e) =>
                       handleInputChange(index, "channel", e.target.value)
                     }
                     onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
-                    placeholder="เช่น โอน, COD, PromptPay"
+                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-xs"
+                    placeholder="ช่องทาง"
                   />
                 </td>
                 <td className="px-2 py-1">
                   <input
                     type="text"
-                    data-index={index}
                     value={row.description}
+                    data-index={index}
                     onChange={(e) =>
                       handleInputChange(index, "description", e.target.value)
                     }
                     onPaste={handlePaste}
-                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
-                    placeholder="รายละเอียดเพิ่มเติม"
+                    className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none text-xs"
+                    placeholder="รายละเอียด"
                   />
                 </td>
                 <td className="px-2 py-1 text-center">
                   <button
+                    type="button"
                     onClick={() => removeRow(index)}
                     className="text-gray-400 hover:text-red-500 p-1"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 size={14} />
                   </button>
                 </td>
               </tr>
@@ -412,57 +423,52 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
       </div>
 
       {showSuccess && (
-        <Modal title="เพิ่มข้อมูลสำเร็จ" onClose={() => setShowSuccess(false)}>
-          <div className="p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100 text-green-700">
-                <CheckCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm text-gray-800">
-                  บันทึกข้อมูล Statement เรียบร้อยแล้ว
-                </div>
-                <div className="text-xs text-gray-500">
-                  แถวที่กรอกครบถูกส่งไปบันทึกในฐานข้อมูลแล้ว
-                </div>
-              </div>
+        <Modal title="บันทึกข้อมูลสำเร็จ" onClose={() => setShowSuccess(false)}>
+          <div className="p-4 flex flex-col items-center gap-3">
+            <CheckCircle className="w-10 h-10 text-green-500" />
+            <div className="text-sm text-center">
+              บันทึกข้อมูล Statement เรียบร้อยแล้ว
             </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowSuccess(false)}
-                className="px-4 py-2 text-sm rounded-md bg-green-600 text-white hover:bg-green-700"
-              >
-                ปิด
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowSuccess(false)}
+              className="mt-2 px-4 py-2 text-sm rounded-md bg-green-600 text-white hover:bg-green-700"
+            >
+              ปิด
+            </button>
           </div>
         </Modal>
       )}
 
       {showHistory && (
-        <Modal title="ประวัติการใส่ข้อมูล (ตาม Batch)" onClose={() => setShowHistory(false)}>
+        <Modal
+          title="ประวัติการใส่ข้อมูล Statement (ตาม Batch)"
+          onClose={() => setShowHistory(false)}
+        >
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
-                แสดงประวัติการบันทึกข้อมูลแบ่งตาม batch
+                ประวัติการใส่ข้อมูล Statement แบ่งตามรอบการบันทึก (Batch)
               </div>
               <button
                 type="button"
                 onClick={loadHistory}
                 className="text-xs px-2 py-1 border rounded-md hover:bg-gray-50"
               >
-                รีเฟรช
+                โหลดใหม่
               </button>
             </div>
             {historyLoading && (
-              <div className="text-xs text-gray-500">กำลังโหลดข้อมูล...</div>
+              <div className="text-xs text-gray-500">
+                กำลังโหลดประวัติการใส่ข้อมูล...
+              </div>
             )}
             {historyError && (
               <div className="text-xs text-red-600">{historyError}</div>
             )}
             {!historyLoading && !historyError && batches.length === 0 && (
               <div className="text-xs text-gray-500">
-                ยังไม่มีข้อมูล Statement ที่บันทึกไว้
+                ยังไม่มีประวัติการใส่ข้อมูล Statement
               </div>
             )}
             {batches.length > 0 && (
@@ -472,14 +478,17 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                     <th className="px-2 py-1 text-left font-medium text-gray-600">
                       Batch
                     </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      วันที่สร้าง
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ช่วงเวลาที่โอน
+                    </th>
                     <th className="px-2 py-1 text-right font-medium text-gray-600">
                       จำนวนรายการ
                     </th>
-                    <th className="px-2 py-1 text-left font-medium text-gray-600">
-                      ช่วงเวลา
-                    </th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600">
-                      จัดการ
+                      การจัดการ
                     </th>
                   </tr>
                 </thead>
@@ -487,13 +496,18 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                   {batches.map((b) => (
                     <tr key={b.batch} className="border-t border-gray-200">
                       <td className="px-2 py-1 text-sm">Batch {b.batch}</td>
-                      <td className="px-2 py-1 text-sm text-right">
-                        {b.row_count}
+                      <td className="px-2 py-1 text-xs text-gray-500">
+                        {formatDateTime(b.first_at)}
                       </td>
                       <td className="px-2 py-1 text-xs text-gray-500">
-                        {b.first_at && b.last_at
-                          ? `${b.first_at} - ${b.last_at}`
+                        {b.transfer_from && b.transfer_to
+                          ? `${formatDateTime(
+                              b.transfer_from,
+                            )} - ${formatDateTime(b.transfer_to)}`
                           : "-"}
+                      </td>
+                      <td className="px-2 py-1 text-sm text-right">
+                        {b.row_count}
                       </td>
                       <td className="px-2 py-1 text-center space-x-2">
                         <button
@@ -532,11 +546,13 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         >
           <div className="p-4 space-y-3">
             {batchRowsLoading && (
-              <div className="text-xs text-gray-500">กำลังโหลดข้อมูล...</div>
+              <div className="text-xs text-gray-500">
+                กำลังโหลดข้อมูลใน Batch...
+              </div>
             )}
             {!batchRowsLoading && batchRows.length === 0 && (
               <div className="text-xs text-gray-500">
-                ไม่พบข้อมูลใน batch นี้
+                ไม่พบข้อมูลใน Batch นี้
               </div>
             )}
             {batchRows.length > 0 && (
@@ -597,7 +613,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         >
           <div className="p-4 space-y-4">
             <div className="text-sm text-gray-700">
-              ต้องการลบข้อมูลทั้งหมดใน Batch {confirmDeleteBatch} หรือไม่?
+              ต้องการลบข้อมูลทั้งหมดของ Batch {confirmDeleteBatch} ใช่หรือไม่?
             </div>
             <div className="flex justify-end gap-2">
               <button
