@@ -655,32 +655,38 @@ async function main() {
 
   // Order tracking numbers
   console.log("Seeding order tracking numbers...");
-  await prisma.order_tracking_numbers.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      order_id: "ORD-100000001",
-      tracking_number: "TH1234567890",
-    },
-  });
+  try {
+    const columns = (await prisma.$queryRawUnsafe<
+      { COLUMN_NAME: string }[]
+    >(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers'",
+    )) as { COLUMN_NAME: string }[];
 
-  await prisma.order_tracking_numbers.upsert({
-    where: { id: 2 },
-    update: {},
-    create: {
-      order_id: "ORD-100000002",
-      tracking_number: "TH1234567891",
-    },
-  });
+    const hasParent = columns.some(
+      (c) => c.COLUMN_NAME === "parent_order_id",
+    );
+    const hasBox = columns.some((c) => c.COLUMN_NAME === "box_number");
 
-  await prisma.order_tracking_numbers.upsert({
-    where: { id: 3 },
-    update: {},
-    create: {
-      order_id: "ORD-100000004",
-      tracking_number: "TH1234567892",
-    },
-  });
+    if (hasParent && hasBox) {
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO order_tracking_numbers (id, order_id, parent_order_id, box_number, tracking_number) VALUES
+          (1, 'ORD-100000001', 'ORD-100000001', 1, 'TH1234567890'),
+          (2, 'ORD-100000002', 'ORD-100000002', 1, 'TH1234567891'),
+          (3, 'ORD-100000004', 'ORD-100000004', 1, 'TH1234567892')
+        ON DUPLICATE KEY UPDATE tracking_number = VALUES(tracking_number);
+      `);
+    } else {
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO order_tracking_numbers (id, order_id, tracking_number) VALUES
+          (1, 'ORD-100000001', 'TH1234567890'),
+          (2, 'ORD-100000002', 'TH1234567891'),
+          (3, 'ORD-100000004', 'TH1234567892')
+        ON DUPLICATE KEY UPDATE tracking_number = VALUES(tracking_number);
+      `);
+    }
+  } catch (e) {
+    console.error("Warning: failed to seed order_tracking_numbers", e);
+  }
 
   // Call history
   console.log("Seeding call history...");
