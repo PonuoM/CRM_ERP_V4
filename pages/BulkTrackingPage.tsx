@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Order } from '../types';
+import { Order, OrderStatus } from '../types';
 import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2 } from 'lucide-react';
 
 type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked';
@@ -10,11 +10,13 @@ interface RowData {
   trackingNumber: string;
   status: ValidationStatus;
   message: string;
+  normalizedOrderId?: string;
+  boxNumber?: number;
 }
 
 interface BulkTrackingPageProps {
   orders: Order[];
-  onBulkUpdateTracking: (updates: { orderId: string, trackingNumber: string }[]) => void;
+  onBulkUpdateTracking: (updates: { orderId: string; trackingNumber: string; boxNumber: number }[]) => void;
 }
 
 const createEmptyRow = (id: number): RowData => ({
@@ -23,7 +25,21 @@ const createEmptyRow = (id: number): RowData => ({
   trackingNumber: '',
   status: 'unchecked',
   message: '',
+  normalizedOrderId: undefined,
+  boxNumber: undefined,
 });
+
+const parseOrderIdInput = (input: string) => {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { baseId: '', boxNumber: null };
+  }
+  const match = trimmed.match(/^(.*)-(\d+)$/);
+  if (match) {
+    return { baseId: match[1], boxNumber: Number(match[2]) };
+  }
+  return { baseId: trimmed, boxNumber: null };
+};
 
 const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdateTracking }) => {
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
@@ -35,6 +51,8 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
     // Reset status on change
     newRows[index].status = 'unchecked';
     newRows[index].message = '';
+    newRows[index].normalizedOrderId = undefined;
+    newRows[index].boxNumber = undefined;
     setRows(newRows);
     setIsVerified(false);
   };
@@ -43,66 +61,226 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
     e.preventDefault();
     const pasteData = e.clipboardData.getData('text');
     const pastedRows = pasteData.split('\n').filter(r => r.trim() !== '');
-    
+
     if (pastedRows.length === 0) return;
 
     const target = e.target as HTMLInputElement;
     const rowIndex = parseInt(target.dataset.index || '0', 10);
-    
+
     const newRows = [...rows];
     pastedRows.forEach((pastedRow, i) => {
-        const [orderId, trackingNumber] = pastedRow.split(/[\t,]/); // Split by tab or comma
-        const currentRowIndex = rowIndex + i;
-        if (currentRowIndex < newRows.length) {
-            newRows[currentRowIndex] = {
-                ...newRows[currentRowIndex],
-                orderId: orderId?.trim() || '',
-                trackingNumber: trackingNumber?.trim() || '',
-                status: 'unchecked',
-                message: ''
-            };
-        } else {
-            newRows.push({
-                id: newRows.length + 1,
-                orderId: orderId?.trim() || '',
-                trackingNumber: trackingNumber?.trim() || '',
-                status: 'unchecked',
-                message: ''
-            });
-        }
+      const [orderId, trackingNumber] = pastedRow.split(/[\t,]/); // Split by tab or comma
+      const currentRowIndex = rowIndex + i;
+      if (currentRowIndex < newRows.length) {
+        newRows[currentRowIndex] = {
+          ...newRows[currentRowIndex],
+          orderId: orderId?.trim() || '',
+          trackingNumber: trackingNumber?.trim() || '',
+          status: 'unchecked',
+          message: '',
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        };
+      } else {
+        newRows.push({
+          id: newRows.length + 1,
+          orderId: orderId?.trim() || '',
+          trackingNumber: trackingNumber?.trim() || '',
+          status: 'unchecked',
+          message: '',
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        });
+      }
     });
 
     setRows(newRows);
     setIsVerified(false);
   };
-  
+
   const addRow = () => {
     setRows([...rows, createEmptyRow(rows.length + 1)]);
   };
-  
+
   const removeRow = (index: number) => {
-      setRows(rows.filter((_, i) => i !== index));
+    setRows(rows.filter((_, i) => i !== index));
   }
 
   const handleValidate = () => {
-    const validatedRows = rows.map(row => {
-        if (!row.orderId.trim() && !row.trackingNumber.trim()) {
-            return { ...row, status: 'unchecked' as ValidationStatus, message: '' };
-        }
-        if (!row.orderId.trim() || !row.trackingNumber.trim()) {
-            return { ...row, status: 'error' as ValidationStatus, message: 'ข้อมูลไม่ครบถ้วน' };
-        }
-        
-        const order = orders.find(o => o.id.toLowerCase() === row.orderId.toLowerCase());
-        if (!order) {
-            return { ...row, status: 'error' as ValidationStatus, message: 'ไม่พบออเดอร์' };
-        }
+    const seenAssignments = new Map<string, Set<number>>();
+    const validatedRows = rows.map((row) => {
+      const orderInput = row.orderId.trim();
+      const trackingInput = row.trackingNumber.trim();
 
-        if (order.trackingNumbers.includes(row.trackingNumber)) {
-            return { ...row, status: 'duplicate' as ValidationStatus, message: 'เลข tracking นี้มีอยู่แล้ว' };
-        }
+      if (!orderInput && !trackingInput) {
+        return { ...row, status: "unchecked" as ValidationStatus, message: "" };
+      }
+      if (!orderInput || !trackingInput) {
+        return {
+          ...row,
+          status: "error" as ValidationStatus,
+          message: "กรุณากรอก Order ID และ Tracking ให้ครบถ้วน",
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        };
+      }
 
-        return { ...row, status: 'valid' as ValidationStatus, message: 'พร้อมนำเข้า' };
+      const { baseId, boxNumber } = parseOrderIdInput(orderInput);
+      const order = orders.find(
+        (o) => o.id.toLowerCase() === baseId.toLowerCase(),
+      );
+      if (!order) {
+        return {
+          ...row,
+          status: "error" as ValidationStatus,
+          message: "ไม่พบ Order ID นี้ในระบบ",
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        };
+      }
+
+      // Check Order Status
+      // Allowed: Preparing, Picking, Shipping, PreApproved, Delivered, Returned
+      // Disallowed: Pending, AwaitingVerification, Confirmed, Cancelled
+      const allowedStatuses = [
+        OrderStatus.Preparing,
+        OrderStatus.Picking,
+        OrderStatus.Shipping,
+        OrderStatus.PreApproved,
+        OrderStatus.Delivered,
+        OrderStatus.Returned
+      ];
+
+      if (!allowedStatuses.includes(order.orderStatus)) {
+        return {
+          ...row,
+          status: "error" as ValidationStatus,
+          message: "Orders ยังไม่ถูกนำจัดเตรียมตรวจสอบ",
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        };
+      }
+
+      const trackingEntries = order.trackingEntries ?? [];
+      const boxesFromConfig =
+        Array.isArray(order.boxes) && order.boxes.length > 0
+          ? order.boxes.length
+          : 0;
+      const highestExistingBox = trackingEntries.reduce(
+        (max, entry) => Math.max(max, entry.boxNumber ?? 1),
+        1,
+      );
+      const knownBoxCount = Math.max(highestExistingBox, boxesFromConfig, 1);
+
+      let resolvedBoxNumber = boxNumber ?? undefined;
+      if (!resolvedBoxNumber) {
+        if (knownBoxCount > 1) {
+          return {
+            ...row,
+            status: "error" as ValidationStatus,
+            message: "กรุณาระบุหมายเลขกล่อง เช่น -1, -2, ...",
+            normalizedOrderId: undefined,
+            boxNumber: undefined,
+          };
+        }
+        resolvedBoxNumber = 1;
+      } else if (resolvedBoxNumber < 1) {
+        resolvedBoxNumber = 1;
+      }
+
+      if (boxesFromConfig > 0 && resolvedBoxNumber > boxesFromConfig) {
+        return {
+          ...row,
+          status: "error" as ValidationStatus,
+          message: "หมายเลขกล่องมากกว่าจำนวนกล่องที่ตั้งไว้",
+          normalizedOrderId: undefined,
+          boxNumber: undefined,
+        };
+      }
+
+      // Check if this specific box already has a tracking number
+      if (
+        trackingEntries.some(
+          (entry) => (entry.boxNumber ?? 1) === resolvedBoxNumber,
+        )
+      ) {
+        return {
+          ...row,
+          status: "duplicate" as ValidationStatus,
+          message: "กล่องนี้มีเลข Tracking อยู่แล้ว",
+          normalizedOrderId: order.id,
+          boxNumber: resolvedBoxNumber,
+        };
+      }
+
+      const existingNumbers = order.trackingNumbers ?? [];
+
+      // Case 1: Tracking Number already exists in this order (Duplicate)
+      if (
+        existingNumbers.some(
+          (tn) => tn.toLowerCase() === trackingInput.toLowerCase(),
+        )
+      ) {
+        return {
+          ...row,
+          status: "duplicate" as ValidationStatus,
+          message: "เลข Tracking นี้ถูกใช้งานแล้ว",
+          normalizedOrderId: order.id,
+          boxNumber: resolvedBoxNumber,
+        };
+      }
+
+      // Case 2: Order already has SOME tracking numbers, but this is a new one (Allow with Warning)
+      if (existingNumbers.length > 0) {
+        // Check for duplicates in current import batch first
+        const mapKey = order.id.toLowerCase();
+        if (!seenAssignments.has(mapKey)) {
+          seenAssignments.set(mapKey, new Set<number>());
+        }
+        const seenBoxes = seenAssignments.get(mapKey)!;
+        if (seenBoxes.has(resolvedBoxNumber)) {
+          return {
+            ...row,
+            status: "duplicate" as ValidationStatus,
+            message: "พบหมายเลขกล่องซ้ำในไฟล์นำเข้า",
+            normalizedOrderId: order.id,
+            boxNumber: resolvedBoxNumber,
+          };
+        }
+        seenBoxes.add(resolvedBoxNumber);
+
+        return {
+          ...row,
+          status: "valid" as ValidationStatus,
+          message: `เลข Order นี้มีการนำเข้าแล้ว (${order.id})`, // Warning message
+          normalizedOrderId: order.id,
+          boxNumber: resolvedBoxNumber,
+        };
+      }
+
+      const mapKey = order.id.toLowerCase();
+      if (!seenAssignments.has(mapKey)) {
+        seenAssignments.set(mapKey, new Set<number>());
+      }
+      const seenBoxes = seenAssignments.get(mapKey)!;
+      if (seenBoxes.has(resolvedBoxNumber)) {
+        return {
+          ...row,
+          status: "duplicate" as ValidationStatus,
+          message: "พบหมายเลขกล่องซ้ำในไฟล์นำเข้า",
+          normalizedOrderId: order.id,
+          boxNumber: resolvedBoxNumber,
+        };
+      }
+      seenBoxes.add(resolvedBoxNumber);
+
+      return {
+        ...row,
+        status: "valid" as ValidationStatus,
+        message: "พร้อมนำเข้า",
+        normalizedOrderId: order.id,
+        boxNumber: resolvedBoxNumber,
+      };
     });
     setRows(validatedRows);
     setIsVerified(true);
@@ -110,17 +288,21 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 
   const { validCount, duplicateCount, errorCount } = useMemo(() => {
     return rows.reduce((acc, row) => {
-        if (row.status === 'valid') acc.validCount++;
-        if (row.status === 'duplicate') acc.duplicateCount++;
-        if (row.status === 'error') acc.errorCount++;
-        return acc;
+      if (row.status === 'valid') acc.validCount++;
+      if (row.status === 'duplicate') acc.duplicateCount++;
+      if (row.status === 'error') acc.errorCount++;
+      return acc;
     }, { validCount: 0, duplicateCount: 0, errorCount: 0 });
   }, [rows]);
 
   const handleImport = () => {
     const updates = rows
       .filter(row => row.status === 'valid')
-      .map(({ orderId, trackingNumber }) => ({ orderId, trackingNumber }));
+      .map(({ normalizedOrderId, orderId, trackingNumber, boxNumber }) => ({
+        orderId: (normalizedOrderId || orderId).trim(),
+        trackingNumber,
+        boxNumber: boxNumber ?? 1,
+      }));
 
     if (updates.length > 0) {
       if (window.confirm(`คุณต้องการนำเข้าเลข Tracking จำนวน ${updates.length} รายการใช่หรือไม่?`)) {
@@ -137,11 +319,11 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
   const getStatusIndicator = (status: ValidationStatus, message: string) => {
     switch (status) {
       case 'valid':
-        return <div className="flex items-center text-green-600"><CheckCircle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-green-600"><CheckCircle size={14} className="mr-1.5" /> {message}</div>;
       case 'duplicate':
-        return <div className="flex items-center text-yellow-600"><AlertTriangle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-yellow-600"><AlertTriangle size={14} className="mr-1.5" /> {message}</div>;
       case 'error':
-        return <div className="flex items-center text-red-600"><XCircle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-red-600"><XCircle size={14} className="mr-1.5" /> {message}</div>;
       default:
         return <span className="text-gray-400">-</span>;
     }
@@ -151,25 +333,25 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-2">นำเข้า Tracking Number</h2>
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Order ID, Tracking) แล้ววางลงในตารางด้านล่าง</p>
-      
+
       <div className="bg-white p-4 rounded-lg shadow mb-4">
         <div className="flex justify-between items-center">
-            {isVerified ? (
-                 <div className="flex items-center space-x-4 text-sm">
-                    <span className="flex items-center text-green-600 font-medium"><CheckCircle size={16} className="mr-2"/>พร้อมนำเข้า: {validCount}</span>
-                    <span className="flex items-center text-yellow-600"><AlertTriangle size={16} className="mr-2"/>ซ้ำซ้อน (จะถูกข้าม): {duplicateCount}</span>
-                    <span className="flex items-center text-red-600"><XCircle size={16} className="mr-2"/>ผิดพลาด: {errorCount}</span>
-                </div>
-            ) : (
-                <p className="text-sm text-gray-500">วางข้อมูลแล้วกด "ตรวจสอบข้อมูล" เพื่อดำเนินการต่อ</p>
-            )}
-            <div className="flex items-center space-x-2">
-                <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
-                <button onClick={handleImport} disabled={!isVerified || validCount === 0} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
-                    <UploadCloud size={16} className="mr-2"/>
-                    ยืนยันการนำเข้า ({validCount})
-                </button>
+          {isVerified ? (
+            <div className="flex items-center space-x-4 text-sm">
+              <span className="flex items-center text-green-600 font-medium"><CheckCircle size={16} className="mr-2" />พร้อมนำเข้า: {validCount}</span>
+              <span className="flex items-center text-yellow-600"><AlertTriangle size={16} className="mr-2" />ซ้ำซ้อน (จะถูกข้าม): {duplicateCount}</span>
+              <span className="flex items-center text-red-600"><XCircle size={16} className="mr-2" />ผิดพลาด: {errorCount}</span>
             </div>
+          ) : (
+            <p className="text-sm text-gray-500">วางข้อมูลแล้วกด "ตรวจสอบข้อมูล" เพื่อดำเนินการต่อ</p>
+          )}
+          <div className="flex items-center space-x-2">
+            <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
+            <button onClick={handleImport} disabled={!isVerified || validCount === 0} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
+              <UploadCloud size={16} className="mr-2" />
+              ยืนยันการนำเข้า ({validCount})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -200,7 +382,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
                   />
                 </td>
                 <td className="px-6 py-1">
-                   <input
+                  <input
                     type="text"
                     data-index={index}
                     value={row.trackingNumber}
@@ -211,21 +393,21 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
                   />
                 </td>
                 <td className="px-6 py-1 text-xs font-medium">
-                    {getStatusIndicator(row.status, row.message)}
+                  {getStatusIndicator(row.status, row.message)}
                 </td>
                 <td className="px-2 py-1 text-center">
-                    <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
-                        <Trash2 size={14}/>
-                    </button>
+                  <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
+                    <Trash2 size={14} />
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         <div className="p-2">
-            <button onClick={addRow} className="w-full text-sm flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-1.5 rounded-md">
-                <Plus size={16} className="mr-1"/> เพิ่มแถว
-            </button>
+          <button onClick={addRow} className="w-full text-sm flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-1.5 rounded-md">
+            <Plus size={16} className="mr-1" /> เพิ่มแถว
+          </button>
         </div>
       </div>
     </div>
@@ -233,3 +415,4 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 };
 
 export default BulkTrackingPage;
+

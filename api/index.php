@@ -1324,7 +1324,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date
                         FROM orders o
-                        LEFT JOIN order_tracking_numbers t ON t.order_id = o.id';
+                        LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id';
                 
                 $params = [];
                 $whereConditions = [];
@@ -1361,6 +1361,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $orderIds = array_column($orders, 'id');
                 $itemsMap = [];
                 $slipsMap = [];
+                $trackingMap = [];
                 
                 if (!empty($orderIds)) {
                     // Build list of order IDs including sub orders
@@ -1431,12 +1432,36 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $slipsMap[$slipOrderId][] = $slip;
                         }
                     }
+
+                    // Fetch tracking entries grouped by parent order
+                    $parentPlaceholders = implode(',', array_fill(0, count($orderIds), '?'));
+                    $trackingSql = "SELECT parent_order_id, order_id, tracking_number, box_number
+                                    FROM order_tracking_numbers
+                                    WHERE parent_order_id IN ($parentPlaceholders)
+                                    ORDER BY id";
+                    $trackingStmt = $pdo->prepare($trackingSql);
+                    $trackingStmt->execute($orderIds);
+                    $trackingRows = $trackingStmt->fetchAll();
+                    foreach ($trackingRows as $trackingRow) {
+                        $parentId = $trackingRow['parent_order_id'] ?? null;
+                        if ($parentId === null) continue;
+                        if (!isset($trackingMap[$parentId])) {
+                            $trackingMap[$parentId] = [];
+                        }
+                        $trackingMap[$parentId][] = [
+                            'order_id' => $trackingRow['order_id'],
+                            'tracking_number' => $trackingRow['tracking_number'],
+                            'box_number' => $trackingRow['box_number'],
+                        ];
+                    }
                 }
                 
                 // Add items and slips to each order
                 foreach ($orders as &$order) {
                     $order['items'] = $itemsMap[$order['id']] ?? [];
                     $order['slips'] = $slipsMap[$order['id']] ?? [];
+                    $order['tracking_details'] = $trackingMap[$order['id']] ?? [];
+                    $order['trackingDetails'] = $order['tracking_details'];
                 }
                 
                 json_response($orders);
@@ -1447,6 +1472,29 @@ function handle_orders(PDO $pdo, ?string $id): void {
             error_log('Order creation request: ' . json_encode($in));
             $pdo->beginTransaction();
             try {
+                // Validate creator_id exists in users table and is active
+                $creatorId = $in['creatorId'] ?? null;
+                if ($creatorId === null || $creatorId === '') {
+                    $pdo->rollBack();
+                    json_response(['error' => 'CREATOR_ID_REQUIRED', 'message' => 'Creator user ID is required'], 400);
+                    return;
+                }
+                
+                $creatorCheck = $pdo->prepare('SELECT id, status FROM users WHERE id = ?');
+                $creatorCheck->execute([$creatorId]);
+                $creatorData = $creatorCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$creatorData) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'CREATOR_USER_NOT_FOUND', 'message' => 'Creator user not found: ' . $creatorId], 400);
+                    return;
+                }
+                
+                if ($creatorData['status'] !== 'active') {
+                    $pdo->rollBack();
+                    json_response(['error' => 'CREATOR_USER_INACTIVE', 'message' => 'Creator user is not active: ' . $creatorId], 400);
+                    return;
+                }
+                
                 // Check if bank_account_id and transfer_date columns exist
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
@@ -1646,24 +1694,28 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 }
 
-                if (!empty($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
-                    // Deduped set on insert
-                    $seen = [];
-                    $tk = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, tracking_number) VALUES (?,?)');
+                if (!empty($in['trackingEntries']) && is_array($in['trackingEntries'])) {
+                    save_order_tracking_entries(
+                        $pdo,
+                        $mainOrderId,
+                        $in['trackingEntries'],
+                        false,
+                        $in['creatorId'] ?? null,
+                        $in['customerId'] ?? null
+                    );
+                } elseif (!empty($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
+                    $legacyEntries = [];
                     foreach ($in['trackingNumbers'] as $tnRaw) {
-                        $tn = trim((string)$tnRaw);
-                        if ($tn === '') continue;
-                        // Auto-assign and record first-time assignment if customer has no owner
-                        try {
-                            $auto = $pdo->prepare('UPDATE customers SET assigned_to=?, date_assigned = COALESCE(date_assigned, NOW()) WHERE id=? AND (assigned_to IS NULL OR assigned_to=0)');
-                            $auto->execute([$in['creatorId'] ?? null, $in['customerId'] ?? null]);
-                            $hist = $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())');
-                            $hist->execute([$in['customerId'] ?? null, $in['creatorId'] ?? null]);
-                        } catch (Throwable $e) { /* ignore */ }
-                        if (isset($seen[$tn])) continue;
-                        $seen[$tn] = true;
-                        $tk->execute([$in['id'], $tn]);
+                        $legacyEntries[] = ['trackingNumber' => $tnRaw];
                     }
+                    save_order_tracking_entries(
+                        $pdo,
+                        $mainOrderId,
+                        $legacyEntries,
+                        false,
+                        $in['creatorId'] ?? null,
+                        $in['customerId'] ?? null
+                    );
                 }
                 $pdo->commit();
                 error_log('Order created successfully: ' . $in['id']);
@@ -1765,18 +1817,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
 
-                if (isset($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
-                    $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE order_id=?');
-                    $del->execute([$id]);
-                    $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, tracking_number) VALUES (?, ?)');
-                    $seen = [];
+                if (isset($in['trackingEntries']) && is_array($in['trackingEntries'])) {
+                    save_order_tracking_entries($pdo, $id, $in['trackingEntries'], true);
+                } elseif (isset($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
+                    $legacyEntries = [];
                     foreach ($in['trackingNumbers'] as $tnRaw) {
-                        $tn = trim((string)$tnRaw);
-                        if ($tn === '') continue;
-                        if (isset($seen[$tn])) continue;
-                        $seen[$tn] = true;
-                        $ins->execute([$id, $tn]);
+                        $legacyEntries[] = ['trackingNumber' => $tnRaw];
                     }
+                    save_order_tracking_entries($pdo, $id, $legacyEntries, true);
                 }
 
                 if ($orderStatus !== null) {
@@ -2628,6 +2676,61 @@ function handle_exports(PDO $pdo, ?string $id): void {
     }
 }
 
+function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $entries, bool $replaceExisting = false, ?int $creatorId = null, ?string $customerId = null): void {
+    if ($replaceExisting) {
+        $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE parent_order_id=?');
+        $del->execute([$parentOrderId]);
+    }
+
+    $normalized = [];
+    foreach ($entries as $entry) {
+        $trackingRaw = $entry['trackingNumber'] ?? ($entry['tracking_number'] ?? null);
+        $tn = trim((string)$trackingRaw);
+        if ($tn === '') {
+            continue;
+        }
+
+        $boxRaw = $entry['boxNumber'] ?? ($entry['box_number'] ?? null);
+        $boxNumber = null;
+        if ($boxRaw !== null && $boxRaw !== '') {
+            $boxNumber = max(1, (int)$boxRaw);
+        }
+
+        $entryOrderId = trim((string)($entry['orderId'] ?? ($entry['order_id'] ?? '')));
+        if ($boxNumber === null && $entryOrderId !== '') {
+            if (preg_match('/^' . preg_quote($parentOrderId, '/') . '\-(\d+)$/', $entryOrderId, $m)) {
+                $boxNumber = (int)$m[1];
+            }
+        }
+
+        $boxKey = $boxNumber !== null ? 'box_' . $boxNumber : 'box_main';
+        $normalized[$boxKey] = [
+            'tracking_number' => $tn,
+            'box_number' => $boxNumber,
+        ];
+    }
+
+    if (empty($normalized)) {
+        return;
+    }
+
+    $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, parent_order_id, box_number, tracking_number) VALUES (?,?,?,?)');
+    foreach ($normalized as $data) {
+        $boxNumber = $data['box_number'];
+        $subOrderId = $boxNumber !== null ? "{$parentOrderId}-{$boxNumber}" : $parentOrderId;
+        $ins->execute([$subOrderId, $parentOrderId, $boxNumber, $data['tracking_number']]);
+    }
+
+    if ($creatorId !== null && $customerId !== null) {
+        try {
+            $auto = $pdo->prepare('UPDATE customers SET assigned_to=?, date_assigned = COALESCE(date_assigned, NOW()) WHERE id=? AND (assigned_to IS NULL OR assigned_to=0)');
+            $auto->execute([$creatorId, $customerId]);
+            $hist = $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())');
+            $hist->execute([$customerId, $creatorId]);
+        } catch (Throwable $e) { /* ignore auto-assign failures */ }
+    }
+}
+
 function get_order(PDO $pdo, string $id): ?array {
     // Select all columns including bank_account_id and transfer_date
     // Check if this is a main order (not a sub order)
@@ -2662,13 +2765,23 @@ function get_order(PDO $pdo, string $id): ?array {
         $o['items'] = $allItems;
     }
     
-    // Fetch tracking numbers from main order and all sub orders
-    $tn = $pdo->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE order_id IN ($placeholders)");
-    $tn->execute($allOrderIds);
+    // Fetch tracking numbers per box (parent order)
+    $tn = $pdo->prepare("SELECT order_id, tracking_number, box_number FROM order_tracking_numbers WHERE parent_order_id=? ORDER BY id");
+    $tn->execute([$mainOrderId]);
     $tnRows = $tn->fetchAll();
     $tnList = [];
-    foreach ($tnRows as $r) { $tnList[] = $r['tracking_number']; }
-    $o['trackingNumbers'] = array_unique($tnList);
+    $trackingDetails = [];
+    foreach ($tnRows as $r) {
+        $tnList[] = $r['tracking_number'];
+        $trackingDetails[] = [
+            'order_id' => $r['order_id'],
+            'tracking_number' => $r['tracking_number'],
+            'box_number' => $r['box_number'],
+        ];
+    }
+    $o['trackingDetails'] = $trackingDetails;
+    $o['tracking_details'] = $trackingDetails;
+    $o['trackingNumbers'] = array_values(array_unique($tnList));
     
     // Fetch boxes from main order
     $bx = $pdo->prepare('SELECT box_number, cod_amount FROM order_boxes WHERE order_id=?');

@@ -25,6 +25,8 @@ import {
   CustomerLog,
   Company,
   Warehouse,
+  WarehouseStock,
+  StockMovement,
   LineItem,
   SalesImportRow,
   CustomerImportRow,
@@ -139,17 +141,17 @@ const computeAttendanceValueFromSeconds = (seconds: number): number => {
 };
 
 const formatDurationText = (seconds: number): string => {
-  if (seconds <= 0) return "0 à¸™à¸²à¸—à¸µ";
+  if (seconds <= 0) return "0 นาที";
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   if (hrs > 0) {
-    return `${hrs} à¸Šà¸¡. ${mins} à¸™à¸²à¸—à¸µ`;
+    return `${hrs} ชม. ${mins} นาที`;
   }
   if (mins > 0) {
-    return `${mins} à¸™à¸²à¸—à¸µ`;
+    return `${mins} นาที`;
   }
-  return `${secs} à¸§à¸´à¸™à¸²à¸—à¸µ`;
+  return `${secs} วินาที`;
 };
 
 const formatTimeText = (iso?: string | null): string => {
@@ -201,8 +203,8 @@ import CODRecordPage from "./pages/CODRecordPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
 
-const SLIP_ALL_LABEL = String.raw`���,������,������,'���,>���,-���,���1%���,O.,������,������,\\\\"\\`;
-const SLIP_DETAIL_LABEL = String.raw`���,������,������,������,������,������1?���,-���,���,������,\\"���,������,������,'���,>`;
+const SLIP_ALL_LABEL = String.raw`ทั้งหมด,สลิปทั้งหมด,สลิปทั้งหมด,'สลิปทั้งหมด,>สลิปทั้งหมด,-สลิปทั้งหมด,สลิปทั้งหมด1%สลิปทั้งหมด,O.,สลิปทั้งหมด,สลิปทั้งหมด,\\\\"\\`;
+const SLIP_DETAIL_LABEL = String.raw`รายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด1?สลิปรายละเอียด,-สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,\\"สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,'สลิปรายละเอียด,>`;
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -259,24 +261,24 @@ const App: React.FC = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([
     {
       id: 1,
-      name: "à¸ªà¸³à¸™à¸±à¸à¸‡à¸²à¸™à¹ƒà¸«à¸à¹ˆ",
+      name: "สำนักงานใหญ่",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
-      address: "123 à¸–à¸™à¸™à¸ªà¸¸à¸‚à¸¸à¸¡à¸§à¸´à¸—",
-      province: "à¸à¸£à¸¸à¸‡à¹€à¸—à¸žà¸¡à¸«à¸²à¸™à¸„à¸£",
-      district: "à¸„à¸¥à¸­à¸‡à¹€à¸•à¸¢",
-      subdistrict: "à¸„à¸¥à¸­à¸‡à¹€à¸•à¸¢à¹€à¸«à¸™à¸·à¸­",
+      address: "123 ถนนสุขุมวิท",
+      province: "กรุงเทพมหานคร",
+      district: "เขตคลองเตย",
+      subdistrict: "แขวงคลองเตย",
       postalCode: "10110",
       phone: "02-123-4567",
       email: "bangkok@alphaseeds.com",
-      managerName: "à¸ªà¸¡à¸Šà¸²à¸¢ à¹ƒà¸ˆà¸”à¸µ",
+      managerName: "สมชาย ใจดี",
       managerPhone: "081-234-5678",
       responsibleProvinces: [
-        "à¸à¸£à¸¸à¸‡à¹€à¸—à¸žà¸¡à¸«à¸²à¸™à¸„à¸£",
-        "à¸™à¸™à¸—à¸šà¸¸à¸£à¸µ",
-        "à¸›à¸—à¸¸à¸¡à¸˜à¸²à¸™à¸µ",
-        "à¸ªà¸¡à¸¸à¸—à¸£à¸›à¸£à¸²à¸à¸²à¸£",
-        "à¸Šà¸¥à¸šà¸¸à¸£à¸µ",
+        "กรุงเทพมหานคร",
+        "นนทบุรี",
+        "ปทุมธานี",
+        "สมุทรปราการ",
+        "ชลบุรี",
       ],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
@@ -284,19 +286,25 @@ const App: React.FC = () => {
     },
     {
       id: 2,
-      name: "à¸ªà¸³à¸™à¸±à¸à¸‡à¸²à¸™à¸ªà¸²à¸‚à¸²à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
+      name: "สำนักงานสาขาเชียงใหม่",
       companyId: 1,
       companyName: "Alpha Seeds Co.",
-      address: "456 à¸–à¸™à¸™à¸™à¸´à¸¡à¸¡à¸²à¸™à¹€à¸«à¸¡à¸´à¸™à¸—à¸£à¹Œ",
-      province: "à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
-      district: "à¹€à¸¡à¸·à¸­à¸‡à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ",
-      subdistrict: "à¸ªà¸¸à¹€à¸—à¸ž",
+      address: "456 ถนนเชียงใหม่-ลำปาง",
+      province: "เชียงใหม่",
+      district: "อำเภอเมืองเชียงใหม่",
+      subdistrict: "สันป่าข่อย",
       postalCode: "50200",
       phone: "053-123-456",
       email: "chiangmai@alphaseeds.com",
-      managerName: "à¸¡à¸²à¸™à¸µ à¸£à¸±à¸à¸©à¸²à¸”à¸µ",
+      managerName: "มานี รักษาดี",
       managerPhone: "082-345-6789",
-      responsibleProvinces: ["à¹€à¸Šà¸µà¸¢à¸‡à¹ƒà¸«à¸¡à¹ˆ", "à¸¥à¸³à¸›à¸²à¸‡", "à¸¥à¸³à¸žà¸¹à¸™", "à¹à¸žà¸£à¹ˆ", "à¸™à¹ˆà¸²à¸™"],
+      responsibleProvinces: [
+        "เชียงใหม่",
+        "ลำปาง",
+        "ลำพูน",
+        "แพร่",
+        "แม่ฮ่องสอน",
+      ],
       isActive: true,
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
@@ -414,10 +422,18 @@ const App: React.FC = () => {
     switch (String(s)) {
       case "Pending":
         return OrderStatus.Pending as any;
+      case "AwaitingVerification":
+        return OrderStatus.AwaitingVerification as any;
+      case "Confirmed":
+        return OrderStatus.Confirmed as any;
+      case "Preparing":
+        return OrderStatus.Preparing as any;
       case "Picking":
         return OrderStatus.Picking as any;
       case "Shipping":
         return OrderStatus.Shipping as any;
+      case "PreApproved":
+        return OrderStatus.PreApproved as any;
       case "Delivered":
         return OrderStatus.Delivered as any;
       case "Returned":
@@ -434,6 +450,12 @@ const App: React.FC = () => {
         return PaymentStatus.Unpaid as any;
       case "PendingVerification":
         return PaymentStatus.PendingVerification as any;
+      case "Verified":
+        return PaymentStatus.Verified as any;
+      case "PreApproved":
+        return PaymentStatus.PreApproved as any;
+      case "Approved":
+        return PaymentStatus.Approved as any;
       case "Paid":
         return PaymentStatus.Paid as any;
       default:
@@ -456,10 +478,18 @@ const App: React.FC = () => {
     switch (s) {
       case OrderStatus.Pending:
         return "Pending";
+      case OrderStatus.AwaitingVerification:
+        return "AwaitingVerification";
+      case OrderStatus.Confirmed:
+        return "Confirmed";
+      case OrderStatus.Preparing:
+        return "Preparing";
       case OrderStatus.Picking:
         return "Picking";
       case OrderStatus.Shipping:
         return "Shipping";
+      case OrderStatus.PreApproved:
+        return "PreApproved";
       case OrderStatus.Delivered:
         return "Delivered";
       case OrderStatus.Returned:
@@ -476,6 +506,12 @@ const App: React.FC = () => {
         return "Unpaid";
       case PaymentStatus.PendingVerification:
         return "PendingVerification";
+      case PaymentStatus.Verified:
+        return "Verified";
+      case PaymentStatus.PreApproved:
+        return "PreApproved";
+      case PaymentStatus.Approved:
+        return "Approved";
       case PaymentStatus.Paid:
         return "Paid";
       default:
@@ -618,10 +654,18 @@ const App: React.FC = () => {
           switch (String(s)) {
             case "Pending":
               return OrderStatus.Pending as any;
+            case "AwaitingVerification":
+              return OrderStatus.AwaitingVerification as any;
+            case "Confirmed":
+              return OrderStatus.Confirmed as any;
+            case "Preparing":
+              return OrderStatus.Preparing as any;
             case "Picking":
               return OrderStatus.Picking as any;
             case "Shipping":
               return OrderStatus.Shipping as any;
+            case "PreApproved":
+              return OrderStatus.PreApproved as any;
             case "Delivered":
               return OrderStatus.Delivered as any;
             case "Returned":
@@ -638,6 +682,12 @@ const App: React.FC = () => {
               return PaymentStatus.Unpaid as any;
             case "PendingVerification":
               return PaymentStatus.PendingVerification as any;
+            case "Verified":
+              return PaymentStatus.Verified as any;
+            case "PreApproved":
+              return PaymentStatus.PreApproved as any;
+            case "Approved":
+              return PaymentStatus.Approved as any;
             case "Paid":
               return PaymentStatus.Paid as any;
             default:
@@ -660,10 +710,18 @@ const App: React.FC = () => {
           switch (s) {
             case OrderStatus.Pending:
               return "Pending";
+            case OrderStatus.AwaitingVerification:
+              return "AwaitingVerification";
+            case OrderStatus.Confirmed:
+              return "Confirmed";
+            case OrderStatus.Preparing:
+              return "Preparing";
             case OrderStatus.Picking:
               return "Picking";
             case OrderStatus.Shipping:
               return "Shipping";
+            case OrderStatus.PreApproved:
+              return "PreApproved";
             case OrderStatus.Delivered:
               return "Delivered";
             case OrderStatus.Returned:
@@ -680,6 +738,12 @@ const App: React.FC = () => {
               return "Unpaid";
             case PaymentStatus.PendingVerification:
               return "PendingVerification";
+            case PaymentStatus.Verified:
+              return "Verified";
+            case PaymentStatus.PreApproved:
+              return "PreApproved";
+            case PaymentStatus.Approved:
+              return "Approved";
             case PaymentStatus.Paid:
               return "Paid";
             default:
@@ -789,20 +853,33 @@ const App: React.FC = () => {
             province: r.province || "",
             postalCode: r.postal_code || "",
           },
-          items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-            id: Number(it.id ?? i + 1),
-            productId: typeof it.product_id !== 'undefined' && it.product_id !== null ? Number(it.product_id) : undefined,
-            productName: String(it.product_name ?? ''),
-            productSku: it.product_sku || undefined,
-            quantity: Number(it.quantity ?? 0),
-            pricePerUnit: Number(it.price_per_unit ?? 0),
-            discount: Number(it.discount ?? 0),
-            isFreebie: !!(it.is_freebie ?? 0),
-            boxNumber: Number(it.box_number ?? 0),
-            promotionId: typeof it.promotion_id !== 'undefined' && it.promotion_id !== null ? Number(it.promotion_id) : undefined,
-            parentItemId: typeof it.parent_item_id !== 'undefined' && it.parent_item_id !== null ? Number(it.parent_item_id) : undefined,
-            isPromotionParent: !!(it.is_promotion_parent ?? 0),
-          })) : [],
+          items: Array.isArray(r.items)
+            ? r.items.map((it: any, i: number) => ({
+                id: Number(it.id ?? i + 1),
+                productId:
+                  typeof it.product_id !== "undefined" && it.product_id !== null
+                    ? Number(it.product_id)
+                    : undefined,
+                productName: String(it.product_name ?? ""),
+                productSku: it.product_sku || undefined,
+                quantity: Number(it.quantity ?? 0),
+                pricePerUnit: Number(it.price_per_unit ?? 0),
+                discount: Number(it.discount ?? 0),
+                isFreebie: !!(it.is_freebie ?? 0),
+                boxNumber: Number(it.box_number ?? 0),
+                promotionId:
+                  typeof it.promotion_id !== "undefined" &&
+                  it.promotion_id !== null
+                    ? Number(it.promotion_id)
+                    : undefined,
+                parentItemId:
+                  typeof it.parent_item_id !== "undefined" &&
+                  it.parent_item_id !== null
+                    ? Number(it.parent_item_id)
+                    : undefined,
+                isPromotionParent: !!(it.is_promotion_parent ?? 0),
+              }))
+            : [],
           shippingCost: Number(r.shipping_cost ?? 0),
           billDiscount: Number(r.bill_discount ?? 0),
           totalAmount: Number(r.total_amount || 0),
@@ -902,10 +979,10 @@ const App: React.FC = () => {
         setUsers(Array.isArray(u) ? u.map(mapUser) : []);
         setCustomers(Array.isArray(c) ? c.map(mapCustomer) : []);
         // Filter out sub orders (orders with -1, -2, -3, etc. suffix) before mapping
-        const mainOrders = Array.isArray(o) 
+        const mainOrders = Array.isArray(o)
           ? o.filter((order: any) => {
               // Exclude orders where id ends with - followed by digits (sub orders)
-              const orderId = String(order.id || '');
+              const orderId = String(order.id || "");
               return !/-\d+$/.test(orderId);
             })
           : [];
@@ -1015,23 +1092,72 @@ const App: React.FC = () => {
     if (sessionUser) {
       const byId = users.find((u) => u.id === sessionUser.id);
       if (byId) return byId;
-      // Map session to UI type as fallback
-      return {
-        id: sessionUser.id,
-        username: sessionUser.username,
-        firstName: sessionUser.first_name,
-        lastName: sessionUser.last_name,
-        email: sessionUser.email,
-        phone: sessionUser.phone,
-        role: sessionUser.role,
-        companyId: sessionUser.company_id,
-        teamId: sessionUser.team_id,
-        supervisorId: sessionUser.supervisor_id,
-        customTags: [],
-      } as User;
+      // If session user not found in users list, try to find a user from same company
+      if (sessionUser.company_id && users.length > 0) {
+        const companyUser = users.find(
+          (u) => u.companyId === sessionUser.company_id,
+        );
+        if (companyUser) {
+          console.warn(
+            `Session user ID ${sessionUser.id} not found in users list, using company user ID ${companyUser.id} instead`,
+          );
+          return companyUser;
+        }
+      }
+      // Last resort: use first available user
+      if (users.length > 0) {
+        console.warn(
+          `Session user ID ${sessionUser.id} not found, using first available user ID ${users[0].id}`,
+        );
+        return users[0];
+      }
+      // If no users available, return null to trigger re-login
+      // Only log error if we've actually tried to load users (not during initial load)
+      // This will be handled by the useEffect below
+      return null;
     }
-    return users[0];
+    return users.length > 0 ? users[0] : null;
   }, [sessionUser, users]);
+
+  // Track if users have been loaded at least once
+  const [usersLoaded, setUsersLoaded] = useState(false);
+
+  // Mark users as loaded after first load completes
+  useEffect(() => {
+    if (users.length > 0 || (sessionUser && users.length === 0)) {
+      // Users have been loaded (either we got users, or we have sessionUser but got empty array)
+      setUsersLoaded(true);
+    }
+  }, [users.length, sessionUser]);
+
+  // Handle case when currentUser is null (user not found or no users available)
+  useEffect(() => {
+    // Don't do anything if users haven't loaded yet
+    if (!usersLoaded) {
+      return;
+    }
+
+    // If users loaded but no currentUser and we have sessionUser, it means user not found
+    if (!currentUser && sessionUser && users.length > 0) {
+      console.warn(`Session user ID ${sessionUser.id} not found in users list`);
+      // Clear invalid session and redirect to login
+      localStorage.removeItem("sessionUser");
+      setSessionUser(null);
+      alert("ไม่พบข้อมูลผู้ใช้ในระบบ กรุณาเข้าสู่ระบบใหม่");
+      // Redirect to login page
+      const url = new URL(window.location.href);
+      url.searchParams.set("login", "1");
+      window.location.href = url.toString();
+      return;
+    }
+
+    // If no users at all in system (after loading)
+    if (!currentUser && users.length === 0 && usersLoaded) {
+      console.warn("No users available in system");
+      // This is a system configuration issue, not a user issue
+      // Don't redirect, just show warning
+    }
+  }, [currentUser, sessionUser, users.length, usersLoaded]);
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -1140,7 +1266,7 @@ const App: React.FC = () => {
         const message =
           error instanceof Error
             ? error.message
-            : "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸”à¸¶à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸à¸²à¸£à¹€à¸‚à¹‰à¸²à¹€à¸§à¸£à¹„à¸”à¹‰";
+            : "ไม่สามารถดึงข้อมูลการเข้าเวรได้";
         if (!opts?.silent) {
           setAttendanceError(message);
         }
@@ -1219,7 +1345,7 @@ const App: React.FC = () => {
       setAttendanceError(
         error instanceof Error
           ? error.message
-          : "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¹‡à¸„à¸­à¸´à¸™à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ",
+          : "ไม่สามารถเช็คอินได้ กรุณาลองใหม่",
       );
     } finally {
       setAttendanceLoading(false);
@@ -1290,12 +1416,17 @@ const App: React.FC = () => {
   }, [viewingCustomerId, customers]);
 
   const isSuperAdmin = useMemo(
-    () => currentUser.role === UserRole.SuperAdmin,
+    () => currentUser?.role === UserRole.SuperAdmin,
     [currentUser],
   );
 
   // Load role permissions (from localStorage first for instant UI, then API)
   useEffect(() => {
+    if (!currentUser?.role) {
+      setRolePermissions({});
+      return;
+    }
+
     const role = currentUser.role as string;
     const key = `role_permissions:${role}`;
     try {
@@ -1336,28 +1467,34 @@ const App: React.FC = () => {
     window.addEventListener("role-permissions-updated", onUpdated as any);
     return () =>
       window.removeEventListener("role-permissions-updated", onUpdated as any);
-  }, [currentUser.role]);
+  }, [currentUser?.role]);
 
   const companyCustomers = useMemo(
     () =>
-      isSuperAdmin
-        ? customers
-        : customers.filter((c) => c.companyId === currentUser.companyId),
-    [customers, currentUser.companyId, isSuperAdmin],
+      !currentUser
+        ? []
+        : isSuperAdmin
+          ? customers
+          : customers.filter((c) => c.companyId === currentUser.companyId),
+    [customers, currentUser?.companyId, isSuperAdmin],
   );
   const companyOrders = useMemo(
     () =>
-      isSuperAdmin
-        ? orders
-        : orders.filter((o) => o.companyId === currentUser.companyId),
-    [orders, currentUser.companyId, isSuperAdmin],
+      !currentUser
+        ? []
+        : isSuperAdmin
+          ? orders
+          : orders.filter((o) => o.companyId === currentUser.companyId),
+    [orders, currentUser?.companyId, isSuperAdmin],
   );
   const companyUsers = useMemo(
     () =>
-      isSuperAdmin
-        ? users
-        : users.filter((u) => u.companyId === currentUser.companyId),
-    [users, currentUser.companyId, isSuperAdmin],
+      !currentUser
+        ? []
+        : isSuperAdmin
+          ? users
+          : users.filter((u) => u.companyId === currentUser.companyId),
+    [users, currentUser?.companyId, isSuperAdmin],
   );
   const userCustomerCounts = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -1371,10 +1508,12 @@ const App: React.FC = () => {
   }, [companyCustomers]);
   const companyProducts = useMemo(
     () =>
-      isSuperAdmin
-        ? products
-        : products.filter((p) => p.companyId === currentUser.companyId),
-    [products, currentUser.companyId, isSuperAdmin],
+      !currentUser
+        ? []
+        : isSuperAdmin
+          ? products
+          : products.filter((p) => p.companyId === currentUser.companyId),
+    [products, currentUser?.companyId, isSuperAdmin],
   );
 
   const handleChangePassword = async () => {
@@ -1388,12 +1527,12 @@ const App: React.FC = () => {
         !passwordForm.newPassword ||
         !passwordForm.confirmPassword
       ) {
-        setPasswordError("à¸à¸£à¸¸à¸“à¸²à¸à¸£à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸«à¹‰à¸„à¸£à¸šà¸–à¹‰à¸§à¸™");
+        setPasswordError("กรุณากรอกข้อมูลให้ครบถ้วน");
         return;
       }
 
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-        setPasswordError("à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹ƒà¸«à¸¡à¹ˆà¹à¸¥à¸°à¸¢à¸·à¸™à¸¢à¸±à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹„à¸¡à¹ˆà¸•à¸£à¸‡à¸à¸±à¸™");
+        setPasswordError("รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน");
         return;
       }
 
@@ -1417,7 +1556,7 @@ const App: React.FC = () => {
 
       if (result.ok) {
         // Success
-        alert("à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¸ªà¸³à¹€à¸£à¹‡à¸ˆ");
+        alert("เปลี่ยนรหัสผ่านสำเร็จ");
         setIsChangePasswordModalOpen(false);
         setPasswordForm({
           currentPassword: "",
@@ -1426,11 +1565,14 @@ const App: React.FC = () => {
         });
       } else {
         // Error
-        setPasswordError(result.error || "à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™");
+        setPasswordError(
+          result.error ||
+            "à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£เปลี่ยนรหัสผ่าน",
+        );
       }
     } catch (error) {
       console.error("Error changing password:", error);
-      setPasswordError("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­");
+      setPasswordError("เกิดข้อผิดพลาดในการเชื่อมต่อ");
     } finally {
       setIsChangingPassword(false);
     }
@@ -1476,7 +1618,7 @@ const App: React.FC = () => {
     } else if (type === "confirmDelete") {
       setModalState({ type, data });
     } else if (type === "refreshProducts") {
-      // à¸£à¸µà¹€à¸Ÿà¸£à¸Šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸ªà¸´à¸™à¸„à¹‰à¸²
+      // โหลดข้อมูลสินค้า
       fetchProducts();
       fetchWarehouseStocks();
       fetchStockMovements();
@@ -1487,7 +1629,7 @@ const App: React.FC = () => {
   // Function to fetch products
   const fetchProducts = async () => {
     if (!currentUser?.companyId) return;
-    
+
     try {
       const productsData = await listProducts(currentUser.companyId);
       const mappedProducts = Array.isArray(productsData)
@@ -1502,13 +1644,13 @@ const App: React.FC = () => {
   // Function to fetch warehouse stocks
   const fetchWarehouseStocks = async () => {
     if (!currentUser?.companyId) return;
-    
+
     try {
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_warehouse_stocks.php?company_id=${currentUser.companyId}`
+        `http://localhost/CRM_ERP_V4/api/get_warehouse_stocks.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
-      
+
       if (result.success && Array.isArray(result.data)) {
         setWarehouseStocks(result.data);
       }
@@ -1520,13 +1662,13 @@ const App: React.FC = () => {
   // Function to fetch stock movements
   const fetchStockMovements = async () => {
     if (!currentUser?.companyId) return;
-    
+
     try {
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_stock_movements.php?company_id=${currentUser.companyId}`
+        `http://localhost/CRM_ERP_V4/api/get_stock_movements.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
-      
+
       if (result.success && Array.isArray(result.data)) {
         setStockMovements(result.data);
       }
@@ -1538,13 +1680,13 @@ const App: React.FC = () => {
   // Function to fetch product lots
   const fetchProductLots = async () => {
     if (!currentUser?.companyId) return;
-    
+
     try {
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_product_lots.php?company_id=${currentUser.companyId}`
+        `http://localhost/CRM_ERP_V4/api/get_product_lots.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
-      
+
       if (result.success && Array.isArray(result.data)) {
         setProductLots(result.data);
       }
@@ -1577,6 +1719,48 @@ const App: React.FC = () => {
     const originalOrder = orders.find((o) => o.id === updatedOrder.id);
     if (!originalOrder) return;
 
+    if (
+      originalOrder.paymentStatus !== PaymentStatus.Verified &&
+      updatedOrder.paymentStatus === PaymentStatus.Verified &&
+      (updatedOrder.paymentMethod === PaymentMethod.Transfer ||
+        updatedOrder.paymentMethod === PaymentMethod.PayAfter) &&
+      updatedOrder.trackingNumbers &&
+      updatedOrder.trackingNumbers.length > 0 &&
+      updatedOrder.orderStatus !== OrderStatus.PreApproved &&
+      updatedOrder.orderStatus !== OrderStatus.Delivered
+    ) {
+      updatedOrder.orderStatus = OrderStatus.PreApproved;
+    }
+
+    // Check if tracking was added manually
+    const originalTracking = new Set(originalOrder.trackingNumbers);
+    const newTracking = updatedOrder.trackingNumbers.filter(
+      (t) => t && !originalTracking.has(t),
+    );
+
+    if (newTracking.length > 0) {
+      if (
+        updatedOrder.paymentMethod === PaymentMethod.Transfer ||
+        updatedOrder.paymentMethod === PaymentMethod.PayAfter
+      ) {
+        if (updatedOrder.paymentStatus === PaymentStatus.Verified) {
+          updatedOrder.orderStatus = OrderStatus.PreApproved;
+        } else if (
+          updatedOrder.orderStatus === OrderStatus.Picking ||
+          updatedOrder.orderStatus === OrderStatus.Preparing
+        ) {
+          updatedOrder.orderStatus = OrderStatus.Shipping;
+        }
+      } else if (updatedOrder.paymentMethod === PaymentMethod.COD) {
+        if (
+          updatedOrder.orderStatus === OrderStatus.Picking ||
+          updatedOrder.orderStatus === OrderStatus.Preparing
+        ) {
+          updatedOrder.orderStatus = OrderStatus.Shipping;
+        }
+      }
+    }
+
     const activitiesToAdd: Activity[] = [];
 
     if (originalOrder.orderStatus !== updatedOrder.orderStatus) {
@@ -1585,7 +1769,7 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
-        description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id} à¸ˆà¸²à¸ '${originalOrder.orderStatus}' à¹€à¸›à¹‡à¸™ '${updatedOrder.orderStatus}'`,
+        description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1599,22 +1783,18 @@ const App: React.FC = () => {
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified,
-        description: `à¸¢à¸·à¸™à¸¢à¸±à¸™à¸à¸²à¸£à¸Šà¸³à¸£à¸°à¹€à¸‡à¸´à¸™à¸ªà¸³à¹€à¸£à¹‡à¸ˆà¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id}`,
+        description: `ยืนยันการชำระเงินสำเร็จสำหรับคำสั่งซื้อ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
 
-    const originalTracking = new Set(originalOrder.trackingNumbers);
-    const newTracking = updatedOrder.trackingNumbers.filter(
-      (t) => t && !originalTracking.has(t),
-    );
     if (newTracking.length > 0) {
       activitiesToAdd.push({
         id: Date.now() + Math.random(),
         customerId: updatedOrder.customerId,
         timestamp: new Date().toISOString(),
         type: ActivityType.TrackingAdded,
-        description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking [${newTracking.join(", ")}] à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${updatedOrder.id}`,
+        description: `เพิ่ม Tracking [${newTracking.join(", ")}] สำหรับคำสั่งซื้อ ${updatedOrder.id}`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
     }
@@ -1681,7 +1861,11 @@ const App: React.FC = () => {
   };
 
   const handleCancelOrder = async (orderId: string) => {
-    if (window.confirm("à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¸™à¸µà¹‰à¹ƒà¸Šà¹ˆà¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?")) {
+    if (
+      window.confirm(
+        "à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸คำสั่งซื้อà¸™à¸µà¹‰à¹ƒà¸Šà¹ˆหรือไม่?",
+      )
+    ) {
       const orderToCancel = orders.find((o) => o.id === orderId);
       if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
         const newActivity: Activity = {
@@ -1689,7 +1873,7 @@ const App: React.FC = () => {
           customerId: orderToCancel.customerId,
           timestamp: new Date().toISOString(),
           type: ActivityType.OrderCancelled,
-          description: `à¸¢à¸à¹€à¸¥à¸´à¸à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${orderId}`,
+          description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         };
         if (true) {
@@ -1732,7 +1916,7 @@ const App: React.FC = () => {
             customerId: o.customerId,
             timestamp: new Date().toISOString(),
             type: ActivityType.OrderStatusChanged,
-            description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${o.id} à¸ˆà¸²à¸ '${OrderStatus.Pending}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Picking}'`,
+            description: `อัปเดตคำสั่งซื้อ ${o.id} เปลี่ยนจาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
             actorName: `${currentUser.firstName} ${currentUser.lastName}`,
           });
           return { ...o, orderStatus: OrderStatus.Picking };
@@ -1787,7 +1971,7 @@ const App: React.FC = () => {
               customerId: (orderToUpdate as Order).customerId,
               timestamp: new Date().toISOString(),
               type: ActivityType.TrackingAdded,
-              description: `à¹€à¸žà¸´à¹ˆà¸¡ Tracking ${update.trackingNumber} à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${update.orderId}`,
+              description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
             });
 
@@ -1798,18 +1982,27 @@ const App: React.FC = () => {
                 update.trackingNumber,
               ],
               orderStatus:
-                (orderToUpdate as Order).orderStatus === OrderStatus.Picking
-                  ? OrderStatus.Shipping
-                  : (orderToUpdate as Order).orderStatus,
+                (orderToUpdate as Order).paymentStatus ===
+                  PaymentStatus.Verified &&
+                ((orderToUpdate as Order).paymentMethod ===
+                  PaymentMethod.Transfer ||
+                  (orderToUpdate as Order).paymentMethod ===
+                    PaymentMethod.PayAfter)
+                  ? OrderStatus.PreApproved
+                  : (orderToUpdate as Order).orderStatus === OrderStatus.Picking
+                    ? OrderStatus.Shipping
+                    : (orderToUpdate as Order).orderStatus,
             };
 
-            if ((orderToUpdate as Order).orderStatus === OrderStatus.Picking) {
+            if (
+              (orderToUpdate as Order).orderStatus !== newOrderState.orderStatus
+            ) {
               activitiesToAdd.push({
                 id: Date.now() + Math.random(),
                 customerId: (orderToUpdate as Order).customerId,
                 timestamp: new Date().toISOString(),
                 type: ActivityType.OrderStatusChanged,
-                description: `à¸­à¸±à¸›à¹€à¸”à¸•à¸ªà¸–à¸²à¸™à¸°à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­ ${update.orderId} à¸ˆà¸²à¸ '${OrderStatus.Picking}' à¹€à¸›à¹‡à¸™ '${OrderStatus.Shipping}'`,
+                description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
                 actorName: `${currentUser.firstName} ${currentUser.lastName}`,
               });
             }
@@ -1921,11 +2114,11 @@ const App: React.FC = () => {
             : "ยังไม่ได้มอบหมาย";
         alert(
           [
-            "à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸­à¸­à¹€à¸”à¸­à¸£à¹Œà¹ƒà¸«à¹‰à¸¥à¸¹à¸à¸„à¹‰à¸²à¹ƒà¸«à¸¡à¹ˆà¹„à¸”à¹‰",
-            "à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸à¸žà¸šà¸¥à¸¹à¸à¸„à¹‰à¸²à¸£à¸²à¸¢à¸™à¸µà¹‰à¸­à¸¢à¸¹à¹ˆà¹ƒà¸™à¸£à¸°à¸šà¸šà¹à¸¥à¹‰à¸§",
+            "ไม่สามารถสร้างออเดอร์ให้ลูกค้าใหม่ได้",
+            "เนื่องจากพบลูกค้ารายนี้อยู่ในระบบแล้ว",
             `ชื่อ: ${fullName}`,
             `เบอร์โทรศัพท์: ${existingCustomer.phone || "-"}`,
-            `à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¸›à¸±à¸ˆà¸ˆà¸¸à¸šà¸±à¸™: ${ownerName}`,
+            `ผู้ดูแลปัจจุบัน: ${ownerName}`,
           ].join("\n"),
         );
         return;
@@ -1975,7 +2168,7 @@ const App: React.FC = () => {
         console.log("Customer created successfully:", newCustomer.id);
       } catch (e) {
         console.error("create customer API failed", e);
-        alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¸£à¹‰à¸²à¸‡à¸¥à¸¹à¸à¸„à¹‰à¸²à¹„à¸”à¹‰ à¸à¸£à¸¸à¸“à¸²à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹à¸¥à¸°à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆà¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡");
+        alert("ไม่สามารถสร้างลูกค้าได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง");
         return; // Don't proceed with order creation if customer creation fails
       }
       setCustomers((prev) => [newCustomer, ...prev]);
@@ -1984,6 +2177,30 @@ const App: React.FC = () => {
 
     if (!customerIdForOrder) {
       alert("Customer ID is missing.");
+      return;
+    }
+
+    // Validate current user has valid ID and exists in users list
+    if (!currentUser?.id) {
+      alert(
+        "ไม่สามารถสร้างออเดอร์ได้: ไม่พบข้อมูลผู้ใช้ กรุณาลองเข้าสู่ระบบใหม่",
+      );
+      console.error("Current user ID is missing:", currentUser);
+      return;
+    }
+
+    // Double-check that currentUser exists in users array (from database)
+    const userExists = users.find((u) => u.id === currentUser.id);
+    if (!userExists) {
+      alert(
+        `ไม่สามารถสร้างออเดอร์ได้: ผู้ใช้ ID ${currentUser.id} ไม่มีในระบบ กรุณาลองเข้าสู่ระบบใหม่`,
+      );
+      console.error(`User ID ${currentUser.id} not found in users list:`, {
+        currentUser,
+        users,
+      });
+      // Clear invalid session
+      localStorage.removeItem("sessionUser");
       return;
     }
 
@@ -2069,7 +2286,7 @@ const App: React.FC = () => {
                     transferDate,
                     amount: newOrder.totalAmount,
                   }
-                : undefined
+                : undefined,
             );
             if (res && res.url) {
               uploadedSlips.push({
@@ -2084,12 +2301,24 @@ const App: React.FC = () => {
           } catch (uploadErr: any) {
             console.error("order slip upload failed", uploadErr);
             // ตรวจสอบ error message จาก API
-            const errorMessage = uploadErr?.data?.message || uploadErr?.data?.error || uploadErr?.message || "เกิดข้อผิดพลาดไม่ทราบสาเหตุ";
+            const errorMessage =
+              uploadErr?.data?.message ||
+              uploadErr?.data?.error ||
+              uploadErr?.message ||
+              "เกิดข้อผิดพลาดไม่ทราบสาเหตุ";
             let alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้";
-            if (errorMessage.includes("DECODE_FAILED") || errorMessage.includes("INVALID_INPUT")) {
-              alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลสลิปไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
-            } else if (errorMessage.includes("400") || errorMessage.includes("Bad Request")) {
-              alertMessage = "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
+            if (
+              errorMessage.includes("DECODE_FAILED") ||
+              errorMessage.includes("INVALID_INPUT")
+            ) {
+              alertMessage =
+                "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลสลิปไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
+            } else if (
+              errorMessage.includes("400") ||
+              errorMessage.includes("Bad Request")
+            ) {
+              alertMessage =
+                "ไม่สามารถบันทึกสลิปการโอนได้: ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง";
             } else {
               alertMessage = `ไม่สามารถบันทึกสลิปการโอนได้: ${errorMessage} กรุณาตรวจสอบและลองใหม่อีกครั้ง`;
             }
@@ -2117,10 +2346,18 @@ const App: React.FC = () => {
           switch (String(s)) {
             case "Pending":
               return OrderStatus.Pending as any;
+            case "AwaitingVerification":
+              return OrderStatus.AwaitingVerification as any;
+            case "Confirmed":
+              return OrderStatus.Confirmed as any;
+            case "Preparing":
+              return OrderStatus.Preparing as any;
             case "Picking":
               return OrderStatus.Picking as any;
             case "Shipping":
               return OrderStatus.Shipping as any;
+            case "PreApproved":
+              return OrderStatus.PreApproved as any;
             case "Delivered":
               return OrderStatus.Delivered as any;
             case "Returned":
@@ -2137,6 +2374,12 @@ const App: React.FC = () => {
               return PaymentStatus.Unpaid as any;
             case "PendingVerification":
               return PaymentStatus.PendingVerification as any;
+            case "Verified":
+              return PaymentStatus.Verified as any;
+            case "PreApproved":
+              return PaymentStatus.PreApproved as any;
+            case "Approved":
+              return PaymentStatus.Approved as any;
             case "Paid":
               return PaymentStatus.Paid as any;
             default:
@@ -2144,7 +2387,7 @@ const App: React.FC = () => {
           }
         };
 
-        let mappedOrders = Array.isArray(freshOrders)
+        let mappedOrders: Order[] = Array.isArray(freshOrders)
           ? freshOrders.map((o) => ({
               id: o.id,
               customerId: o.customer_id,
@@ -2190,7 +2433,7 @@ const App: React.FC = () => {
                 ? (o.slips as any[]).map((s) => ({
                     id: Number(s.id),
                     url: String(s.url),
-                    createdAt: s.created_at,
+                    createdAt: s.created_at || new Date().toISOString(),
                   }))
                 : undefined,
             }))
@@ -2208,7 +2451,7 @@ const App: React.FC = () => {
         }
         // Filter out sub orders before setting
         const filteredMappedOrders = mappedOrders.filter((order: Order) => {
-          const orderId = String(order.id || '');
+          const orderId = String(order.id || "");
           return !/-\d+$/.test(orderId);
         });
         setOrders(filteredMappedOrders);
@@ -2219,11 +2462,11 @@ const App: React.FC = () => {
         // Filter out sub orders before adding new order
         setOrders((prevOrders) => {
           const filteredPrev = prevOrders.filter((order: Order) => {
-            const orderId = String(order.id || '');
+            const orderId = String(order.id || "");
             return !/-\d+$/.test(orderId);
           });
           // Also check if newOrder is a sub order
-          const newOrderId = String(newOrder.id || '');
+          const newOrderId = String(newOrder.id || "");
           const isSubOrder = /-\d+$/.test(newOrderId);
           return isSubOrder ? filteredPrev : [newOrder, ...filteredPrev];
         });
@@ -2231,8 +2474,10 @@ const App: React.FC = () => {
     } catch (e) {
       console.error("create order API failed", e);
       const errorMessage = e instanceof Error ? e.message : String(e);
-      if (errorMessage.includes('Duplicate entry')) {
-        alert("ไม่สามารถสร้างออเดอร์ได้: เลขที่ออเดอร์ซ้ำกัน กรุณาลองใหม่อีกครั้ง");
+      if (errorMessage.includes("Duplicate entry")) {
+        alert(
+          "ไม่สามารถสร้างออเดอร์ได้: เลขที่ออเดอร์ซ้ำกัน กรุณาลองใหม่อีกครั้ง",
+        );
       } else {
         alert("ไม่สามารถสร้างออเดอร์ได้: " + errorMessage);
       }
@@ -2346,7 +2591,9 @@ const App: React.FC = () => {
   };
 
   const handleUpdateCustomer = async (updatedCustomer: Customer) => {
-    const resolvedGrade = calculateCustomerGrade(updatedCustomer.totalPurchases);
+    const resolvedGrade = calculateCustomerGrade(
+      updatedCustomer.totalPurchases,
+    );
     if (true) {
       try {
         await updateCustomer(updatedCustomer.id, {
@@ -2376,7 +2623,9 @@ const App: React.FC = () => {
     }
     setCustomers((prev) =>
       prev.map((c) =>
-        c.id === updatedCustomer.id ? { ...updatedCustomer, grade: resolvedGrade } : c,
+        c.id === updatedCustomer.id
+          ? { ...updatedCustomer, grade: resolvedGrade }
+          : c,
       ),
     );
     closeModal();
@@ -2388,14 +2637,16 @@ const App: React.FC = () => {
   ) => {
     const targetUser = users.find((u) => u.id === newOwnerId);
     if (!targetUser) {
-      throw new Error("à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸");
+      throw new Error(
+        "à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸‡à¸²à¸™à¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸",
+      );
     }
 
     const sameCompany =
       isSuperAdmin || targetUser.companyId === currentUser.companyId;
 
     if (!sameCompany) {
-      throw new Error("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸¢à¹‰à¸²à¸¢à¸¥à¸¹à¸à¸„à¹‰à¸²à¹„à¸›à¸¢à¸±à¸‡à¸šà¸£à¸´à¸©à¸±à¸—à¸­à¸·à¹ˆà¸™à¹„à¸”à¹‰");
+      throw new Error("ไม่สามารถย้ายลูกค้าไปยังบริษัทอื่นได้");
     }
 
     if (currentUser.role === UserRole.Supervisor) {
@@ -2408,12 +2659,12 @@ const App: React.FC = () => {
 
       if (!isTeamMember && !isSupervisorLevel) {
         throw new Error(
-          "à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸—à¸µà¸¡à¸ªà¸²à¸¡à¸²à¸£à¸–à¸¢à¹‰à¸²à¸¢à¹ƒà¸«à¹‰à¸¥à¸¹à¸à¸—à¸µà¸¡à¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡à¸«à¸£à¸·à¸­à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸ à¸²à¸¢à¹ƒà¸™à¸šà¸£à¸´à¸©à¸±à¸—à¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸™à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™",
+          "หัวหน้าสต็อกสามารถโอนย้ายให้ลูกสต็อกของตัวเองหรือหัวหน้าฝ่ายในบริษัทเดียวกันเท่านั้น",
         );
       }
     } else if (currentUser.role === UserRole.Telesale) {
       if (currentUser.supervisorId !== targetUser.id) {
-        throw new Error("à¹€à¸—à¹€à¸¥à¹€à¸‹à¸¥à¸ªà¸²à¸¡à¸²à¸£à¸–à¸ªà¹ˆà¸‡à¹ƒà¸«à¹‰à¸«à¸±à¸§à¸«à¸™à¹‰à¸²à¸—à¸µà¸¡à¸‚à¸­à¸‡à¸•à¸±à¸§à¹€à¸­à¸‡à¹€à¸—à¹ˆà¸²à¸™à¸±à¹‰à¸™");
+        throw new Error("เกิดข้อผิดพลาดในการอัพเดทข้อมูล กรุณาลองใหม่อีกครั้ง");
       }
     }
 
@@ -2429,7 +2680,7 @@ const App: React.FC = () => {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸œà¸¹à¹‰à¸”à¸¹à¹à¸¥à¹„à¸”à¹‰");
+      throw new Error("ไม่สามารถเปลี่ยนผู้ดูแลได้");
     }
 
     setCustomers((prev) =>
@@ -2454,7 +2705,7 @@ const App: React.FC = () => {
   const handleTakeCustomer = (customerToTake: Customer) => {
     if (
       window.confirm(
-        `à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸£à¸±à¸šà¸œà¸´à¸”à¸Šà¸­à¸šà¸¥à¸¹à¸à¸„à¹‰à¸² "${customerToTake.firstName} ${customerToTake.lastName}" à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆ?`,
+        `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
       )
     ) {
       setCustomers((prev) =>
@@ -2594,7 +2845,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to save user via API", e);
-      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸”à¹‰ (API)");
+      alert("ไม่สามารถบันทึกข้อมูลผู้ใช้ได้ (API)");
     }
   };
 
@@ -2645,7 +2896,7 @@ const App: React.FC = () => {
       closeModal();
     } catch (e) {
       console.error("Failed to delete user via API", e);
-      alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¸¥à¸šà¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¹„à¸”à¹‰ (à¸­à¸²à¸ˆà¸¡à¸µà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸—à¸µà¹ˆà¹€à¸à¸µà¹ˆà¸¢à¸§à¸‚à¹‰à¸­à¸‡)");
+      alert("ไม่สามารถลบผู้ใช้ได้ (อาจมีข้อมูลที่เกี่ยวข้อง)");
     }
   };
 
@@ -2789,11 +3040,11 @@ const App: React.FC = () => {
         id: Math.max(...appointments.map((a) => a.id), 0) + 1,
         customerId: customerId,
         date: newFollowUpDate,
-        title: `à¸•à¸´à¸”à¸•à¸²à¸¡à¸¥à¸¹à¸à¸„à¹‰à¸² (${callLogData.result})`,
-        status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
+        title: `ติดตามลูกค้า (${callLogData.result})`,
+        status: "ใหม่",
         notes:
           callLogData.notes ||
-          `à¸•à¸´à¸”à¸•à¸²à¸¡à¸¥à¸¹à¸à¸„à¹‰à¸²à¸ˆà¸²à¸à¸à¸²à¸£à¹‚à¸—à¸£à¸—à¸µà¹ˆà¸¡à¸µà¸œà¸¥à¸¥à¸±à¸žà¸˜à¹Œ ${callLogData.result}`,
+          `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`,
       };
       if (true) {
         try {
@@ -2801,7 +3052,7 @@ const App: React.FC = () => {
             customerId,
             date: newFollowUpDate,
             title: newAppointment.title,
-            status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
+            status: "ใหม่",
             notes: newAppointment.notes,
           });
         } catch (e) {
@@ -2831,7 +3082,7 @@ const App: React.FC = () => {
       customerId: customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.CallLogged,
-      description: `à¸šà¸±à¸™à¸—à¸¶à¸à¸à¸²à¸£à¹‚à¸—à¸£: ${callLogData.result}`,
+      description: `บันทึกการโทร: ${callLogData.result}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -2865,7 +3116,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: appointmentData.status,
+          status: "ใหม่",
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -2975,7 +3226,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
       ...appointmentData,
       id: Math.max(...appointments.map((a) => a.id), 0) + 1,
-      status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
+      status: "ใหม่",
     };
     if (true) {
       try {
@@ -2983,7 +3234,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: "à¸£à¸­à¸”à¸³à¹€à¸™à¸´à¸™à¸à¸²à¸£",
+          status: "ใหม่",
           notes: appointmentData.notes,
         });
       } catch (e) {
@@ -3047,7 +3298,7 @@ const App: React.FC = () => {
       customerId: appointmentData.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢: ${appointmentData.title}`,
+      description: `นัดหมาย: ${appointmentData.title}`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -3076,12 +3327,12 @@ const App: React.FC = () => {
 
     const updatedAppointment = {
       ...appointmentToUpdate,
-      status: "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™",
+      status: "เสร็จสิ้น",
     };
 
     if (true) {
       try {
-        await updateAppointment(appointmentId, { status: "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™" });
+        await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
       } catch (e) {
         console.error("update appointment API failed", e);
         // If API fails, still update local state
@@ -3104,7 +3355,7 @@ const App: React.FC = () => {
     );
 
     const hasPendingAppointments = customerAppointments.some(
-      (a) => a.status !== "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™",
+      (a) => a.status !== "เสร็จสิ้น",
     );
 
     // If no pending appointments, update customer lifecycle status
@@ -3183,7 +3434,7 @@ const App: React.FC = () => {
       customerId: appointmentToUpdate.customerId,
       timestamp: new Date().toISOString(),
       type: ActivityType.AppointmentSet,
-      description: `à¸™à¸±à¸”à¸«à¸¡à¸²à¸¢ "${appointmentToUpdate.title}" à¸–à¸¹à¸à¸—à¸³à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡à¸«à¸¡à¸²à¸¢à¸§à¹ˆà¸²à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™à¹à¸¥à¹‰à¸§`,
+      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
       actorName: `${currentUser.firstName} ${currentUser.lastName}`,
     };
     if (true) {
@@ -3259,14 +3510,14 @@ const App: React.FC = () => {
       return prev.map((u) => {
         if (u.id === currentUser.id) {
           if (u.customTags.length >= 10) {
-            alert("à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸žà¸´à¹ˆà¸¡ Tag à¹„à¸”à¹‰à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸à¸¡à¸µà¸„à¸£à¸š 10 Tag à¹à¸¥à¹‰à¸§");
+            alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
             return u;
           }
           const existingTag = [...systemTags, ...u.customTags].find(
             (t) => t.name.toLowerCase() === tagName.toLowerCase(),
           );
           if (existingTag) {
-            alert("à¸¡à¸µ Tag à¸™à¸µà¹‰à¸­à¸¢à¸¹à¹ˆà¹à¸¥à¹‰à¸§");
+            alert("มี Tag นี้อยู่แล้ว");
             return u;
           }
 
@@ -3491,8 +3742,6 @@ const App: React.FC = () => {
         return CustomerGrade.C;
       case "D":
         return CustomerGrade.D;
-      case "E":
-        return CustomerGrade.E;
       default:
         return undefined;
     }
@@ -3661,8 +3910,7 @@ const App: React.FC = () => {
         ? input.totalPurchases
         : (existing?.totalPurchases ?? 0);
 
-    const resolvedGrade =
-      calculateCustomerGrade(resolvedTotalPurchases);
+    const resolvedGrade = calculateCustomerGrade(resolvedTotalPurchases);
 
     const address = {
       street,
@@ -4017,7 +4265,7 @@ const App: React.FC = () => {
 
       if (!salespersonMatched && salespersonReference) {
         summary.notes.push(
-          `Order ${orderId}: à¸œà¸¹à¹‰à¸‚à¸²à¸¢ ${salespersonReference} à¹„à¸¡à¹ˆà¸žà¸šà¹ƒà¸™à¸£à¸°à¸šà¸š à¹ƒà¸Šà¹‰ ${currentUser.username} à¹à¸—à¸™.`,
+          `Order ${orderId}: เจ้าของ ${salespersonReference} ไม่สามารถเปลี่ยนเป็น ${currentUser.username} แทน.`,
         );
       }
 
@@ -4138,11 +4386,11 @@ const App: React.FC = () => {
       // Filter out sub orders before adding new order
       setOrders((prev) => {
         const filteredPrev = prev.filter((order: Order) => {
-          const orderId = String(order.id || '');
+          const orderId = String(order.id || "");
           return !/-\d+$/.test(orderId);
         });
         // Also check if newOrder is a sub order
-        const newOrderId = String(newOrder.id || '');
+        const newOrderId = String(newOrder.id || "");
         const isSubOrder = /-\d+$/.test(newOrderId);
         return isSubOrder ? filteredPrev : [newOrder, ...filteredPrev];
       });
@@ -4367,10 +4615,7 @@ const App: React.FC = () => {
     }
 
     // Page stats (Super Admin): group default or specific page
-    if (
-      activePage === "Page Stats" ||
-      activePage === "Page Performance"
-    ) {
+    if (activePage === "Page Stats" || activePage === "Page Performance") {
       return (
         <PageStatsPage
           orders={companyOrders}
@@ -4544,10 +4789,20 @@ const App: React.FC = () => {
       return <PagesManagementPage pages={pages} currentUser={currentUser} />;
     }
     if (activePage === "Platforms") {
-      return <PlatformsManagementPage currentUser={currentUser} companies={companies} />;
+      return (
+        <PlatformsManagementPage
+          currentUser={currentUser}
+          companies={companies}
+        />
+      );
     }
     if (activePage === "Bank Accounts") {
-      return <BankAccountsManagementPage currentUser={currentUser} companies={companies} />;
+      return (
+        <BankAccountsManagementPage
+          currentUser={currentUser}
+          companies={companies}
+        />
+      );
     }
     if (activePage === "Tags") {
       return (
@@ -4650,8 +4905,8 @@ const App: React.FC = () => {
     }
     if (activePage === "Reports") {
       return (
-        <ReportsPage 
-          orders={companyOrders} 
+        <ReportsPage
+          orders={companyOrders}
           customers={companyCustomers}
           products={products}
           warehouseStock={warehouseStocks}
@@ -4680,10 +4935,7 @@ const App: React.FC = () => {
     if (activePage === "Call Details") {
       return <CallDetailsPage currentUser={currentUser} />;
     }
-    if (
-      activePage === "Call History" ||
-      activePage === "Dtac Onecall"
-    ) {
+    if (activePage === "Call History" || activePage === "Dtac Onecall") {
       return (
         <CallHistoryPage
           currentUser={currentUser}
@@ -4728,7 +4980,7 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "à¹€à¸žà¸´à¹ˆà¸¡à¸¥à¸¹à¸à¸„à¹‰à¸²":
+          case "เพิ่มลูกค้า":
             return (
               <AddCustomerPage
                 companyUsers={companyUsers}
@@ -4743,7 +4995,7 @@ const App: React.FC = () => {
                 }}
               />
             );
-          case "à¹à¸ˆà¸à¸ˆà¹ˆà¸²à¸¢":
+          case "แจกจ่าย":
             return (
               <CustomerDistributionPage
                 allCustomers={companyCustomers}
@@ -4751,7 +5003,7 @@ const App: React.FC = () => {
                 setCustomers={setCustomers}
               />
             );
-          case "à¸ˆà¸±à¸”à¸à¸²à¸£à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰":
+          case "จัดการผู้ใช้":
             return (
               <UserManagementPage
                 users={companyUsers}
@@ -4761,7 +5013,7 @@ const App: React.FC = () => {
                 allCompanies={companies}
               />
             );
-          case "à¸ˆà¸±à¸”à¸à¸²à¸£à¸ªà¸´à¸™à¸„à¹‰à¸²":
+          case "จัดการสินค้า":
             return (
               <ProductManagementPage
                 products={companyProducts}
@@ -4770,7 +5022,7 @@ const App: React.FC = () => {
                 allCompanies={companies}
               />
             );
-          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4860,7 +5112,7 @@ const App: React.FC = () => {
 
       case UserRole.Admin:
         switch (activePage) {
-          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
+          case "แดชบอร์ด":
             return (
               <AdminDashboard
                 user={currentUser}
@@ -4887,18 +5139,18 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "à¸£à¸²à¸¢à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­":
+          case "รายการคำสั่งซื้อ":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
                 orders={companyOrders}
                 customers={companyCustomers}
                 openModal={openModal}
-                title="à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­"
+                title="คำสั่งซื้อ"
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4935,7 +5187,7 @@ const App: React.FC = () => {
       case UserRole.Telesale:
       case UserRole.Supervisor:
         switch (activePage) {
-          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
+          case "แดชบอร์ด":
             return (
               <TelesaleSummaryDashboard
                 user={currentUser}
@@ -4959,7 +5211,7 @@ const App: React.FC = () => {
                 initialData={createOrderInitialData}
               />
             );
-          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”à¸à¸²à¸£à¸‚à¸²à¸¢":
+          case "แดชบอร์ดการขาย":
             return (
               <TelesaleDashboard
                 user={currentUser}
@@ -4974,7 +5226,7 @@ const App: React.FC = () => {
                 systemTags={systemTags}
               />
             );
-          case "à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­à¸‚à¸­à¸‡à¸‰à¸±à¸™":
+          case "คำสั่งซื้อทั้งหมด":
             return (
               <TelesaleOrdersPage
                 user={currentUser}
@@ -4984,7 +5236,7 @@ const App: React.FC = () => {
                 onCancelOrder={handleCancelOrder}
               />
             );
-          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -4994,7 +5246,7 @@ const App: React.FC = () => {
                 onTakeCustomer={handleTakeCustomer}
               />
             );
-          case "à¸—à¸µà¸¡":
+          case "สต็อก":
             return currentUser.role === UserRole.Supervisor ? (
               <SupervisorTeamPage
                 user={currentUser}
@@ -5089,7 +5341,7 @@ const App: React.FC = () => {
           return <OrderAllocationPage />;
         }
         switch (activePage) {
-          case "à¹à¸”à¸Šà¸šà¸­à¸£à¹Œà¸”":
+          case "แดชบอร์ด":
             return (
               <BackofficeDashboard
                 user={currentUser}
@@ -5098,7 +5350,7 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "à¸£à¸²à¸¢à¸à¸²à¸£à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸‹à¸·à¹‰à¸­":
+          case "รายการคำสั่งซื้อ":
             return (
               <ManageOrdersPage
                 user={currentUser}
@@ -5109,14 +5361,14 @@ const App: React.FC = () => {
                 onProcessOrders={handleProcessOrders}
               />
             );
-          case "à¹€à¸žà¸´à¹ˆà¸¡ Tracking":
+          case "เพิ่ม Tracking":
             return (
               <BulkTrackingPage
                 orders={companyOrders}
                 onBulkUpdateTracking={handleBulkUpdateTracking}
               />
             );
-          case "à¸•à¸´à¸”à¸«à¸™à¸µà¹‰":
+          case "โปรโมชั่น":
             return (
               <DebtCollectionPage
                 user={currentUser}
@@ -5126,10 +5378,10 @@ const App: React.FC = () => {
                 openModal={openModal}
               />
             );
-          case "à¸£à¸²à¸¢à¸‡à¸²à¸™":
+          case "ยกเลิกออเดอร์":
             return (
-              <ReportsPage 
-                orders={companyOrders} 
+              <ReportsPage
+                orders={companyOrders}
                 customers={companyCustomers}
                 products={products}
                 warehouseStock={warehouseStocks}
@@ -5137,7 +5389,7 @@ const App: React.FC = () => {
                 productLots={productLots}
               />
             );
-          case "à¸„à¹‰à¸™à¸«à¸²à¸¥à¸¹à¸à¸„à¹‰à¸²":
+          case "ค้นหาลูกค้า":
             return (
               <CustomerSearchPage
                 customers={companyCustomers}
@@ -5168,11 +5420,13 @@ const App: React.FC = () => {
           case "COD Record":
             return <CODRecordPage user={currentUser} />;
           default:
-            return <div className="p-6">à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸Šà¹‰à¸‡à¸²à¸™</div>;
+            return (
+              <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>
+            );
         }
 
       default:
-        return <div className="p-6">à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹„à¸¡à¹ˆà¸žà¸£à¹‰à¸­à¸¡à¹ƒà¸Šà¹‰à¸‡à¸²à¸™</div>;
+        return <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>;
     }
   };
 
@@ -5322,13 +5576,13 @@ const App: React.FC = () => {
           <Clock className="w-5 h-5 text-green-600" />
           <div className="flex items-center space-x-4">
             <div className="flex flex-col leading-tight">
-              <span className="text-[11px] text-gray-500">à¹€à¸£à¸´à¹ˆà¸¡à¸‡à¸²à¸™</span>
+              <span className="text-[11px] text-gray-500">เข้าสู่ระบบ</span>
               <span className="text-sm font-semibold text-gray-800">
                 {formatTimeText(attendanceStartIso)}
               </span>
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-[11px] text-gray-500">à¹€à¸§à¸¥à¸²à¸ªà¸°à¸ªà¸¡</span>
+              <span className="text-[11px] text-gray-500">ออกจากระบบ</span>
               <span className="text-sm font-semibold text-gray-800">
                 {formatDurationText(attendanceDuration)}
               </span>
@@ -5346,6 +5600,18 @@ const App: React.FC = () => {
       </div>
     );
   };
+
+  // Show loading/error message if currentUser is not available
+  if (!currentUser) {
+    return (
+      <div className="flex h-screen bg-[#F5F5F5] items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-gray-700 mb-2">กำลังโหลดข้อมูลผู้ใช้...</p>
+          <p className="text-sm text-gray-500">กรุณารอสักครู่</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#F5F5F5]">
@@ -5438,13 +5704,13 @@ const App: React.FC = () => {
                     <button
                       onClick={() => {
                         // TODO: Implement logout functionality
-                        alert("à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™ logout à¸ˆà¸°à¸–à¸¹à¸à¹€à¸žà¸´à¹ˆà¸¡à¹ƒà¸™à¸­à¸™à¸²à¸„à¸•");
+                        alert("ฟังก์ชัน logout จะถูกเพิ่มในอนาคต");
                         setIsUserDropdownOpen(false);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <LogOut className="w-4 h-4 mr-2 text-gray-500" />
-                      à¸­à¸­à¸à¸ˆà¸²à¸à¸£à¸°à¸šà¸š
+                      ออกจากระบบ
                     </button>
                   </div>
                 )}
@@ -5582,7 +5848,7 @@ const App: React.FC = () => {
                     className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
                     disabled={isChangingPassword}
                   >
-                    à¸¢à¸à¹€à¸¥à¸´à¸
+                    ยกเลิก
                   </button>
                   <button
                     type="submit"
@@ -5590,8 +5856,8 @@ const App: React.FC = () => {
                     disabled={isChangingPassword}
                   >
                     {isChangingPassword
-                      ? "à¸à¸³à¸¥à¸±à¸‡à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™..."
-                      : "à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™"}
+                      ? "กำลังเปลี่ยนรหัสผ่าน..."
+                      : "เปลี่ยนรหัสผ่าน"}
                   </button>
                 </div>
               </form>
@@ -5604,4 +5870,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

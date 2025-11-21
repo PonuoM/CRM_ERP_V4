@@ -2280,6 +2280,8 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `order_tracking_numbers` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `order_id` VARCHAR(32) NULL,
+`parent_order_id` VARCHAR(32) NULL,
+`box_number` INT NULL,
 `tracking_number` VARCHAR(128) NULL,
   PRIMARY KEY (`id`)
 );
@@ -2288,6 +2290,26 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'order_id'
 ) = 0,
   'ALTER TABLE `order_tracking_numbers` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'parent_order_id'
+) = 0,
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `parent_order_id` VARCHAR(32) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'box_number'
+) = 0,
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `box_number` INT NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

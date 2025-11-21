@@ -372,6 +372,12 @@ export interface CodBox {
   codAmount: number;
 }
 
+export interface TrackingEntry {
+  orderId: string;
+  trackingNumber: string;
+  boxNumber?: number | null;
+}
+
 export interface OrderSlip {
   id: number;
   url: string;
@@ -397,6 +403,7 @@ export interface Order {
   codAmount?: number;
   orderStatus: OrderStatus;
   trackingNumbers: string[];
+  trackingEntries?: TrackingEntry[];
   boxes?: CodBox[];
   notes?: string;
   warehouseId?: number;

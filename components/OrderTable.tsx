@@ -1,6 +1,31 @@
 ﻿import React from 'react';
 import { Order, Customer, ModalType, OrderStatus, PaymentStatus, PaymentMethod, User, UserRole } from '../types';
 
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  [OrderStatus.Pending]: 'รอ Export',
+  [OrderStatus.AwaitingVerification]: 'รอตรวจสอบสลิป',
+  [OrderStatus.Confirmed]: 'ยืนยันแล้ว',
+  [OrderStatus.Preparing]: 'กำลังจัดเตรียม',
+  [OrderStatus.Picking]: 'กำลังจัดสินค้า',
+  [OrderStatus.Shipping]: 'กำลังจัดส่ง',
+  [OrderStatus.PreApproved]: 'รอตรวจสอบจากบัญชี',
+  [OrderStatus.Delivered]: 'เสร็จสิ้น',
+  [OrderStatus.Returned]: 'ตีกลับ',
+  [OrderStatus.Cancelled]: 'ยกเลิก',
+};
+
+const ORDER_STATUS_FLOW: OrderStatus[] = [
+  OrderStatus.Pending,
+  OrderStatus.AwaitingVerification,
+  OrderStatus.Preparing,
+  OrderStatus.Picking,
+  OrderStatus.Shipping,
+  OrderStatus.PreApproved,
+  OrderStatus.Delivered,
+];
+
+const STATUS_CHIP_BASE = 'text-xs font-medium px-2.5 py-0.5 rounded-full';
+
 export interface OrderTableProps {
   orders: Order[];
   customers: Customer[];
@@ -15,21 +40,26 @@ export interface OrderTableProps {
 
 // Exported helpers (used by other components)
 export const getStatusChip = (status: OrderStatus) => {
+  const label = ORDER_STATUS_LABELS[status] ?? status;
   switch (status) {
+    case OrderStatus.Preparing:
     case OrderStatus.Picking:
-      return <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">กำลังจัดสินค้า</span>;
+      return <span className={`bg-yellow-100 text-yellow-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
     case OrderStatus.Shipping:
-      return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">กำลังจัดส่ง</span>;
+      return <span className={`bg-blue-100 text-blue-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
+    case OrderStatus.PreApproved:
+      return <span className={`bg-orange-100 text-orange-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
     case OrderStatus.Delivered:
-      return <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">จัดส่งแล้ว</span>;
+      return <span className={`bg-green-100 text-green-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
     case OrderStatus.Returned:
-      return <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">คืนสินค้า</span>;
+      return <span className={`bg-red-100 text-red-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
     case OrderStatus.Cancelled:
-      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full">ยกเลิก</span>;
+      return <span className={`bg-gray-200 text-gray-700 ${STATUS_CHIP_BASE}`}>{label}</span>;
     default:
-      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full">รอการดำเนินการ</span>;
+      return <span className={`bg-gray-100 text-gray-800 ${STATUS_CHIP_BASE}`}>{label}</span>;
   }
 };
+
 
 export const getPaymentMethodChip = (method: PaymentMethod) => {
   switch (method) {
@@ -44,48 +74,73 @@ export const getPaymentMethodChip = (method: PaymentMethod) => {
   }
 };
 
-export const getPaymentStatusChip = (status: PaymentStatus, _method: PaymentMethod) => {
-  if (!status) return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
+export const getPaymentStatusChip = (status: PaymentStatus, _method: PaymentMethod, amountPaid?: number, totalAmount?: number) => {
+  if (!status) return <span className={`bg-gray-100 text-gray-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>-</span>;
+
+  // Check for Overpaid
+  if (amountPaid !== undefined && totalAmount !== undefined && amountPaid > totalAmount) {
+    return <span className={`bg-purple-100 text-purple-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>ชำระเกิน</span>;
+  }
+
   switch (status) {
     case PaymentStatus.Paid:
-      return <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ชำระแล้ว</span>;
+      return <span className={`bg-green-100 text-green-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>ชำระแล้ว</span>;
+    case PaymentStatus.Approved:
+      return <span className={`bg-emerald-100 text-emerald-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>อนุมัติแล้ว</span>;
+    case PaymentStatus.PreApproved:
+      return <span className={`bg-orange-100 text-orange-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>รอตรวจสอบ</span>;
+    case PaymentStatus.Verified:
+      return <span className={`bg-blue-100 text-blue-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>ตรวจสอบแล้ว</span>;
     case PaymentStatus.PendingVerification:
-      return <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">รอตรวจสอบ</span>;
+      return <span className={`bg-yellow-100 text-yellow-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>รอแจ้งโอน</span>;
     case PaymentStatus.Unpaid:
-      return <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ยังไม่ชำระ</span>;
+      return <span className={`bg-red-100 text-red-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>ยังไม่ชำระ</span>;
     default:
-      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
+      return <span className={`bg-gray-100 text-gray-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>-</span>;
   }
 };
 
+
 const OrderStatusPipeline: React.FC<{ status: OrderStatus }> = ({ status }) => {
-  const steps: { status: OrderStatus; label: string }[] = [
-    { status: OrderStatus.Pending, label: 'รอการดำเนินการ' },
-    { status: OrderStatus.Picking, label: 'กำลังจัดสินค้า' },
-    { status: OrderStatus.Shipping, label: 'กำลังจัดส่ง' },
-    { status: OrderStatus.Delivered, label: 'จัดส่งแล้ว' },
-  ];
-  const idx = steps.findIndex((s) => s.status === status);
-  if (idx === -1) return getStatusChip(status);
-  const stepsLeft = steps.length - 1 - idx;
-  return (
-    <div className="min-w-[200px]">
-      <div className="flex items-center">
-        {steps.map((s, i) => (
-          <React.Fragment key={s.status}>
-            <div className={`w-4 h-4 rounded-full ${i <= idx ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-            {i < steps.length - 1 && (
-              <div className={`h-1 flex-1 mx-1 ${i < idx ? 'bg-green-400' : 'bg-gray-200'}`}></div>
-            )}
-          </React.Fragment>
-        ))}
+  const idx = ORDER_STATUS_FLOW.findIndex((s) => s === status);
+  if (idx === -1) {
+    return (
+      <div className="min-w-[200px]">
+        {getStatusChip(status)}
+        <div className="text-xs text-gray-500 mt-1">{ORDER_STATUS_LABELS[status] ?? status}</div>
       </div>
-      {stepsLeft > 0 && idx !== -1 && (
-        <div className="text-xs text-gray-500 mt-1">(เหลือ {stepsLeft} ขั้นตอน)</div>
-      )}
+    );
+  }
+  return (
+    <div className="min-w-[220px]">
+      <div className="flex items-center">
+        {ORDER_STATUS_FLOW.map((step, i) => {
+          const isCompleted = i < idx;
+          const isCurrent = i === idx;
+          return (
+            <React.Fragment key={step}>
+              <div
+                className={`w-4 h-4 rounded-full border ${isCurrent
+                  ? 'bg-blue-600 border-blue-600'
+                  : isCompleted
+                    ? 'bg-blue-300 border-blue-300'
+                    : 'bg-white border-gray-300'
+                  }`}
+              ></div>
+              {i < ORDER_STATUS_FLOW.length - 1 && (
+                <div className={`h-1 flex-1 mx-1 ${i < idx ? 'bg-blue-400' : 'bg-gray-200'}`}></div>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div className="text-xs text-gray-600 mt-1 font-medium">
+        {ORDER_STATUS_LABELS[status] ?? status}
+      </div>
     </div>
   );
 };
+
 
 const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, user, users, onCancelOrder, selectable, selectedIds, onSelectionChange }) => {
   const handleSelectAll = () => {
@@ -132,7 +187,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
             {orders.map((order) => {
               const customer = customers.find((c) => c.id === order.customerId);
               const seller = users?.find((u) => u.id === order.creatorId);
-              const paid = (order.amountPaid ?? (order as any).codAmount ?? 0) as number;
+              const paid = (order.amountPaid ?? 0) as number;
               const diff = order.totalAmount - paid;
               const paidText = `฿${(paid || 0).toLocaleString()}`;
               return (
@@ -162,7 +217,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                   <td className="px-6 py-4">{new Date(order.deliveryDate).toLocaleDateString('th-TH')}</td>
                   <td className="px-6 py-4 font-semibold">฿{order.totalAmount.toLocaleString()}</td>
                   <td className="px-6 py-4">{getPaymentMethodChip(order.paymentMethod)}</td>
-                  <td className="px-6 py-4">{getPaymentStatusChip(order.paymentStatus, order.paymentMethod)}</td>
+                  <td className="px-6 py-4">{getPaymentStatusChip(order.paymentStatus, order.paymentMethod, order.amountPaid, order.totalAmount)}</td>
                   <td className="px-6 py-4 font-medium min-w-[170px] paid-break">
                     {paid === 0 ? (
                       <span className="text-gray-500">{paidText}</span>

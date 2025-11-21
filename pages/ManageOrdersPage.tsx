@@ -138,6 +138,30 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setSelectedIds([]);
   }, [activeTab]);
 
+  const hasTrackingNumbers = (order: Order) =>
+    Array.isArray(order.trackingNumbers) && order.trackingNumbers.some((tn) => (tn || '').trim().length > 0);
+
+  const qualifiesForAccountReview = (order: Order) => {
+    if (order.paymentStatus === PaymentStatus.PreApproved) {
+      return true;
+    }
+    if (!hasTrackingNumbers(order)) {
+      return false;
+    }
+    if (order.paymentStatus === PaymentStatus.Approved || order.paymentStatus === PaymentStatus.Paid) {
+      return false;
+    }
+    switch (order.paymentMethod) {
+      case PaymentMethod.COD:
+        return (order.amountPaid ?? 0) > 0;
+      case PaymentMethod.Transfer:
+      case PaymentMethod.PayAfter:
+        return order.paymentStatus === PaymentStatus.Verified;
+      default:
+        return false;
+    }
+  };
+
   const pendingOrders = useMemo(
     () =>
       orders.filter((o) => {
@@ -165,10 +189,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   );
 
   // รอตรวจสอบจากบัญชี: PreApproved (COD หลังใส่ยอด, PayAfter หลัง upload รูป, Transfer หลัง tracking 1 วัน)
-  const awaitingAccountCheckOrders = useMemo(() => 
-    orders.filter(o => 
-      o.paymentStatus === PaymentStatus.PreApproved
-    ), [orders]
+  const awaitingAccountCheckOrders = useMemo(
+    () => orders.filter((o) => qualifiesForAccountReview(o)),
+    [orders],
   );
 
   // เสร็จสิ้น: Approved หรือ Paid
@@ -452,8 +475,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const fromApiOrderStatus = (s: any): OrderStatus => {
     switch (String(s)) {
       case 'Pending': return OrderStatus.Pending as any;
+      case 'AwaitingVerification': return OrderStatus.AwaitingVerification as any;
+      case 'Confirmed': return OrderStatus.Confirmed as any;
+      case 'Preparing': return OrderStatus.Preparing as any;
       case 'Picking': return OrderStatus.Picking as any;
       case 'Shipping': return OrderStatus.Shipping as any;
+      case 'PreApproved': return OrderStatus.PreApproved as any;
       case 'Delivered': return OrderStatus.Delivered as any;
       case 'Returned': return OrderStatus.Returned as any;
       case 'Cancelled': return OrderStatus.Cancelled as any;
@@ -464,6 +491,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     switch (String(s)) {
       case 'Unpaid': return PaymentStatus.Unpaid as any;
       case 'PendingVerification': return PaymentStatus.PendingVerification as any;
+      case 'Verified': return PaymentStatus.Verified as any;
+      case 'PreApproved': return PaymentStatus.PreApproved as any;
+      case 'Approved': return PaymentStatus.Approved as any;
       case 'Paid': return PaymentStatus.Paid as any;
       default: return PaymentStatus.Unpaid as any;
     }

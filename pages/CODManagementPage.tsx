@@ -1,13 +1,38 @@
-import React, { useState, useMemo } from "react";
-import { User, Order, PaymentMethod, PaymentStatus } from "../types";
-import { Upload, FileText, CheckCircle, XCircle, Search, Download, UploadCloud, Plus, Trash2, AlertTriangle } from "lucide-react";
-import { patchOrder } from "../services/api";
+﻿import React, { useState, useMemo } from "react";
+import {
+  User,
+  Order,
+  PaymentMethod,
+  PaymentStatus,
+} from "../types";
+import {
+  Upload,
+  FileText,
+  CheckCircle,
+  XCircle,
+  Search,
+  Download,
+  UploadCloud,
+  Plus,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
+import { patchOrder, apiFetch } from "../services/api";
 
 interface CODManagementPageProps {
   user: User;
   orders: Order[];
   customers: any[];
   users: User[];
+  onOrdersPaidUpdate?: (
+    updates: Record<
+      string,
+      {
+        amountPaid: number;
+        paymentStatus: PaymentStatus;
+      }
+    >,
+  ) => void;
 }
 
 interface CODRecord {
@@ -46,11 +71,29 @@ const createEmptyRow = (id: number): RowData => ({
   message: '',
 });
 
+const normalizeTrackingNumber = (value: string) =>
+  value.replace(/\s+/g, "").toLowerCase();
+
+const formatCurrency = (amount: number) =>
+  `฿${amount.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const getBaseOrderId = (orderId?: string) => {
+  if (!orderId) {
+    return undefined;
+  }
+  const match = orderId.match(/^(.+)-(\d+)$/);
+  return match ? match[1] : orderId;
+};
+
 const CODManagementPage: React.FC<CODManagementPageProps> = ({
   user,
   orders,
   customers,
   users,
+  onOrdersPaidUpdate,
 }) => {
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
   const [isVerified, setIsVerified] = useState(false);
@@ -73,83 +116,83 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     e.preventDefault();
     const pasteData = e.clipboardData.getData('text');
     const pastedRows = pasteData.split('\n').filter(r => r.trim() !== '');
-    
+
     if (pastedRows.length === 0) return;
 
     const target = e.target as HTMLInputElement;
     const rowIndex = parseInt(target.dataset.index || '0', 10);
-    
+
     const newRows = [...rows];
     pastedRows.forEach((pastedRow, i) => {
-        const [trackingNumber, codAmount] = pastedRow.split(/[\t,]/); // Split by tab or comma
-        const currentRowIndex = rowIndex + i;
-        if (currentRowIndex < newRows.length) {
-            newRows[currentRowIndex] = {
-                ...newRows[currentRowIndex],
-                trackingNumber: trackingNumber?.trim() || '',
-                codAmount: codAmount?.trim() || '',
-                status: 'unchecked',
-                message: ''
-            };
-        } else {
-            newRows.push({
-                ...createEmptyRow(newRows.length + 1),
-                trackingNumber: trackingNumber?.trim() || '',
-                codAmount: codAmount?.trim() || '',
-            });
-        }
+      const [trackingNumber, codAmount] = pastedRow.split(/[\t,]/); // Split by tab or comma
+      const currentRowIndex = rowIndex + i;
+      if (currentRowIndex < newRows.length) {
+        newRows[currentRowIndex] = {
+          ...newRows[currentRowIndex],
+          trackingNumber: trackingNumber?.trim() || '',
+          codAmount: codAmount?.trim() || '',
+          status: 'unchecked',
+          message: ''
+        };
+      } else {
+        newRows.push({
+          ...createEmptyRow(newRows.length + 1),
+          trackingNumber: trackingNumber?.trim() || '',
+          codAmount: codAmount?.trim() || '',
+        });
+      }
     });
 
     setRows(newRows);
     setIsVerified(false);
   };
-  
+
   const addRow = () => {
     setRows([...rows, createEmptyRow(rows.length + 1)]);
   };
-  
+
   const removeRow = (index: number) => {
-      setRows(rows.filter((_, i) => i !== index).map((row, i) => ({ ...row, id: i + 1 })));
+    setRows(rows.filter((_, i) => i !== index).map((row, i) => ({ ...row, id: i + 1 })));
   };
 
   const handleValidate = () => {
     const validatedRows = rows.map(row => {
-        if (!row.trackingNumber.trim() && !row.codAmount.trim()) {
-            return { ...row, status: 'unchecked' as ValidationStatus, message: '' };
-        }
-        if (!row.trackingNumber.trim() || !row.codAmount.trim()) {
-            return { ...row, status: 'pending' as ValidationStatus, message: 'ข้อมูลไม่ครบถ้วน' };
-        }
-        
-        const codAmount = parseFloat(row.codAmount.replace(/[^\d.-]/g, ''));
-        if (isNaN(codAmount) || codAmount <= 0) {
-            return { ...row, status: 'pending' as ValidationStatus, message: 'ยอดเงินไม่ถูกต้อง' };
-        }
+      if (!row.trackingNumber.trim() && !row.codAmount.trim()) {
+        return { ...row, status: 'unchecked' as ValidationStatus, message: '' };
+      }
+      if (!row.trackingNumber.trim() || !row.codAmount.trim()) {
+        return { ...row, status: 'pending' as ValidationStatus, message: 'ข้อมูลไม่ครบถ้วน' };
+      }
 
-        // Find order by tracking number
-        const matchedOrder = orders.find(
-          (order) =>
-            order.paymentMethod === PaymentMethod.COD &&
-            order.trackingNumbers?.some((tn) =>
-              tn.toLowerCase().includes(row.trackingNumber.toLowerCase())
-            )
-        );
+      const codAmount = parseFloat(row.codAmount.replace(/[^\d.-]/g, ''));
+      if (isNaN(codAmount) || codAmount <= 0) {
+        return { ...row, status: 'pending' as ValidationStatus, message: 'ยอดเงินไม่ถูกต้อง' };
+      }
 
-        if (matchedOrder) {
-          const orderCodAmount = matchedOrder.codAmount || matchedOrder.totalAmount;
-          const difference = codAmount - orderCodAmount;
-          return {
-            ...row,
-            codAmount: row.codAmount,
-            orderId: matchedOrder.id,
-            orderAmount: orderCodAmount,
-            difference: difference,
-            status: difference === 0 ? 'matched' as ValidationStatus : 'unmatched' as ValidationStatus,
-            message: difference === 0 ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
-          };
-        }
+      // Find order by tracking number
+      const matchedOrder = orders.find(
+        (order) =>
+          order.paymentMethod === PaymentMethod.COD &&
+          order.trackingNumbers?.some((tn) =>
+            tn.toLowerCase().includes(row.trackingNumber.toLowerCase())
+          )
+      );
 
-        return { ...row, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบออเดอร์' };
+      if (matchedOrder) {
+        const orderCodAmount = matchedOrder.codAmount || matchedOrder.totalAmount;
+        const difference = codAmount - orderCodAmount;
+        return {
+          ...row,
+          codAmount: row.codAmount,
+          orderId: matchedOrder.id,
+          orderAmount: orderCodAmount,
+          difference: difference,
+          status: difference === 0 ? 'matched' as ValidationStatus : 'unmatched' as ValidationStatus,
+          message: difference === 0 ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
+        };
+      }
+
+      return { ...row, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบออเดอร์' };
     });
     setRows(validatedRows);
     setIsVerified(true);
@@ -172,7 +215,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       // Skip header if exists
       const dataLines = lines.slice(1);
       const newRows: RowData[] = [];
-      
+
       dataLines.forEach((line, i) => {
         const [trackingNumber, codAmount] = line.split(/[\t,]/).map(c => c.trim().replace(/^"|"$/g, ""));
         if (trackingNumber && codAmount) {
@@ -259,15 +302,202 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     }
   };
 
-  const handleImport = () => {
-    const validRows = rows.filter(row => row.status === 'matched' || row.status === 'unmatched');
-    if (validRows.length > 0) {
-      alert(`มีข้อมูลที่พร้อมใช้งาน ${validRows.length} รายการ`);
-      // Reset rows after import
+
+  const handleImport = async () => {
+    const readyRows = rows.filter(
+      (row) => row.status === "matched" || row.status === "unmatched",
+    );
+    if (readyRows.length === 0) {
+      alert("ไม่มีรายการที่พร้อมสำหรับนำเข้า");
+      return;
+    }
+
+    const uniqueRowsByTracking = new Map<string, RowData>();
+    const duplicateRowsInUpload: string[] = [];
+    readyRows.forEach((row) => {
+      const normalized = normalizeTrackingNumber(row.trackingNumber);
+      if (!normalized) return;
+      if (uniqueRowsByTracking.has(normalized)) {
+        duplicateRowsInUpload.push(row.trackingNumber.trim());
+        return;
+      }
+      uniqueRowsByTracking.set(normalized, row);
+    });
+
+    if (uniqueRowsByTracking.size === 0) {
+      alert("ไม่พบข้อมูล COD ที่พร้อมบันทึก");
+      return;
+    }
+
+    if (!user?.companyId) {
+      alert("ไม่พบข้อมูลบริษัทสำหรับตรวจสอบรายการ COD");
+      return;
+    }
+
+    const normalizedTrackingList = Array.from(uniqueRowsByTracking.keys());
+    const existingTrackingNumbers = new Set<string>();
+
+    try {
+      await Promise.all(
+        normalizedTrackingList.map(async (normalizedTracking) => {
+          const qs = new URLSearchParams({
+            companyId: String(user.companyId),
+            trackingNumber: normalizedTracking,
+          });
+          const existingRecords = await apiFetch(`cod_records?${qs.toString()}`);
+          if (
+            Array.isArray(existingRecords) &&
+            existingRecords.some(
+              (record: any) =>
+                normalizeTrackingNumber(record?.tracking_number || "") === normalizedTracking,
+            )
+          ) {
+            existingTrackingNumbers.add(normalizedTracking);
+          }
+        }),
+      );
+    } catch (error) {
+      console.error("COD duplicate lookup failed", error);
+      alert("ไม่สามารถตรวจสอบรายการ COD ซ้ำได้ กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
+    const rowsToImport = normalizedTrackingList
+      .filter((normalized) => !existingTrackingNumbers.has(normalized))
+      .map((normalized) => uniqueRowsByTracking.get(normalized)!)
+      .filter(Boolean);
+
+    // Filter out orders that are already paid to prevent duplicates
+    const finalRowsToImport = rowsToImport.filter(row => {
+      if (!row.orderId) return true;
+      const baseId = getBaseOrderId(row.orderId);
+      const order = orders.find(o => o.id === baseId);
+      if (order && (order.amountPaid || 0) > 0) {
+        console.warn(`Skipping order ${order.id} because it already has amountPaid: ${order.amountPaid}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (finalRowsToImport.length === 0) {
+      alert("ไม่มีรายการใหม่ให้บันทึก (tracking ทั้งหมดถูกนำเข้าแล้ว หรือออเดอร์มีการชำระเงินแล้ว)");
+      return;
+    }
+
+    const skipMessages: string[] = [];
+    if (duplicateRowsInUpload.length > 0) {
+      skipMessages.push(`${duplicateRowsInUpload.length} ซ้ำในไฟล์ที่นำเข้า`);
+    }
+    if (existingTrackingNumbers.size > 0) {
+      skipMessages.push(`${existingTrackingNumbers.size} อยู่ในระบบแล้ว`);
+    }
+    if (rowsToImport.length > finalRowsToImport.length) {
+      skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} ออเดอร์มีการชำระเงินแล้ว`);
+    }
+
+    const confirmMessage = [
+      `คุณต้องการบันทึกข้อมูล COD จำนวน ${finalRowsToImport.length} รายการหรือไม่?`,
+      skipMessages.length > 0 ? `ระบบจะข้าม ${skipMessages.join(" / ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    const payloadRows = finalRowsToImport.map((row) => ({
+      row,
+      codAmount: parseFloat(row.codAmount.replace(/[^\d.-]/g, "")) || 0,
+      orderAmount: row.orderAmount ?? 0,
+    }));
+
+    try {
+      await Promise.all(
+        payloadRows.map(({ row, codAmount, orderAmount }) =>
+          apiFetch("cod_records", {
+            method: "POST",
+            body: JSON.stringify({
+              tracking_number: row.trackingNumber.trim(),
+              cod_amount: codAmount,
+              received_amount: orderAmount,
+              delivery_start_date: null,
+              delivery_end_date: null,
+              company_id: user.companyId,
+              created_by: user.id,
+            }),
+          }),
+        ),
+      );
+
+      const totalsByOrder = new Map<
+        string,
+        { totalPaid: number; totalExpected: number }
+      >();
+
+      payloadRows.forEach(({ row, codAmount, orderAmount }) => {
+        const baseId = getBaseOrderId(row.orderId);
+        if (!baseId) return;
+        const agg =
+          totalsByOrder.get(baseId) ?? { totalPaid: 0, totalExpected: 0 };
+        agg.totalPaid += codAmount;
+        agg.totalExpected += orderAmount;
+        totalsByOrder.set(baseId, agg);
+      });
+
+      const orderUpdates: Record<
+        string,
+        { amountPaid: number; paymentStatus: PaymentStatus }
+      > = {};
+
+      if (totalsByOrder.size > 0) {
+        await Promise.all(
+          Array.from(totalsByOrder.entries()).map(([orderId, totals]) => {
+            const roundedPaid = Math.round(totals.totalPaid * 100) / 100;
+            const roundedExpected =
+              Math.round((totals.totalExpected || 0) * 100) / 100;
+            const nextStatus =
+              roundedPaid > 0
+                ? PaymentStatus.PreApproved
+                : PaymentStatus.PendingVerification;
+
+            const updatePayload: any = {
+              amountPaid: roundedPaid,
+              paymentStatus: nextStatus,
+            };
+
+            // Update OrderStatus to PreApproved if PaymentStatus is PreApproved
+            if (nextStatus === PaymentStatus.PreApproved) {
+              updatePayload.orderStatus = 'PreApproved'; // Using string literal to avoid import issues if OrderStatus not imported
+            }
+
+            orderUpdates[orderId] = {
+              amountPaid: roundedPaid,
+              paymentStatus: nextStatus,
+            };
+            return patchOrder(orderId, updatePayload);
+          }),
+        );
+        if (Object.keys(orderUpdates).length > 0) {
+          onOrdersPaidUpdate?.(orderUpdates);
+        }
+      }
+
+      const summaryLines = Array.from(totalsByOrder.entries()).map(
+        ([orderId, totals]) =>
+          `${orderId}: รับแล้ว ${formatCurrency(totals.totalPaid)} / ${formatCurrency(
+            totals.totalExpected,
+          )}`,
+      );
+      const successMessage = summaryLines.length
+        ? `COD import completed ${rowsToImport.length} รายการ\n${summaryLines.join("\n")}`
+        : `COD import completed ${rowsToImport.length} รายการ`;
+      alert(successMessage);
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
-    } else {
-      alert('ไม่มีข้อมูลที่พร้อมสำหรับใช้งาน');
+    } catch (error) {
+      console.error("COD import failed", error);
+      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล COD กรุณาลองใหม่อีกครั้ง");
     }
   };
 
@@ -298,24 +528,24 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   // Statistics
   const { validCount, unmatchedCount, pendingCount, returnedCount } = useMemo(() => {
     return rows.reduce((acc, r) => {
-        if (r.status === 'matched') acc.validCount++;
-        if (r.status === 'unmatched') acc.unmatchedCount++;
-        if (r.status === 'pending') acc.pendingCount++;
-        if (r.status === 'returned') acc.returnedCount++;
-        return acc;
+      if (r.status === 'matched') acc.validCount++;
+      if (r.status === 'unmatched') acc.unmatchedCount++;
+      if (r.status === 'pending') acc.pendingCount++;
+      if (r.status === 'returned') acc.returnedCount++;
+      return acc;
     }, { validCount: 0, unmatchedCount: 0, pendingCount: 0, returnedCount: 0 });
   }, [rows]);
 
   const getStatusIndicator = (status: ValidationStatus, message: string) => {
     switch (status) {
       case 'matched':
-        return <div className="flex items-center text-green-600"><CheckCircle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-green-600"><CheckCircle size={14} className="mr-1.5" /> {message}</div>;
       case 'unmatched':
-        return <div className="flex items-center text-yellow-600"><AlertTriangle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-yellow-600"><AlertTriangle size={14} className="mr-1.5" /> {message}</div>;
       case 'returned':
-        return <div className="flex items-center text-red-600"><XCircle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-red-600"><XCircle size={14} className="mr-1.5" /> {message}</div>;
       case 'pending':
-        return <div className="flex items-center text-orange-600"><AlertTriangle size={14} className="mr-1.5"/> {message}</div>;
+        return <div className="flex items-center text-orange-600"><AlertTriangle size={14} className="mr-1.5" /> {message}</div>;
       default:
         return <span className="text-gray-400">-</span>;
     }
@@ -325,38 +555,38 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-2">จัดการ COD</h2>
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Tracking Number, COD Amount) แล้ววางลงในตารางด้านล่าง</p>
-      
+
       <div className="bg-white p-4 rounded-lg shadow mb-4">
         <div className="flex justify-between items-center">
-            {isVerified ? (
-                 <div className="flex items-center space-x-4 text-sm">
-                    <span className="flex items-center text-green-600 font-medium"><CheckCircle size={16} className="mr-2"/>ตรงกัน: {validCount}</span>
-                    <span className="flex items-center text-yellow-600"><AlertTriangle size={16} className="mr-2"/>ไม่ตรงกัน: {unmatchedCount}</span>
-                    <span className="flex items-center text-orange-600"><AlertTriangle size={16} className="mr-2"/>รอตรวจสอบ: {pendingCount}</span>
-                    <span className="flex items-center text-red-600"><XCircle size={16} className="mr-2"/>ตีกลับ: {returnedCount}</span>
-                </div>
-            ) : (
-                <p className="text-sm text-gray-500">วางข้อมูลแล้วกด "ตรวจสอบข้อมูล" เพื่อดำเนินการต่อ</p>
-            )}
-            <div className="flex items-center space-x-2">
-                <label className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50">
-                    <Upload size={16} />
-                    <span>อัปโหลดไฟล์</span>
-                  </div>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-                <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
-                <button onClick={handleImport} disabled={!isVerified || validCount + unmatchedCount === 0} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
-                    <UploadCloud size={16} className="mr-2"/>
-                    ยืนยันการนำเข้า ({validCount + unmatchedCount})
-                </button>
+          {isVerified ? (
+            <div className="flex items-center space-x-4 text-sm">
+              <span className="flex items-center text-green-600 font-medium"><CheckCircle size={16} className="mr-2" />ตรงกัน: {validCount}</span>
+              <span className="flex items-center text-yellow-600"><AlertTriangle size={16} className="mr-2" />ไม่ตรงกัน: {unmatchedCount}</span>
+              <span className="flex items-center text-orange-600"><AlertTriangle size={16} className="mr-2" />รอตรวจสอบ: {pendingCount}</span>
+              <span className="flex items-center text-red-600"><XCircle size={16} className="mr-2" />ตีกลับ: {returnedCount}</span>
             </div>
+          ) : (
+            <p className="text-sm text-gray-500">วางข้อมูลแล้วกด "ตรวจสอบข้อมูล" เพื่อดำเนินการต่อ</p>
+          )}
+          <div className="flex items-center space-x-2">
+            <label className="cursor-pointer">
+              <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50">
+                <Upload size={16} />
+                <span>อัปโหลดไฟล์</span>
+              </div>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+            <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
+            <button onClick={handleImport} disabled={!isVerified || validCount + unmatchedCount === 0} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
+              <UploadCloud size={16} className="mr-2" />
+              ยืนยันการนำเข้า ({validCount + unmatchedCount})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -390,7 +620,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                   />
                 </td>
                 <td className="px-6 py-1">
-                   <input
+                  <input
                     type="text"
                     data-index={index}
                     value={row.codAmount}
@@ -424,21 +654,21 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                   )}
                 </td>
                 <td className="px-6 py-1 text-xs font-medium">
-                    {getStatusIndicator(row.status, row.message)}
+                  {getStatusIndicator(row.status, row.message)}
                 </td>
                 <td className="px-2 py-1 text-center">
-                    <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
-                        <Trash2 size={14}/>
-                    </button>
+                  <button onClick={() => removeRow(index)} className="text-gray-400 hover:text-red-500 p-1">
+                    <Trash2 size={14} />
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         <div className="p-2">
-            <button onClick={addRow} className="w-full text-sm flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-1.5 rounded-md">
-                <Plus size={16} className="mr-1"/> เพิ่มแถว
-            </button>
+          <button onClick={addRow} className="w-full text-sm flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-1.5 rounded-md">
+            <Plus size={16} className="mr-1" /> เพิ่มแถว
+          </button>
         </div>
       </div>
 
@@ -506,4 +736,3 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 };
 
 export default CODManagementPage;
-
