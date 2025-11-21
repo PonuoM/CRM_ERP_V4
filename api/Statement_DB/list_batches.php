@@ -28,18 +28,60 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
   );
 
-  $stmt = $pdo->query(
-    "SELECT 
+  // Prefer new transfer_at column; fall back to entry_at or entry_date/entry_time if needed
+  $hasTransferAt = false;
+  $hasEntryAt = false;
+
+  $colStmt = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'transfer_at'");
+  if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
+    $hasTransferAt = true;
+  } else {
+    $colStmt = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'entry_at'");
+    if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
+      $hasEntryAt = true;
+    }
+  }
+
+  if ($hasTransferAt) {
+    $stmt = $pdo->query(
+      "SELECT 
+        batch,
+        COUNT(*) AS row_count,
+        MIN(transfer_at) AS transfer_from,
+        MAX(transfer_at) AS transfer_to,
+        MIN(created_at) AS first_at,
+        MAX(created_at) AS last_at
+       FROM statement_logs
+       GROUP BY batch
+       ORDER BY batch DESC"
+    );
+  } elseif ($hasEntryAt) {
+    $stmt = $pdo->query(
+      "SELECT 
+        batch,
+        COUNT(*) AS row_count,
+        MIN(entry_at) AS transfer_from,
+        MAX(entry_at) AS transfer_to,
+        MIN(created_at) AS first_at,
+        MAX(created_at) AS last_at
+       FROM statement_logs
+       GROUP BY batch
+       ORDER BY batch DESC"
+    );
+  } else {
+    $stmt = $pdo->query(
+      "SELECT 
         batch,
         COUNT(*) AS row_count,
         MIN(CONCAT(entry_date, ' ', entry_time)) AS transfer_from,
         MAX(CONCAT(entry_date, ' ', entry_time)) AS transfer_to,
         MIN(created_at) AS first_at,
         MAX(created_at) AS last_at
-     FROM statement_logs
-     GROUP BY batch
-     ORDER BY batch DESC"
-  );
+       FROM statement_logs
+       GROUP BY batch
+       ORDER BY batch DESC"
+    );
+  }
 
   $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
