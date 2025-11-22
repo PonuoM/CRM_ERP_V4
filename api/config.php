@@ -31,7 +31,10 @@ function db_connect(): PDO
       PDO::ATTR_TIMEOUT => 3,
     ];
     try {
-      return new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      // Set MySQL session timezone to Asia/Bangkok (UTC+7)
+      $pdo->exec("SET time_zone = '+07:00'");
+      return $pdo;
     } catch (Throwable $e) {
       $lastError = $e;
       // If it's a connection refused/2002 error, try next host; otherwise break

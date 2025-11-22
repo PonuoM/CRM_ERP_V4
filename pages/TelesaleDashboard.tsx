@@ -77,7 +77,11 @@ const FilterDropdown: React.FC<{ title: string; options: {id: string | number, n
 
 const formatThaiDateTime = (date: Date | undefined | null) => {
     if (!date || Number.isNaN(date.getTime())) return '';
-    return date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+    return date.toLocaleString('th-TH', { 
+        timeZone: 'Asia/Bangkok',
+        dateStyle: 'medium', 
+        timeStyle: 'short' 
+    });
 };
 
 // Helper function to calculate days until expiration
@@ -90,17 +94,32 @@ const getDaysUntilExpiration = (expireDate: string) => {
 
 // Helper function to check if a customer has any activity
 const hasActivity = (customer: Customer, activities: Activity[]) => {
-    return activities.some(activity => activity.customerId === customer.id);
+    return activities.some(activity => {
+      // Match by string comparison (customer.id is string, activity.customerId may be string or number)
+      return String(activity.customerId) === String(customer.id) || 
+             String(activity.customerId) === String(customer.pk);
+    });
 };
 
 // Helper function to check if customer is in Do dashboard
 const isInDoDashboard = (customer: Customer, appointments: Appointment[] = [], activities: Activity[] = [], now: Date) => {
     // Check for upcoming follow-ups (due within 2 days)
-    const upcomingAppointments = appointments.filter(appt => 
-        appt.customerId === customer.id && 
-        appt.status !== 'เสร็จสิ้น' &&
-        new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
-    );
+    const upcomingAppointments = appointments.filter(appt => {
+      // Match by string comparison (customer.id is string, appt.customerId may be string or number)
+      const matches = String(appt.customerId) === String(customer.id) || 
+                      String(appt.customerId) === String(customer.pk);
+      return matches && 
+             appt.status !== 'เสร็จสิ้น' &&
+             new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+    });
+    
+    if (upcomingAppointments.length > 0) return true;
+    
+    // Check for expiring ownership (within 5 days)
+    if (customer.ownershipExpires) {
+        const daysUntilExpiry = getDaysUntilExpiration(customer.ownershipExpires);
+        if (daysUntilExpiry <= 5 && daysUntilExpiry >= 0) return true;
+    }
     
     if (upcomingAppointments.length > 0) return true;
     
@@ -130,11 +149,14 @@ const isInDoDashboard = (customer: Customer, appointments: Appointment[] = [], a
 // Helper function to get reason why customer is in Do dashboard
 const getDoReason = (customer: Customer, appointments: Appointment[] = [], activities: Activity[] = [], now: Date): string => {
     // Check for upcoming follow-ups (due within 2 days)
-    const upcomingAppointments = appointments.filter(appt => 
-        appt.customerId === customer.id && 
-        appt.status !== 'เสร็จสิ้น' &&
-        new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
-    );
+    const upcomingAppointments = appointments.filter(appt => {
+      // Match by string comparison (customer.id is string, appt.customerId may be string or number)
+      const matches = String(appt.customerId) === String(customer.id) || 
+                      String(appt.customerId) === String(customer.pk);
+      return matches && 
+             appt.status !== 'เสร็จสิ้น' &&
+             new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+    });
     
     if (upcomingAppointments.length > 0) {
         const nextAppointment = upcomingAppointments[0];
@@ -293,7 +315,34 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     cutoff.setDate(cutoff.getDate() - ORDER_UPDATE_LOOKBACK_DAYS);
     const cutoffTime = cutoff.getTime();
 
-    const customerMap = new Map(userCustomers.map((c) => [c.id, c]));
+    // Create customerMap with both id and pk as keys for compatibility
+    // customer.id may be String(pk) or String(refId), so we need to support both
+    const customerMap = new Map<string, Customer>();
+    userCustomers.forEach((c) => {
+      // Store by id (which is resolvedId = String(pk) or String(refId))
+      customerMap.set(c.id, c);
+      // Also store by pk (customer_id from database) for direct lookup
+      if (c.pk) {
+        customerMap.set(String(c.pk), c);
+      }
+      // Also store by customerRefId if it exists
+      if (c.customerRefId) {
+        customerMap.set(c.customerRefId, c);
+      }
+    });
+    
+    // Debug: log customerMap keys for first few customers
+    if (userCustomers.length > 0 && userCustomers.length <= 5) {
+      console.debug('CustomerMap keys:', {
+        customerCount: userCustomers.length,
+        sampleCustomer: {
+          id: userCustomers[0].id,
+          pk: userCustomers[0].pk,
+          customerRefId: userCustomers[0].customerRefId,
+        },
+        mapKeys: Array.from(customerMap.keys()).slice(0, 10)
+      });
+    }
     const safeOrders = orders ?? [];
     const safeActivities = activities ?? [];
     const safeCalls = calls ?? [];
@@ -313,31 +362,62 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     };
 
     safeOrders.forEach((order) => {
-      const customer = customerMap.get(order.customerId);
-      if (!customer) return;
+      // Match customer by string comparison (order.customerId is customer_id from database)
+      const customerId = String(order.customerId);
+      const customer = customerMap.get(customerId);
+      if (!customer) {
+        // Debug: log if customer not found
+        if (customerMap.size > 0 && customerMap.size < 10) {
+          console.debug('Order customer not found:', {
+            orderId: order.id,
+            orderCustomerId: customerId,
+            orderCustomerIdType: typeof order.customerId,
+            availableCustomerIds: Array.from(customerMap.keys()).slice(0, 5),
+            customerIds: userCustomers.map(c => ({ id: c.id, pk: c.pk })).slice(0, 3)
+          });
+        }
+        return;
+      }
       if (!order.orderDate) return;
       if (order.creatorId === user.id || order.creatorId === customer.assignedTo) return;
       const orderDate = new Date(order.orderDate);
-      registerUpdate(order.customerId, orderDate);
+      registerUpdate(customer.id, orderDate);
     });
 
     safeActivities.forEach((activity) => {
       if (activity.type !== ActivityType.OrderCreated) return;
-      const customer = customerMap.get(activity.customerId);
-      if (!customer) return;
+      // Match customer by string comparison (activity.customerId is customer_id from database)
+      const customerId = String(activity.customerId);
+      const customer = customerMap.get(customerId);
+      if (!customer) {
+        // Debug: log if customer not found
+        if (customerMap.size > 0 && customerMap.size < 10) {
+          console.debug('Activity customer not found:', {
+            activityId: activity.id,
+            activityCustomerId: customerId,
+            activityCustomerIdType: typeof activity.customerId,
+            availableCustomerIds: Array.from(customerMap.keys()).slice(0, 5)
+          });
+        }
+        return;
+      }
       const actorName = activity.actorName?.trim().toLowerCase() ?? '';
       if (actorName && actorName === currentUserName) return;
       const activityDate = new Date(activity.timestamp);
-      registerUpdate(activity.customerId, activityDate);
+      registerUpdate(customer.id, activityDate);
     });
 
     safeCalls.forEach((call) => {
-      const update = latestByCustomer.get(call.customerId);
+      // Match customer by string comparison (call.customerId is customer_id from database)
+      const customerId = String(call.customerId);
+      const customer = customerMap.get(customerId);
+      if (!customer) return;
+      const update = latestByCustomer.get(customer.id);
       if (!update) return;
       const callDate = new Date(call.date);
       if (Number.isNaN(callDate.getTime())) return;
       if (callDate.getTime() >= update.getTime()) {
-        latestByCustomer.delete(call.customerId);
+        latestByCustomer.delete(customer.id);
       }
     });
 
@@ -398,7 +478,12 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     userCustomers.forEach((customer) => {
       // 1) Pending appointments (not completed)
       const hasPendingAppt = safeAppointments.some(
-        (appt) => appt.customerId === customer.id && appt.status !== 'เสร็จสิ้น',
+        (appt) => {
+          // Match by string comparison (customer.id is string, appt.customerId may be string or number)
+          const matches = String(appt.customerId) === String(customer.id) || 
+                          String(appt.customerId) === String(customer.pk);
+          return matches && appt.status !== 'เสร็จสิ้น';
+        },
       );
       if (hasPendingAppt) {
         counts.followUp++;
@@ -418,7 +503,12 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       // 3) New or Daily with no call since assigned
       const assignedAt = new Date(customer.dateAssigned).getTime();
       const hasCallSinceAssigned = safeCalls.some(
-        (ch) => ch.customerId === customer.id && new Date(ch.date).getTime() >= assignedAt,
+        (ch) => {
+          // Match by string comparison (customer.id is string, ch.customerId may be string or number)
+          const matches = String(ch.customerId) === String(customer.id) || 
+                          String(ch.customerId) === String(customer.pk);
+          return matches && new Date(ch.date).getTime() >= assignedAt;
+        },
       );
       if (!hasCallSinceAssigned) {
         if (customer.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution) {
@@ -451,13 +541,23 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         // - New or DailyDistribution customers with no call since assigned
         baseFiltered = userCustomers.filter((c) => {
           const hasPendingAppt = safeAppointments.some(
-            (appt) => appt.customerId === c.id && appt.status !== 'เสร็จสิ้น',
+            (appt) => {
+              // Match by string comparison (c.id is string, appt.customerId may be string or number)
+              const matches = String(appt.customerId) === String(c.id) || 
+                              String(appt.customerId) === String(c.pk);
+              return matches && appt.status !== 'เสร็จสิ้น';
+            },
           );
           if (hasPendingAppt) return true;
 
           const assignedAt = new Date(c.dateAssigned).getTime();
           const hasCallSinceAssigned = safeCalls.some(
-            (ch) => ch.customerId === c.id && new Date(ch.date).getTime() >= assignedAt,
+            (ch) => {
+              // Match by string comparison (c.id is string, ch.customerId may be string or number)
+              const matches = String(ch.customerId) === String(c.id) || 
+                              String(ch.customerId) === String(c.pk);
+              return matches && new Date(ch.date).getTime() >= assignedAt;
+            },
           );
           const isNewOrDaily =
             c.lifecycleStatus === CustomerLifecycleStatus.New ||
@@ -584,7 +684,10 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       filtered = filtered.filter(customer => {
         // Check if customer has any activity today
         const hasActivityToday = safeActivities.some(activity => {
-          if (activity.customerId !== customer.id) return false;
+          // Match by string comparison (customer.id is string, activity.customerId may be string or number)
+          const matches = String(activity.customerId) === String(customer.id) || 
+                          String(activity.customerId) === String(customer.pk);
+          if (!matches) return false;
           const activityDate = new Date(activity.timestamp);
           activityDate.setHours(0, 0, 0, 0);
           

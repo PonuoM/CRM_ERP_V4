@@ -4543,13 +4543,25 @@ const App: React.FC = () => {
           <CustomerDetailPage
             customer={viewingCustomer}
             orders={companyOrders.filter(
-              (o) => o.customerId === viewingCustomer.id,
+              (o) => {
+                // Match by string comparison (viewingCustomer.id is string, o.customerId may be string or number)
+                return String(o.customerId) === String(viewingCustomer.id) || 
+                       String(o.customerId) === String(viewingCustomer.pk);
+              },
             )}
             callHistory={callHistory.filter(
-              (c) => c.customerId === viewingCustomer.id,
+              (c) => {
+                // Match by string comparison (viewingCustomer.id is string, c.customerId may be string or number)
+                return String(c.customerId) === String(viewingCustomer.id) || 
+                       String(c.customerId) === String(viewingCustomer.pk);
+              },
             )}
             appointments={appointments.filter(
-              (a) => a.customerId === viewingCustomer.id,
+              (a) => {
+                // Match by string comparison (viewingCustomer.id is string, a.customerId may be string or number)
+                return String(a.customerId) === String(viewingCustomer.id) || 
+                       String(a.customerId) === String(viewingCustomer.pk);
+              },
             )}
             onClose={handleCloseCustomerDetail}
             openModal={openModal}

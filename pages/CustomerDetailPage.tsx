@@ -46,6 +46,7 @@ import {
   parseCustomerLogRow,
   summarizeCustomerLogChanges,
 } from "../utils/customerLogs";
+import { formatThaiDateTime, formatThaiDate } from "../utils/time";
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -545,7 +546,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     setActivityLogsLoading(true);
     setActivityLogsError(null);
 
-    listCustomerLogs(customer.id, { limit: 50 })
+    // Use customer.pk (customer_id) for customer_logs lookup, fallback to customer.id
+    const customerIdForLogs = customer.pk ? String(customer.pk) : customer.id;
+    listCustomerLogs(customerIdForLogs, { limit: 50 })
       .then((rows) => {
         if (cancelled) return;
         const normalized = Array.isArray(rows)
@@ -863,16 +866,14 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 label="วันที่ลงทะเบียน"
                 value={
                   customer.dateRegistered
-                    ? new Date(customer.dateRegistered).toLocaleString("th-TH")
+                    ? formatThaiDateTime(customer.dateRegistered)
                     : "-"
                 }
               />
               <InfoItem label="ติดตามถัดไป">
                 {upcomingFollowUps.length > 0 ? (
                   <span className="font-semibold text-red-600 px-2 py-1 bg-red-50 rounded-md">
-                    {new Date(upcomingFollowUps[0].date).toLocaleString(
-                      "th-TH",
-                    )}
+                    {formatThaiDateTime(upcomingFollowUps[0].date)}
                   </span>
                 ) : (
                   "-"
@@ -927,7 +928,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         {paginatedCallHistory.map((c) => (
                           <tr key={c.id} className="border-b last:border-0">
                             <td className="py-2 px-2">
-                              {new Date(c.date).toLocaleString("th-TH")}
+                              {formatThaiDateTime(c.date)}
                             </td>
                             <td className="py-2 px-2">{c.caller}</td>
                             <td className="py-2 px-2">
@@ -968,7 +969,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         {paginatedAppointments.map((a) => (
                           <tr key={a.id} className="border-b last:border-0">
                             <td className="py-2 px-2">
-                              {new Date(a.date).toLocaleString("th-TH")}
+                              {formatThaiDateTime(a.date)}
                             </td>
                             <td className="py-2 px-2">{a.title}</td>
                             <td className="py-2 px-2">
@@ -1045,9 +1046,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               <tr className="border-b last:border-0">
                                 <td className="py-2 px-2 font-mono">{o.id}</td>
                                 <td className="py-2 px-2">
-                                  {new Date(o.orderDate).toLocaleDateString(
-                                    "th-TH",
-                                  )}
+                                  {formatThaiDate(o.orderDate)}
                                 </td>
                                 <td className="py-2 px-2">{sellerName}</td>
                                 <td className="py-2 px-2 text-right">
@@ -1399,10 +1398,10 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                           <tr key={log.id} className="align-top">
                             <td className="px-3 py-3 whitespace-nowrap text-[11px] text-gray-500">
                               <div className="font-medium text-gray-700">
-                                {new Date(log.createdAt).toLocaleString(
-                                  "th-TH",
-                                  { dateStyle: "medium", timeStyle: "short" },
-                                )}
+                                {formatThaiDateTime(log.createdAt, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
                               </div>
                               <div>{getRelativeTime(log.createdAt)}</div>
                             </td>

@@ -42,9 +42,9 @@ const formatDate = (dateString: string) => {
   try {
     // Handle the format "2025-10-09 03:23:08" from the API
     const date = new Date(dateString);
-    // Add 7 hours to convert from UTC to Asia/Bangkok
-    date.setHours(date.getHours() + 7);
+    // Use timeZone: "Asia/Bangkok" instead of manually adding hours
     return date.toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
       dateStyle: "short",
       timeStyle: "medium",
     });
