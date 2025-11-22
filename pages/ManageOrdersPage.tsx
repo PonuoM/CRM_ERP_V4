@@ -595,8 +595,22 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       };
 
       const rows = selectedOrders.flatMap(order => {
-          const customer = customers.find(c => c.id === order.customerId);
-          const seller = users.find(u => u.id === order.creatorId);
+          // Match customer by pk (customer_id) or id (string)
+          const customer = customers.find(c => {
+            if (c.pk && typeof order.customerId === 'number') {
+              return c.pk === order.customerId;
+            }
+            return String(c.id) === String(order.customerId) || 
+                   String(c.pk) === String(order.customerId);
+          });
+          // Match seller by id (ensure type compatibility)
+          const seller = users.find(u => {
+            if (!order.creatorId) return false;
+            if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
+              return u.id === order.creatorId;
+            }
+            return String(u.id) === String(order.creatorId);
+          });
           const address =
             order.shippingAddress || {
               recipientFirstName: '',

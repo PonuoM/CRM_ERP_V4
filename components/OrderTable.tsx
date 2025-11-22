@@ -185,8 +185,41 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
           </thead>
           <tbody>
             {orders.map((order) => {
-              const customer = customers.find((c) => c.id === order.customerId);
-              const seller = users?.find((u) => u.id === order.creatorId);
+              // Match customer by pk (customer_id) or id (string)
+              const customer = customers.find((c) => {
+                // Try matching by pk (number) first, then by id (string)
+                if (c.pk && typeof order.customerId === 'number') {
+                  return c.pk === order.customerId;
+                }
+                // Fallback to string comparison
+                return String(c.id) === String(order.customerId) || 
+                       String(c.pk) === String(order.customerId);
+              });
+              // Match seller by id (ensure type compatibility)
+              const seller = users?.find((u) => {
+                if (!order.creatorId) {
+                  console.warn('Order missing creatorId:', order.id);
+                  return false;
+                }
+                // Try number comparison first
+                if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
+                  return u.id === order.creatorId;
+                }
+                // Fallback to string comparison
+                const match = String(u.id) === String(order.creatorId);
+                if (!match && order.creatorId) {
+                  console.debug('Seller not found:', {
+                    orderId: order.id,
+                    creatorId: order.creatorId,
+                    creatorIdType: typeof order.creatorId,
+                    userId: u.id,
+                    userIdType: typeof u.id,
+                    usersCount: users?.length,
+                    availableUserIds: users?.map(u => u.id).slice(0, 5)
+                  });
+                }
+                return match;
+              });
               const paid = (order.amountPaid ?? 0) as number;
               const diff = order.totalAmount - paid;
               const paidText = `฿${(paid || 0).toLocaleString()}`;

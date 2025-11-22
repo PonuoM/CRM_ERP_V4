@@ -457,7 +457,16 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const key = displayNameById[o.creatorId] || 'ไม่ระบุ';
       const a = add(key);
       a.totalOrders += 1;
-      const isNew = (() => { const cu = customers.find(c => c.id === o.customerId); return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); })();
+      const isNew = (() => { 
+        const cu = customers.find(c => {
+          if (c.pk && typeof o.customerId === 'number') {
+            return c.pk === o.customerId;
+          }
+          return String(c.id) === String(o.customerId) || 
+                 String(c.pk) === String(o.customerId);
+        });
+        return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); 
+      })();
       if (isNew) a.ordersFromNew += 1;
     }
     return agg;
@@ -471,7 +480,16 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       const name = (o.salesChannelPageId && allPages.find(p => (p.page_id || p.id) === o.salesChannelPageId)?.name) || o.salesChannel || 'ไม่ระบุ';
       const a = add(name);
       a.totalOrders += 1;
-      const isNew = (() => { const cu = customers.find(c => c.id === o.customerId); return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); })();
+      const isNew = (() => { 
+        const cu = customers.find(c => {
+          if (c.pk && typeof o.customerId === 'number') {
+            return c.pk === o.customerId;
+          }
+          return String(c.id) === String(o.customerId) || 
+                 String(c.pk) === String(o.customerId);
+        });
+        return !!(cu?.dateRegistered && inRange(cu.dateRegistered)); 
+      })();
       if (isNew) a.ordersFromNew += 1;
     }
     return agg;

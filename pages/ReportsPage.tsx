@@ -166,7 +166,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     // รายงานออเดอร์แบบละเอียด (Raw Data - Order Items Level)
     const ordersRawReport: any[] = [];
     filteredOrders.forEach(order => {
-      const customer = customers.find(c => c.id === order.customerId);
+      // Match customer by pk (customer_id) or id (string)
+      const customer = customers.find(c => {
+        if (c.pk && typeof order.customerId === 'number') {
+          return c.pk === order.customerId;
+        }
+        return String(c.id) === String(order.customerId) || 
+               String(c.pk) === String(order.customerId);
+      });
       
       // ฟังก์ชันช่วยดึงข้อมูล - ใช้ข้อมูลจาก order.shippingAddress ก่อน แล้วค่อย fallback ไปที่ customer
       const getCustomerName = () => {

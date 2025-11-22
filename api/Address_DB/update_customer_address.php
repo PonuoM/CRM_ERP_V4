@@ -107,17 +107,18 @@ try {
     $updateValues[] = $customerId;
 
     // Build and execute UPDATE query
-    $sql = "UPDATE customers SET " . implode(', ', $updateFields) . " WHERE id = ?";
+    $sql = "UPDATE customers SET " . implode(', ', $updateFields) . " WHERE customer_id = ?";
 
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute($updateValues);
 
     // Retrieve the latest state regardless of affected rows
     // Build SELECT query dynamically based on existing columns
-    $selectColumns = ['id', 'first_name', 'last_name', 'phone', 'email'];
+    // Note: customers table uses customer_id (PK) and customer_ref_id (public ID)
+    $selectColumns = ['customer_id', 'customer_ref_id', 'first_name', 'last_name', 'phone', 'email'];
     $selectColumns = array_merge($selectColumns, $existingColumns);
     $selectColumnsStr = implode(', ', $selectColumns);
-    $selectStmt = $pdo->prepare("SELECT {$selectColumnsStr} FROM customers WHERE id = ?");
+    $selectStmt = $pdo->prepare("SELECT {$selectColumnsStr} FROM customers WHERE customer_id = ?");
     $selectStmt->execute([$customerId]);
     $updatedCustomer = $selectStmt->fetch(PDO::FETCH_ASSOC);
 

@@ -199,7 +199,12 @@ const OrderAllocationPage: React.FC = () => {
 
   const customerMap = useMemo(() => {
     const m = new Map<string, any>();
-    (customers || []).forEach((c: any) => m.set(String(c.id), c));
+    (customers || []).forEach((c: any) => {
+      const key = c.customer_id ?? c.customerId ?? c.id;
+      if (key !== undefined && key !== null && String(key).trim() !== '') {
+        m.set(String(key), c);
+      }
+    });
     return m;
   }, [customers]);
 
@@ -252,7 +257,11 @@ const OrderAllocationPage: React.FC = () => {
     // Convert to array and sort
     return Array.from(grouped.entries()).map(([orderId, items]) => {
       const order = orderMap.get(String(orderId));
-      const customer = order ? customerMap.get(String(order.customer_id)) : null;
+      const customerKey = order?.customer_id ?? order?.customerId ?? order?.id;
+      const customer =
+        customerKey !== undefined && customerKey !== null
+          ? customerMap.get(String(customerKey))
+          : null;
       const suggested = suggestWarehouseId(orderId);
       const pendingWarehouseValues = items
         .map((item) => pendingAllocations[item.id]?.warehouseId)
@@ -584,7 +593,11 @@ const OrderAllocationPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-2 align-top">
-                      {customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || customer.id : '-'}
+                      {customer
+                        ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() ||
+                          customer.customer_id ||
+                          customer.id
+                        : '-'}
                     </td>
                     <td className="p-2 align-top">
                       <div className="text-[#0e141b]">

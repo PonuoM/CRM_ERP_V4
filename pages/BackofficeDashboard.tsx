@@ -86,7 +86,14 @@ const BackofficeDashboard: React.FC<BackofficeDashboardProps> = ({ user, orders,
                         </thead>
                         <tbody>
                             {stats.urgentItems.map(order => {
-                                const customer = customers.find(c => c.id === order.customerId);
+                                // Match customer by pk (customer_id) or id (string)
+                                const customer = customers.find(c => {
+                                  if (c.pk && typeof order.customerId === 'number') {
+                                    return c.pk === order.customerId;
+                                  }
+                                  return String(c.id) === String(order.customerId) || 
+                                         String(c.pk) === String(order.customerId);
+                                });
                                 return (
                                 <tr key={order.id} className="border-t hover:bg-gray-50">
                                     <td className="py-3 px-3 font-mono text-xs text-gray-600">{order.id}</td>

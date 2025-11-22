@@ -125,9 +125,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [ownerChangeLoading, setOwnerChangeLoading] = useState(false);
 
   const usersById = useMemo(() => {
-    const map = new Map<number, User>();
+    const map = new Map<number | string, User>();
     allUsers.forEach((userItem) => {
+      // Store with both number and string keys for compatibility
       map.set(userItem.id, userItem);
+      map.set(String(userItem.id), userItem);
     });
     return map;
   }, [allUsers]);
@@ -1023,8 +1025,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                       </thead>
                       <tbody className="text-gray-700">
                         {paginatedOrders.map((o) => {
+                          // Match seller by id (ensure type compatibility)
                           const seller = o.creatorId
-                            ? usersById.get(o.creatorId)
+                            ? usersById.get(o.creatorId) || usersById.get(String(o.creatorId)) || usersById.get(Number(o.creatorId))
                             : undefined;
                           const sellerName = seller
                             ? `${seller.firstName} ${seller.lastName}`

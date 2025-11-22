@@ -169,7 +169,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     return () => { cancelled = true; };
   }, [order]);
 
-  const customer = useMemo(() => customers.find(c => c.id === order.customerId), [customers, order.customerId]);
+  const customer = useMemo(() => {
+    return customers.find(c => {
+      if (c.pk && typeof order.customerId === 'number') {
+        return c.pk === order.customerId;
+      }
+      return String(c.id) === String(order.customerId) || 
+             String(c.pk) === String(order.customerId);
+    });
+  }, [customers, order.customerId]);
 
   const orderActivities = useMemo(() => {
     return activities

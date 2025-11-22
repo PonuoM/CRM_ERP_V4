@@ -238,14 +238,19 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             </tr>
           </thead>
           <tbody>
-            {currentCustomers.length > 0 ? (
-              currentCustomers.map((customer) => {
+              {currentCustomers.length > 0 ? (
+                currentCustomers.map((customer, index) => {
                 const remainingTime = getRemainingTimeRounded(
                   customer.ownershipExpires,
                 );
                 return (
                   <tr
-                    key={customer.id}
+                    key={
+                      customer.id ||
+                      customer.customerId ||
+                      customer.customerRefId ||
+                      `${customer.phone}-${index}`
+                    }
                     className="bg-white border-b hover:bg-gray-50"
                   >
                     <td className="px-6 py-4">

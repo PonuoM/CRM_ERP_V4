@@ -133,8 +133,8 @@ try {
             break;
 
         case 'customer_addresses':
-            // Get addresses for a specific customer
-            if ($id) {
+            // Get addresses for a specific customer (allow customer_id = 0)
+            if ($id !== null && $id !== '') {
                 $stmt = $pdo->prepare("SELECT * FROM customer_address WHERE customer_id = ? ORDER BY created_at DESC");
                 $stmt->execute([$id]);
                 $response['data'] = $stmt->fetchAll();
