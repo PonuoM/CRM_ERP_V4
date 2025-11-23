@@ -119,6 +119,7 @@ import ImportExportPage from "./pages/ImportExportPage";
 import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
 import CreateOrderPage from "./pages/CreateOrderPage";
+import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
@@ -243,6 +244,9 @@ const App: React.FC = () => {
   const [createOrderInitialData, setCreateOrderInitialData] = useState<
     any | null
   >(null);
+  const [upsellInitialData, setUpsellInitialData] = useState<{
+    customer: Customer;
+  } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -1838,11 +1842,8 @@ const App: React.FC = () => {
             : undefined,
         });
 
-        // If order is fully completed (Paid + Delivered), grant sale quota (+90 cap)
-        if (
-          updatedOrder.paymentStatus === PaymentStatus.Paid &&
-          updatedOrder.orderStatus === OrderStatus.Delivered
-        ) {
+        // If order status is Picking, grant sale quota (+90 days)
+        if (updatedOrder.orderStatus === OrderStatus.Picking) {
           try {
             await recordSale(updatedOrder.customerId);
             const updated = await getCustomerOwnershipStatus(
@@ -4585,6 +4586,11 @@ const App: React.FC = () => {
               handleCloseCustomerDetail();
               setActivePage("CreateOrder");
             }}
+            onUpsellClick={(customer) => {
+              setCreateOrderInitialData({ customer, upsell: true });
+              handleCloseCustomerDetail();
+              setActivePage("CreateOrder");
+            }}
           />
         );
       }
@@ -4942,6 +4948,27 @@ const App: React.FC = () => {
         return <PromotionsPage />;
       }
 
+      if (activePage === "UpsellOrder") {
+        return upsellInitialData ? (
+          <UpsellOrderPage
+            customer={upsellInitialData.customer}
+            products={companyProducts}
+            users={companyUsers}
+            currentUser={currentUser}
+            onCancel={() => {
+              setUpsellInitialData(null);
+              setActivePage("Dashboard");
+            }}
+            onSuccess={() => {
+              setUpsellInitialData(null);
+              setActivePage("Dashboard");
+              // Refresh orders - reload from API
+              window.location.reload();
+            }}
+          />
+        ) : null;
+      }
+
       switch (currentUser.role) {
         case UserRole.SuperAdmin:
         case UserRole.AdminControl:
@@ -4964,11 +4991,15 @@ const App: React.FC = () => {
                   pages={pages}
                   platforms={platforms}
                   warehouses={warehouses}
+                  currentUser={currentUser}
+                  users={companyUsers}
                   onSave={handleCreateOrder}
                   onCancel={() => setActivePage("Dashboard")}
                   initialData={createOrderInitialData}
                 />
               );
+            case "UpsellOrder":
+              return null;
             case "เพิ่มลูกค้า":
               return (
                 <AddCustomerPage
@@ -5064,6 +5095,10 @@ const App: React.FC = () => {
                   onTakeCustomer={handleTakeCustomer}
                   openModal={openModal}
                   onViewCustomer={handleViewCustomer}
+                  onUpsellClick={(customer) => {
+                    setCreateOrderInitialData({ customer, upsell: true });
+                    setActivePage("CreateOrder");
+                  }}
                 />
               );
             case "Customer Pools":
@@ -5123,6 +5158,8 @@ const App: React.FC = () => {
                   pages={pages}
                   platforms={platforms}
                   warehouses={warehouses}
+                  currentUser={currentUser}
+                  users={companyUsers}
                   onSave={handleCreateOrder}
                   onCancel={() => setActivePage("Dashboard")}
                   initialData={createOrderInitialData}
@@ -5196,6 +5233,8 @@ const App: React.FC = () => {
                   pages={pages}
                   platforms={platforms}
                   warehouses={warehouses}
+                  currentUser={currentUser}
+                  users={companyUsers}
                   onSave={handleCreateOrder}
                   onCancel={() => setActivePage("Dashboard")}
                   initialData={createOrderInitialData}

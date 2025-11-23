@@ -34,12 +34,14 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import { getStatusChip, getPaymentStatusChip } from "../components/OrderTable";
 import {
   createCustomerBlock,
   listCustomerLogs,
   getOrder,
+  checkUpsellEligibility,
 } from "../services/api";
 import {
   actionLabels,
@@ -64,6 +66,7 @@ interface CustomerDetailPageProps {
   onCompleteAppointment?: (appointmentId: number) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
+  onUpsellClick?: (customer: Customer) => void;
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
   customerCounts?: Record<number, number>;
 }
@@ -101,6 +104,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     onCreateUserTag,
     ownerName,
     onStartCreateOrder,
+    onUpsellClick,
     onChangeOwner,
     customerCounts,
   } = props;
@@ -124,6 +128,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
   const [ownerChangeError, setOwnerChangeError] = useState<string | null>(null);
   const [ownerChangeLoading, setOwnerChangeLoading] = useState(false);
+  const [hasUpsell, setHasUpsell] = useState(false);
+  const [upsellLoading, setUpsellLoading] = useState(true);
 
   const usersById = useMemo(() => {
     const map = new Map<number | string, User>();
@@ -134,6 +140,43 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     });
     return map;
   }, [allUsers]);
+
+  // Check upsell eligibility
+  useEffect(() => {
+    let mounted = true;
+    setUpsellLoading(true);
+    setHasUpsell(false);
+    const checkUpsell = async () => {
+      try {
+        const customerId = customer.id || customer.customerId || customer.customerRefId;
+        if (!customerId) {
+          setHasUpsell(false);
+          setUpsellLoading(false);
+          return;
+        }
+        const result = await checkUpsellEligibility(customerId);
+        if (mounted) {
+          setHasUpsell(result.hasEligibleOrders);
+          setUpsellLoading(false);
+        }
+      } catch (error) {
+        console.error("Error checking upsell eligibility:", error);
+        if (mounted) {
+          setHasUpsell(false);
+          setUpsellLoading(false);
+        }
+      }
+    };
+    
+    checkUpsell();
+    // Re-check every 30 seconds
+    const interval = setInterval(checkUpsell, 30000);
+    
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [customer.id, customer.customerId, customer.customerRefId]);
 
   const eligibleOwners = useMemo(() => {
     const sameCompanyUsers =
@@ -884,14 +927,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="border-b px-4">
-              <nav className="flex space-x-4 -mb-px">
-                <button
-                  onClick={() => setActiveTab("calls")}
-                  className={`py-3 px-1 text-sm font-medium ${activeTab === "calls" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
-                >
-                  <Phone size={16} className="inline mr-2" />
-                  ประวัติการโทร
-                </button>
+              <div className="flex items-center justify-between">
+                <nav className="flex space-x-4 -mb-px">
+                  <button
+                    onClick={() => setActiveTab("calls")}
+                    className={`py-3 px-1 text-sm font-medium ${activeTab === "calls" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
+                  >
+                    <Phone size={16} className="inline mr-2" />
+                    ประวัติการโทร
+                  </button>
                 <button
                   onClick={() => setActiveTab("appointments")}
                   className={`py-3 px-1 text-sm font-medium ${activeTab === "appointments" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
@@ -907,6 +951,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   ประวัติคำสั่งซื้อ
                 </button>
               </nav>
+              {hasUpsell && !upsellLoading && onUpsellClick && (
+                <button
+                  onClick={() => onUpsellClick(customer)}
+                  className="relative px-4 py-2 bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-2 animate-pulse hover:animate-none"
+                  title="เพิ่มรายการในออเดอร์เดิม (Upsell)"
+                >
+                  <Zap size={18} className="animate-bounce" />
+                  <span>UPSELL</span>
+                  {/* Animated aura effect */}
+                  <span className="absolute -inset-1 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 rounded-lg blur opacity-75 animate-ping"></span>
+                  <span className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 via-red-300 to-pink-300 rounded-lg blur-sm opacity-50"></span>
+                </button>
+              )}
             </div>
             <div className="p-4">
               <div className="overflow-x-auto">
@@ -1281,6 +1338,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 )}
               </div>
             </div>
+          </div>
           </div>
         </div>
 

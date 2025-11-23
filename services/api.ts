@@ -1056,3 +1056,19 @@ export async function updatePageUserConnection(
 
   return await response.json();
 }
+
+// Upsell API functions
+export async function checkUpsellEligibility(customerId: string | number): Promise<{ hasEligibleOrders: boolean; eligibleCount: number }> {
+  return apiFetch(`upsell/check?customerId=${customerId}`);
+}
+
+export async function getUpsellOrders(customerId: string | number): Promise<any[]> {
+  return apiFetch(`upsell/orders?customerId=${customerId}`);
+}
+
+export async function addUpsellItems(orderId: string, creatorId: number, items: any[]): Promise<{ success: boolean; orderId: string; newTotalAmount: number; items: any[] }> {
+  return apiFetch("upsell/items", {
+    method: "POST",
+    body: JSON.stringify({ orderId, creatorId, items }),
+  });
+}

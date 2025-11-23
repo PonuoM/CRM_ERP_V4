@@ -80,52 +80,41 @@ function handleSale(PDO $pdo, string $customerId): void {
         json_response(['error' => 'Customer not found'], 404);
         return;
     }
-    // Enforce sale completion: require at least one order that is Paid AND Delivered
+    // Enforce sale completion: require at least one order that is Picking with delivery_date
     try {
-        $chk = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE customer_id = ? AND payment_status = 'Paid' AND order_status = 'Delivered' LIMIT 1");
-        $chk->execute([$customerId]);
-        $hasCompleted = (int)$chk->fetchColumn() > 0;
-        if (!$hasCompleted) {
-            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'Sale quota grants only after Paid + Delivered'], 400);
+        // Get delivery_date from order with Picking status
+        $orderStmt = $pdo->prepare("SELECT delivery_date FROM orders WHERE customer_id = ? AND order_status = 'Picking' ORDER BY order_date DESC LIMIT 1");
+        $orderStmt->execute([$customerId]);
+        $deliveryDateStr = $orderStmt->fetchColumn();
+        
+        if (!$deliveryDateStr) {
+            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'Sale quota grants only when order status is Picking and delivery_date exists'], 400);
             return;
         }
     } catch (Throwable $e) { /* if check fails, do not grant */ json_response(['error' => 'SALE_CHECK_FAILED'], 500); return; }
 
-        // Add 90 days (max 90 days remaining)
+        // Use delivery_date as sale date, then add 90 days for ownership_expires
+        $deliveryDate = new DateTime($deliveryDateStr);
+        $newExpiry = clone $deliveryDate;
+        $newExpiry->add(new DateInterval('P90D'));
+        
+        // Ensure max 90 days from current date
         $now = new DateTime();
-        $currentExpiry = new DateTime($customer['ownership_expires']);
-        $daysUntilExpiry = $currentExpiry->diff($now)->days;
+        $maxAllowed = (clone $now);
+        $maxAllowed->add(new DateInterval('P90D'));
+        if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
         
-        $daysToAdd = min(90, 90 - $daysUntilExpiry);
-        
-        if ($daysToAdd > 0) {
-            $newExpiry = clone $currentExpiry;
-            $newExpiry->add(new DateInterval('P' . $daysToAdd . 'D'));
-            
-            $updateStmt = $pdo->prepare("
-                UPDATE customers
-                SET ownership_expires = ?, has_sold_before = 1, last_sale_date = ?,
-                    follow_up_count = 0, lifecycle_status = 'Old3Months', followup_bonus_remaining = 1
-                WHERE id = ?
-            ");
-            $updateStmt->execute([
-                $newExpiry->format('Y-m-d H:i:s'),
-                $now->format('Y-m-d H:i:s'),
-                'ลูกค้าเก่า 3 เดือน',
-                $customerId
-            ]);
-        } else {
-            $updateStmt = $pdo->prepare("
-                UPDATE customers
-                SET has_sold_before = 1, last_sale_date = ?, follow_up_count = 0, lifecycle_status = 'Old3Months', followup_bonus_remaining = 1
-                WHERE id = ?
-            ");
-            $updateStmt->execute([
-                $now->format('Y-m-d H:i:s'),
-                'ลูกค้าเก่า 3 เดือน',
-                $customerId
-            ]);
-        }
+        $updateStmt = $pdo->prepare("
+            UPDATE customers
+            SET ownership_expires = ?, has_sold_before = 1, last_sale_date = ?,
+                follow_up_count = 0, lifecycle_status = 'Old3Months', followup_bonus_remaining = 1
+            WHERE id = ?
+        ");
+        $updateStmt->execute([
+            $newExpiry->format('Y-m-d H:i:s'),
+            $deliveryDate->format('Y-m-d H:i:s'),
+            $customerId
+        ]);
 
         // Hard-clamp to maximum 90 days remaining after sale
         try {

@@ -65,19 +65,27 @@ function handleSale(PDO $pdo, string $customerId): void {
     if (!$customer) { json_response(['error' => 'Customer not found'], 404); }
 
     try {
-        $chk = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE customer_id = ? AND payment_status = 'Paid' AND order_status = 'Delivered' LIMIT 1");
-        $chk->execute([$customerId]);
-        if ((int)$chk->fetchColumn() <= 0) {
-            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'Sale grants only after Paid + Delivered'], 400);
+        // Get delivery_date from order with Picking status
+        $orderStmt = $pdo->prepare("SELECT delivery_date FROM orders WHERE customer_id = ? AND order_status = 'Picking' ORDER BY order_date DESC LIMIT 1");
+        $orderStmt->execute([$customerId]);
+        $deliveryDateStr = $orderStmt->fetchColumn();
+        
+        if (!$deliveryDateStr) {
+            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'Sale grants only when order status is Picking and delivery_date exists'], 400);
+            return;
         }
     } catch (Throwable $e) {
         json_response(['error' => 'SALE_CHECK_FAILED'], 500);
+        return;
     }
 
-    $now = new DateTime();
-    $currentExpiry = new DateTime($customer['ownership_expires']);
-    $newExpiry = clone $currentExpiry;
+    // Use delivery_date as sale date, then add 90 days for ownership_expires
+    $deliveryDate = new DateTime($deliveryDateStr);
+    $newExpiry = clone $deliveryDate;
     $newExpiry->add(new DateInterval('P90D'));
+    
+    // Ensure max 90 days from current date
+    $now = new DateTime();
     $maxAllowed = (clone $now);
     $maxAllowed->add(new DateInterval('P90D'));
     if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
@@ -88,7 +96,7 @@ function handleSale(PDO $pdo, string $customerId): void {
         WHERE id = ?");
     $update->execute([
         $newExpiry->format('Y-m-d H:i:s'),
-        $now->format('Y-m-d H:i:s'),
+        $deliveryDate->format('Y-m-d H:i:s'),
         $customerId
     ]);
 

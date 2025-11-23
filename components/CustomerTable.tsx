@@ -1,8 +1,9 @@
 ﻿import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Customer, ModalType, Tag, TagType } from "../types";
-import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
 import usePersistentState from "@/utils/usePersistentState";
+import { checkUpsellEligibility } from "@/services/api";
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -12,6 +13,7 @@ interface CustomerTableProps {
   showCallNotes?: boolean;
   hideGrade?: boolean;
   storageKey?: string;
+  onUpsellClick?: (customer: Customer) => void;
 }
 
 const NOOP_STORAGE: Storage = {
@@ -53,6 +55,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     showCallNotes = false,
     hideGrade = false,
     storageKey,
+    onUpsellClick,
   } = props;
 
   const defaultItemsPerPage = pageSizeOptions[0] ?? 10;
@@ -112,11 +115,61 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   };
 
   const TagColumn: React.FC<{ customer: Customer }> = ({ customer }) => {
+    const [hasUpsell, setHasUpsell] = useState(false);
+    const [upsellLoading, setUpsellLoading] = useState(true);
+    
+    useEffect(() => {
+      let mounted = true;
+      const checkUpsell = async () => {
+        try {
+          const customerId = customer.id || customer.customerId || customer.customerRefId;
+          if (!customerId) {
+            setHasUpsell(false);
+            setUpsellLoading(false);
+            return;
+          }
+          const result = await checkUpsellEligibility(customerId);
+          if (mounted) {
+            setHasUpsell(result.hasEligibleOrders);
+            setUpsellLoading(false);
+          }
+        } catch (error) {
+          console.error("Error checking upsell eligibility:", error);
+          if (mounted) {
+            setHasUpsell(false);
+            setUpsellLoading(false);
+          }
+        }
+      };
+      
+      checkUpsell();
+      // Re-check every 30 seconds
+      const interval = setInterval(checkUpsell, 30000);
+      
+      return () => {
+        mounted = false;
+        clearInterval(interval);
+      };
+    }, [customer.id, customer.customerId, customer.customerRefId]);
+    
     const visibleTags = customer.tags.slice(0, 2);
     const hiddenCount = customer.tags.length - visibleTags.length;
+    const showUpsellTag = hasUpsell && !upsellLoading;
 
     return (
       <div className="flex items-center flex-wrap gap-1">
+        {showUpsellTag && (
+          <button
+            onClick={() => onUpsellClick && onUpsellClick(customer)}
+            className="relative text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r from-orange-400 to-red-500 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none flex items-center gap-1"
+            title="คลิกเพื่อเพิ่มรายการในออเดอร์เดิม (Upsell)"
+          >
+            <ShoppingCart size={12} className="animate-bounce" />
+            <span>UPSELL</span>
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full"></span>
+          </button>
+        )}
         {visibleTags.map((tag) => (
           <span
             key={tag.id}

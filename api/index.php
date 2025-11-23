@@ -91,6 +91,9 @@ if ($resource === '' || $resource === 'health') {
     case 'orders':
         handle_orders($pdo, $id);
         break;
+    case 'upsell':
+        handle_upsell($pdo, $id, $action);
+        break;
     case 'user_pancake_mappings':
         handle_user_pancake_mappings($pdo, $id);
         break;
@@ -1535,6 +1538,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
                                        oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number, 
                                        oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                                       oi.creator_id, oi.parent_order_id,
                                        p.sku as product_sku
                                 FROM order_items oi
                                 LEFT JOIN products p ON oi.product_id = p.id
@@ -1747,7 +1751,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two‑phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
                     // Helper function to get order_id based on box_number (using synthesized per-box IDs)
                     $getOrderIdForBox = function($boxNumber) use ($mainOrderId, $subOrderIds) {
@@ -1774,7 +1778,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, null, 1,
+                                $it['promotionId'] ?? null, null, 1, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -1795,7 +1799,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, null, 0,
+                                $it['promotionId'] ?? null, null, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
@@ -1817,7 +1821,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, $resolved, 0,
+                                $it['promotionId'] ?? null, $resolved, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
@@ -1958,17 +1962,28 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 } catch (Throwable $e) { /* ignore */ }
 
                 try {
-                    if ($customerId && strcasecmp($newPaymentStatus, 'Paid') === 0 && strcasecmp($newStatus, 'Delivered') === 0) {
-                        $cst = $pdo->prepare('SELECT ownership_expires FROM customers WHERE id=?');
-                        $cst->execute([$customerId]);
-                        $cexp = $cst->fetchColumn();
-                        $now = new DateTime();
-                        $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
-                        $currentExpiry = $cexp ? new DateTime($cexp) : clone $now;
-                        $newExpiry = clone $currentExpiry; $newExpiry->add(new DateInterval('P90D'));
-                        if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
-                        $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
-                        $u->execute([$newExpiry->format('Y-m-d H:i:s'), $now->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
+                    // If order status is Picking, grant sale quota (+90 days)
+                    // Use delivery_date from order as the sale date, then add 90 days for ownership_expires
+                    if ($customerId && strcasecmp($newStatus, 'Picking') === 0) {
+                        // Get delivery_date from the order
+                        $orderStmt = $pdo->prepare('SELECT delivery_date FROM orders WHERE id=?');
+                        $orderStmt->execute([$id]);
+                        $deliveryDateStr = $orderStmt->fetchColumn();
+                        
+                        if ($deliveryDateStr) {
+                            $deliveryDate = new DateTime($deliveryDateStr);
+                            // ownership_expires = delivery_date + 90 days
+                            $newExpiry = clone $deliveryDate;
+                            $newExpiry->add(new DateInterval('P90D'));
+                            
+                            // Ensure max 90 days from current date
+                            $now = new DateTime();
+                            $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
+                            if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
+                            
+                            $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
+                            $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
+                        }
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
 
@@ -2906,7 +2921,7 @@ function get_order(PDO $pdo, string $id): ?array {
     }
     $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
     
-    $items = $pdo->prepare("SELECT * FROM order_items WHERE order_id IN ($placeholders) ORDER BY order_id, id");
+    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.order_id IN ($placeholders) ORDER BY oi.order_id, oi.id");
     $items->execute($allOrderIds);
     $allItems = $items->fetchAll();
     
@@ -4681,6 +4696,260 @@ if (method() === 'POST' && isset($_POST['action'])) {
         case 'updateNotificationSettings':
             handle_update_notification_settings($pdo);
             break;
+    }
+}
+
+/**
+ * Handle upsell endpoints
+ * GET /api/upsell/check?customerId=xxx - Check if customer has orders eligible for upsell
+ * GET /api/upsell/orders?customerId=xxx - Get orders eligible for upsell
+ * POST /api/upsell/items - Add new items to existing order (upsell)
+ */
+function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
+    $method = $_SERVER['REQUEST_METHOD'];
+    
+    switch ($method) {
+        case 'GET':
+            if ($id === 'check') {
+                // Check if customer has orders eligible for upsell
+                $customerId = $_GET['customerId'] ?? null;
+                if (!$customerId) {
+                    json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
+                    return;
+                }
+                
+                // Find orders that are eligible for upsell:
+                // 1. order_status = 'Pending'
+                // 2. order_date is within 24 hours from now
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) as eligible_count
+                    FROM orders
+                    WHERE customer_id = ?
+                    AND order_status = 'Pending'
+                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                ");
+                $stmt->execute([$customerId]);
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                json_response([
+                    'hasEligibleOrders' => ($result['eligible_count'] ?? 0) > 0,
+                    'eligibleCount' => (int)($result['eligible_count'] ?? 0)
+                ]);
+            } else if ($id === 'orders') {
+                // Get orders eligible for upsell for a customer
+                $customerId = $_GET['customerId'] ?? null;
+                if (!$customerId) {
+                    json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
+                    return;
+                }
+                
+                // Get orders that are eligible for upsell
+                $stmt = $pdo->prepare("
+                    SELECT o.id, o.order_date, o.delivery_date, o.order_status, o.total_amount, o.creator_id,
+                           o.sales_channel_page_id, o.sales_channel, o.payment_method, o.payment_status,
+                           o.street, o.subdistrict, o.district, o.province, o.postal_code,
+                           o.recipient_first_name, o.recipient_last_name,
+                           COUNT(oi.id) as item_count
+                    FROM orders o
+                    LEFT JOIN order_items oi ON oi.parent_order_id = o.id
+                    WHERE o.customer_id = ?
+                    AND o.order_status = 'Pending'
+                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    GROUP BY o.id
+                    ORDER BY o.order_date DESC
+                ");
+                $stmt->execute([$customerId]);
+                $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // For each order, fetch items with creator_id
+                foreach ($orders as &$order) {
+                    $orderId = $order['id'];
+                    $itemStmt = $pdo->prepare("
+                        SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity,
+                               oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number,
+                               oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                               oi.creator_id, oi.parent_order_id,
+                               p.sku as product_sku
+                        FROM order_items oi
+                        LEFT JOIN products p ON oi.product_id = p.id
+                        WHERE oi.parent_order_id = ?
+                        ORDER BY oi.id
+                    ");
+                    $itemStmt->execute([$orderId]);
+                    $order['items'] = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                
+                json_response($orders);
+            } else {
+                json_response(['error' => 'INVALID_ENDPOINT'], 404);
+            }
+            break;
+            
+        case 'POST':
+            if ($id === 'items') {
+                // Add new items to existing order (upsell)
+                $in = json_input();
+                
+                $orderId = $in['orderId'] ?? null;
+                $creatorId = $in['creatorId'] ?? null;
+                $items = $in['items'] ?? [];
+                
+                if (!$orderId || !$creatorId || empty($items)) {
+                    json_response(['error' => 'MISSING_REQUIRED_FIELDS', 'message' => 'orderId, creatorId, and items are required'], 400);
+                    return;
+                }
+                
+                // Validate order exists and is eligible for upsell
+                $orderCheck = $pdo->prepare("
+                    SELECT id, customer_id, order_status, order_date
+                    FROM orders
+                    WHERE id = ?
+                ");
+                $orderCheck->execute([$orderId]);
+                $order = $orderCheck->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$order) {
+                    json_response(['error' => 'ORDER_NOT_FOUND'], 404);
+                    return;
+                }
+                
+                // Check if order is eligible for upsell
+                if ($order['order_status'] !== 'Pending') {
+                    json_response(['error' => 'ORDER_NOT_ELIGIBLE', 'message' => 'Order status must be Pending'], 400);
+                    return;
+                }
+                
+                // Check if order is within 24 hours
+                $timeCheck = $pdo->prepare("
+                    SELECT COUNT(*) as is_eligible
+                    FROM orders
+                    WHERE id = ?
+                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                ");
+                $timeCheck->execute([$orderId]);
+                $timeResult = $timeCheck->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$timeResult || $timeResult['is_eligible'] == 0) {
+                    json_response(['error' => 'ORDER_EXPIRED', 'message' => 'Order is older than 24 hours'], 400);
+                    return;
+                }
+                
+                // Validate creator_id exists
+                $creatorCheck = $pdo->prepare('SELECT id, status FROM users WHERE id = ?');
+                $creatorCheck->execute([$creatorId]);
+                $creatorData = $creatorCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$creatorData || $creatorData['status'] !== 'active') {
+                    json_response(['error' => 'INVALID_CREATOR', 'message' => 'Creator user not found or inactive'], 400);
+                    return;
+                }
+                
+                $pdo->beginTransaction();
+                try {
+                    $insertedItems = [];
+                    $newTotalAmount = (float)$order['total_amount'];
+                    
+                    // Get max box_number for this order
+                    $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
+                    $boxStmt->execute([$orderId]);
+                    $boxResult = $boxStmt->fetch(PDO::FETCH_ASSOC);
+                    $currentBoxNumber = (int)($boxResult['max_box'] ?? 0);
+                    
+                    foreach ($items as $item) {
+                        $productId = $item['productId'] ?? null;
+                        $productName = $item['productName'] ?? '';
+                        $quantity = (int)($item['quantity'] ?? 1);
+                        $pricePerUnit = (float)($item['pricePerUnit'] ?? 0);
+                        $discount = (float)($item['discount'] ?? 0);
+                        $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
+                        $promotionId = $item['promotionId'] ?? null;
+                        $parentItemId = $item['parentItemId'] ?? null;
+                        $isPromotionParent = isset($item['isPromotionParent']) && $item['isPromotionParent'] ? 1 : 0;
+                        
+                        // Determine box_number (increment if needed)
+                        $boxNumber = $item['boxNumber'] ?? ($currentBoxNumber + 1);
+                        if ($boxNumber > $currentBoxNumber) {
+                            $currentBoxNumber = $boxNumber;
+                        }
+                        
+                        // Generate order_id (sub order ID)
+                        $subOrderId = "{$orderId}-{$boxNumber}";
+                        
+                        // Insert order item with creator_id
+                        $itemStmt = $pdo->prepare("
+                            INSERT INTO order_items (
+                                order_id, parent_order_id, product_id, product_name, quantity,
+                                price_per_unit, discount, is_freebie, box_number,
+                                promotion_id, parent_item_id, is_promotion_parent, creator_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        
+                        $itemStmt->execute([
+                            $subOrderId,
+                            $orderId,
+                            $productId,
+                            $productName,
+                            $quantity,
+                            $pricePerUnit,
+                            $discount,
+                            $isFreebie,
+                            $boxNumber,
+                            $promotionId,
+                            $parentItemId,
+                            $isPromotionParent,
+                            $creatorId
+                        ]);
+                        
+                        $itemId = $pdo->lastInsertId();
+                        
+                        // Calculate item total (if not freebie)
+                        if (!$isFreebie) {
+                            $itemTotal = ($pricePerUnit * $quantity) - $discount;
+                            $newTotalAmount += $itemTotal;
+                        }
+                        
+                        $insertedItems[] = [
+                            'id' => $itemId,
+                            'order_id' => $subOrderId,
+                            'parent_order_id' => $orderId,
+                            'product_id' => $productId,
+                            'product_name' => $productName,
+                            'quantity' => $quantity,
+                            'price_per_unit' => $pricePerUnit,
+                            'discount' => $discount,
+                            'is_freebie' => $isFreebie,
+                            'box_number' => $boxNumber,
+                            'promotion_id' => $promotionId,
+                            'parent_item_id' => $parentItemId,
+                            'is_promotion_parent' => $isPromotionParent,
+                            'creator_id' => $creatorId
+                        ];
+                    }
+                    
+                    // Update order total_amount
+                    $updateOrderStmt = $pdo->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
+                    $updateOrderStmt->execute([$newTotalAmount, $orderId]);
+                    
+                    $pdo->commit();
+                    
+                    json_response([
+                        'success' => true,
+                        'orderId' => $orderId,
+                        'newTotalAmount' => $newTotalAmount,
+                        'items' => $insertedItems
+                    ], 201);
+                    
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    error_log('Upsell error: ' . $e->getMessage());
+                    json_response(['error' => 'UPSELL_FAILED', 'message' => $e->getMessage()], 500);
+                }
+            } else {
+                json_response(['error' => 'INVALID_ENDPOINT'], 404);
+            }
+            break;
+            
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
 
