@@ -1,6 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { User } from "../types";
-import { CheckCircle, Trash2, Plus, History, Eye, XCircle } from "lucide-react";
+import {
+  CheckCircle,
+  Trash2,
+  Plus,
+  History,
+  Eye,
+  XCircle,
+  Upload,
+  Download,
+} from "lucide-react";
 import Modal from "@/components/Modal";
 
 interface StatementManagementPageProps {
@@ -73,6 +82,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     null,
   );
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleInputChange = (
     index: number,
@@ -142,6 +152,190 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         .filter((_, i) => i !== index)
         .map((row, i) => ({ ...row, id: i + 1 })),
     );
+  };
+
+  const normalizeDate = (raw: string): string => {
+    const value = raw.trim();
+    if (!value) return "";
+
+    const isoMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+      const [, y, m, d] = isoMatch;
+      const year = Number(y);
+      const month = Number(m);
+      const day = Number(d);
+      if (year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year.toString().padStart(4, "0")}-${month
+          .toString()
+          .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+      }
+    }
+
+    const slashMatch = value.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+    if (slashMatch) {
+      let [, d, m, y] = slashMatch;
+      let year = Number(y);
+      const month = Number(m);
+      const day = Number(d);
+      if (year < 100) {
+        year += 2000;
+      } else if (year > 2500) {
+        year -= 543;
+      }
+      if (year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year.toString().padStart(4, "0")}-${month
+          .toString()
+          .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+      }
+    }
+
+    return value;
+  };
+
+  const normalizeTime = (raw: string): string => {
+    const value = raw.trim().replace(".", ":");
+    if (!value) return "";
+
+    const match = value.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+    if (!match) return value;
+
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = match[3] != null ? Number(match[3]) : 0;
+
+    if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) {
+      return value;
+    }
+
+    return `${h.toString().padStart(2, "0")}:${m
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      let text = "";
+      if (reader.result instanceof ArrayBuffer) {
+        const buf = reader.result;
+        try {
+          // Try UTF-8 first
+          text = new TextDecoder("utf-8").decode(buf);
+          // If there are many replacement chars, fall back to Windows-874 (Thai)
+          if ((text.match(/\uFFFD/g) || []).length > 0) {
+            text = new TextDecoder("windows-874").decode(buf);
+          }
+        } catch {
+          text = new TextDecoder().decode(buf);
+        }
+      } else {
+        text = String(reader.result ?? "");
+      }
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l !== "");
+
+      if (!lines.length) return;
+
+      let startIndex = 0;
+      const firstLineLower = lines[0].toLowerCase();
+      if (
+        firstLineLower.includes("date") ||
+        firstLineLower.includes("วันที่") ||
+        firstLineLower.includes("เวลา")
+      ) {
+        startIndex = 1;
+      }
+
+      const imported: RowData[] = [];
+      let id = 1;
+      for (let i = startIndex; i < lines.length; i += 1) {
+        const cols = lines[i].split(/[,;\t]/);
+        const [date, time, amount, channel, description] = cols;
+        const d = normalizeDate(date ?? "");
+        const t = normalizeTime(time ?? "");
+        const a = (amount ?? "").trim();
+        const c = (channel ?? "").trim();
+        const desc = (description ?? "").trim();
+
+        if (!d && !t && !a && !c && !desc) continue;
+
+        imported.push({
+          id: id,
+          date: d,
+          time: t,
+          amount: a,
+          channel: c,
+          description: desc,
+        });
+        id += 1;
+      }
+
+      if (imported.length) {
+        setRows(imported);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    // reset input so same file can be selected again
+    e.target.value = "";
+  };
+
+  const handleDownloadCsv = () => {
+    const nonEmpty = rows.filter(
+      (r) =>
+        r.date.trim() ||
+        r.time.trim() ||
+        r.amount.trim() ||
+        r.channel.trim() ||
+        r.description.trim(),
+    );
+
+    const header = ["date", "time", "amount", "channel", "description"];
+    const lines = [header.join(",")];
+
+    const escapeCsv = (value: string) => {
+      if (/[",\n]/.test(value)) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+
+    for (const r of nonEmpty) {
+      lines.push(
+        [
+          r.date.trim(),
+          r.time.trim(),
+          r.amount.trim(),
+          r.channel.trim(),
+          r.description.trim(),
+        ]
+          .map(escapeCsv)
+          .join(","),
+      );
+    }
+
+    const csv = "\uFEFF" + lines.join("\r\n");
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `statement-template-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleSave = async () => {
@@ -279,6 +473,29 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
           </p>
         </div>
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
+          >
+            <Upload className="w-4 h-4 mr-1" />
+            นำเข้า CSV
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            ดาวน์โหลด CSV
+          </button>
           <button
             onClick={clearRows}
             className="inline-flex items-center px-3 py-2 bg-white border rounded-md text-sm shadow-sm hover:bg-gray-50"
