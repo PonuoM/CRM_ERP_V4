@@ -188,6 +188,26 @@ try {
   }
   $amountSelect = $hasAmountColumn ? "os.amount" : "NULL";
 
+  // Determine correct primary key column for customers (id vs customer_id)
+  $customerPkColumn = "id";
+  try {
+    $stmt = $conn->query(
+      "SELECT COLUMN_NAME FROM information_schema.columns 
+       WHERE table_schema = DATABASE() 
+         AND table_name = 'customers' 
+         AND COLUMN_NAME IN ('id','customer_id')
+       ORDER BY FIELD(COLUMN_NAME, 'id','customer_id')
+       LIMIT 1",
+    );
+    $col = $stmt ? $stmt->fetchColumn() : false;
+    if ($col) {
+      $customerPkColumn = $col;
+    }
+  } catch (Exception $ignored) {
+    $customerPkColumn = "id";
+  }
+  $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
+
   $sql =
     "SELECT
         os.id,
@@ -213,7 +233,7 @@ try {
         $statusExpr AS slip_status
       FROM order_slips os
       INNER JOIN orders o ON o.id = os.order_id
-      LEFT JOIN customers c ON c.id = o.customer_id
+      $customerJoin
       LEFT JOIN users u ON u.id = o.creator_id
       $bankJoin
       WHERE $whereClause

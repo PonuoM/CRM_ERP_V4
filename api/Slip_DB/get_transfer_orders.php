@@ -199,6 +199,26 @@ try {
     // If check fails, assume column doesn't exist
     $check_amount_col = 0;
   }
+
+  // Determine correct primary key column for customers (id vs customer_id)
+  $customerPkColumn = "id";
+  try {
+    $stmt = $conn->query(
+      "SELECT COLUMN_NAME FROM information_schema.columns 
+       WHERE table_schema = DATABASE() 
+         AND table_name = 'customers' 
+         AND COLUMN_NAME IN ('id','customer_id')
+       ORDER BY FIELD(COLUMN_NAME, 'id','customer_id')
+       LIMIT 1",
+    );
+    $col = $stmt ? $stmt->fetchColumn() : false;
+    if ($col) {
+      $customerPkColumn = $col;
+    }
+  } catch (Exception $ignored) {
+    $customerPkColumn = "id";
+  }
+  $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
   
   // First query to get total count for pagination calculation
   // Must match the HAVING clause from main query
@@ -207,7 +227,7 @@ try {
                FROM (
                    SELECT o.id, o.total_amount, o.payment_status
                    FROM orders o
-                   LEFT JOIN customers c ON c.id = o.customer_id
+                   {$customerJoin}
                    LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
                    AND o.id NOT REGEXP '^.+-[0-9]+$'
@@ -260,7 +280,7 @@ try {
   
   $sql .= "
             FROM orders o
-            LEFT JOIN customers c ON c.id = o.customer_id
+            {$customerJoin}
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
             AND o.id NOT REGEXP '^.+-[0-9]+$'
