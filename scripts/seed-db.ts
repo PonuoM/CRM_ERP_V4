@@ -204,6 +204,60 @@ async function main() {
     },
   });
 
+  // Bank accounts
+  console.log("Seeding bank accounts...");
+  await prisma.bank_account.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      company_id: company1.id,
+      bank: "Kasikornbank",
+      bank_number: "123-4-56789-0",
+      is_active: true,
+    },
+  });
+
+  await prisma.bank_account.upsert({
+    where: { id: 2 },
+    update: {},
+    create: {
+      company_id: company1.id,
+      bank: "Bangkok Bank",
+      bank_number: "987-6-54321-0",
+      is_active: true,
+    },
+  });
+
+  // Platforms
+  console.log("Seeding platforms...");
+  await prisma.platforms.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      name: "Facebook",
+      display_name: "Facebook Page",
+      description: "Facebook sales channel",
+      company_id: company1.id,
+      active: true,
+      sort_order: 1,
+      show_pages_from: "facebook",
+    },
+  });
+
+  await prisma.platforms.upsert({
+    where: { id: 2 },
+    update: {},
+    create: {
+      name: "Line",
+      display_name: "LINE Official Account",
+      description: "LINE OA sales channel",
+      company_id: company1.id,
+      active: true,
+      sort_order: 2,
+      show_pages_from: "line",
+    },
+  });
+
   // Users
   console.log("Seeding users...");
   const adminUser = await prisma.users.upsert({
@@ -322,10 +376,10 @@ async function main() {
   // Customers
   console.log("Seeding customers...");
   const customer = await prisma.customers.upsert({
-    where: { id: "CUS-100000001" },
+    where: { customer_ref_id: "CUS-100000001" },
     update: {},
     create: {
-      id: "CUS-100000001",
+      customer_ref_id: "CUS-100000001",
       first_name: "Mana",
       last_name: "Jaidee",
       phone: "0812345678",
@@ -357,19 +411,11 @@ async function main() {
 
   // Customer tags
   console.log("Seeding customer tags...");
-  await prisma.customer_tags.upsert({
-    where: {
-      customer_id_tag_id: {
-        customer_id: "CUS-100000001",
-        tag_id: 1,
-      },
-    },
-    update: {},
-    create: {
-      customer_id: "CUS-100000001",
-      tag_id: 1,
-    },
-  });
+  await prisma.$executeRaw`
+    INSERT INTO customer_tags (customer_id, tag_id)
+    VALUES (${customer.customer_ref_id}, ${vipTag.id})
+    ON DUPLICATE KEY UPDATE tag_id = tag_id
+  `;
 
   // Products
   console.log("Seeding products...");
@@ -483,7 +529,7 @@ async function main() {
     update: {},
     create: {
       id: "ORD-100000001",
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       company_id: 1,
       creator_id: 2, // telesale user
       order_date: new Date(new Date().getTime() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
@@ -510,7 +556,7 @@ async function main() {
     update: {},
     create: {
       id: "ORD-100000002",
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       company_id: 1,
       creator_id: 2, // telesale user
       order_date: new Date(new Date().getTime() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
@@ -538,7 +584,7 @@ async function main() {
     update: {},
     create: {
       id: "ORD-100000003",
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       company_id: 1,
       creator_id: 2, // telesale user
       order_date: new Date(new Date().getTime() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
@@ -565,7 +611,7 @@ async function main() {
     update: {},
     create: {
       id: "ORD-100000004",
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       company_id: 1,
       creator_id: 2, // telesale user
       order_date: new Date(new Date().getTime() - 4 * 24 * 60 * 60 * 1000), // 4 days ago
@@ -593,6 +639,7 @@ async function main() {
     where: { id: 1 },
     update: {},
     create: {
+      creator_id: 2,
       order_id: "ORD-100000001",
       parent_order_id: "ORD-100000001",
       product_id: 1,
@@ -609,6 +656,7 @@ async function main() {
     where: { id: 2 },
     update: {},
     create: {
+      creator_id: 2,
       order_id: "ORD-100000002",
       parent_order_id: "ORD-100000002",
       product_id: 1,
@@ -625,6 +673,7 @@ async function main() {
     where: { id: 3 },
     update: {},
     create: {
+      creator_id: 2,
       order_id: "ORD-100000003",
       parent_order_id: "ORD-100000003",
       product_id: 1,
@@ -641,6 +690,7 @@ async function main() {
     where: { id: 4 },
     update: {},
     create: {
+      creator_id: 2,
       order_id: "ORD-100000004",
       parent_order_id: "ORD-100000004",
       product_id: 1,
@@ -694,7 +744,7 @@ async function main() {
     where: { id: 1 },
     update: {},
     create: {
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       date: new Date(new Date().getTime() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
       caller: "Somsri Telesale",
       status: "connected",
@@ -712,13 +762,62 @@ async function main() {
     where: { id: 1 },
     update: {},
     create: {
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
+      customer_ref_id: customer.customer_ref_id,
       date: new Date(new Date().getTime() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
       title: "Follow-up Call",
       status: "รอดำเนินการ",
       notes: "Discuss pricing",
     },
   });
+
+  // Statement logs for Statement Management feature
+  console.log("Seeding statement logs...");
+  const now = new Date();
+
+  await prisma.statementLog.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      company_id: 1,
+      user_id: 1,
+      batch: 1,
+      transfer_at: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+      amount: 1500.0,
+      channel: "โอนผ่าน Mobile Banking",
+      description: "ยอดขายประจำวัน ชุดที่ 1",
+    },
+  });
+
+  await prisma.statementLog.upsert({
+    where: { id: 2 },
+    update: {},
+    create: {
+      company_id: 1,
+      user_id: 1,
+      batch: 1,
+      transfer_at: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+      amount: 2750.5,
+      channel: "โอนผ่านตู้ ATM",
+      description: "ยอดขายประจำวัน ชุดที่ 1 (โอนเพิ่ม)",
+    },
+  });
+
+  await prisma.statementLog.upsert({
+    where: { id: 3 },
+    update: {},
+    create: {
+      company_id: 1,
+      user_id: 1,
+      batch: 2,
+      transfer_at: new Date(now.getTime() - 30 * 60 * 1000),
+      amount: 980.0,
+      channel: "โอนผ่านเคาน์เตอร์ธนาคาร",
+      description: "ยอดขายรอบเย็น",
+    },
+  });
+
+  console.log("Seeded example statement_logs batches");
 
   // Thai Address Data
   await seedAddressData();
@@ -729,7 +828,7 @@ async function main() {
     where: { id: BigInt(1) },
     update: {},
     create: {
-      customer_id: "CUS-100000001",
+      customer_id: customer.customer_id,
       timestamp: new Date(new Date().getTime() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
       type: "order_created",
       description: "Created order ORD-100000001",
