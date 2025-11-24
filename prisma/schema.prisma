@@ -8,15 +8,13 @@ datasource db {
 }
 
 model activities {
-  id          BigInt    @id @default(autoincrement())
-  customer_id String    @db.VarChar(32)
-  timestamp   DateTime  @db.DateTime(0)
-  type        String    @db.VarChar(64)
-  description String    @db.Text
-  actor_name  String    @db.VarChar(128)
-  customers   customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_activity_customer")
+  id          BigInt   @id @default(autoincrement())
+  customer_id Int?
+  timestamp   DateTime @db.DateTime(0)
+  type        String   @db.VarChar(64)
+  description String   @db.Text
+  actor_name  String   @db.VarChar(128)
 
-  @@index([customer_id], map: "idx_activities_customer_id")
   @@index([timestamp], map: "idx_activities_timestamp")
 }
 
@@ -86,33 +84,29 @@ model address_sub_districts {
 }
 
 model appointments {
-  id          Int       @id @default(autoincrement())
-  customer_id String    @db.VarChar(32)
-  date        DateTime  @db.DateTime(0)
-  title       String    @db.VarChar(255)
-  status      String    @db.VarChar(64)
-  notes       String?   @db.Text
-  customers   customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_appt_customer")
+  id              Int      @id @default(autoincrement())
+  customer_id     Int?
+  customer_ref_id String?  @db.VarChar(64)
+  date            DateTime @db.DateTime(0)
+  title           String   @db.VarChar(255)
+  status          String   @db.VarChar(64)
+  notes           String?  @db.Text
 
-  @@index([customer_id], map: "idx_appointments_customer_id")
   @@index([date], map: "idx_appointments_date")
   @@index([status], map: "idx_appointments_status")
 }
 
 model call_history {
-  id          Int       @id @default(autoincrement())
-  customer_id String    @db.VarChar(32)
-  date        DateTime  @db.DateTime(0)
-  caller      String    @db.VarChar(128)
-  status      String    @db.VarChar(64)
-  result      String    @db.VarChar(255)
-  crop_type   String?   @db.VarChar(128)
-  area_size   String?   @db.VarChar(128)
-  notes       String?   @db.Text
+  id          Int      @id @default(autoincrement())
+  customer_id Int?
+  date        DateTime @db.DateTime(0)
+  caller      String   @db.VarChar(128)
+  status      String   @db.VarChar(64)
+  result      String   @db.VarChar(255)
+  crop_type   String?  @db.VarChar(128)
+  area_size   String?  @db.VarChar(128)
+  notes       String?  @db.Text
   duration    Int?
-  customers   customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_call_customer")
-
-  @@index([customer_id], map: "idx_call_history_customer_id")
 }
 
 model companies {
@@ -153,14 +147,12 @@ model customer_address {
 }
 
 model customer_assignment_history {
-  id          BigInt    @id @default(autoincrement())
-  customer_id String    @db.VarChar(32)
+  id          BigInt   @id @default(autoincrement())
+  customer_id Int?
   user_id     Int
-  assigned_at DateTime  @default(now()) @db.DateTime(0)
-  customers   customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cah_customer")
-  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cah_user")
+  assigned_at DateTime @default(now()) @db.DateTime(0)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cah_user")
 
-  @@unique([customer_id, user_id], map: "uniq_customer_user_first")
   @@index([user_id], map: "fk_cah_user")
 }
 
@@ -193,64 +185,61 @@ model customer_logs {
   @@index([customer_id], map: "idx_customer_id")
 }
 
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model customer_tags {
-  customer_id String    @db.VarChar(32)
+  customer_id String? @db.VarChar(64)
   tag_id      Int
-  customers   customers @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_customer_tags_customer")
-  tags        tags      @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_customer_tags_tag")
+  tags        tags    @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_customer_tags_tag")
 
-  @@id([customer_id, tag_id])
   @@index([tag_id], map: "fk_customer_tags_tag")
+  @@ignore
 }
 
 model customers {
-  id                          String                        @id @db.VarChar(32)
-  first_name                  String                        @db.VarChar(128)
-  last_name                   String                        @db.VarChar(128)
-  phone                       String                        @db.VarChar(64)
-  email                       String?                       @db.VarChar(255)
-  province                    String                        @db.VarChar(128)
-  company_id                  Int
-  assigned_to                 Int?
-  date_assigned               DateTime                      @db.DateTime(0)
-  date_registered             DateTime?                     @db.DateTime(0)
-  follow_up_date              DateTime?                     @db.DateTime(0)
-  ownership_expires           DateTime?                     @db.DateTime(0)
-  lifecycle_status            customers_lifecycle_status?
-  behavioral_status           customers_behavioral_status?
-  grade                       customers_grade?
-  total_purchases             Decimal                       @default(0.00) @db.Decimal(12, 2)
-  total_calls                 Int                           @default(0)
-  facebook_name               String?                       @db.VarChar(255)
-  line_id                     String?                       @db.VarChar(128)
-  street                      String?                       @db.VarChar(255)
-  subdistrict                 String?                       @db.VarChar(128)
-  district                    String?                       @db.VarChar(128)
-  postal_code                 String?                       @db.VarChar(16)
-  recipient_first_name        String?                       @db.VarChar(128)
-  recipient_last_name         String?                       @db.VarChar(128)
-  has_sold_before             Boolean?                      @default(false)
-  follow_up_count             Int?                          @default(0)
-  last_follow_up_date         DateTime?                     @db.DateTime(0)
-  last_sale_date              DateTime?                     @db.DateTime(0)
-  is_in_waiting_basket        Boolean?                      @default(false)
-  waiting_basket_start_date   DateTime?                     @db.DateTime(0)
-  followup_bonus_remaining    Boolean                       @default(true)
-  is_blocked                  Boolean                       @default(false)
-  first_order_date            DateTime?                     @db.DateTime(0)
-  last_order_date             DateTime?                     @db.DateTime(0)
-  order_count                 Int?                          @default(0)
-  is_new_customer             Boolean?                      @default(false)
-  is_repeat_customer          Boolean?                      @default(false)
-  bucket_type                 String?                       @db.VarChar(16)
-  activities                  activities[]
-  appointments                appointments[]
-  call_history                call_history[]
-  customer_assignment_history customer_assignment_history[]
-  customer_tags               customer_tags[]
-  users                       users?                        @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_assigned_to")
-  companies                   companies                     @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_company")
-  orders                      orders[]
+  customer_id               Int                          @id @default(autoincrement())
+  customer_ref_id           String                       @unique(map: "uniq_customers_customer_ref_id") @db.VarChar(64)
+  first_name                String                       @db.VarChar(128)
+  last_name                 String                       @db.VarChar(128)
+  phone                     String                       @db.VarChar(64)
+  backup_phone              String?                      @db.VarChar(64)
+  email                     String?                      @db.VarChar(255)
+  province                  String                       @db.VarChar(128)
+  company_id                Int
+  assigned_to               Int?
+  date_assigned             DateTime                     @db.DateTime(0)
+  date_registered           DateTime?                    @db.DateTime(0)
+  follow_up_date            DateTime?                    @db.DateTime(0)
+  ownership_expires         DateTime?                    @db.DateTime(0)
+  lifecycle_status          customers_lifecycle_status?
+  behavioral_status         customers_behavioral_status?
+  grade                     customers_grade?
+  total_purchases           Decimal                      @default(0.00) @db.Decimal(12, 2)
+  total_calls               Int                          @default(0)
+  facebook_name             String?                      @db.VarChar(255)
+  line_id                   String?                      @db.VarChar(128)
+  street                    String?                      @db.VarChar(255)
+  subdistrict               String?                      @db.VarChar(128)
+  district                  String?                      @db.VarChar(128)
+  postal_code               String?                      @db.VarChar(16)
+  recipient_first_name      String?                      @db.VarChar(128)
+  recipient_last_name       String?                      @db.VarChar(128)
+  has_sold_before           Boolean?                     @default(false)
+  follow_up_count           Int?                         @default(0)
+  last_follow_up_date       DateTime?                    @db.DateTime(0)
+  last_sale_date            DateTime?                    @db.DateTime(0)
+  is_in_waiting_basket      Boolean?                     @default(false)
+  waiting_basket_start_date DateTime?                    @db.DateTime(0)
+  followup_bonus_remaining  Boolean                      @default(true)
+  is_blocked                Boolean                      @default(false)
+  first_order_date          DateTime?                    @db.DateTime(0)
+  last_order_date           DateTime?                    @db.DateTime(0)
+  order_count               Int?                         @default(0)
+  is_new_customer           Boolean?                     @default(false)
+  is_repeat_customer        Boolean?                     @default(false)
+  bucket_type               String?                      @db.VarChar(16)
+  users                     users?                       @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_assigned_to")
+  companies                 companies                    @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_company")
+  orders                    orders[]
 
   @@index([assigned_to], map: "idx_customers_assigned_to")
   @@index([is_blocked], map: "idx_customers_blocked")
@@ -392,6 +381,7 @@ model order_items {
   id                     Int                      @id @default(autoincrement())
   order_id               String                   @db.VarChar(32)
   parent_order_id        String                   @db.VarChar(32)
+  creator_id             Int
   product_id             Int?
   product_name           String?                  @db.VarChar(255)
   quantity               Int
@@ -403,6 +393,7 @@ model order_items {
   parent_item_id         Int?
   is_promotion_parent    Boolean                  @default(false)
   order_item_allocations order_item_allocations[]
+  users                  users                    @relation(fields: [creator_id], references: [id], map: "fk_order_items_creator")
   order_items            order_items?             @relation("order_itemsToorder_items", fields: [parent_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_items_parent")
   other_order_items      order_items[]            @relation("order_itemsToorder_items")
   orders                 orders                   @relation(fields: [parent_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_items_parent_order")
@@ -415,6 +406,7 @@ model order_items {
   @@index([is_promotion_parent], map: "idx_order_items_promotion_parent")
   @@index([parent_order_id], map: "idx_order_items_parent_order")
   @@index([product_id], map: "idx_order_items_product")
+  @@index([creator_id], map: "idx_order_items_creator")
 }
 
 model order_slips {
@@ -448,7 +440,7 @@ model order_tracking_numbers {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model orders {
   id                     String                   @id @db.VarChar(32)
-  customer_id            String                   @db.VarChar(32)
+  customer_id            Int?
   company_id             Int
   creator_id             Int
   order_date             DateTime                 @db.DateTime(0)
@@ -484,7 +476,7 @@ model orders {
   bank_account           bank_account?            @relation(fields: [bank_account_id], references: [id], onUpdate: NoAction, map: "fk_orders_bank_account")
   companies              companies                @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_company")
   users                  users                    @relation(fields: [creator_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_creator")
-  customers              customers                @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_customer")
+  customers              customers?               @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade, map: "fk_orders_customer")
   pages                  pages?                   @relation(fields: [sales_channel_page_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_page")
   warehouses             warehouses?              @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_warehouse")
   stock_reservations     stock_reservations[]
@@ -492,7 +484,6 @@ model orders {
   @@index([sales_channel_page_id], map: "fk_orders_page")
   @@index([warehouse_id], map: "fk_orders_warehouse")
   @@index([company_id], map: "idx_orders_company")
-  @@index([customer_id], map: "idx_orders_customer")
   @@index([bank_account_id], map: "idx_orders_bank_account_id")
   @@index([company_id, payment_status], map: "idx_orders_company_payment")
   @@index([company_id, order_status], map: "idx_orders_company_status")
@@ -501,6 +492,7 @@ model orders {
   @@index([delivery_date], map: "idx_orders_delivery_date")
   @@index([payment_status], map: "idx_orders_payment_status")
   @@index([order_status], map: "idx_orders_status")
+  @@index([customer_id], map: "fk_orders_customer")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -708,7 +700,7 @@ model tags {
   id            Int             @id @default(autoincrement())
   name          String          @db.VarChar(128)
   type          tags_type
-  customer_tags customer_tags[]
+  customer_tags customer_tags[] @ignore
   user_tags     user_tags[]
 }
 
@@ -794,6 +786,7 @@ model users {
   notification_read_status    notification_read_status[]
   notification_settings       notification_settings[]
   notification_users          notification_users[]
+  order_items                 order_items[]
   orders                      orders[]
   stock_movements             stock_movements[]
   stock_reservations          stock_reservations[]
