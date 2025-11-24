@@ -151,8 +151,22 @@ const normalizeApiCustomer = (api: any): Customer => {
         .filter((id: number) => Number.isFinite(id))
     : [];
 
+  // Resolve customer ID: prefer customer_id (PK), fallback to id or pk
+  const pk = api?.customer_id ?? api?.id ?? api?.pk ?? null;
+  const refId =
+    api?.customer_ref_id ??
+    api?.customer_ref ??
+    api?.customer_refid ??
+    api?.customerId ??
+    null;
+  const resolvedId =
+    pk != null ? String(pk) : refId != null ? String(refId) : "";
+
   return {
-    id: String(api?.id ?? ""),
+    id: resolvedId,
+    pk: pk != null ? Number(pk) : undefined,
+    customerId: refId ?? undefined,
+    customerRefId: refId ?? undefined,
     firstName: api?.first_name ?? "",
     lastName: api?.last_name ?? "",
     phone: api?.phone ?? "",
@@ -541,7 +555,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const now = new Date();
     const assignmentTimestamp = now.toISOString();
     const ownershipDeadline = new Date(now.getTime());
-    ownershipDeadline.setDate(ownershipDeadline.getDate() + 90);
+    ownershipDeadline.setDate(ownershipDeadline.getDate() + 30); // เริ่มต้น 30 วัน เมื่อแจกรายวัน
     const ownershipExpires = ownershipDeadline.toISOString();
 
     const updatePromises: Promise<unknown>[] = [];

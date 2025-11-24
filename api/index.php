@@ -91,6 +91,9 @@ if ($resource === '' || $resource === 'health') {
     case 'orders':
         handle_orders($pdo, $id);
         break;
+    case 'upsell':
+        handle_upsell($pdo, $id, $action);
+        break;
     case 'user_pancake_mappings':
         handle_user_pancake_mappings($pdo, $id);
         break;
@@ -449,226 +452,381 @@ function handle_users(PDO $pdo, ?string $id): void {
 function handle_customers(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
-            if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM customers WHERE id = ?');
-                $stmt->execute([$id]);
-                $cust = $stmt->fetch();
-                if (!$cust) json_response(['error' => 'NOT_FOUND'], 404);
-                $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
-                $tags->execute([$id]);
-                $cust['tags'] = $tags->fetchAll();
-                json_response($cust);
-            } else {
-                $q = $_GET['q'] ?? '';
-                $companyId = $_GET['companyId'] ?? null;
-                $bucket = $_GET['bucket'] ?? null;
-                $userId = $_GET['userId'] ?? null;
-                $source = isset($_GET['source']) ? strtolower(trim((string)$_GET['source'])) : null; // new_sale | waiting_return | stock
-                $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7; // for new_sale freshness window
-
-                if ($bucket === 'NewForMe') {
-                    if (!$userId) json_response(['error' => 'USER_ID_REQUIRED'], 400);
-                    $sql = 'SELECT c.*
-                            FROM customers c
-                            JOIN users u ON u.id = ?
-                            WHERE c.assigned_to = ?
-                              AND EXISTS (SELECT 1 FROM customer_assignment_history h WHERE h.customer_id=c.id AND h.user_id=?)
-                              AND NOT EXISTS (
-                                   SELECT 1 FROM call_history ch
-                                   WHERE ch.customer_id=c.id AND ch.caller = CONCAT(u.first_name, " ", u.last_name)
-                              )';
-                    $params = [$userId, $userId, $userId];
-                    if ($companyId) { $sql .= ' AND c.company_id = ?'; $params[] = $companyId; }
-                    if ($q !== '') {
-                        $sql .= ' AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)';
-                        $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%";
-                    }
-                    $sql .= ' ORDER BY c.date_assigned DESC LIMIT 200';
-                    $stmt = $pdo->prepare($sql);
-                    $stmt->execute($params);
-                    $customers = $stmt->fetchAll();
-
-                    // Add tags to each customer
-                    foreach ($customers as &$customer) {
-                        $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
-                        $tagsStmt->execute([$customer['id']]);
-                        $customer['tags'] = $tagsStmt->fetchAll();
-                    }
-
-                    json_response($customers);
-                } elseif (in_array($source, ['new_sale','waiting_return','stock'], true)) {
-                    // Source-specific pools
-                    $params = [];
-                    if ($source === 'new_sale') {
-                        $sql = "SELECT DISTINCT c.*\n"
-                             . "FROM customers c\n"
-                             . "JOIN orders o ON o.customer_id = c.id\n"
-                             . "LEFT JOIN users u ON u.id = o.creator_id\n"
-                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                             . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                             . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                             . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
-                        $params[] = max(0, $freshDays);
-                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                        if ($q !== '') {
-                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
-                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                        }
-                        $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC LIMIT 200";
-                    } elseif ($source === 'waiting_return') {
-                        $sql = "SELECT c.* FROM customers c\n"
-                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                             . "  AND c.is_in_waiting_basket = 1\n"
-                             . "  AND c.waiting_basket_start_date IS NOT NULL\n"
-                             . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30\n"
-                             . "  AND c.assigned_to IS NULL";
-                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                        if ($q !== '') {
-                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
-                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                        }
-                        $sql .= " ORDER BY c.waiting_basket_start_date ASC LIMIT 200";
-                    } else { // stock
-                        $sql = "SELECT c.* FROM customers c\n"
-                             . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                             . "  AND c.assigned_to IS NULL\n"
-                             . "  AND COALESCE(c.is_in_waiting_basket,0) = 0\n"
-                             . "  AND NOT EXISTS (\n"
-                             . "        SELECT 1 FROM orders o\n"
-                             . "        LEFT JOIN users u ON u.id = o.creator_id\n"
-                             . "        WHERE o.customer_id = c.id\n"
-                             . "          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                             . "          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                             . "          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?\n"
-                             . "  )";
-                        $params[] = max(0, $freshDays);
-                        if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                        if ($q !== '') {
-                            $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.id LIKE ?)";
-                            $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                        }
-                        $sql .= " ORDER BY c.date_assigned DESC LIMIT 200";
-                    }
-
-                    $stmt = $pdo->prepare($sql);
-                    $stmt->execute($params);
-                    $customers = $stmt->fetchAll();
-
-                    // Add tags to each customer
-                    foreach ($customers as &$customer) {
-                        $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
-                        $tagsStmt->execute([$customer['id']]);
-                        $customer['tags'] = $tagsStmt->fetchAll();
-                    }
-
-                    json_response($customers);
+            try {
+                if ($id) {
+                    $stmt = $pdo->prepare('SELECT * FROM customers WHERE customer_id = ?');
+                    $stmt->execute([$id]);
+                    $cust = $stmt->fetch();
+                    if (!$cust) json_response(['error' => 'NOT_FOUND'], 404);
+                    $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                    $tags->execute([$id]);
+                    $cust['tags'] = $tags->fetchAll();
+                    json_response($cust);
                 } else {
-                    $sql = 'SELECT * FROM customers WHERE 1';
-                    $params = [];
-                    if ($q !== '') { $sql .= ' AND (first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR id LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; }
-                    if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
-                    $sql .= ' ORDER BY date_assigned DESC LIMIT 200';
-                    $stmt = $pdo->prepare($sql);
-                    $stmt->execute($params);
-                    $customers = $stmt->fetchAll();
+                    $q = $_GET['q'] ?? '';
+                    $companyId = $_GET['companyId'] ?? null;
+                    $bucket = $_GET['bucket'] ?? null;
+                    $userId = $_GET['userId'] ?? null;
+                    $source = isset($_GET['source']) ? strtolower(trim((string)$_GET['source'])) : null; // new_sale | waiting_return | stock
+                    $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7; // for new_sale freshness window
 
-                    // Add tags to each customer
-                    foreach ($customers as &$customer) {
-                        $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
-                        $tagsStmt->execute([$customer['id']]);
-                        $customer['tags'] = $tagsStmt->fetchAll();
+                    if ($bucket === 'NewForMe') {
+                        if (!$userId) json_response(['error' => 'USER_ID_REQUIRED'], 400);
+                        $sql = 'SELECT c.*
+                                FROM customers c
+                                JOIN users u ON u.id = ?
+                                WHERE c.assigned_to = ?
+                                  AND EXISTS (SELECT 1 FROM customer_assignment_history h WHERE h.customer_id=c.customer_id AND h.user_id=?)
+                                  AND NOT EXISTS (
+                                       SELECT 1 FROM call_history ch
+                                       WHERE ch.customer_id=c.customer_id AND ch.caller = CONCAT(u.first_name, " ", u.last_name)
+                                  )';
+                        $params = [$userId, $userId, $userId];
+                        if ($companyId) { $sql .= ' AND c.company_id = ?'; $params[] = $companyId; }
+                        if ($q !== '') {
+                            $sql .= ' AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)';
+                            $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%";
+                        }
+                        $sql .= ' ORDER BY c.date_assigned DESC LIMIT 200';
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($params);
+                        $customers = $stmt->fetchAll();
+
+                        // Add tags to each customer
+                        foreach ($customers as &$customer) {
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                            $tagsStmt->execute([$customer['customer_id']]); // Use customer_id
+                            $customer['tags'] = $tagsStmt->fetchAll();
+                        }
+
+                        json_response($customers);
+                    } elseif (in_array($source, ['new_sale','waiting_return','stock'], true)) {
+                        // Source-specific pools
+                        $params = [];
+                        if ($source === 'new_sale') {
+                            $sql = "SELECT DISTINCT c.*\n"
+                                 . "FROM customers c\n"
+                                 . "JOIN orders o ON o.customer_id = c.customer_id\n"
+                                 . "LEFT JOIN users u ON u.id = o.creator_id\n"
+                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                                 . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
+                                 . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
+                                 . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
+                            $params[] = max(0, $freshDays);
+                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                            if ($q !== '') {
+                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                            }
+                            $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC LIMIT 200";
+                        } elseif ($source === 'waiting_return') {
+                            $sql = "SELECT c.* FROM customers c\n"
+                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                                 . "  AND c.is_in_waiting_basket = 1\n"
+                                 . "  AND c.waiting_basket_start_date IS NOT NULL\n"
+                                 . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30\n"
+                                 . "  AND c.assigned_to IS NULL";
+                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                            if ($q !== '') {
+                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                            }
+                            $sql .= " ORDER BY c.waiting_basket_start_date ASC LIMIT 200";
+                        } else { // stock
+                            $sql = "SELECT c.* FROM customers c\n"
+                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                                 . "  AND c.assigned_to IS NULL\n"
+                                 . "  AND COALESCE(c.is_in_waiting_basket,0) = 0\n"
+                                 . "  AND NOT EXISTS (\n"
+                                 . "        SELECT 1 FROM orders o\n"
+                                 . "        LEFT JOIN users u ON u.id = o.creator_id\n"
+                                 . "        WHERE o.customer_id = c.customer_id\n"
+                                 . "          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
+                                 . "          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
+                                 . "          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?\n"
+                                 . "  )";
+                            $params[] = max(0, $freshDays);
+                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
+                            if ($q !== '') {
+                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
+                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+                            }
+                            $sql .= " ORDER BY c.date_assigned DESC LIMIT 200";
+                        }
+
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($params);
+                        $customers = $stmt->fetchAll();
+
+                        // Add tags to each customer
+                        foreach ($customers as &$customer) {
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                            $tagsStmt->execute([$customer['customer_id']]);
+                            $customer['tags'] = $tagsStmt->fetchAll();
+                        }
+
+                        json_response($customers);
+                    } else {
+                        $sql = 'SELECT * FROM customers WHERE 1';
+                        $params = [];
+                        if ($q !== '') { $sql .= ' AND (first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; }
+                        if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
+                        $sql .= ' ORDER BY date_assigned DESC LIMIT 200';
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($params);
+                        $customers = $stmt->fetchAll();
+
+                        // Add tags to each customer
+                        foreach ($customers as &$customer) {
+                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                            $tagsStmt->execute([$customer['customer_id']]);
+                            $customer['tags'] = $tagsStmt->fetchAll();
+                        }
+
+                        json_response($customers);
                     }
-
-                    json_response($customers);
                 }
+            } catch (Throwable $e) {
+                json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
             }
             break;
         case 'POST':
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO customers (id, first_name, last_name, phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $phoneCandidate = trim($in['phone'] ?? '');
+            $companyCandidate = $in['companyId'] ?? null;
+            if ($phoneCandidate !== '' && $companyCandidate) {
+                $dupStmt = $pdo->prepare('SELECT first_name, last_name FROM customers WHERE phone = ? AND company_id = ? LIMIT 1');
+                $dupStmt->execute([$phoneCandidate, $companyCandidate]);
+                $duplicate = $dupStmt->fetch();
+                if ($duplicate) {
+                    json_response([
+                        'error' => 'DUPLICATE_PHONE',
+                        'message' => "เบอร์โทรศัพท์ซ้ำกับลูกค้า {$duplicate['first_name']} {$duplicate['last_name']}",
+                    ], 409);
+                }
+            }
+            // Updated INSERT to use customer_ref_id and let customer_id be auto-increment
+            error_log(json_encode([
+                'action' => 'create_customer',
+                'customerId' => $in['customerId'] ?? $in['id'] ?? null,
+                'phone' => $in['phone'] ?? null,
+                'backupPhone' => $in['backupPhone'] ?? null,
+            ]));
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
-                $in['id'], $in['firstName'] ?? '', $in['lastName'] ?? '', $in['phone'] ?? '', $in['email'] ?? null,
-                $in['province'] ?? '', $in['companyId'] ?? null, $in['assignedTo'] ?? null,
-                $in['dateAssigned'] ?? date('c'), $in['dateRegistered'] ?? null, $in['followUpDate'] ?? null, $in['ownershipExpires'] ?? null,
-                $in['lifecycleStatus'] ?? null, $in['behavioralStatus'] ?? null, $in['grade'] ?? null,
-                $in['totalPurchases'] ?? 0, $in['totalCalls'] ?? 0, $in['facebookName'] ?? null, $in['lineId'] ?? null,
-                $in['address']['street'] ?? null, $in['address']['subdistrict'] ?? null, $in['address']['district'] ?? null, $in['address']['postalCode'] ?? null,
+                $in['customerId'] ?? $in['id'], // This is the string ID (CUS-...)
+                $in['firstName'] ?? '', 
+                $in['lastName'] ?? '', 
+                $in['phone'] ?? '', 
+                $in['backupPhone'] ?? null,
+                $in['email'] ?? null,
+                $in['province'] ?? '', 
+                $in['companyId'] ?? null, 
+                $in['assignedTo'] ?? null,
+                $in['dateAssigned'] ?? date('c'), 
+                $in['dateRegistered'] ?? null, 
+                $in['followUpDate'] ?? null, 
+                $in['ownershipExpires'] ?? null,
+                $in['lifecycleStatus'] ?? null, 
+                $in['behavioralStatus'] ?? null, 
+                $in['grade'] ?? null,
+                $in['totalPurchases'] ?? 0, 
+                $in['totalCalls'] ?? 0, 
+                $in['facebookName'] ?? null, 
+                $in['lineId'] ?? null,
+                $in['address']['street'] ?? null, 
+                $in['address']['subdistrict'] ?? null, 
+                $in['address']['district'] ?? null, 
+                $in['address']['postalCode'] ?? null,
             ]);
-            json_response(['ok' => true]);
+            $newPk = $pdo->lastInsertId();
+            json_response(['ok' => true, 'id' => $newPk, 'customer_id' => $newPk]);
             break;
         case 'PUT':
         case 'PATCH':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
             $in = json_input();
-            // Fetch previous assigned_to
-            $oldAssigned = null;
+            error_log(json_encode([
+                'action' => 'update_customer',
+                'id' => $id,
+                'phone' => $in['phone'] ?? null,
+                'backupPhone' => $in['backupPhone'] ?? null,
+            ]));
+            
+            // Fetch current data to check for phone/company changes
+            $current = null;
             try {
-                $st = $pdo->prepare('SELECT assigned_to FROM customers WHERE id=?');
-                $st->execute([$id]);
-                $oldAssigned = $st->fetchColumn();
-            } catch (Throwable $e) { $oldAssigned = null; }
+                // Try to find by customer_id (PK) or customer_ref_id
+                $st = $pdo->prepare('SELECT customer_id, phone, company_id, assigned_to FROM customers WHERE customer_id=? OR customer_ref_id=? LIMIT 1');
+                $st->execute([$id, $id]);
+                $current = $st->fetch();
+                
+                // If found, ensure we use the real PK for updates
+                if ($current) {
+                    $id = $current['customer_id'];
+                }
+            } catch (Throwable $e) { /* ignore */ }
+            
+            if (!$current) json_response(['error' => 'NOT_FOUND'], 404);
 
+            $oldAssigned = $current['assigned_to'];
             $assignedTo = $in['assignedTo'] ?? null;
 
-            $stmt = $pdo->prepare('UPDATE customers SET first_name=COALESCE(?, first_name), last_name=COALESCE(?, last_name), phone=COALESCE(?, phone), email=COALESCE(?, email), province=COALESCE(?, province), company_id=COALESCE(?, company_id), assigned_to=COALESCE(?, assigned_to), date_assigned=COALESCE(?, date_assigned), date_registered=COALESCE(?, date_registered), follow_up_date=COALESCE(?, follow_up_date), ownership_expires=COALESCE(?, ownership_expires), lifecycle_status=COALESCE(?, lifecycle_status), behavioral_status=COALESCE(?, behavioral_status), grade=COALESCE(?, grade), total_purchases=COALESCE(?, total_purchases), total_calls=COALESCE(?, total_calls), facebook_name=COALESCE(?, facebook_name), line_id=COALESCE(?, line_id), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), postal_code=COALESCE(?, postal_code), is_in_waiting_basket=COALESCE(?, is_in_waiting_basket), waiting_basket_start_date=COALESCE(?, waiting_basket_start_date), is_blocked=COALESCE(?, is_blocked) WHERE id=?');
-            $addr = $in['address'] ?? [];
-            $stmt->execute([
-                $in['firstName'] ?? null,
-                $in['lastName'] ?? null,
-                $in['phone'] ?? null,
-                $in['email'] ?? null,
-                $in['province'] ?? null,
-                $in['companyId'] ?? null,
-                $assignedTo,
-                $in['dateAssigned'] ?? null,
-                $in['dateRegistered'] ?? null,
-                $in['followUpDate'] ?? null,
-                $in['ownershipExpires'] ?? null,
-                $in['lifecycleStatus'] ?? null,
-                $in['behavioralStatus'] ?? null,
-                $in['grade'] ?? null,
-                $in['totalPurchases'] ?? null,
-                $in['totalCalls'] ?? null,
-                $in['facebookName'] ?? null,
-                $in['lineId'] ?? null,
-                $addr['street'] ?? null,
-                $addr['subdistrict'] ?? null,
-                $addr['district'] ?? null,
-                $addr['postalCode'] ?? null,
-                array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
-                $in['waiting_basket_start_date'] ?? null,
-                array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
-                $id,
-            ]);
-
-            // Normalize ownership history for new assignments
-            if (!empty($assignedTo) && (string)$assignedTo !== (string)$oldAssigned) {
-                try {
-                    $pdo->prepare('UPDATE customers SET date_assigned=COALESCE(date_assigned, NOW()) WHERE id=?')->execute([$id]);
-                    $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())')->execute([$id, $assignedTo]);
-                } catch (Throwable $e) { /* ignore */ }
+            // Calculate new customer_ref_id if phone changes
+            $newCustomerRefId = null;
+            if (isset($in['phone']) && $in['phone'] !== $current['phone']) {
+                $newPhone = $in['phone'];
+                $companyId = $in['companyId'] ?? $current['company_id'];
+                $cleanedPhone = preg_replace('/\D/', '', $newPhone);
+                if ($cleanedPhone === '') {
+                    json_response(['error' => 'INVALID_PHONE', 'message' => 'Invalid phone number provided'], 400);
+                }
+                $duplicateStmt = $pdo->prepare('SELECT first_name, last_name FROM customers WHERE phone = ? AND company_id = ? AND customer_id <> ? LIMIT 1');
+                $duplicateStmt->execute([$newPhone, $companyId, $id]);
+                $duplicate = $duplicateStmt->fetch();
+                if ($duplicate) {
+                    json_response([
+                        'error' => 'DUPLICATE_PHONE',
+                        'message' => "เบอร์โทรศัพท์ซ้ำกับลูกค้า {$duplicate['first_name']} {$duplicate['last_name']}"
+                    ], 409);
+                }
+                $companyPrefix = ((int)$companyId === 1) ? '' : "-$companyId";
+                $newCustomerRefId = "CUS-$cleanedPhone$companyPrefix";
             }
 
-            // Post-update normalization to avoid overlapping states
+            $pdo->beginTransaction();
             try {
-                $st2 = $pdo->prepare('SELECT assigned_to, is_in_waiting_basket, is_blocked FROM customers WHERE id=?');
-                $st2->execute([$id]);
+                // Disable FK checks to allow updating PK/FKs
+                $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+
+                $updateFields = [
+                    'first_name=COALESCE(?, first_name)',
+                    'last_name=COALESCE(?, last_name)',
+                    'phone=COALESCE(?, phone)',
+                    'backup_phone=COALESCE(?, backup_phone)', // Added backup_phone
+                    'email=COALESCE(?, email)',
+                    'province=COALESCE(?, province)',
+                    'company_id=COALESCE(?, company_id)',
+                    'assigned_to=COALESCE(?, assigned_to)',
+                    'date_assigned=COALESCE(?, date_assigned)',
+                    'date_registered=COALESCE(?, date_registered)',
+                    'follow_up_date=COALESCE(?, follow_up_date)',
+                    'ownership_expires=COALESCE(?, ownership_expires)',
+                    'lifecycle_status=COALESCE(?, lifecycle_status)',
+                    'behavioral_status=COALESCE(?, behavioral_status)',
+                    'grade=COALESCE(?, grade)',
+                    'total_purchases=COALESCE(?, total_purchases)',
+                    'total_calls=COALESCE(?, total_calls)',
+                    'facebook_name=COALESCE(?, facebook_name)',
+                    'line_id=COALESCE(?, line_id)',
+                    'street=COALESCE(?, street)',
+                    'subdistrict=COALESCE(?, subdistrict)',
+                    'district=COALESCE(?, district)',
+                    'postal_code=COALESCE(?, postal_code)',
+                    'is_in_waiting_basket=COALESCE(?, is_in_waiting_basket)',
+                    'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
+                    'is_blocked=COALESCE(?, is_blocked)'
+                ];
+
+                $params = [
+                    $in['firstName'] ?? null,
+                    $in['lastName'] ?? null,
+                    $in['phone'] ?? null,
+                    $in['backupPhone'] ?? null,
+                    $in['email'] ?? null,
+                    $in['province'] ?? null,
+                    $in['companyId'] ?? null,
+                    $assignedTo,
+                    $in['dateAssigned'] ?? null,
+                    $in['dateRegistered'] ?? null,
+                    $in['followUpDate'] ?? null,
+                    $in['ownershipExpires'] ?? null,
+                    $in['lifecycleStatus'] ?? null,
+                    $in['behavioralStatus'] ?? null,
+                    $in['grade'] ?? null,
+                    $in['totalPurchases'] ?? null,
+                    $in['totalCalls'] ?? null,
+                    $in['facebookName'] ?? null,
+                    $in['lineId'] ?? null,
+                    $in['address']['street'] ?? null,
+                    $in['address']['subdistrict'] ?? null,
+                    $in['address']['district'] ?? null,
+                    $in['address']['postalCode'] ?? null,
+                    array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
+                    $in['waiting_basket_start_date'] ?? null,
+                    array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
+                ];
+
+                if ($newCustomerRefId) {
+                    $updateFields[] = 'customer_ref_id=?';
+                    $params[] = $newCustomerRefId;
+                }
+
+                $params[] = $id; // WHERE customer_id = ?
+
+                $sql = 'UPDATE customers SET ' . implode(', ', $updateFields) . ' WHERE customer_id=?';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+
+                // Removed updating related tables as customer_id (PK) does not change.
+                // customer_ref_id is just a field in customers table now.
+
+                // Normalize ownership history for new assignments
+                // Use newCustomerRefId if changed, else id
+                $targetId = $id;
+                
+                if (!empty($assignedTo) && (string)$assignedTo !== (string)$oldAssigned) {
+                    $pdo->prepare('UPDATE customers SET date_assigned=COALESCE(date_assigned, NOW()) WHERE customer_id=?')->execute([$targetId]);
+                    $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())')->execute([$targetId, $assignedTo]);
+                }
+
+                // Post-update normalization
+                $st2 = $pdo->prepare('SELECT assigned_to, is_in_waiting_basket, is_blocked FROM customers WHERE customer_id=?');
+                $st2->execute([$targetId]);
                 $row = $st2->fetch();
                 if ($row) {
                     $assignedNow = $row['assigned_to'];
                     $waitingNow = (int)$row['is_in_waiting_basket'] === 1;
                     $blockedNow = (int)$row['is_blocked'] === 1;
-                    // Policy: blocked > waiting > assigned > ready
                     if ($blockedNow) {
-                        // Ensure blocked customers are not assigned and not in waiting basket
-                        $pdo->prepare('UPDATE customers SET assigned_to=NULL, is_in_waiting_basket=0 WHERE id=?')->execute([$id]);
+                        $pdo->prepare('UPDATE customers SET assigned_to=NULL, is_in_waiting_basket=0 WHERE customer_id=?')->execute([$targetId]);
                     } else if ($waitingNow && $assignedNow !== null) {
-                        // Waiting basket takes precedence => clear assignment
-                        $pdo->prepare('UPDATE customers SET assigned_to=NULL WHERE id=?')->execute([$id]);
+                        $pdo->prepare('UPDATE customers SET assigned_to=NULL WHERE customer_id=?')->execute([$targetId]);
                     }
                 }
-            } catch (Throwable $e) { /* ignore */ }
-            json_response(['ok' => true]);
+
+                $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+                $pdo->commit();
+                $getUpdated = $pdo->prepare('SELECT *, customer_id as pk FROM customers WHERE customer_id = ?');
+                $getUpdated->execute([$targetId]);
+                $updatedRow = $getUpdated->fetch();
+                
+                if (!$updatedRow) {
+                    // Fallback: try fetching by internal ID (PK) if customer_id fetch failed
+                    // This can happen if the transaction view is not yet consistent or if customer_id changed
+                    $getUpdatedByPk = $pdo->prepare('SELECT *, customer_id as pk FROM customers WHERE customer_id = ?');
+                    $getUpdatedByPk->execute([$id]); // $id is the PK passed to the function
+                    $updatedRow = $getUpdatedByPk->fetch();
+                }
+
+                if ($updatedRow) {
+                    // Fetch tags for the updated customer to ensure complete object
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
+                    $tagsStmt->execute([$updatedRow['customer_id']]);
+                    $updatedRow['tags'] = $tagsStmt->fetchAll();
+                    
+                    json_response($updatedRow);
+                } else {
+                    // Should not happen if update was successful, but return minimal data as fallback
+                    json_response(['ok' => true, 'customerId' => $targetId, 'id' => $id]);
+                }
+
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                // Ensure FK checks are re-enabled even on error (though connection might close)
+                try { $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (Throwable $ex) {}
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -1380,6 +1538,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
                                        oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number, 
                                        oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                                       oi.creator_id, oi.parent_order_id,
                                        p.sku as product_sku
                                 FROM order_items oi
                                 LEFT JOIN products p ON oi.product_id = p.id
@@ -1592,7 +1751,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                 if (!empty($in['items']) && is_array($in['items'])) {
                     // Two‑phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
 
                     // Helper function to get order_id based on box_number (using synthesized per-box IDs)
                     $getOrderIdForBox = function($boxNumber) use ($mainOrderId, $subOrderIds) {
@@ -1619,7 +1778,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, null, 1,
+                                $it['promotionId'] ?? null, null, 1, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) {
@@ -1640,7 +1799,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, null, 0,
+                                $it['promotionId'] ?? null, null, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
@@ -1662,7 +1821,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $orderIdForItem, $mainOrderId,
                                 $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
                                 $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
-                                $it['promotionId'] ?? null, $resolved, 0,
+                                $it['promotionId'] ?? null, $resolved, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
                             if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
@@ -1803,17 +1962,28 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 } catch (Throwable $e) { /* ignore */ }
 
                 try {
-                    if ($customerId && strcasecmp($newPaymentStatus, 'Paid') === 0 && strcasecmp($newStatus, 'Delivered') === 0) {
-                        $cst = $pdo->prepare('SELECT ownership_expires FROM customers WHERE id=?');
-                        $cst->execute([$customerId]);
-                        $cexp = $cst->fetchColumn();
-                        $now = new DateTime();
-                        $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
-                        $currentExpiry = $cexp ? new DateTime($cexp) : clone $now;
-                        $newExpiry = clone $currentExpiry; $newExpiry->add(new DateInterval('P90D'));
-                        if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
-                        $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
-                        $u->execute([$newExpiry->format('Y-m-d H:i:s'), $now->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
+                    // If order status is Picking, grant sale quota (+90 days)
+                    // Use delivery_date from order as the sale date, then add 90 days for ownership_expires
+                    if ($customerId && strcasecmp($newStatus, 'Picking') === 0) {
+                        // Get delivery_date from the order
+                        $orderStmt = $pdo->prepare('SELECT delivery_date FROM orders WHERE id=?');
+                        $orderStmt->execute([$id]);
+                        $deliveryDateStr = $orderStmt->fetchColumn();
+                        
+                        if ($deliveryDateStr) {
+                            $deliveryDate = new DateTime($deliveryDateStr);
+                            // ownership_expires = delivery_date + 90 days
+                            $newExpiry = clone $deliveryDate;
+                            $newExpiry->add(new DateInterval('P90D'));
+                            
+                            // Ensure max 90 days from current date
+                            $now = new DateTime();
+                            $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
+                            if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
+                            
+                            $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
+                            $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
+                        }
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
 
@@ -2751,7 +2921,7 @@ function get_order(PDO $pdo, string $id): ?array {
     }
     $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
     
-    $items = $pdo->prepare("SELECT * FROM order_items WHERE order_id IN ($placeholders) ORDER BY order_id, id");
+    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.order_id IN ($placeholders) ORDER BY oi.order_id, oi.id");
     $items->execute($allOrderIds);
     $allItems = $items->fetchAll();
     
@@ -3025,27 +3195,42 @@ function handle_tags(PDO $pdo, ?string $id): void {
 function handle_customer_tags(PDO $pdo): void {
     switch (method()) {
         case 'GET':
-            $customerId = $_GET['customerId'] ?? null;
-            if ($customerId) {
-                $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.customer_id=? ORDER BY t.name');
-                $stmt->execute([$customerId]);
-                json_response($stmt->fetchAll());
-            } else {
-                $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
-                json_response($stmt->fetchAll());
+            try {
+                $customerId = $_GET['customerId'] ?? null;
+                if ($customerId) {
+                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.customer_id=? ORDER BY t.name');
+                    $stmt->execute([$customerId]);
+                    json_response($stmt->fetchAll());
+                } else {
+                    $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
+                    json_response($stmt->fetchAll());
+                }
+            } catch (Throwable $e) {
+                json_response(['error' => 'QUERY_FAILED', 'message' => $e->getMessage()], 500);
             }
+            break;
         case 'POST':
-            $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
-            $stmt->execute([$in['customerId'] ?? '', $in['tagId'] ?? 0]);
-            json_response(['ok' => true]);
+            try {
+                $in = json_input();
+                $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
+                $stmt->execute([$in['customerId'] ?? '', $in['tagId'] ?? 0]);
+                json_response(['ok' => true]);
+            } catch (Throwable $e) {
+                json_response(['error' => 'INSERT_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
         case 'DELETE':
-            $customerId = $_GET['customerId'] ?? '';
-            $tagId = $_GET['tagId'] ?? '';
-            if ($customerId === '' || $tagId === '') json_response(['error' => 'MISSING_PARAMS'], 400);
-            $stmt = $pdo->prepare('DELETE FROM customer_tags WHERE customer_id=? AND tag_id=?');
-            $stmt->execute([$customerId, $tagId]);
-            json_response(['ok' => true]);
+            try {
+                $customerId = $_GET['customerId'] ?? '';
+                $tagId = $_GET['tagId'] ?? '';
+                if ($customerId === '' || $tagId === '') json_response(['error' => 'MISSING_PARAMS'], 400);
+                $stmt = $pdo->prepare('DELETE FROM customer_tags WHERE customer_id=? AND tag_id=?');
+                $stmt->execute([$customerId, $tagId]);
+                json_response(['ok' => true]);
+            } catch (Throwable $e) {
+                json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
@@ -3152,8 +3337,8 @@ function handle_do_dashboard(PDO $pdo): void {
 
     // Get customers assigned to the user
     $sql = "SELECT c.*,
-                   (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.id AND a.status != 'เสร็จสิ้น' AND a.date <= ?) as upcoming_appointments,
-                   (SELECT COUNT(*) FROM activities act WHERE act.customer_id = c.id) as activity_count
+                   (SELECT COUNT(*) FROM appointments a WHERE a.customer_id = c.customer_id AND a.status != 'เสร็จสิ้น' AND a.date <= ?) as upcoming_appointments,
+                   (SELECT COUNT(*) FROM activities act WHERE act.customer_id = c.customer_id) as activity_count
             FROM customers c
             WHERE c.assigned_to = ?";
 
@@ -4511,6 +4696,260 @@ if (method() === 'POST' && isset($_POST['action'])) {
         case 'updateNotificationSettings':
             handle_update_notification_settings($pdo);
             break;
+    }
+}
+
+/**
+ * Handle upsell endpoints
+ * GET /api/upsell/check?customerId=xxx - Check if customer has orders eligible for upsell
+ * GET /api/upsell/orders?customerId=xxx - Get orders eligible for upsell
+ * POST /api/upsell/items - Add new items to existing order (upsell)
+ */
+function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
+    $method = $_SERVER['REQUEST_METHOD'];
+    
+    switch ($method) {
+        case 'GET':
+            if ($id === 'check') {
+                // Check if customer has orders eligible for upsell
+                $customerId = $_GET['customerId'] ?? null;
+                if (!$customerId) {
+                    json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
+                    return;
+                }
+                
+                // Find orders that are eligible for upsell:
+                // 1. order_status = 'Pending'
+                // 2. order_date is within 24 hours from now
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) as eligible_count
+                    FROM orders
+                    WHERE customer_id = ?
+                    AND order_status = 'Pending'
+                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                ");
+                $stmt->execute([$customerId]);
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                json_response([
+                    'hasEligibleOrders' => ($result['eligible_count'] ?? 0) > 0,
+                    'eligibleCount' => (int)($result['eligible_count'] ?? 0)
+                ]);
+            } else if ($id === 'orders') {
+                // Get orders eligible for upsell for a customer
+                $customerId = $_GET['customerId'] ?? null;
+                if (!$customerId) {
+                    json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
+                    return;
+                }
+                
+                // Get orders that are eligible for upsell
+                $stmt = $pdo->prepare("
+                    SELECT o.id, o.order_date, o.delivery_date, o.order_status, o.total_amount, o.creator_id,
+                           o.sales_channel_page_id, o.sales_channel, o.payment_method, o.payment_status,
+                           o.street, o.subdistrict, o.district, o.province, o.postal_code,
+                           o.recipient_first_name, o.recipient_last_name,
+                           COUNT(oi.id) as item_count
+                    FROM orders o
+                    LEFT JOIN order_items oi ON oi.parent_order_id = o.id
+                    WHERE o.customer_id = ?
+                    AND o.order_status = 'Pending'
+                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    GROUP BY o.id
+                    ORDER BY o.order_date DESC
+                ");
+                $stmt->execute([$customerId]);
+                $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // For each order, fetch items with creator_id
+                foreach ($orders as &$order) {
+                    $orderId = $order['id'];
+                    $itemStmt = $pdo->prepare("
+                        SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity,
+                               oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number,
+                               oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                               oi.creator_id, oi.parent_order_id,
+                               p.sku as product_sku
+                        FROM order_items oi
+                        LEFT JOIN products p ON oi.product_id = p.id
+                        WHERE oi.parent_order_id = ?
+                        ORDER BY oi.id
+                    ");
+                    $itemStmt->execute([$orderId]);
+                    $order['items'] = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                
+                json_response($orders);
+            } else {
+                json_response(['error' => 'INVALID_ENDPOINT'], 404);
+            }
+            break;
+            
+        case 'POST':
+            if ($id === 'items') {
+                // Add new items to existing order (upsell)
+                $in = json_input();
+                
+                $orderId = $in['orderId'] ?? null;
+                $creatorId = $in['creatorId'] ?? null;
+                $items = $in['items'] ?? [];
+                
+                if (!$orderId || !$creatorId || empty($items)) {
+                    json_response(['error' => 'MISSING_REQUIRED_FIELDS', 'message' => 'orderId, creatorId, and items are required'], 400);
+                    return;
+                }
+                
+                // Validate order exists and is eligible for upsell
+                $orderCheck = $pdo->prepare("
+                    SELECT id, customer_id, order_status, order_date
+                    FROM orders
+                    WHERE id = ?
+                ");
+                $orderCheck->execute([$orderId]);
+                $order = $orderCheck->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$order) {
+                    json_response(['error' => 'ORDER_NOT_FOUND'], 404);
+                    return;
+                }
+                
+                // Check if order is eligible for upsell
+                if ($order['order_status'] !== 'Pending') {
+                    json_response(['error' => 'ORDER_NOT_ELIGIBLE', 'message' => 'Order status must be Pending'], 400);
+                    return;
+                }
+                
+                // Check if order is within 24 hours
+                $timeCheck = $pdo->prepare("
+                    SELECT COUNT(*) as is_eligible
+                    FROM orders
+                    WHERE id = ?
+                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                ");
+                $timeCheck->execute([$orderId]);
+                $timeResult = $timeCheck->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$timeResult || $timeResult['is_eligible'] == 0) {
+                    json_response(['error' => 'ORDER_EXPIRED', 'message' => 'Order is older than 24 hours'], 400);
+                    return;
+                }
+                
+                // Validate creator_id exists
+                $creatorCheck = $pdo->prepare('SELECT id, status FROM users WHERE id = ?');
+                $creatorCheck->execute([$creatorId]);
+                $creatorData = $creatorCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$creatorData || $creatorData['status'] !== 'active') {
+                    json_response(['error' => 'INVALID_CREATOR', 'message' => 'Creator user not found or inactive'], 400);
+                    return;
+                }
+                
+                $pdo->beginTransaction();
+                try {
+                    $insertedItems = [];
+                    $newTotalAmount = (float)$order['total_amount'];
+                    
+                    // Get max box_number for this order
+                    $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
+                    $boxStmt->execute([$orderId]);
+                    $boxResult = $boxStmt->fetch(PDO::FETCH_ASSOC);
+                    $currentBoxNumber = (int)($boxResult['max_box'] ?? 0);
+                    
+                    foreach ($items as $item) {
+                        $productId = $item['productId'] ?? null;
+                        $productName = $item['productName'] ?? '';
+                        $quantity = (int)($item['quantity'] ?? 1);
+                        $pricePerUnit = (float)($item['pricePerUnit'] ?? 0);
+                        $discount = (float)($item['discount'] ?? 0);
+                        $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
+                        $promotionId = $item['promotionId'] ?? null;
+                        $parentItemId = $item['parentItemId'] ?? null;
+                        $isPromotionParent = isset($item['isPromotionParent']) && $item['isPromotionParent'] ? 1 : 0;
+                        
+                        // Determine box_number (increment if needed)
+                        $boxNumber = $item['boxNumber'] ?? ($currentBoxNumber + 1);
+                        if ($boxNumber > $currentBoxNumber) {
+                            $currentBoxNumber = $boxNumber;
+                        }
+                        
+                        // Generate order_id (sub order ID)
+                        $subOrderId = "{$orderId}-{$boxNumber}";
+                        
+                        // Insert order item with creator_id
+                        $itemStmt = $pdo->prepare("
+                            INSERT INTO order_items (
+                                order_id, parent_order_id, product_id, product_name, quantity,
+                                price_per_unit, discount, is_freebie, box_number,
+                                promotion_id, parent_item_id, is_promotion_parent, creator_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        
+                        $itemStmt->execute([
+                            $subOrderId,
+                            $orderId,
+                            $productId,
+                            $productName,
+                            $quantity,
+                            $pricePerUnit,
+                            $discount,
+                            $isFreebie,
+                            $boxNumber,
+                            $promotionId,
+                            $parentItemId,
+                            $isPromotionParent,
+                            $creatorId
+                        ]);
+                        
+                        $itemId = $pdo->lastInsertId();
+                        
+                        // Calculate item total (if not freebie)
+                        if (!$isFreebie) {
+                            $itemTotal = ($pricePerUnit * $quantity) - $discount;
+                            $newTotalAmount += $itemTotal;
+                        }
+                        
+                        $insertedItems[] = [
+                            'id' => $itemId,
+                            'order_id' => $subOrderId,
+                            'parent_order_id' => $orderId,
+                            'product_id' => $productId,
+                            'product_name' => $productName,
+                            'quantity' => $quantity,
+                            'price_per_unit' => $pricePerUnit,
+                            'discount' => $discount,
+                            'is_freebie' => $isFreebie,
+                            'box_number' => $boxNumber,
+                            'promotion_id' => $promotionId,
+                            'parent_item_id' => $parentItemId,
+                            'is_promotion_parent' => $isPromotionParent,
+                            'creator_id' => $creatorId
+                        ];
+                    }
+                    
+                    // Update order total_amount
+                    $updateOrderStmt = $pdo->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
+                    $updateOrderStmt->execute([$newTotalAmount, $orderId]);
+                    
+                    $pdo->commit();
+                    
+                    json_response([
+                        'success' => true,
+                        'orderId' => $orderId,
+                        'newTotalAmount' => $newTotalAmount,
+                        'items' => $insertedItems
+                    ], 201);
+                    
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    error_log('Upsell error: ' . $e->getMessage());
+                    json_response(['error' => 'UPSELL_FAILED', 'message' => $e->getMessage()], 500);
+                }
+            } else {
+                json_response(['error' => 'INVALID_ENDPOINT'], 404);
+            }
+            break;
+            
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
 }
 

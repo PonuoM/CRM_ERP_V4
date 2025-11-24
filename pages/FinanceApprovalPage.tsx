@@ -61,11 +61,23 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         (o) =>
           o.id.toLowerCase().includes(term) ||
           customers
-            .find((c) => c.id === o.customerId)
+            .find((c) => {
+              if (c.pk && typeof o.customerId === 'number') {
+                return c.pk === o.customerId;
+              }
+              return String(c.id) === String(o.customerId) || 
+                     String(c.pk) === String(o.customerId);
+            })
             ?.firstName?.toLowerCase()
             .includes(term) ||
           customers
-            .find((c) => c.id === o.customerId)
+            .find((c) => {
+              if (c.pk && typeof o.customerId === 'number') {
+                return c.pk === o.customerId;
+              }
+              return String(c.id) === String(o.customerId) || 
+                     String(c.pk) === String(o.customerId);
+            })
             ?.lastName?.toLowerCase()
             .includes(term)
       );

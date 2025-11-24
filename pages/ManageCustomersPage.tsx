@@ -13,6 +13,7 @@ interface ManageCustomersPageProps {
   onTakeCustomer?: (customer: Customer) => void;
   openModal?: (type: ModalType, data: any) => void;
   onViewCustomer?: (customer: Customer) => void;
+  onUpsellClick?: (customer: Customer) => void;
 }
 
 const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
@@ -23,6 +24,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   onTakeCustomer,
   openModal,
   onViewCustomer,
+  onUpsellClick,
 }) => {
   const [selectedUser, setSelectedUser] = useState<number | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -530,6 +532,11 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
         openModal={(type, data) => { if (openModal) openModal(type, data); }}
         pageSizeOptions={[5, 10, 20, 50, 100, 500]}
         storageKey={`manageCustomers:${currentUser.id}`}
+        onUpsellClick={(customer) => {
+          if (onUpsellClick) {
+            onUpsellClick(customer);
+          }
+        }}
       />
       <div className="bg-white rounded-lg shadow-sm border hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">

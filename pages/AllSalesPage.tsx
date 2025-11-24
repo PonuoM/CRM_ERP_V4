@@ -14,7 +14,14 @@ const AllSalesPage: React.FC<AllSalesPageProps> = ({ user, orders, customers, op
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredOrders = orders.filter(order => {
-    const customer = customers.find(c => c.id === order.customerId);
+    // Match customer by pk (customer_id) or id (string)
+    const customer = customers.find(c => {
+      if (c.pk && typeof order.customerId === 'number') {
+        return c.pk === order.customerId;
+      }
+      return String(c.id) === String(order.customerId) || 
+             String(c.pk) === String(order.customerId);
+    });
     const searchTermLower = searchTerm.toLowerCase();
     return (
       order.id.toLowerCase().includes(searchTermLower) ||

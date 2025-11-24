@@ -310,9 +310,14 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                   </thead>
                   <tbody>
                     {customerDetails.orders.flatMap((order) => {
-                      const creator = users.find(
-                        (u) => u.id === order.creatorId,
-                      );
+                      // Match creator by id (ensure type compatibility)
+                      const creator = users.find((u) => {
+                        if (!order.creatorId) return false;
+                        if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
+                          return u.id === order.creatorId;
+                        }
+                        return String(u.id) === String(order.creatorId);
+                      });
                       const creatorName = creator
                         ? `${creator.firstName} ${creator.lastName}`
                         : "N/A";

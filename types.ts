@@ -216,9 +216,13 @@ export interface Address {
 
 export interface Customer {
   id: string;
+  customerId?: string; // Public ID (e.g. CUS-xxx). Historically used as primary key in UI.
+  customerRefId?: string; // Explicit public ref (customer_ref_id)
+  pk?: number; // Internal database ID (customer_id)
   firstName: string;
   lastName: string;
   phone: string;
+  backupPhone?: string;
   email?: string;
   address?: Address;
   province: string;
@@ -247,40 +251,37 @@ export interface Customer {
   lastSaleDate?: string; // วันที่ขายล่าสุด
   isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
-  isBlocked?: boolean;
-  // Order tracking fields
-  firstOrderDate?: string; // วันที่ซื้อครั้งแรก
-  lastOrderDate?: string; // วันที่ซื้อล่าสุด
-  orderCount?: number; // จำนวนครั้งที่ซื้อ
-  isNewCustomer?: boolean; // เป็นลูกค้าใหม่หรือไม่
-  isRepeatCustomer?: boolean; // เป็นลูกค้ากลับมาซื้อหรือไม่
 }
 
 export interface SalesImportRow {
-  saleDate?: string;
   orderNumber?: string;
   customerId?: string;
+  customerPhone?: string;
   customerFirstName?: string;
   customerLastName?: string;
   customerName?: string;
-  customerPhone?: string;
   customerEmail?: string;
+  address?: string;
   subdistrict?: string;
   district?: string;
   province?: string;
   postalCode?: string;
-  address?: string;
-  productCode?: string;
+  caretakerId?: number | string;
+  salespersonId?: number | string;
+  saleDate?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
   productName?: string;
+  productCode?: string;
   quantity?: number;
   unitPrice?: number;
   discount?: number;
   totalAmount?: number;
-  salespersonId?: number;
-  caretakerId?: number | string;
-  paymentMethod?: string;
-  paymentStatus?: string;
   notes?: string;
+  recipientFirstName?: string;
+  recipientLastName?: string;
+  recipient_first_name?: string;
+  recipient_last_name?: string;
 }
 
 export interface CustomerImportRow {
@@ -387,6 +388,7 @@ export interface OrderSlip {
 export interface Order {
   id: string;
   customerId: string;
+  customerRefId?: number;
   companyId: number;
   creatorId: number;
   orderDate: string;

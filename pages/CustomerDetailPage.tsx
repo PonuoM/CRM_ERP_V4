@@ -34,18 +34,21 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import { getStatusChip, getPaymentStatusChip } from "../components/OrderTable";
 import {
   createCustomerBlock,
   listCustomerLogs,
   getOrder,
+  checkUpsellEligibility,
 } from "../services/api";
 import {
   actionLabels,
   parseCustomerLogRow,
   summarizeCustomerLogChanges,
 } from "../utils/customerLogs";
+import { formatThaiDateTime, formatThaiDate } from "../utils/time";
 
 interface CustomerDetailPageProps {
   customer: Customer;
@@ -63,6 +66,7 @@ interface CustomerDetailPageProps {
   onCompleteAppointment?: (appointmentId: number) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
+  onUpsellClick?: (customer: Customer) => void;
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
   customerCounts?: Record<number, number>;
 }
@@ -100,6 +104,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     onCreateUserTag,
     ownerName,
     onStartCreateOrder,
+    onUpsellClick,
     onChangeOwner,
     customerCounts,
   } = props;
@@ -123,14 +128,55 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
   const [ownerChangeError, setOwnerChangeError] = useState<string | null>(null);
   const [ownerChangeLoading, setOwnerChangeLoading] = useState(false);
+  const [hasUpsell, setHasUpsell] = useState(false);
+  const [upsellLoading, setUpsellLoading] = useState(true);
 
   const usersById = useMemo(() => {
-    const map = new Map<number, User>();
+    const map = new Map<number | string, User>();
     allUsers.forEach((userItem) => {
+      // Store with both number and string keys for compatibility
       map.set(userItem.id, userItem);
+      map.set(String(userItem.id), userItem);
     });
     return map;
   }, [allUsers]);
+
+  // Check upsell eligibility
+  useEffect(() => {
+    let mounted = true;
+    setUpsellLoading(true);
+    setHasUpsell(false);
+    const checkUpsell = async () => {
+      try {
+        const customerId = customer.id || customer.customerId || customer.customerRefId;
+        if (!customerId) {
+          setHasUpsell(false);
+          setUpsellLoading(false);
+          return;
+        }
+        const result = await checkUpsellEligibility(customerId);
+        if (mounted) {
+          setHasUpsell(result.hasEligibleOrders);
+          setUpsellLoading(false);
+        }
+      } catch (error) {
+        console.error("Error checking upsell eligibility:", error);
+        if (mounted) {
+          setHasUpsell(false);
+          setUpsellLoading(false);
+        }
+      }
+    };
+    
+    checkUpsell();
+    // Re-check every 30 seconds
+    const interval = setInterval(checkUpsell, 30000);
+    
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [customer.id, customer.customerId, customer.customerRefId]);
 
   const eligibleOwners = useMemo(() => {
     const sameCompanyUsers =
@@ -543,7 +589,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     setActivityLogsLoading(true);
     setActivityLogsError(null);
 
-    listCustomerLogs(customer.id, { limit: 50 })
+    // Use customer.pk (customer_id) for customer_logs lookup, fallback to customer.id
+    const customerIdForLogs = customer.pk ? String(customer.pk) : customer.id;
+    listCustomerLogs(customerIdForLogs, { limit: 50 })
       .then((rows) => {
         if (cancelled) return;
         const normalized = Array.isArray(rows)
@@ -861,16 +909,14 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 label="วันที่ลงทะเบียน"
                 value={
                   customer.dateRegistered
-                    ? new Date(customer.dateRegistered).toLocaleString("th-TH")
+                    ? formatThaiDateTime(customer.dateRegistered)
                     : "-"
                 }
               />
               <InfoItem label="ติดตามถัดไป">
                 {upcomingFollowUps.length > 0 ? (
                   <span className="font-semibold text-red-600 px-2 py-1 bg-red-50 rounded-md">
-                    {new Date(upcomingFollowUps[0].date).toLocaleString(
-                      "th-TH",
-                    )}
+                    {formatThaiDateTime(upcomingFollowUps[0].date)}
                   </span>
                 ) : (
                   "-"
@@ -881,14 +927,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="border-b px-4">
-              <nav className="flex space-x-4 -mb-px">
-                <button
-                  onClick={() => setActiveTab("calls")}
-                  className={`py-3 px-1 text-sm font-medium ${activeTab === "calls" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
-                >
-                  <Phone size={16} className="inline mr-2" />
-                  ประวัติการโทร
-                </button>
+              <div className="flex items-center justify-between">
+                <nav className="flex space-x-4 -mb-px">
+                  <button
+                    onClick={() => setActiveTab("calls")}
+                    className={`py-3 px-1 text-sm font-medium ${activeTab === "calls" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
+                  >
+                    <Phone size={16} className="inline mr-2" />
+                    ประวัติการโทร
+                  </button>
                 <button
                   onClick={() => setActiveTab("appointments")}
                   className={`py-3 px-1 text-sm font-medium ${activeTab === "appointments" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
@@ -904,6 +951,19 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   ประวัติคำสั่งซื้อ
                 </button>
               </nav>
+              {hasUpsell && !upsellLoading && onUpsellClick && (
+                <button
+                  onClick={() => onUpsellClick(customer)}
+                  className="relative px-4 py-2 bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-2 animate-pulse hover:animate-none"
+                  title="เพิ่มรายการในออเดอร์เดิม (Upsell)"
+                >
+                  <Zap size={18} className="animate-bounce" />
+                  <span>UPSELL</span>
+                  {/* Animated aura effect */}
+                  <span className="absolute -inset-1 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 rounded-lg blur opacity-75 animate-ping"></span>
+                  <span className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 via-red-300 to-pink-300 rounded-lg blur-sm opacity-50"></span>
+                </button>
+              )}
             </div>
             <div className="p-4">
               <div className="overflow-x-auto">
@@ -925,7 +985,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         {paginatedCallHistory.map((c) => (
                           <tr key={c.id} className="border-b last:border-0">
                             <td className="py-2 px-2">
-                              {new Date(c.date).toLocaleString("th-TH")}
+                              {formatThaiDateTime(c.date)}
                             </td>
                             <td className="py-2 px-2">{c.caller}</td>
                             <td className="py-2 px-2">
@@ -966,7 +1026,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                         {paginatedAppointments.map((a) => (
                           <tr key={a.id} className="border-b last:border-0">
                             <td className="py-2 px-2">
-                              {new Date(a.date).toLocaleString("th-TH")}
+                              {formatThaiDateTime(a.date)}
                             </td>
                             <td className="py-2 px-2">{a.title}</td>
                             <td className="py-2 px-2">
@@ -1023,8 +1083,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                       </thead>
                       <tbody className="text-gray-700">
                         {paginatedOrders.map((o) => {
+                          // Match seller by id (ensure type compatibility)
                           const seller = o.creatorId
-                            ? usersById.get(o.creatorId)
+                            ? usersById.get(o.creatorId) || usersById.get(String(o.creatorId)) || usersById.get(Number(o.creatorId))
                             : undefined;
                           const sellerName = seller
                             ? `${seller.firstName} ${seller.lastName}`
@@ -1042,9 +1103,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               <tr className="border-b last:border-0">
                                 <td className="py-2 px-2 font-mono">{o.id}</td>
                                 <td className="py-2 px-2">
-                                  {new Date(o.orderDate).toLocaleDateString(
-                                    "th-TH",
-                                  )}
+                                  {formatThaiDate(o.orderDate)}
                                 </td>
                                 <td className="py-2 px-2">{sellerName}</td>
                                 <td className="py-2 px-2 text-right">
@@ -1280,6 +1339,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
               </div>
             </div>
           </div>
+          </div>
         </div>
 
         {/* Right Column */}
@@ -1396,10 +1456,10 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                           <tr key={log.id} className="align-top">
                             <td className="px-3 py-3 whitespace-nowrap text-[11px] text-gray-500">
                               <div className="font-medium text-gray-700">
-                                {new Date(log.createdAt).toLocaleString(
-                                  "th-TH",
-                                  { dateStyle: "medium", timeStyle: "short" },
-                                )}
+                                {formatThaiDateTime(log.createdAt, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
                               </div>
                               <div>{getRelativeTime(log.createdAt)}</div>
                             </td>

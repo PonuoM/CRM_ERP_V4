@@ -8,6 +8,7 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 
 interface TelesaleOrdersPageProps {
   user: User;
+  users: User[]; // Add users prop
   orders: Order[];
   customers: Customer[];
   openModal: (type: ModalType, data: Order) => void;
@@ -15,7 +16,7 @@ interface TelesaleOrdersPageProps {
   title?: string;
 }
 
-const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, customers, openModal, onCancelOrder, title }) => {
+const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, orders, customers, openModal, onCancelOrder, title }) => {
   const filterStorageKey = `telesale_orders_filters_${user?.id ?? '0'}`;
 
   const savedFilters = useMemo<Record<string, unknown> | null>(() => {
@@ -111,7 +112,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
           setCurrentPage(normalized);
         }
       }
-    } catch {}
+    } catch { }
   }, [filterStorageKey]);
 
   // Save filters whenever they change
@@ -140,9 +141,9 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
         currentPage,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
-    } catch {}
+    } catch { }
   }, [activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
-  
+
   const myOrders = useMemo(() => {
     return orders.filter(order => order.creatorId === user.id);
   }, [orders, user.id]);
@@ -232,10 +233,10 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
     const trackTerm = afTracking.trim().toLowerCase();
     if (idTerm) list = list.filter(o => o.id.toLowerCase().includes(idTerm));
     if (trackTerm) list = list.filter(o => (o.trackingNumbers || []).some(t => t.toLowerCase().includes(trackTerm)));
-    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
-    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
+    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
+    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
+    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
+    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
     if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
     if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
     const nameTerm = afCustomerName.trim().toLowerCase();
@@ -243,8 +244,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       list = list.filter(o => {
         const c = customerById.get(o.customerId as any);
         if (!c) return false;
-        const full = `${(c.firstName||'').toString()} ${(c.lastName||'').toString()}`.toLowerCase();
-        return full.includes(nameTerm) || (c.firstName||'').toString().toLowerCase().includes(nameTerm) || (c.lastName||'').toString().toLowerCase().includes(nameTerm);
+        const full = `${(c.firstName || '').toString()} ${(c.lastName || '').toString()}`.toLowerCase();
+        return full.includes(nameTerm) || (c.firstName || '').toString().toLowerCase().includes(nameTerm) || (c.lastName || '').toString().toLowerCase().includes(nameTerm);
       });
     }
     const phoneTerm = afCustomerPhone.replace(/\D/g, '');
@@ -252,7 +253,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
       list = list.filter(o => {
         const c = customerById.get(o.customerId as any);
         if (!c) return false;
-        const p = ((c.phone||'') as any).toString().replace(/\D/g, '');
+        const p = ((c.phone || '') as any).toString().replace(/\D/g, '');
         return p.includes(phoneTerm);
       });
     }
@@ -330,60 +331,56 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">{title || "คำสั่งซื้อของฉัน"}</h2>
-      
+
       <div className="flex border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'all'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'all'
+              ? 'border-b-2 border-blue-600 text-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <List size={16} />
-            <span>ออเดอร์ทั้งหมด</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'all' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+        >
+          <List size={16} />
+          <span>ออเดอร์ทั้งหมด</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'all' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
             }`}>{myOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('pendingSlip')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'pendingSlip'
-                ? 'border-b-2 border-orange-600 text-orange-600'
-                : 'text-gray-500 hover:text-gray-700'
+        </button>
+        <button
+          onClick={() => setActiveTab('pendingSlip')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'pendingSlip'
+              ? 'border-b-2 border-orange-600 text-orange-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <CreditCard size={16} />
-            <span>รอสลิป</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-              activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+        >
+          <CreditCard size={16} />
+          <span>รอสลิป</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
             }`}>{pendingSlipOrders.length}</span>
-          </button>
+        </button>
       </div>
 
       {/* Payment tabs (moved to top row) */}
       {false && (
-      <div className="flex border-b border-gray-200 mb-4">
-        <button onClick={() => setPayTab('all')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='all'?'border-b-2 border-blue-600 text-blue-600':'text-gray-500 hover:text-gray-700'}`}>
-          <History size={16} />
-          <span>ทั้งหมด</span>
-        </button>
-        <button onClick={() => setPayTab('unpaid')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='unpaid'?'border-b-2 border-red-600 text-red-600':'text-gray-500 hover:text-gray-700'}`}>
-          <ListChecks size={16} />
-          <span>ยังไม่ชำระ</span>
-        </button>
-        <button onClick={() => setPayTab('paid')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab==='paid'?'border-b-2 border-green-600 text-green-600':'text-gray-500 hover:text-gray-700'}`}>
-          <ListChecks size={16} />
-          <span>ชำระแล้ว</span>
-        </button>
-      </div>
+        <div className="flex border-b border-gray-200 mb-4">
+          <button onClick={() => setPayTab('all')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab === 'all' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            <History size={16} />
+            <span>ทั้งหมด</span>
+          </button>
+          <button onClick={() => setPayTab('unpaid')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab === 'unpaid' ? 'border-b-2 border-red-600 text-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            <ListChecks size={16} />
+            <span>ยังไม่ชำระ</span>
+          </button>
+          <button onClick={() => setPayTab('paid')} className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium transition-colors ${payTab === 'paid' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            <ListChecks size={16} />
+            <span>ชำระแล้ว</span>
+          </button>
+        </div>
       )}
 
       {/* ตัวกรองขั้นสูง */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowAdvanced(v=>!v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
+          <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
             ตัวกรองขั้นสูง
             {advancedCount > 0 ? (
@@ -401,19 +398,19 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
-              <input value={fCustomerName} onChange={e=>setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
+              <input value={fCustomerName} onChange={e => setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
-              <input value={fCustomerPhone} onChange={e=>setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
+              <input value={fCustomerPhone} onChange={e => setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">เลขออเดอร์</label>
-              <input value={fOrderId} onChange={e=>setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />
+              <input value={fOrderId} onChange={e => setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วิธีการชำระ</label>
-              <select value={fPaymentMethod} onChange={e=>setFPaymentMethod((e.target.value as any)||'')} className="w-full p-2 border rounded">
+              <select value={fPaymentMethod} onChange={e => setFPaymentMethod((e.target.value as any) || '')} className="w-full p-2 border rounded">
                 <option value="">ทั้งหมด</option>
                 <option value={PaymentMethod.Transfer}>โอนเงิน</option>
                 <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
@@ -422,7 +419,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
-              <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
+              <select value={fPaymentStatus} onChange={e => setFPaymentStatus((e.target.value as any) || '')} className="w-full p-2 border rounded">
                 <option value="">ทั้งหมด</option>
                 <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
                 <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
@@ -434,19 +431,19 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (จาก)</label>
-              <input type="date" value={fOrderDate.start} onChange={e=>setFOrderDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fOrderDate.start} onChange={e => setFOrderDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (ถึง)</label>
-              <input type="date" value={fOrderDate.end} onChange={e=>setFOrderDate(v=>({...v,end:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fOrderDate.end} onChange={e => setFOrderDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (จาก)</label>
-              <input type="date" value={fDeliveryDate.start} onChange={e=>setFDeliveryDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fDeliveryDate.start} onChange={e => setFDeliveryDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (ถึง)</label>
-              <input type="date" value={fDeliveryDate.end} onChange={e=>setFDeliveryDate(v=>({...v,end:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fDeliveryDate.end} onChange={e => setFDeliveryDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
           </div>
         )}
@@ -458,6 +455,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
           customers={customers}
           openModal={openModal}
           user={user}
+          users={users} // Pass users to OrderTable
           onCancelOrder={onCancelOrder}
         />
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
@@ -492,13 +490,12 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, orders, c
                   key={`${page}-${index}`}
                   onClick={() => (typeof page === 'number' ? handlePageChange(page) : undefined)}
                   disabled={page === '...'}
-                  className={`px-3 py-1 text-sm rounded ${
-                    page === effectivePage
+                  className={`px-3 py-1 text-sm rounded ${page === effectivePage
                       ? 'bg-blue-600 text-white'
                       : page === '...'
                         ? 'text-gray-400 cursor-default'
                         : 'text-gray-700 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {page}
                 </button>

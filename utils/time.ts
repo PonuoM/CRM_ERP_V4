@@ -19,3 +19,76 @@ export function getRemainingTimeRounded(expiryDate: string): { text: string; col
   return { text: `${displayDays} วัน`, color };
 }
 
+/**
+ * Format date and time string for Thailand timezone (UTC+7 / Asia/Bangkok)
+ * @param dateString - ISO date string or date string from API
+ * @param options - Intl.DateTimeFormatOptions
+ * @returns Formatted date/time string in Thai locale with Asia/Bangkok timezone
+ */
+export function formatThaiDateTime(
+  dateString: string | Date | null | undefined,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!dateString) return "-";
+  
+  try {
+    const date = dateString instanceof Date ? dateString : new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+    
+    return date.toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      dateStyle: options?.dateStyle || "short",
+      timeStyle: options?.timeStyle || "medium",
+      ...options,
+    });
+  } catch {
+    return "-";
+  }
+}
+
+/**
+ * Format date only for Thailand timezone
+ * @param dateString - ISO date string or date string from API
+ * @returns Formatted date string in Thai locale with Asia/Bangkok timezone
+ */
+export function formatThaiDate(
+  dateString: string | Date | null | undefined
+): string {
+  if (!dateString) return "-";
+  
+  try {
+    const date = dateString instanceof Date ? dateString : new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+    
+    return date.toLocaleDateString("th-TH", {
+      timeZone: "Asia/Bangkok",
+    });
+  } catch {
+    return "-";
+  }
+}
+
+/**
+ * Format time only for Thailand timezone
+ * @param dateString - ISO date string or date string from API
+ * @returns Formatted time string in Thai locale with Asia/Bangkok timezone
+ */
+export function formatThaiTime(
+  dateString: string | Date | null | undefined
+): string {
+  if (!dateString) return "-";
+  
+  try {
+    const date = dateString instanceof Date ? dateString : new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+    
+    return date.toLocaleTimeString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "-";
+  }
+}
+
