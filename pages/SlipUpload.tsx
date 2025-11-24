@@ -83,7 +83,7 @@ const SlipUpload: React.FC = () => {
     sale_month: "",
     sale_year: "",
   });
-  
+
   // Active filters - what's actually being used for search
   const [activeFilters, setActiveFilters] = useState<FilterOptions>({
     order_id: "",
@@ -353,14 +353,8 @@ const SlipUpload: React.FC = () => {
         pageSize: pagination.pageSize.toString(),
       });
 
-      // Payment method: Backoffice และ Finance เห็นทั้ง Transfer และ PayAfter, roles อื่นๆ เห็นแค่ PayAfter
-      if (user.role === "Backoffice" || user.role === "Finance") {
-        // Backoffice และ Finance เห็นทั้ง Transfer และ PayAfter
-        queryParams.append("payment_method", "all");
-      } else {
-        // Roles อื่นๆ เห็นแค่ PayAfter
-        queryParams.append("payment_method", "PayAfter");
-      }
+      // Payment method: แสดงเฉพาะ PayAfter เท่านั้น
+      queryParams.append("payment_method", "PayAfter");
 
       // Add user info for role-based filtering
       // Backoffice และ Finance เห็นสลิปทั้งหมดของทุกคน (ไม่ต้องส่ง user_id, role, team_id)
@@ -386,11 +380,11 @@ const SlipUpload: React.FC = () => {
       const response = await fetch(
         `${apiBase}/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
       );
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('Fetched orders data:', data);
 
@@ -409,11 +403,11 @@ const SlipUpload: React.FC = () => {
           fetchOrders();
           return;
         }
-        
+
         // Only show error message if there are no orders AND it's not a filter result
-        if ((data.count === 0 || (data.data || []).length === 0) && 
-            !activeFilters.order_id && !activeFilters.customer_name && !activeFilters.phone && 
-            !activeFilters.sale_month && !activeFilters.sale_year) {
+        if ((data.count === 0 || (data.data || []).length === 0) &&
+          !activeFilters.order_id && !activeFilters.customer_name && !activeFilters.phone &&
+          !activeFilters.sale_month && !activeFilters.sale_year) {
           // Don't show error, just show empty state - this is normal if no unpaid orders
         }
       } else {
@@ -544,11 +538,10 @@ const SlipUpload: React.FC = () => {
                   <button
                     key={i}
                     onClick={() => handlePageChange(i)}
-                    className={`px-3 py-1 text-sm border rounded ${
-                      i === currentPage
+                    className={`px-3 py-1 text-sm border rounded ${i === currentPage
                         ? "bg-blue-600 text-white border-blue-600"
                         : "border-gray-300 hover:bg-gray-50"
-                    }`}
+                      }`}
                   >
                     {i}
                   </button>,
@@ -602,11 +595,10 @@ const SlipUpload: React.FC = () => {
       {/* Alert Message */}
       {message && (
         <div
-          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${
-            message.type === "success"
+          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
               ? "bg-green-100 text-green-800"
               : "bg-red-100 text-red-800"
-          }`}
+            }`}
         >
           {message.type === "success" ? (
             <CheckCircle className="w-5 h-5 text-green-600" />
@@ -819,15 +811,15 @@ const SlipUpload: React.FC = () => {
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {order.order_date
                           ? new Date(order.order_date).toLocaleDateString(
-                              "th-TH",
-                            )
+                            "th-TH",
+                          )
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {order.delivery_date
                           ? new Date(order.delivery_date).toLocaleDateString(
-                              "th-TH",
-                            )
+                            "th-TH",
+                          )
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-sm font-medium text-gray-900">
@@ -847,13 +839,12 @@ const SlipUpload: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-sm">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            order.payment_status === "จ่ายแล้ว"
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${order.payment_status === "จ่ายแล้ว"
                               ? "bg-green-100 text-green-800"
                               : order.payment_status === "จ่ายยังไม่ครบ"
                                 ? "bg-orange-100 text-orange-800"
                                 : "bg-yellow-100 text-yellow-800"
-                          }`}
+                            }`}
                         >
                           {order.payment_status}
                         </span>
@@ -934,11 +925,10 @@ const SlipUpload: React.FC = () => {
                       handleSlipFormChange("amount", e.target.value)
                     }
                     placeholder="กรอกจำนวนเงินที่โอน"
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      !slipFormData.amount
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.amount
                         ? "border-red-300 bg-red-50"
                         : "border-gray-300"
-                    }`}
+                      }`}
                   />
                 </div>
 
@@ -957,11 +947,10 @@ const SlipUpload: React.FC = () => {
                       onChange={(e) =>
                         handleSlipFormChange("bank_account_id", e.target.value)
                       }
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        !slipFormData.bank_account_id
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
                           ? "border-red-300 bg-red-50"
                           : "border-gray-300"
-                      }`}
+                        }`}
                     >
                       <option value="">เลือกบัญชีธนาคาร</option>
                       {bankAccounts.map((bank) => (
@@ -988,11 +977,10 @@ const SlipUpload: React.FC = () => {
                     onChange={(e) =>
                       handleSlipFormChange("transfer_date", e.target.value)
                     }
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      !slipFormData.transfer_date
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
                         ? "border-red-300 bg-red-50"
                         : "border-gray-300"
-                    }`}
+                      }`}
                   />
                 </div>
 

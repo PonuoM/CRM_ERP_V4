@@ -29,7 +29,7 @@ if ($company_id <= 0) {
   exit();
 }
 
-$conditions = ["o.company_id = ?"];
+$conditions = ["o.company_id = ?", "o.payment_status = 'Unpaid'"];
 $params = [$company_id];
 
 if ($search !== "") {
