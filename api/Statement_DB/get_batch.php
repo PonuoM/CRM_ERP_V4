@@ -16,72 +16,20 @@ if ($batch <= 0) {
 try {
   $pdo = db_connect();
 
-  // Prefer new transfer_at column; fall back to entry_at or entry_date/entry_time if needed
-  $hasTransferAt = false;
-  $hasEntryAt = false;
-
-  $colStmt = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'transfer_at'");
-  if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-    $hasTransferAt = true;
-  } else {
-    $colStmt = $pdo->query("SHOW COLUMNS FROM statement_logs LIKE 'entry_at'");
-    if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-      $hasEntryAt = true;
-    }
-  }
-
-  if ($hasTransferAt) {
-    $stmt = $pdo->prepare(
-      "SELECT 
+  $stmt = $pdo->prepare(
+    "SELECT 
         id,
-        company_id,
-        user_id,
-        batch,
+        batch_id,
         DATE(transfer_at) AS entry_date,
         TIME(transfer_at) AS entry_time,
         amount,
         channel,
         description,
         created_at
-       FROM statement_logs
-       WHERE batch = :batch
-       ORDER BY transfer_at, id"
-    );
-  } elseif ($hasEntryAt) {
-    $stmt = $pdo->prepare(
-      "SELECT 
-        id,
-        company_id,
-        user_id,
-        batch,
-        DATE(entry_at) AS entry_date,
-        TIME(entry_at) AS entry_time,
-        amount,
-        channel,
-        description,
-        created_at
-       FROM statement_logs
-       WHERE batch = :batch
-       ORDER BY entry_at, id"
-    );
-  } else {
-    $stmt = $pdo->prepare(
-      "SELECT 
-        id,
-        company_id,
-        user_id,
-        batch,
-        entry_date,
-        entry_time,
-        amount,
-        channel,
-        description,
-        created_at
-       FROM statement_logs
-       WHERE batch = :batch
-       ORDER BY entry_date, entry_time, id"
-    );
-  }
+     FROM statement_logs
+     WHERE batch_id = :batch
+     ORDER BY transfer_at, id"
+  );
 
   $stmt->execute([':batch' => $batch]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

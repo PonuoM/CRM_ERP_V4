@@ -17,9 +17,18 @@ if ($batch <= 0) {
 try {
   $pdo = db_connect();
 
-  $stmt = $pdo->prepare("DELETE FROM statement_logs WHERE batch = :batch");
-  $stmt->execute([':batch' => $batch]);
-  $deleted = $stmt->rowCount();
+  $pdo->beginTransaction();
+
+  // Delete detail rows first
+  $stmtLogs = $pdo->prepare("DELETE FROM statement_logs WHERE batch_id = :batch_id");
+  $stmtLogs->execute([':batch_id' => $batch]);
+  $deleted = $stmtLogs->rowCount();
+
+  // Then delete batch summary
+  $stmtBatch = $pdo->prepare("DELETE FROM statement_batchs WHERE id = :id");
+  $stmtBatch->execute([':id' => $batch]);
+
+  $pdo->commit();
 
   json_response([
     'ok' => true,
@@ -33,4 +42,3 @@ try {
     'detail' => $e->getMessage(),
   ], 500);
 }
-

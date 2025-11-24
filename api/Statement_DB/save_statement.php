@@ -48,20 +48,34 @@ function build_valid_transfer_at(?string $date, ?string $time): ?string {
 try {
   $pdo = db_connect();
 
-  // Ensure table exists (idempotent) - new structure uses single transfer_at column
+  // Ensure summary and detail tables exist
   $pdo->exec(
-    "CREATE TABLE IF NOT EXISTS statement_logs (
+    "CREATE TABLE IF NOT EXISTS statement_batchs (
       id INT AUTO_INCREMENT PRIMARY KEY,
       company_id INT NOT NULL,
       user_id INT NULL,
-      batch INT NOT NULL DEFAULT 1,
+      row_count INT NOT NULL,
+      transfer_min DATETIME NOT NULL,
+      transfer_max DATETIME NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_statement_batchs_company_created (company_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+  );
+
+  // Detail table references batch_id
+  $pdo->exec(
+    "CREATE TABLE IF NOT EXISTS statement_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_id INT NOT NULL,
       transfer_at DATETIME NOT NULL,
       amount DECIMAL(12,2) NOT NULL,
       channel VARCHAR(64) NULL,
       description TEXT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_statement_logs_company_date (company_id, transfer_at),
-      INDEX idx_statement_logs_batch (batch)
+      INDEX idx_statement_logs_batch_transfer (batch_id, transfer_at),
+      CONSTRAINT fk_statement_logs_batch
+        FOREIGN KEY (batch_id) REFERENCES statement_batchs(id)
+        ON DELETE CASCADE ON UPDATE NO ACTION
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
   );
 
@@ -76,24 +90,6 @@ try {
         ['ok' => false, 'error' => 'Missing company_id or rows'],
         400,
       );
-    }
-
-    // Check whether new column transfer_at (preferred) or legacy entry_at exists
-    $hasTransferAt = false;
-    $hasEntryAt = false;
-
-    $colStmt = $pdo->query(
-      "SHOW COLUMNS FROM statement_logs LIKE 'transfer_at'",
-    );
-    if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-      $hasTransferAt = true;
-    } else {
-      $colStmt = $pdo->query(
-        "SHOW COLUMNS FROM statement_logs LIKE 'entry_at'",
-      );
-      if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-        $hasEntryAt = true;
-      }
     }
 
     // Validate all rows first; if any row is invalid, abort without inserting anything.
@@ -140,61 +136,63 @@ try {
       ];
     }
 
-    // All rows are valid: determine batch and perform inserts
-    $batchStmt = $pdo->query(
-      "SELECT COALESCE(MAX(batch), 0) + 1 AS next_batch FROM statement_logs",
-    );
-    $batchRow = $batchStmt->fetch(PDO::FETCH_ASSOC);
-    $batch = (int) ($batchRow['next_batch'] ?? 1);
+    // All rows valid: create batch summary then detail rows in a transaction
+    $pdo->beginTransaction();
+    try {
+      $rowCount = count($preparedRows);
+      $transferMin = $preparedRows[0]['transfer_at'];
+      $transferMax = $preparedRows[0]['transfer_at'];
+      foreach ($preparedRows as $row) {
+        if ($row['transfer_at'] < $transferMin) {
+          $transferMin = $row['transfer_at'];
+        }
+        if ($row['transfer_at'] > $transferMax) {
+          $transferMax = $row['transfer_at'];
+        }
+      }
 
-    if ($hasTransferAt || $hasEntryAt) {
+      $batchStmt = $pdo->prepare(
+        "INSERT INTO statement_batchs
+          (company_id, user_id, row_count, transfer_min, transfer_max, created_at)
+         VALUES
+          (:company_id, :user_id, :row_count, :transfer_min, :transfer_max, NOW())",
+      );
+      $batchStmt->execute([
+        ':company_id' => (int) $companyId,
+        ':user_id' => $userId !== null ? (int) $userId : null,
+        ':row_count' => $rowCount,
+        ':transfer_min' => $transferMin,
+        ':transfer_max' => $transferMax,
+      ]);
+      $batchId = (int) $pdo->lastInsertId();
+
       $stmt = $pdo->prepare(
         "INSERT INTO statement_logs
-          (company_id, user_id, batch, " . ($hasTransferAt ? "transfer_at" : "entry_at") . ", amount, channel, description)
+          (batch_id, transfer_at, amount, channel, description)
          VALUES
-          (:company_id, :user_id, :batch, :transfer_at, :amount, :channel, :description)",
+          (:batch_id, :transfer_at, :amount, :channel, :description)",
       );
-    } else {
-      // Legacy structure with entry_date + entry_time
-      $stmt = $pdo->prepare(
-        "INSERT INTO statement_logs
-          (company_id, user_id, batch, entry_date, entry_time, amount, channel, description)
-         VALUES
-          (:company_id, :user_id, :batch, :entry_date, :entry_time, :amount, :channel, :description)",
-      );
-    }
 
-    $inserted = 0;
-    foreach ($preparedRows as $row) {
-      if ($hasTransferAt || $hasEntryAt) {
+      foreach ($preparedRows as $row) {
         $stmt->execute([
-          ':company_id' => (int) $companyId,
-          ':user_id' => $userId !== null ? (int) $userId : null,
-          ':batch' => $batch,
+          ':batch_id' => $batchId,
           ':transfer_at' => $row['transfer_at'],
           ':amount' => $row['amount'],
           ':channel' => $row['channel'],
           ':description' => $row['description'],
         ]);
-      } else {
-        $stmt->execute([
-          ':company_id' => (int) $companyId,
-          ':user_id' => $userId !== null ? (int) $userId : null,
-          ':batch' => $batch,
-          ':entry_date' => $row['date'],
-          ':entry_time' => $row['time'],
-          ':amount' => $row['amount'],
-          ':channel' => $row['channel'],
-          ':description' => $row['description'],
-        ]);
       }
-      $inserted++;
+
+      $pdo->commit();
+    } catch (Throwable $e) {
+      $pdo->rollBack();
+      throw $e;
     }
 
     json_response([
       'ok' => true,
-      'batch' => $batch,
-      'inserted' => $inserted,
+      'batch' => $batchId,
+      'inserted' => $rowCount,
     ]);
   } else {
     // Backwards-compatible single-row mode (not used by current UI)
@@ -221,69 +219,47 @@ try {
       );
     }
 
-    $batchStmt = $pdo->query(
-      "SELECT COALESCE(MAX(batch), 0) + 1 AS next_batch FROM statement_logs",
-    );
-    $batchRow = $batchStmt->fetch(PDO::FETCH_ASSOC);
-    $batch = (int) ($batchRow['next_batch'] ?? 1);
-
-    if (!isset($hasTransferAt) || !isset($hasEntryAt)) {
-      // When coming from single-row path, detect columns again
-      $hasTransferAt = false;
-      $hasEntryAt = false;
-      $colStmt = $pdo->query(
-        "SHOW COLUMNS FROM statement_logs LIKE 'transfer_at'",
-      );
-      if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-        $hasTransferAt = true;
-      } else {
-        $colStmt = $pdo->query(
-          "SHOW COLUMNS FROM statement_logs LIKE 'entry_at'",
-        );
-        if ($colStmt !== false && $colStmt->fetch(PDO::FETCH_ASSOC)) {
-          $hasEntryAt = true;
-        }
-      }
-    }
-
-    if ($hasTransferAt || $hasEntryAt) {
-      $stmtSingle = $pdo->prepare(
-        "INSERT INTO statement_logs
-          (company_id, user_id, batch, " . ($hasTransferAt ? "transfer_at" : "entry_at") . ", amount, channel, description)
+    // Single row: create one batch summary + one detail row
+    $pdo->beginTransaction();
+    try {
+      $batchStmt = $pdo->prepare(
+        "INSERT INTO statement_batchs
+          (company_id, user_id, row_count, transfer_min, transfer_max, created_at)
          VALUES
-          (:company_id, :user_id, :batch, :transfer_at, :amount, :channel, :description)",
+          (:company_id, :user_id, :row_count, :transfer_min, :transfer_max, NOW())",
       );
-      $stmtSingle->execute([
+      $batchStmt->execute([
         ':company_id' => (int) $companyId,
         ':user_id' => $userId !== null ? (int) $userId : null,
-        ':batch' => $batch,
+        ':row_count' => 1,
+        ':transfer_min' => $transferAt,
+        ':transfer_max' => $transferAt,
+      ]);
+      $batchId = (int) $pdo->lastInsertId();
+
+      $stmtSingle = $pdo->prepare(
+        "INSERT INTO statement_logs
+          (batch_id, transfer_at, amount, channel, description)
+         VALUES
+          (:batch_id, :transfer_at, :amount, :channel, :description)",
+      );
+      $stmtSingle->execute([
+        ':batch_id' => $batchId,
         ':transfer_at' => $transferAt,
         ':amount' => (float) $amount,
         ':channel' => $channel !== '' ? $channel : null,
         ':description' => $description !== '' ? $description : null,
       ]);
-    } else {
-      $stmtSingle = $pdo->prepare(
-        "INSERT INTO statement_logs
-          (company_id, user_id, batch, entry_date, entry_time, amount, channel, description)
-         VALUES
-          (:company_id, :user_id, :batch, :entry_date, :entry_time, :amount, :channel, :description)",
-      );
-      $stmtSingle->execute([
-        ':company_id' => (int) $companyId,
-        ':user_id' => $userId !== null ? (int) $userId : null,
-        ':batch' => $batch,
-        ':entry_date' => $date,
-        ':entry_time' => $time,
-        ':amount' => (float) $amount,
-        ':channel' => $channel !== '' ? $channel : null,
-        ':description' => $description !== '' ? $description : null,
-      ]);
+
+      $pdo->commit();
+    } catch (Throwable $e) {
+      $pdo->rollBack();
+      throw $e;
     }
 
     json_response([
       'ok' => true,
-      'batch' => $batch,
+      'batch' => $batchId,
       'inserted' => 1,
     ]);
   }

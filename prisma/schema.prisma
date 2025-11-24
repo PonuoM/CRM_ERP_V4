@@ -1300,17 +1300,32 @@ enum orders_order_status {
   Cancelled
 }
 
+model StatementBatch {
+  id           Int      @id @default(autoincrement())
+  company_id   Int
+  user_id      Int?
+  row_count    Int
+  transfer_min DateTime @db.DateTime(0)
+  transfer_max DateTime @db.DateTime(0)
+  created_at   DateTime @default(now()) @db.DateTime(0)
+
+  logs StatementLog[]
+
+  @@map("statement_batchs")
+  @@index([company_id, created_at], map: "idx_statement_batchs_company_created")
+}
+
 model StatementLog {
   id          Int      @id @default(autoincrement())
-  company_id  Int
-  user_id     Int?
-  batch       Int      @default(1)
-  transfer_at DateTime? @db.DateTime(0)
+  batch_id    Int
+  transfer_at DateTime @db.DateTime(0)
   amount      Decimal  @db.Decimal(12, 2)
   channel     String?  @db.VarChar(64)
   description String?  @db.Text
   created_at  DateTime @default(now()) @db.DateTime(0)
 
+  batch StatementBatch @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
   @@map("statement_logs")
-  @@index([company_id, transfer_at], map: "idx_statement_logs_company_date")
+  @@index([batch_id, transfer_at], map: "idx_statement_logs_batch_transfer")
 }

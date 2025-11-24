@@ -775,13 +775,24 @@ async function main() {
   console.log("Seeding statement logs...");
   const now = new Date();
 
-  await prisma.statementLog.upsert({
+  const batch1 = await prisma.statementBatch.upsert({
     where: { id: 1 },
     update: {},
     create: {
       company_id: 1,
       user_id: 1,
-      batch: 1,
+      row_count: 2,
+      transfer_min: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+      transfer_max: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+      created_at: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.statementLog.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      batch_id: batch1.id,
       transfer_at: new Date(now.getTime() - 3 * 60 * 60 * 1000),
       amount: 1500.0,
       channel: "โอนผ่าน Mobile Banking",
@@ -793,9 +804,7 @@ async function main() {
     where: { id: 2 },
     update: {},
     create: {
-      company_id: 1,
-      user_id: 1,
-      batch: 1,
+      batch_id: batch1.id,
       transfer_at: new Date(now.getTime() - 2 * 60 * 60 * 1000),
       amount: 2750.5,
       channel: "โอนผ่านตู้ ATM",
@@ -803,13 +812,24 @@ async function main() {
     },
   });
 
-  await prisma.statementLog.upsert({
-    where: { id: 3 },
+  const batch2 = await prisma.statementBatch.upsert({
+    where: { id: 2 },
     update: {},
     create: {
       company_id: 1,
       user_id: 1,
-      batch: 2,
+      row_count: 1,
+      transfer_min: new Date(now.getTime() - 30 * 60 * 1000),
+      transfer_max: new Date(now.getTime() - 30 * 60 * 1000),
+      created_at: new Date(now.getTime() - 30 * 60 * 1000),
+    },
+  });
+
+  await prisma.statementLog.upsert({
+    where: { id: 3 },
+    update: {},
+    create: {
+      batch_id: batch2.id,
       transfer_at: new Date(now.getTime() - 30 * 60 * 1000),
       amount: 980.0,
       channel: "โอนผ่านเคาน์เตอร์ธนาคาร",
@@ -817,7 +837,8 @@ async function main() {
     },
   });
 
-  console.log("Seeded example statement_logs batches");
+  console.log("Seeded example statement_batchs & statement_logs");
+
 
   // Thai Address Data
   await seedAddressData();
