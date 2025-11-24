@@ -274,8 +274,8 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         <div>
           <h1 className="text-xl font-semibold">Statement Management</h1>
           <p className="text-sm text-gray-500">
-            วางข้อมูลจาก Excel ลงในตารางด้านล่าง โดยเรียงคอลัมน์เป็น
-            วันที่, เวลา, จำนวนเงิน, ช่องทาง, รายละเอียด แล้วกดบันทึกเพื่อเก็บข้อมูล
+            วางข้อมูลจาก Excel ลงในตารางด้านล่าง โดยเรียงคอลัมน์เป็น วันที่,
+            เวลา, จำนวนเงิน, ช่องทาง, รายละเอียด แล้วกดบันทึกเพื่อเก็บข้อมูล
           </p>
         </div>
         <div className="flex gap-2">
@@ -505,40 +505,38 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-2 py-1 text-left font-medium text-gray-600">
-                      Batch
-                    </th>
-                    <th className="px-2 py-1 text-left font-medium text-gray-600">
-                      วันที่สร้าง
-                    </th>
-                    <th className="px-2 py-1 text-left font-medium text-gray-600">
-                      ช่วงเวลาที่โอน
+                      ลำดับ
                     </th>
                     <th className="px-2 py-1 text-right font-medium text-gray-600">
                       จำนวนรายการ
                     </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ช่วงเวลาโอน
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      วันที่สร้าง
+                    </th>
                     <th className="px-2 py-1 text-center font-medium text-gray-600">
-                      การจัดการ
+                      ดำเนินการ
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {batches.map((b) => (
                     <tr key={b.batch} className="border-t border-gray-200">
-                      <td className="px-2 py-1 text-sm">Batch {b.batch}</td>
-                      <td className="px-2 py-1 text-xs text-gray-500">
-                        {formatDateTime(b.first_at)}
-                      </td>
-                      <td className="px-2 py-1 text-xs text-gray-500">
-                        {b.transfer_from && b.transfer_to
-                          ? `${formatDateTime(
-                              b.transfer_from,
-                            )} - ${formatDateTime(b.transfer_to)}`
-                          : "-"}
-                      </td>
+                      <td className="px-2 py-1 text-sm">{b.batch}</td>
                       <td className="px-2 py-1 text-sm text-right">
                         {b.row_count}
                       </td>
-                      <td className="px-2 py-1 text-center space-x-2">
+                      <td className="px-2 py-1 text-xs">
+                        {b.transfer_from && b.transfer_to
+                          ? `${formatDateTime(b.transfer_from)} - ${formatDateTime(b.transfer_to)}`
+                          : "-"}
+                      </td>
+                      <td className="px-2 py-1 text-xs text-gray-500">
+                        {formatDateTime(b.first_at)}
+                      </td>
+                      <td className="px-2 py-1 text-center space-y-1">
                         <button
                           type="button"
                           onClick={() => loadBatchDetails(b.batch)}
@@ -547,13 +545,14 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                           <Eye className="w-3 h-3 mr-1" />
                           ดูรายละเอียด
                         </button>
+                        <br />
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteBatch(b.batch)}
                           className="inline-flex items-center px-2 py-1 text-xs border border-red-300 text-red-700 rounded-md hover:bg-red-50"
                         >
                           <XCircle className="w-3 h-3 mr-1" />
-                          ลบทั้ง batch
+                          ลบ batch
                         </button>
                       </td>
                     </tr>
@@ -620,12 +619,8 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                           maximumFractionDigits: 2,
                         })}
                       </td>
-                      <td className="px-2 py-1">
-                        {r.channel ?? "-"}
-                      </td>
-                      <td className="px-2 py-1">
-                        {r.description ?? "-"}
-                      </td>
+                      <td className="px-2 py-1">{r.channel ?? "-"}</td>
+                      <td className="px-2 py-1">{r.description ?? "-"}</td>
                     </tr>
                   ))}
                 </tbody>

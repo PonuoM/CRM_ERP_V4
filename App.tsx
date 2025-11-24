@@ -5450,6 +5450,15 @@ const App: React.FC = () => {
               );
             case "COD Record":
               return <CODRecordPage user={currentUser} />;
+            case "Statement Management":
+              return (
+                <StatementManagementPage
+                  user={currentUser}
+                  orders={companyOrders}
+                  customers={companyCustomers}
+                  users={companyUsers}
+                />
+              );
             default:
               return (
                 <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>
