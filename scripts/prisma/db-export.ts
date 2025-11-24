@@ -27,6 +27,7 @@ type Field = {
 
 type Model = {
   name: string;
+  dbName?: string;
   fields: Field[];
 };
 
@@ -49,6 +50,19 @@ function parseModels(schema: string): Model[] {
   while ((match = modelRegex.exec(schema)) !== null) {
     const [, name, body] = match;
     const lines = body.split("\n");
+    let dbName: string | undefined;
+
+    // First pass: detect @@map("table_name") at model level
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line.startsWith("@@map(")) {
+        const m = line.match(/^@@map\("([^"]+)"\)/);
+        if (m) {
+          dbName = m[1];
+        }
+      }
+    }
+
     const fields: Field[] = [];
 
     for (const rawLine of lines) {
@@ -94,7 +108,7 @@ function parseModels(schema: string): Model[] {
     }
 
     if (fields.length) {
-      models.push({ name, fields });
+      models.push({ name, dbName, fields });
     }
   }
 
@@ -169,7 +183,7 @@ async function main() {
     );
 
     for (const model of models) {
-      const tableName = model.name;
+      const tableName = model.dbName ?? model.name;
       const columns = model.fields.map((f) => f.name);
 
       console.log(`[db:export] Exporting table: ${tableName}`);
@@ -213,4 +227,3 @@ main().catch((err) => {
   console.error("[db:export] Failed to export data:", err);
   process.exit(1);
 });
-
