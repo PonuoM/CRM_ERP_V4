@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { AlertCircle, CheckCircle, FileText } from "lucide-react";
 import { uploadSlipImageFile, createOrderSlipWithPayment } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { processImage } from "@/utils/imageProcessing";
 
 interface Order {
   id: number;
@@ -215,13 +216,33 @@ const SlipUpload: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const file = e.target.files?.[0] || null;
-    setSlipImage(file || null);
+
     if (file) {
-      const url = URL.createObjectURL(file);
-      setSlipImagePreview(url);
+      try {
+        // Show loading state if needed, or just process immediately
+        // For better UX, we could set a temporary preview of the original while processing
+        const originalUrl = URL.createObjectURL(file);
+        setSlipImagePreview(originalUrl);
+
+        // Process image (resize + convert to WebP)
+        const processedFile = await processImage(file);
+        setSlipImage(processedFile);
+
+        // Update preview to processed image
+        const processedUrl = URL.createObjectURL(processedFile);
+        setSlipImagePreview(processedUrl);
+
+        // Clean up original url
+        URL.revokeObjectURL(originalUrl);
+      } catch (error) {
+        console.error("Error processing image:", error);
+        showMessage("error", "ไม่สามารถประมวลผลรูปภาพได้");
+        setSlipImage(file); // Fallback to original
+      }
     } else {
+      setSlipImage(null);
       setSlipImagePreview(null);
     }
   };
@@ -539,8 +560,8 @@ const SlipUpload: React.FC = () => {
                     key={i}
                     onClick={() => handlePageChange(i)}
                     className={`px-3 py-1 text-sm border rounded ${i === currentPage
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "border-gray-300 hover:bg-gray-50"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-gray-300 hover:bg-gray-50"
                       }`}
                   >
                     {i}
@@ -596,8 +617,8 @@ const SlipUpload: React.FC = () => {
       {message && (
         <div
           className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+            ? "bg-green-100 text-green-800"
+            : "bg-red-100 text-red-800"
             }`}
         >
           {message.type === "success" ? (
@@ -840,10 +861,10 @@ const SlipUpload: React.FC = () => {
                       <td className="py-3 px-4 text-sm">
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${order.payment_status === "จ่ายแล้ว"
-                              ? "bg-green-100 text-green-800"
-                              : order.payment_status === "จ่ายยังไม่ครบ"
-                                ? "bg-orange-100 text-orange-800"
-                                : "bg-yellow-100 text-yellow-800"
+                            ? "bg-green-100 text-green-800"
+                            : order.payment_status === "จ่ายยังไม่ครบ"
+                              ? "bg-orange-100 text-orange-800"
+                              : "bg-yellow-100 text-yellow-800"
                             }`}
                         >
                           {order.payment_status}
@@ -926,8 +947,8 @@ const SlipUpload: React.FC = () => {
                     }
                     placeholder="กรอกจำนวนเงินที่โอน"
                     className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.amount
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300"
                       }`}
                   />
                 </div>
@@ -948,8 +969,8 @@ const SlipUpload: React.FC = () => {
                         handleSlipFormChange("bank_account_id", e.target.value)
                       }
                       className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
-                          ? "border-red-300 bg-red-50"
-                          : "border-gray-300"
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
                         }`}
                     >
                       <option value="">เลือกบัญชีธนาคาร</option>
@@ -978,8 +999,8 @@ const SlipUpload: React.FC = () => {
                       handleSlipFormChange("transfer_date", e.target.value)
                     }
                     className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300"
                       }`}
                   />
                 </div>
