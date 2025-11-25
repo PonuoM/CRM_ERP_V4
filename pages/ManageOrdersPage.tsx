@@ -1,4 +1,4 @@
-
+﻿
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
@@ -546,6 +546,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               discount: Number(it.discount ?? 0),
               isFreebie: !!(it.is_freebie ?? 0),
               boxNumber: Number(it.box_number ?? 0),
+              // Preserve raw order_items IDs so CSV export can use them
+              orderId:
+                typeof it.order_id !== 'undefined' && it.order_id !== null
+                  ? String(it.order_id)
+                  : undefined,
+              parentOrderId:
+                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
+                  ? String(it.parent_order_id)
+                  : undefined,
             })) : [],
             shippingCost: Number(r.shipping_cost ?? 0),
             billDiscount: Number(r.bill_discount ?? 0),
@@ -625,9 +634,19 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
           return order.items.map(item => {
               const codAmount = order.paymentMethod === PaymentMethod.COD ? (order.boxes?.reduce((sum, box) => sum + box.codAmount, 0) || order.totalAmount) : 0;
-              
               const rowData: { [key: string]: string | number | undefined } = {
-                  'หมายเลขออเดอร์ออนไลน์': order.id,
+                  'หมายเลขออเดอร์ออนไลน์': (item as any).orderId ?? (item as any).order_id ?? order.id,
+                  // online order number (per item)
+                  // (legacy aggregate mapping removed)
+
+
+
+
+
+
+
+
+
                   'ชื่อร้านค้า': 'N/A',
                   'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
                   'บัญชีร้านค้า': 'N/A',
@@ -745,15 +764,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               postalCode:
                 (r.postal_code ?? (fallback as any).shippingAddress?.postalCode) || '',
             },
-            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productName: String(it.product_name ?? ''),
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-            })) : (fallback.items || []),
+              items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+                id: Number(it.id ?? i + 1),
+                productName: String(it.product_name ?? ''),
+                quantity: Number(it.quantity ?? 0),
+                pricePerUnit: Number(it.price_per_unit ?? 0),
+                discount: Number(it.discount ?? 0),
+                isFreebie: !!(it.is_freebie ?? 0),
+                boxNumber: Number(it.box_number ?? 0),
+                // Preserve raw order_items IDs so CSV export can use them
+                orderId:
+                  typeof it.order_id !== 'undefined' && it.order_id !== null
+                    ? String(it.order_id)
+                    : undefined,
+                parentOrderId:
+                  typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
+                    ? String(it.parent_order_id)
+                    : undefined,
+              })) : (fallback.items || []),
             shippingCost: Number(r.shipping_cost ?? fallback.shippingCost ?? 0),
             billDiscount: Number(r.bill_discount ?? fallback.billDiscount ?? 0),
             totalAmount: Number(r.total_amount ?? fallback.totalAmount ?? 0),
