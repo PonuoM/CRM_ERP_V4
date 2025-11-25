@@ -573,6 +573,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
                   ? String(it.parent_order_id)
                   : undefined,
+              netTotal: Number(it.net_total ?? 0),
             })) : [],
             shippingCost: Number(r.shipping_cost ?? 0),
             billDiscount: Number(r.bill_discount ?? 0),
@@ -662,13 +663,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
           'บัญชีร้านค้า': 'N/A',
           'หมายเลขใบชำระเงิน': '',
-          'COD': itemCodAmount,
+          'COD': item.netTotal ?? 0,
           'ช่องทางชำระเงิน': order.paymentMethod,
           'เวลาชำระเงิน': '',
           'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
           'ข้อความจากร้านค้า': '',
           'ค่าขนส่ง': order.shippingCost,
-          'จำนวนเงินที่ต้องชำระ': (item as any).isFreebie ? 0 : order.totalAmount,
+          'จำนวนเงินที่ต้องชำระ': item.netTotal ?? 0,
           'ผู้รับสินค้า': customer?.firstName ?? '',
           'นามสกุลผู้รับสินค้า': customer?.lastName ?? '',
           'หมายเลขโทรศัพท์': customer?.phone ?? '',
@@ -1138,8 +1139,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('pending')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'pending'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-blue-600 text-blue-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <ListChecks size={16} />
@@ -1150,8 +1151,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('verified')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'verified'
-              ? 'border-b-2 border-yellow-600 text-yellow-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-yellow-600 text-yellow-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <ListChecks size={16} />
@@ -1162,8 +1163,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('preparing')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'preparing'
-              ? 'border-b-2 border-green-600 text-green-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-green-600 text-green-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <Package size={16} />
@@ -1174,8 +1175,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('shipping')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'shipping'
-              ? 'border-b-2 border-purple-600 text-purple-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-purple-600 text-purple-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <Send size={16} />
@@ -1186,8 +1187,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('awaiting_account')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'awaiting_account'
-              ? 'border-b-2 border-orange-600 text-orange-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-orange-600 text-orange-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <Clock size={16} />
@@ -1198,8 +1199,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         <button
           onClick={() => setActiveTab('completed')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'completed'
-              ? 'border-b-2 border-gray-600 text-gray-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-gray-600 text-gray-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <CheckCircle2 size={16} />
@@ -1305,10 +1306,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                     }
                     disabled={page === "..."}
                     className={`px-3 py-1 text-sm rounded ${page === effectivePage
-                        ? "bg-blue-600 text-white"
-                        : page === "..."
-                          ? "text-gray-400 cursor-default"
-                          : "text-gray-700 hover:bg-gray-100"
+                      ? "bg-blue-600 text-white"
+                      : page === "..."
+                        ? "text-gray-400 cursor-default"
+                        : "text-gray-700 hover:bg-gray-100"
                       }`}
                   >
                     {page}
