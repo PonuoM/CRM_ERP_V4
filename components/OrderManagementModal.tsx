@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole } from '../types';
+import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product } from '../types';
 import Modal from './Modal';
-import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar } from 'lucide-react';
+import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
 import { apiFetch, createOrderSlip, deleteOrderSlip, listBankAccounts } from '../services/api';
 
@@ -12,6 +12,9 @@ interface OrderManagementModalProps {
   onSave: (updatedOrder: Order) => void;
   onClose: () => void;
   currentUser?: User;
+  users?: User[];
+  onEditCustomer?: (customer: Customer) => void;
+  products?: Product[];
 }
 
 const InfoCard: React.FC<{ icon: React.ElementType; title: string; children: React.ReactNode }> = ({ icon: Icon, title, children }) => (
@@ -61,8 +64,9 @@ const getRelativeTime = (timestamp: string) => {
   return `${diffInDays} วันที่แล้ว`;
 };
 
-const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser }) => {
+const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser, users = [], onEditCustomer, products = [] }) => {
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
+  const [isEditing, setIsEditing] = useState(false);
   const sanitizeAddressPart = (value?: string | null) => {
     if (!value) return '';
     const trimmed = value.trim();
@@ -98,6 +102,66 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     setSlipPreview(order.slipUrl || null);
     setSlips(Array.isArray((order as any).slips) ? (order as any).slips.map((s: any) => ({ id: Number(s.id), url: String(s.url) })) : []);
   }, [order]);
+
+  const isModifiable = useMemo(() => {
+    return [OrderStatus.Pending, OrderStatus.AwaitingVerification].includes(currentOrder.orderStatus);
+  }, [currentOrder.orderStatus]);
+
+  const showInputs = isModifiable && isEditing;
+
+  const handleAddItem = () => {
+    if (!currentUser) return;
+    const newItem = {
+      id: Date.now(), // Temporary ID
+      productId: 0,
+      productName: 'เลือกสินค้า',
+      quantity: 1,
+      pricePerUnit: 0,
+      discount: 0,
+      isFreebie: false,
+      boxNumber: 1,
+      creatorId: currentUser.id,
+    };
+    setCurrentOrder(prev => ({
+      ...prev,
+      items: [...prev.items, newItem],
+    }));
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setCurrentOrder(prev => {
+      const newItems = [...prev.items];
+      newItems.splice(index, 1);
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleItemChange = (index: number, field: string, value: any) => {
+    setCurrentOrder(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = { ...newItems[index], [field]: value };
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleProductChange = (index: number, productId: number) => {
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      setCurrentOrder(prev => {
+        const newItems = [...prev.items];
+        newItems[index] = {
+          ...newItems[index],
+          productId: product.id,
+          productName: product.name,
+          pricePerUnit: product.price,
+        };
+        return { ...prev, items: newItems };
+      });
+    } else {
+      // Handle case where product is deselected or invalid (optional)
+      handleItemChange(index, 'productId', productId);
+    }
+  };
 
   // Fetch bank accounts for display
   useEffect(() => {
@@ -145,12 +209,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           },
           items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
             id: Number(it.id ?? i + 1),
+            productId: typeof it.product_id !== "undefined" && it.product_id !== null ? Number(it.product_id) : undefined,
             productName: String(it.product_name ?? ''),
             quantity: Number(it.quantity ?? 0),
             pricePerUnit: Number(it.price_per_unit ?? 0),
             discount: Number(it.discount ?? 0),
             isFreebie: !!(it.is_freebie ?? 0),
             boxNumber: Number(it.box_number ?? 0),
+            creatorId: typeof it.creator_id !== "undefined" && it.creator_id !== null ? Number(it.creator_id) : undefined,
           })) : prev.items,
           boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({ boxNumber: Number(b.box_number ?? 0), codAmount: Number(b.cod_amount ?? 0) })) : (prev as any).boxes,
           trackingNumbers: Array.isArray(r.trackingNumbers)
@@ -174,8 +240,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       if (c.pk && typeof order.customerId === 'number') {
         return c.pk === order.customerId;
       }
-      return String(c.id) === String(order.customerId) || 
-             String(c.pk) === String(order.customerId);
+      return String(c.id) === String(order.customerId) ||
+        String(c.pk) === String(order.customerId);
     });
   }, [customers, order.customerId]);
 
@@ -325,6 +391,26 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     return currentOrder.totalAmount - paid; // negative means overpaid
   }, [currentOrder.totalAmount, currentOrder.amountPaid]);
 
+  // คำนวณยอดรวมจากรายการทั้งหมด
+  const calculatedTotals = useMemo(() => {
+    const itemsSubtotal = currentOrder.items.reduce((sum, item) => {
+      const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
+      return sum + itemTotal;
+    }, 0);
+    const itemsDiscount = currentOrder.items.reduce((sum, item) => sum + item.discount, 0);
+    const shippingCost = currentOrder.shippingCost || 0;
+    const billDiscount = currentOrder.billDiscount || 0;
+    const totalAmount = itemsSubtotal - billDiscount + shippingCost;
+
+    return {
+      itemsSubtotal,
+      itemsDiscount,
+      billDiscount,
+      shippingCost,
+      totalAmount
+    };
+  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount]);
+
   const derivedAmountStatus = useMemo(() => {
     const diff = remainingBalance;
     const paid = currentOrder.amountPaid || 0;
@@ -335,8 +421,48 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
   }, [remainingBalance, currentOrder.amountPaid]);
 
   return (
-    <Modal title={`จัดการออเดอร์: ${order.id}`} onClose={onClose}>
+    <Modal title={`จัดการออเดอร์: ${order.id}`} onClose={onClose} size="xl">
       <div className="space-y-4 text-sm">
+        {isModifiable && (
+          <div className="flex justify-end mb-2">
+            {!isEditing ? (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Edit2 size={14} className="mr-1.5" />
+                แก้ไขออเดอร์
+              </button>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setCurrentOrder(order); // Reset changes
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  <X size={14} className="mr-1.5" />
+                  ยกเลิกการแก้ไข
+                </button>
+                <button
+                  onClick={() => {
+                    // Save logic is handled by the main save button, but we can also trigger it here if needed.
+                    // For now, let's just exit edit mode if the user saves via the main button.
+                    // Or we can make this button save and exit edit mode.
+                    onSave(currentOrder);
+                    setIsEditing(false);
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                >
+                  <Save size={14} className="mr-1.5" />
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -345,7 +471,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
             </div>
             <div>
               <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
-              <p className="font-medium text-gray-800">{currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
+              {showInputs ? (
+                <input
+                  type="date"
+                  value={currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toISOString().split('T')[0] : ''}
+                  onChange={(e) => handleFieldChange('deliveryDate', e.target.value)}
+                  className="w-full p-1 text-sm border rounded"
+                />
+              ) : (
+                <p className="font-medium text-gray-800">{currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500">ช่องทางการขาย</p>
@@ -353,30 +488,209 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
             </div>
           </div>
         </InfoCard>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
-            <p className="font-semibold text-gray-800">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
-            <p className="text-gray-600 flex items-center mt-1"><Phone size={12} className="mr-2" />{customer?.phone}</p>
-            <p className="text-gray-600 flex items-start mt-1"><MapPin size={12} className="mr-2 mt-0.5" />{formatAddress(currentOrder.shippingAddress)}</p>
-          </InfoCard>
-
-          <InfoCard icon={Package} title="รายการสินค้า">
-            <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
-              {order.items.map(item => (
-                <div key={item.id} className="flex justify-between items-center text-xs">
-                  <span className="text-gray-700">{item.productName} (x{item.quantity})</span>
-                  <span className="font-medium text-gray-800">฿{(item.pricePerUnit * item.quantity - item.discount).toLocaleString()}</span>
+        <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-gray-800 text-base">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
+                {showInputs && customer && onEditCustomer && (
+                  <button
+                    onClick={() => onEditCustomer(customer)}
+                    className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
+                  >
+                    แก้ไขลูกค้า
+                  </button>
+                )}
+              </div>
+              <p className="text-gray-600 flex items-center mt-2"><Phone size={14} className="mr-2" />{customer?.phone || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+              {showInputs ? (
+                <div className="space-y-2">
+                  <input
+                    placeholder="ชื่อผู้รับ"
+                    value={currentOrder.shippingAddress?.recipientFirstName || ''}
+                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, recipientFirstName: e.target.value } }))}
+                    className="w-full p-1 text-xs border rounded mb-1"
+                  />
+                  <input
+                    placeholder="นามสกุลผู้รับ"
+                    value={currentOrder.shippingAddress?.recipientLastName || ''}
+                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, recipientLastName: e.target.value } }))}
+                    className="w-full p-1 text-xs border rounded mb-1"
+                  />
+                  <input
+                    placeholder="ที่อยู่"
+                    value={currentOrder.shippingAddress?.street || ''}
+                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, street: e.target.value } }))}
+                    className="w-full p-1 text-xs border rounded"
+                  />
+                  <div className="grid grid-cols-2 gap-1">
+                    <input
+                      placeholder="แขวง/ตำบล"
+                      value={currentOrder.shippingAddress?.subdistrict || ''}
+                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, subdistrict: e.target.value } }))}
+                      className="w-full p-1 text-xs border rounded"
+                    />
+                    <input
+                      placeholder="เขต/อำเภอ"
+                      value={currentOrder.shippingAddress?.district || ''}
+                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, district: e.target.value } }))}
+                      className="w-full p-1 text-xs border rounded"
+                    />
+                    <input
+                      placeholder="จังหวัด"
+                      value={currentOrder.shippingAddress?.province || ''}
+                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, province: e.target.value } }))}
+                      className="w-full p-1 text-xs border rounded"
+                    />
+                    <input
+                      placeholder="รหัสไปรษณีย์"
+                      value={currentOrder.shippingAddress?.postalCode || ''}
+                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, postalCode: e.target.value } }))}
+                      className="w-full p-1 text-xs border rounded"
+                    />
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <p className="text-gray-700 flex items-start"><MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" /><span className="text-sm">{formatAddress(currentOrder.shippingAddress)}</span></p>
+              )}
             </div>
-            <div className="border-t mt-2 pt-2 space-y-1">
-              <div className="flex justify-between text-xs"><span className="text-gray-500">รวม</span><span className="font-medium text-gray-900">฿{(order.totalAmount - order.shippingCost + order.billDiscount).toLocaleString()}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-gray-500">ค่าส่ง</span><span className="font-medium text-gray-900">฿{order.shippingCost.toLocaleString()}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-red-500">ส่วนลด</span><span className="font-medium text-gray-900">-฿{order.billDiscount.toLocaleString()}</span></div>
-              <div className="flex justify-between font-bold"><span className="text-gray-800">ยอดสุทธิ</span><span className="text-gray-900">฿{order.totalAmount.toLocaleString()}</span></div>
-            </div>
-          </InfoCard>
-        </div>
+          </div>
+        </InfoCard>
+
+        <InfoCard icon={Package} title="รายการสินค้า">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">รหัส</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อสินค้า</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
+                  {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จัดการ</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {currentOrder.items.map((item, index) => {
+                  const itemCreator = item.creatorId ? users.find(u => {
+                    const userId = typeof u.id === 'number' ? u.id : Number(u.id);
+                    const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
+                    return userId === creatorId;
+                  }) : null;
+                  const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
+
+                  // Check if current user is the creator of this item
+                  const isCreator = currentUser && item.creatorId === currentUser.id;
+                  const canEditItem = showInputs && isCreator;
+
+                  return (
+                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <td className="px-3 py-2 text-xs text-gray-600 font-mono">{item.productId ? String(item.productId) : '-'}</td>
+                      <td className="px-3 py-2 text-sm text-gray-800">
+                        {canEditItem ? (
+                          <select
+                            value={item.productId || ''}
+                            onChange={(e) => handleProductChange(index, Number(e.target.value))}
+                            className="w-full border rounded px-1 py-1"
+                          >
+                            <option value="">เลือกสินค้า</option>
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        ) : item.productName}
+                      </td>
+                      <td className="px-3 py-2 text-center text-xs text-gray-700">
+                        {canEditItem ? (
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                            className="w-16 border rounded px-1 text-center"
+                          />
+                        ) : item.quantity}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs text-gray-700">
+                        {canEditItem ? (
+                          <input
+                            type="number"
+                            value={item.pricePerUnit}
+                            onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
+                            className="w-20 border rounded px-1 text-right"
+                          />
+                        ) : `฿${item.pricePerUnit.toLocaleString()}`}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs text-red-600">
+                        {canEditItem ? (
+                          <input
+                            type="number"
+                            value={item.discount}
+                            onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
+                            className="w-20 border rounded px-1 text-right text-red-600"
+                          />
+                        ) : `-฿${item.discount.toLocaleString()}`}
+                      </td>
+                      <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{itemTotal.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-xs text-gray-600">
+                        {itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName}` : '-'}
+                      </td>
+                      {showInputs && (
+                        <td className="px-3 py-2 text-center">
+                          {canEditItem && (
+                            <button
+                              onClick={() => handleRemoveItem(index)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-gray-50">
+                {showInputs && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-2 text-center">
+                      <button
+                        onClick={handleAddItem}
+                        className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
+                      >
+                        + เพิ่มสินค้า
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
+                  <td colSpan={1} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.itemsDiscount.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+                  <td colSpan={showInputs ? 2 : 1}></td>
+                </tr>
+                <tr>
+                  <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ส่วนลดทั้งออเดอร์</td>
+                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.billDiscount.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ค่าส่ง</td>
+                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.shippingCost.toLocaleString()}</td>
+                </tr>
+                <tr className="border-t-2">
+                  <td colSpan={5} className="px-3 py-2 text-sm font-bold text-gray-800">ยอดสุทธิ</td>
+                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-base font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </InfoCard>
 
         <InfoCard icon={CreditCard} title="การชำระเงิน">
           <div className="flex items-center justify-between mb-3">
@@ -400,7 +714,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                   className="w-full p-2 border rounded-md"
                 />
               </div>
-              <div className="flex justify-between font-semibold text-xs">
+              <div className="flex justify-between font-semibold">
                 <span className="text-gray-600">คงเหลือ</span>
                 <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? `-${remainingBalance.toLocaleString()}` : `+${Math.abs(remainingBalance).toLocaleString()}`)}</span>
               </div>
@@ -669,9 +983,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 onChange={(e) => handleFieldChange('orderStatus', e.target.value as OrderStatus)}
                 className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
               >
-                {Object.values(OrderStatus).map(status => (
-                  <option key={status} value={status}>{ORDER_STATUS_LABELS[status] ?? status}</option>
-                ))}
+                {Object.values(OrderStatus)
+                  .filter(status => {
+                    if (showInputs) {
+                      // If modifiable, only allow keeping current status or cancelling
+                      return status === currentOrder.orderStatus || status === OrderStatus.Cancelled;
+                    }
+                    return true;
+                  })
+                  .map(status => (
+                    <option key={status} value={status}>{ORDER_STATUS_LABELS[status] ?? status}</option>
+                  ))}
               </select>
             </div>
             <div>
@@ -723,9 +1045,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
             บันทึกการเปลี่ยนแปลง
           </button>
         </div>
-      </div>
+      </div >
       {lightboxUrl && (<div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setLightboxUrl(null)}><img src={lightboxUrl} className="max-w-[90vw] max-h-[90vh] rounded" /></div>)}
-    </Modal>
+    </Modal >
   );
 };
 

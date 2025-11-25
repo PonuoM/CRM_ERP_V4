@@ -366,6 +366,7 @@ export interface LineItem {
   promotionId?: number; // NEW: รหัสโปรโมชั่นที่ใช้
   parentItemId?: number; // NEW: รหัสรายการแม่ (สำหรับของแถมที่มาจากโปรโมชั่น)
   isPromotionParent?: boolean; // NEW: เป็นรายการแม่ของโปรโมชั่นหรือไม่
+  creatorId?: number; // NEW: รหัสผู้สร้างรายการ (สำหรับ upsell)
 }
 
 export interface CodBox {

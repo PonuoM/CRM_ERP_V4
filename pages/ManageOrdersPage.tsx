@@ -6,6 +6,7 @@ import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createExportLog, listOrderSlips } from '../services/api';
 import { apiFetch } from '../services/api';
+import usePersistentState from '../utils/usePersistentState';
 
 interface ManageOrdersPageProps {
   user: User;
@@ -35,8 +36,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('pending');
-  const [itemsPerPage, setItemsPerPage] = useState<number>(PAGE_SIZE_OPTIONS[1]); // Default 10
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
+  const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -412,10 +413,28 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const displayStart = totalItems === 0 ? 0 : startIndex + 1;
   const displayEnd = totalItems === 0 ? 0 : endIndex;
 
-  // Reset to page 1 when tab changes
+  // Preserve page per tab when tab changes
   useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
+    // Use a different key per tab to preserve page state per tab
+    const tabPageKey = `manageOrders:currentPage:${activeTab}`;
+    const savedPage = localStorage.getItem(tabPageKey);
+    if (savedPage) {
+      const pageNum = parseInt(savedPage, 10);
+      if (!isNaN(pageNum) && pageNum >= 1) {
+        setCurrentPage(pageNum);
+      } else {
+        setCurrentPage(1);
+      }
+    } else {
+      setCurrentPage(1);
+    }
+  }, [activeTab, setCurrentPage]);
+  
+  // Save current page per tab
+  useEffect(() => {
+    const tabPageKey = `manageOrders:currentPage:${activeTab}`;
+    localStorage.setItem(tabPageKey, currentPage.toString());
+  }, [activeTab, currentPage]);
 
   // Reset to page 1 when items per page changes
   const handleItemsPerPageChange = (value: number) => {

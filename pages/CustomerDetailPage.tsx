@@ -167,11 +167,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         }
       }
     };
-    
+
     checkUpsell();
     // Re-check every 30 seconds
     const interval = setInterval(checkUpsell, 30000);
-    
+
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -183,8 +183,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       user.role === UserRole.SuperAdmin
         ? allUsers
         : allUsers.filter(
-            (candidate) => candidate.companyId === user.companyId,
-          );
+          (candidate) => candidate.companyId === user.companyId,
+        );
 
     if (user.role === UserRole.Supervisor) {
       return sameCompanyUsers.filter((candidate) => {
@@ -226,7 +226,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     currentOwnerUser
       ? `${currentOwnerUser.firstName} ${currentOwnerUser.lastName}`.trim()
       : ownerName ||
-        (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
+      (customer.assignedTo != null ? `ID ${customer.assignedTo}` : "-");
 
   const currentOwnerCustomerCount = currentOwnerUser
     ? customerCounts?.[currentOwnerUser.id] ?? 0
@@ -700,7 +700,31 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-full">
-      <header className="flex justify-between items-center mb-6">
+      <header className="relative flex justify-between items-center mb-6">
+        <div className="flex-1"></div>
+
+        {/* Centered Upsell Button with Animation and Aura */}
+        {hasUpsell && !upsellLoading && onUpsellClick && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="relative">
+              {/* Aura/Glow Effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500 via-orange-500 to-red-500 rounded-lg blur-lg opacity-75 animate-pulse"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500 via-orange-500 to-red-500 rounded-lg animate-ping opacity-50"></div>
+
+              {/* Actual Button */}
+              <button
+                onClick={() => onUpsellClick(customer)}
+                className="relative bg-gradient-to-r from-red-600 to-orange-600 text-white py-3 px-6 rounded-lg text-base font-bold flex items-center justify-center hover:from-red-700 hover:to-orange-700 shadow-2xl animate-bounce"
+                title="เพิ่มรายการในออเดอร์เดิม (Upsell)"
+              >
+                <Zap size={20} className="mr-2 animate-pulse" />
+                UPSELL ด่วน!
+              </button>
+            </div>
+          </div>
+        )}
+
+
         <button
           onClick={onClose}
           className="flex items-center text-gray-600 hover:text-gray-900"
@@ -708,76 +732,6 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           <ArrowLeft size={20} className="mr-2" />
           <span className="font-semibold text-lg">กลับ</span>
         </button>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => openModal("logCall", customer)}
-            className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-green-200"
-          >
-            <Phone size={16} className="mr-2" />
-            บันทึกการโทร
-          </button>
-          <button
-            onClick={() => openModal("addAppointment", customer)}
-            className="bg-cyan-100 text-cyan-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-cyan-200"
-          >
-            <Calendar size={16} className="mr-2" />
-            นัดหมาย
-          </button>
-          <button
-            onClick={() => {
-              if (onStartCreateOrder) {
-                onStartCreateOrder(customer);
-              } else {
-                openModal("createOrder", { customer });
-              }
-            }}
-            className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-amber-200"
-          >
-            <ShoppingCart size={16} className="mr-2" />
-            สร้างคำสั่งซื้อ
-          </button>
-          <button
-            onClick={() => openModal("editCustomer", customer)}
-            className="bg-slate-700 text-white py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center hover:bg-slate-800"
-          >
-            <Edit size={16} className="mr-2" />
-            แก้ไข
-          </button>
-          <button
-            onClick={async () => {
-              if ((customer as any).isBlocked) return;
-              const ok = window.confirm(
-                "คุณแน่ใจหรือไม่ว่าต้องการบล็อคลูกค้ารายนี้?",
-              );
-              if (!ok) return;
-              const reason =
-                window.prompt(
-                  "กรุณาระบุเหตุผลในการบล็อค (อย่างน้อย 5 ตัวอักษร)",
-                ) || "";
-              if (!reason || reason.trim().length < 5) {
-                alert("กรุณากรอกเหตุผลอย่างน้อย 5 ตัวอักษร");
-                return;
-              }
-              try {
-                await (
-                  await import("../services/api")
-                ).createCustomerBlock({
-                  customerId: customer.id,
-                  reason: reason.trim(),
-                  blockedBy: user.id,
-                });
-                alert("บล็อคลูกค้าเรียบร้อย");
-                window.location.reload();
-              } catch (e) {
-                console.error("block customer failed", e);
-                alert("บล็อคลูกค้าไม่สำเร็จ");
-              }
-            }}
-            className={`py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-center ${(customer as any).isBlocked ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
-          >
-            <ShieldAlert size={16} className="mr-2" /> บล็อค
-          </button>
-        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -936,414 +890,476 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     <Phone size={16} className="inline mr-2" />
                     ประวัติการโทร
                   </button>
-                <button
-                  onClick={() => setActiveTab("appointments")}
-                  className={`py-3 px-1 text-sm font-medium ${activeTab === "appointments" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
-                >
-                  <Calendar size={16} className="inline mr-2" />
-                  รายการนัดหมาย
-                </button>
-                <button
-                  onClick={() => setActiveTab("orders")}
-                  className={`py-3 px-1 text-sm font-medium ${activeTab === "orders" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
-                >
-                  <ShoppingCart size={16} className="inline mr-2" />
-                  ประวัติคำสั่งซื้อ
-                </button>
-              </nav>
-              {hasUpsell && !upsellLoading && onUpsellClick && (
-                <button
-                  onClick={() => onUpsellClick(customer)}
-                  className="relative px-4 py-2 bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center gap-2 animate-pulse hover:animate-none"
-                  title="เพิ่มรายการในออเดอร์เดิม (Upsell)"
-                >
-                  <Zap size={18} className="animate-bounce" />
-                  <span>UPSELL</span>
-                  {/* Animated aura effect */}
-                  <span className="absolute -inset-1 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 rounded-lg blur opacity-75 animate-ping"></span>
-                  <span className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 via-red-300 to-pink-300 rounded-lg blur-sm opacity-50"></span>
-                </button>
-              )}
-            </div>
-            <div className="p-4">
-              <div className="overflow-x-auto">
-                {activeTab === "calls" && (
-                  <>
-                    <table className="w-full text-xs text-left">
-                      <thead className="text-gray-500">
-                        <tr>
-                          <th className="py-2 px-2">วันที่</th>
-                          <th className="py-2 px-2">ผู้โทร</th>
-                          <th className="py-2 px-2">สถานะ</th>
-                          <th className="py-2 px-2">ผลการโทร</th>
-                          <th className="py-2 px-2">พืช/พันธุ์</th>
-                          <th className="py-2 px-2">ขนาดสวน</th>
-                          <th className="py-2 px-2">หมายเหตุ</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-gray-700">
-                        {paginatedCallHistory.map((c) => (
-                          <tr key={c.id} className="border-b last:border-0">
-                            <td className="py-2 px-2">
-                              {formatThaiDateTime(c.date)}
-                            </td>
-                            <td className="py-2 px-2">{c.caller}</td>
-                            <td className="py-2 px-2">
-                              <span
-                                className={`px-2 py-0.5 rounded-full ${c.status === "รับสาย" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}
-                              >
-                                {c.status}
-                              </span>
-                            </td>
-                            <td className="py-2 px-2">{c.result}</td>
-                            <td className="py-2 px-2">{c.cropType || "-"}</td>
-                            <td className="py-2 px-2">{c.areaSize || "-"}</td>
-                            <td className="py-2 px-2">{c.notes || "-"}</td>
+                  <button
+                    onClick={() => setActiveTab("appointments")}
+                    className={`py-3 px-1 text-sm font-medium ${activeTab === "appointments" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
+                  >
+                    <Calendar size={16} className="inline mr-2" />
+                    รายการนัดหมาย
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("orders")}
+                    className={`py-3 px-1 text-sm font-medium ${activeTab === "orders" ? "border-b-2 border-green-600 text-green-600" : "border-transparent text-gray-600 hover:text-gray-700"}`}
+                  >
+                    <ShoppingCart size={16} className="inline mr-2" />
+                    ประวัติคำสั่งซื้อ
+                  </button>
+                </nav>
+              </div>
+              <div className="p-4">
+                <div className="overflow-x-auto">
+                  {activeTab === "calls" && (
+                    <>
+                      <table className="w-full text-xs text-left">
+                        <thead className="text-gray-500">
+                          <tr>
+                            <th className="py-2 px-2">วันที่</th>
+                            <th className="py-2 px-2">ผู้โทร</th>
+                            <th className="py-2 px-2">สถานะ</th>
+                            <th className="py-2 px-2">ผลการโทร</th>
+                            <th className="py-2 px-2">พืช/พันธุ์</th>
+                            <th className="py-2 px-2">ขนาดสวน</th>
+                            <th className="py-2 px-2">หมายเหตุ</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <Paginator
-                      currentPage={callHistoryPage}
-                      totalPages={totalCallPages}
-                      onPageChange={setCallHistoryPage}
-                    />
-                  </>
-                )}
-                {activeTab === "appointments" && (
-                  <>
-                    <table className="w-full text-xs text-left">
-                      <thead className="text-gray-500">
-                        <tr>
-                          <th className="py-2 px-2">วันที่นัดหมาย</th>
-                          <th className="py-2 px-2">หัวข้อ</th>
-                          <th className="py-2 px-2">สถานะ</th>
-                          <th className="py-2 px-2">หมายเหตุ</th>
-                          <th className="py-2 px-2">การดำเนินการ</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-gray-700">
-                        {paginatedAppointments.map((a) => (
-                          <tr key={a.id} className="border-b last:border-0">
-                            <td className="py-2 px-2">
-                              {formatThaiDateTime(a.date)}
-                            </td>
-                            <td className="py-2 px-2">{a.title}</td>
-                            <td className="py-2 px-2">
-                              <span
-                                className={`px-2 py-0.5 rounded-full ${a.status === "เสร็จสิ้น" ? "bg-gray-100 text-gray-700" : "bg-yellow-100 text-yellow-700"}`}
-                              >
-                                {a.status}
-                              </span>
-                            </td>
-                            <td className="py-2 px-2">{a.notes || "-"}</td>
-                            <td className="py-2 px-2">
-                              {a.status === "เสร็จสิ้น" ? (
-                                <Check
-                                  size={16}
-                                  className="text-green-600 inline mr-2"
-                                />
-                              ) : (
-                                props.onCompleteAppointment && (
-                                  <button
-                                    onClick={() =>
-                                      props.onCompleteAppointment!(a.id)
-                                    }
-                                    className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                        </thead>
+                        <tbody className="text-gray-700">
+                          {paginatedCallHistory.map((c) => (
+                            <tr key={c.id} className="border-b last:border-0">
+                              <td className="py-2 px-2">
+                                {formatThaiDateTime(c.date)}
+                              </td>
+                              <td className="py-2 px-2">{c.caller}</td>
+                              <td className="py-2 px-2">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full ${c.status === "รับสาย" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}
+                                >
+                                  {c.status}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2">{c.result}</td>
+                              <td className="py-2 px-2">{c.cropType || "-"}</td>
+                              <td className="py-2 px-2">{c.areaSize || "-"}</td>
+                              <td className="py-2 px-2">{c.notes || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table >
+                      <Paginator
+                        currentPage={callHistoryPage}
+                        totalPages={totalCallPages}
+                        onPageChange={setCallHistoryPage}
+                      />
+                    </>
+                  )}
+                  {
+                    activeTab === "appointments" && (
+                      <>
+                        <table className="w-full text-xs text-left">
+                          <thead className="text-gray-500">
+                            <tr>
+                              <th className="py-2 px-2">วันที่นัดหมาย</th>
+                              <th className="py-2 px-2">หัวข้อ</th>
+                              <th className="py-2 px-2">สถานะ</th>
+                              <th className="py-2 px-2">หมายเหตุ</th>
+                              <th className="py-2 px-2">การดำเนินการ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-gray-700">
+                            {paginatedAppointments.map((a) => (
+                              <tr key={a.id} className="border-b last:border-0">
+                                <td className="py-2 px-2">
+                                  {formatThaiDateTime(a.date)}
+                                </td>
+                                <td className="py-2 px-2">{a.title}</td>
+                                <td className="py-2 px-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full ${a.status === "เสร็จสิ้น" ? "bg-gray-100 text-gray-700" : "bg-yellow-100 text-yellow-700"}`}
                                   >
-                                    ทำเครื่องหมายเสร็จ
-                                  </button>
-                                )
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <Paginator
-                      currentPage={appointmentsPage}
-                      totalPages={totalAppointmentPages}
-                      onPageChange={setAppointmentsPage}
-                    />
-                  </>
-                )}
-                {activeTab === "orders" && (
-                  <>
-                    <table className="w-full text-xs text-left">
-                      <thead className="text-gray-500">
-                        <tr>
-                          <th className="py-2 px-2">OrderID</th>
-                          <th className="py-2 px-2">วันที่สั่ง</th>
-                          <th className="py-2 px-2">ผู้ขาย</th>
-                          <th className="py-2 px-2 text-right">ยอดรวม</th>
-                          <th className="py-2 px-2">ชำระเงิน</th>
-                          <th className="py-2 px-2">สถานะ</th>
-                          <th className="py-2 px-2">รายละเอียดสินค้า</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-gray-700">
-                        {paginatedOrders.map((o) => {
-                          // Match seller by id (ensure type compatibility)
-                          const seller = o.creatorId
-                            ? usersById.get(o.creatorId) || usersById.get(String(o.creatorId)) || usersById.get(Number(o.creatorId))
-                            : undefined;
-                          const sellerName = seller
-                            ? `${seller.firstName} ${seller.lastName}`
-                            : o.creatorId
-                              ? `ID ${o.creatorId}`
-                              : "ไม่ระบุ";
-                          const detail = orderDetails[o.id];
-                          const isExpanded = expandedOrderIds.includes(o.id);
-                          const items = detail?.items ?? [];
-                          const itemCount = items.length;
-                          const loading = detail?.loading;
-                          const error = detail?.error;
-                          return (
-                            <React.Fragment key={o.id}>
-                              <tr className="border-b last:border-0">
-                                <td className="py-2 px-2 font-mono">{o.id}</td>
-                                <td className="py-2 px-2">
-                                  {formatThaiDate(o.orderDate)}
+                                    {a.status}
+                                  </span>
                                 </td>
-                                <td className="py-2 px-2">{sellerName}</td>
-                                <td className="py-2 px-2 text-right">
-                                  {formatCurrency(o.totalAmount)}
-                                </td>
+                                <td className="py-2 px-2">{a.notes || "-"}</td>
                                 <td className="py-2 px-2">
-                                  {getPaymentStatusChip(
-                                    o.paymentStatus,
-                                    o.paymentMethod,
+                                  {a.status === "เสร็จสิ้น" ? (
+                                    <Check
+                                      size={16}
+                                      className="text-green-600 inline mr-2"
+                                    />
+                                  ) : (
+                                    props.onCompleteAppointment && (
+                                      <button
+                                        onClick={() =>
+                                          props.onCompleteAppointment!(a.id)
+                                        }
+                                        className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                                      >
+                                        ทำเครื่องหมายเสร็จ
+                                      </button>
+                                    )
                                   )}
                                 </td>
-                                <td className="py-2 px-2">
-                                  {getStatusChip(o.orderStatus)}
-                                </td>
-                                <td className="py-2 px-2">
-                                  <button
-                                    onClick={() =>
-                                      handleToggleOrderDetails(o.id)
-                                    }
-                                    className="inline-flex items-center text-xs text-blue-600 hover:underline"
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronUp size={14} className="mr-1" />
-                                    ) : (
-                                      <ChevronDown size={14} className="mr-1" />
-                                    )}
-                                    {isExpanded ? "ซ่อนสินค้า" : "ดูสินค้า"}
-                                    {itemCount > 0 && !loading
-                                      ? ` (${itemCount})`
-                                      : ""}
-                                  </button>
-                                </td>
                               </tr>
-                              {isExpanded && (
-                                <tr className="bg-gray-50">
-                                  <td colSpan={7} className="px-4 py-3">
-                                    {loading ? (
-                                      <div className="text-xs text-gray-500">
-                                        กำลังโหลดรายละเอียดสินค้า...
-                                      </div>
-                                    ) : error ? (
-                                      <div className="text-xs text-red-600">
-                                        {error}
-                                      </div>
-                                    ) : items.length === 0 ? (
-                                      <div className="text-xs text-gray-500">
-                                        ไม่พบรายการสินค้า
-                                      </div>
-                                    ) : (
-                                      <div className="overflow-x-auto">
-                                        <table className="w-full text-xs text-left">
-                                          <thead className="text-gray-500 bg-white">
-                                            <tr>
-                                              <th className="px-3 py-2">
-                                                สินค้า
-                                              </th>
-                                              <th className="px-3 py-2 text-right">
-                                                จำนวน
-                                              </th>
-                                              <th className="px-3 py-2 text-right">
-                                                ราคาต่อหน่วย
-                                              </th>
-                                              <th className="px-3 py-2 text-right">
-                                                ส่วนลด
-                                              </th>
-                                              <th className="px-3 py-2 text-right">
-                                                ยอดสุทธิ
-                                              </th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="text-gray-700">
-                                            {items.map((item, index) => {
-                                              const isChild =
-                                                item.parentItemId != null &&
-                                                !item.isPromotionParent;
-                                              const isFreebie = Boolean(
-                                                item.isFreebie,
-                                              );
-
-                                              const net =
-                                                calculateLineNet(item);
-
-                                              // Check if this is the last item in a promotion group
-                                              const isLastInPromotion =
-                                                item.isPromotionParent &&
-                                                (() => {
-                                                  const nextItem =
-                                                    items[index + 1];
-                                                  return (
-                                                    !nextItem ||
-                                                    nextItem.parentItemId !==
-                                                      item.id
+                            ))}
+                          </tbody>
+                        </table>
+                        <Paginator
+                          currentPage={appointmentsPage}
+                          totalPages={totalAppointmentPages}
+                          onPageChange={setAppointmentsPage}
+                        />
+                      </>
+                    )
+                  }
+                  {
+                    activeTab === "orders" && (
+                      <>
+                        <table className="w-full text-xs text-left">
+                          <thead className="text-gray-500">
+                            <tr>
+                              <th className="py-2 px-2">OrderID</th>
+                              <th className="py-2 px-2">วันที่สั่ง</th>
+                              <th className="py-2 px-2">ผู้ขาย</th>
+                              <th className="py-2 px-2 text-right">ยอดรวม</th>
+                              <th className="py-2 px-2">ชำระเงิน</th>
+                              <th className="py-2 px-2">สถานะ</th>
+                              <th className="py-2 px-2">รายละเอียดสินค้า</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-gray-700">
+                            {paginatedOrders.map((o) => {
+                              // Match seller by id (ensure type compatibility)
+                              const seller = o.creatorId
+                                ? usersById.get(o.creatorId) || usersById.get(String(o.creatorId)) || usersById.get(Number(o.creatorId))
+                                : undefined;
+                              const sellerName = seller
+                                ? `${seller.firstName} ${seller.lastName}`
+                                : o.creatorId
+                                  ? `ID ${o.creatorId}`
+                                  : "ไม่ระบุ";
+                              const detail = orderDetails[o.id];
+                              const isExpanded = expandedOrderIds.includes(o.id);
+                              const items = detail?.items ?? [];
+                              const itemCount = items.length;
+                              const loading = detail?.loading;
+                              const error = detail?.error;
+                              return (
+                                <React.Fragment key={o.id}>
+                                  <tr className="border-b last:border-0">
+                                    <td className="py-2 px-2 font-mono">{o.id}</td>
+                                    <td className="py-2 px-2">
+                                      {formatThaiDate(o.orderDate)}
+                                    </td>
+                                    <td className="py-2 px-2">{sellerName}</td>
+                                    <td className="py-2 px-2 text-right">
+                                      {formatCurrency(o.totalAmount)}
+                                    </td>
+                                    <td className="py-2 px-2">
+                                      {getPaymentStatusChip(
+                                        o.paymentStatus,
+                                        o.paymentMethod,
+                                      )}
+                                    </td>
+                                    <td className="py-2 px-2">
+                                      {getStatusChip(o.orderStatus)}
+                                    </td>
+                                    <td className="py-2 px-2">
+                                      <button
+                                        onClick={() =>
+                                          handleToggleOrderDetails(o.id)
+                                        }
+                                        className="inline-flex items-center text-xs text-blue-600 hover:underline"
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronUp size={14} className="mr-1" />
+                                        ) : (
+                                          <ChevronDown size={14} className="mr-1" />
+                                        )}
+                                        {isExpanded ? "ซ่อนสินค้า" : "ดูสินค้า"}
+                                        {itemCount > 0 && !loading
+                                          ? ` (${itemCount})`
+                                          : ""}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                  {isExpanded && (
+                                    <tr className="bg-gray-50">
+                                      <td colSpan={7} className="px-4 py-3">
+                                        {loading ? (
+                                          <div className="text-xs text-gray-500">
+                                            กำลังโหลดรายละเอียดสินค้า...
+                                          </div>
+                                        ) : error ? (
+                                          <div className="text-xs text-red-600">
+                                            {error}
+                                          </div>
+                                        ) : items.length === 0 ? (
+                                          <div className="text-xs text-gray-500">
+                                            ไม่พบรายการสินค้า
+                                          </div>
+                                        ) : (
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left">
+                                              <thead className="text-gray-500 bg-white">
+                                                <tr>
+                                                  <th className="px-3 py-2">
+                                                    สินค้า
+                                                  </th>
+                                                  <th className="px-3 py-2 text-right">
+                                                    จำนวน
+                                                  </th>
+                                                  <th className="px-3 py-2 text-right">
+                                                    ราคาต่อหน่วย
+                                                  </th>
+                                                  <th className="px-3 py-2 text-right">
+                                                    ส่วนลด
+                                                  </th>
+                                                  <th className="px-3 py-2 text-right">
+                                                    ยอดสุทธิ
+                                                  </th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="text-gray-700">
+                                                {items.map((item, index) => {
+                                                  const isChild =
+                                                    item.parentItemId != null &&
+                                                    !item.isPromotionParent;
+                                                  const isFreebie = Boolean(
+                                                    item.isFreebie,
                                                   );
-                                                })();
 
-                                              // Check if this is a promotion subtotal row (last child or last parent without children)
-                                              const isPromotionSubtotal =
-                                                (isChild &&
-                                                  (() => {
-                                                    const nextItem =
-                                                      items[index + 1];
-                                                    return (
-                                                      !nextItem ||
-                                                      nextItem.parentItemId !==
-                                                        item.parentItemId
-                                                    );
-                                                  })()) ||
-                                                isLastInPromotion;
+                                                  const net =
+                                                    calculateLineNet(item);
 
-                                              return (
-                                                <tr
-                                                  key={item.id}
-                                                  className={`border-b last:border-0 ${item.isPromotionParent ? "bg-orange-100" : isChild ? "bg-orange-50" : ""}`}
-                                                >
-                                                  <td
-                                                    className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"}`}
-                                                  >
-                                                    <span className="font-medium text-gray-800">
-                                                      {isChild ? "- " : ""}
-                                                      {item.productName ||
-                                                        `สินค้า ${item.id}`}
-                                                    </span>
-                                                    {item.isPromotionParent && (
-                                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px]">
-                                                        ชุดโปรโมชั่น
-                                                      </span>
-                                                    )}
-                                                    {isFreebie && (
-                                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px]">
-                                                        ของแถม
-                                                      </span>
-                                                    )}
-                                                  </td>
-                                                  <td
-                                                    className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
-                                                  >
-                                                    {item.quantity.toLocaleString(
-                                                      "th-TH",
-                                                    )}
-                                                  </td>
-                                                  <td
-                                                    className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
-                                                  >
-                                                    {isFreebie
-                                                      ? "—"
-                                                      : formatCurrency(
-                                                          item.pricePerUnit,
+                                                  // Check if this is the last item in a promotion group
+                                                  const isLastInPromotion =
+                                                    item.isPromotionParent &&
+                                                    (() => {
+                                                      const nextItem =
+                                                        items[index + 1];
+                                                      return (
+                                                        !nextItem ||
+                                                        nextItem.parentItemId !==
+                                                        item.id
+                                                      );
+                                                    })();
+
+                                                  // Check if this is a promotion subtotal row (last child or last parent without children)
+                                                  const isPromotionSubtotal =
+                                                    (isChild &&
+                                                      (() => {
+                                                        const nextItem =
+                                                          items[index + 1];
+                                                        return (
+                                                          !nextItem ||
+                                                          nextItem.parentItemId !==
+                                                          item.parentItemId
+                                                        );
+                                                      })()) ||
+                                                    isLastInPromotion;
+
+                                                  return (
+                                                    <tr
+                                                      key={item.id}
+                                                      className={`border-b last:border-0 ${item.isPromotionParent ? "bg-orange-100" : isChild ? "bg-orange-50" : ""}`}
+                                                    >
+                                                      <td
+                                                        className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"}`}
+                                                      >
+                                                        <span className="font-medium text-gray-800">
+                                                          {isChild ? "- " : ""}
+                                                          {item.productName ||
+                                                            `สินค้า ${item.id}`}
+                                                        </span>
+                                                        {item.isPromotionParent && (
+                                                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px]">
+                                                            ชุดโปรโมชั่น
+                                                          </span>
                                                         )}
-                                                  </td>
-                                                  <td
-                                                    className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
-                                                  >
-                                                    {isFreebie
-                                                      ? "—"
-                                                      : formatCurrency(
-                                                          item.discount,
+                                                        {isFreebie && (
+                                                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px]">
+                                                            ของแถม
+                                                          </span>
                                                         )}
-                                                  </td>
-                                                  <td
-                                                    className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right font-medium text-gray-800`}
-                                                  >
-                                                    {isChild ? (
-                                                      <div>
-                                                        {formatCurrency(net)}
-                                                        <div className="text-[10px] text-gray-500 italic">
-                                                          รวมในชุด
-                                                        </div>
-                                                      </div>
-                                                    ) : isFreebie ? (
-                                                      <span className="text-[10px] text-gray-500 italic">
-                                                        ของแถม
-                                                      </span>
-                                                    ) : (
-                                                      <div>
-                                                        {formatCurrency(net)}
-                                                        {isPromotionSubtotal &&
-                                                          item.isPromotionParent && (
-                                                            <div className="text-xs text-orange-600 font-semibold mt-1">
-                                                              ยอดรวมชุดโปรโมชั่น
-                                                            </div>
+                                                      </td>
+                                                      <td
+                                                        className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
+                                                      >
+                                                        {item.quantity.toLocaleString(
+                                                          "th-TH",
+                                                        )}
+                                                      </td>
+                                                      <td
+                                                        className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
+                                                      >
+                                                        {isFreebie
+                                                          ? "—"
+                                                          : formatCurrency(
+                                                            item.pricePerUnit,
                                                           )}
-                                                      </div>
+                                                      </td>
+                                                      <td
+                                                        className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right`}
+                                                      >
+                                                        {isFreebie
+                                                          ? "—"
+                                                          : formatCurrency(
+                                                            item.discount,
+                                                          )}
+                                                      </td>
+                                                      <td
+                                                        className={`px-3 ${isPromotionSubtotal ? "py-4" : "py-2"} text-right font-medium text-gray-800`}
+                                                      >
+                                                        {isChild ? (
+                                                          <div>
+                                                            {formatCurrency(net)}
+                                                            <div className="text-[10px] text-gray-500 italic">
+                                                              รวมในชุด
+                                                            </div>
+                                                          </div>
+                                                        ) : isFreebie ? (
+                                                          <span className="text-[10px] text-gray-500 italic">
+                                                            ของแถม
+                                                          </span>
+                                                        ) : (
+                                                          <div>
+                                                            {formatCurrency(net)}
+                                                            {isPromotionSubtotal &&
+                                                              item.isPromotionParent && (
+                                                                <div className="text-xs text-orange-600 font-semibold mt-1">
+                                                                  ยอดรวมชุดโปรโมชั่น
+                                                                </div>
+                                                              )}
+                                                          </div>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                                <tr className="bg-white">
+                                                  <td
+                                                    colSpan={4}
+                                                    className="px-3 py-2 text-right font-semibold text-gray-700"
+                                                  >
+                                                    ยอดรวมสินค้า
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                                    {formatCurrency(
+                                                      items.reduce((sum, item) => {
+                                                        // เพิ่มเฉพาะ promotion parent และ regular items (ไม่รวมสินค้าลูกใน promotion)
+                                                        if (
+                                                          item.isPromotionParent ||
+                                                          (!item.isPromotionParent &&
+                                                            !item.promotionId)
+                                                        ) {
+                                                          return (
+                                                            sum +
+                                                            calculateLineNet(item)
+                                                          );
+                                                        }
+                                                        return sum;
+                                                      }, 0),
                                                     )}
                                                   </td>
                                                 </tr>
-                                              );
-                                            })}
-                                            <tr className="bg-white">
-                                              <td
-                                                colSpan={4}
-                                                className="px-3 py-2 text-right font-semibold text-gray-700"
-                                              >
-                                                ยอดรวมสินค้า
-                                              </td>
-                                              <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                                                {formatCurrency(
-                                                  items.reduce((sum, item) => {
-                                                    // เพิ่มเฉพาะ promotion parent และ regular items (ไม่รวมสินค้าลูกใน promotion)
-                                                    if (
-                                                      item.isPromotionParent ||
-                                                      (!item.isPromotionParent &&
-                                                        !item.promotionId)
-                                                    ) {
-                                                      return (
-                                                        sum +
-                                                        calculateLineNet(item)
-                                                      );
-                                                    }
-                                                    return sum;
-                                                  }, 0),
-                                                )}
-                                              </td>
-                                            </tr>
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    <Paginator
-                      currentPage={ordersPage}
-                      totalPages={totalOrderPages}
-                      onPageChange={setOrdersPage}
-                    />
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          </div>
-        </div>
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        <Paginator
+                          currentPage={ordersPage}
+                          totalPages={totalOrderPages}
+                          onPageChange={setOrdersPage}
+                        />
+                      </>
+                    )
+                  }
+                </div >
+              </div >
+            </div >
+          </div >
+        </div >
 
         {/* Right Column */}
         <div className="lg:col-span-1 space-y-6">
+          {/* Action Buttons Container */}
+          <div className="bg-white p-4 rounded-lg shadow-sm border flex flex-wrap gap-2 justify-center">
+            <button
+              onClick={() => openModal("logCall", customer)}
+              className="bg-green-100 text-green-700 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-green-200 flex-1 whitespace-nowrap"
+            >
+              <Phone size={14} className="mr-1.5" />
+              บันทึกโทร
+            </button>
+            <button
+              onClick={() => openModal("addAppointment", customer)}
+              className="bg-cyan-100 text-cyan-700 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-cyan-200 flex-1 whitespace-nowrap"
+            >
+              <Calendar size={14} className="mr-1.5" />
+              นัดหมาย
+            </button>
+            <button
+              onClick={() => {
+                if (onStartCreateOrder) {
+                  onStartCreateOrder(customer);
+                } else {
+                  openModal("createOrder", { customer });
+                }
+              }}
+              className="bg-amber-100 text-amber-700 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-amber-200 flex-1 whitespace-nowrap"
+            >
+              <ShoppingCart size={14} className="mr-1.5" />
+              สั่งซื้อ
+            </button>
+            <button
+              onClick={() => openModal("editCustomer", customer)}
+              className="bg-slate-700 text-white py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center hover:bg-slate-800 flex-1 whitespace-nowrap"
+            >
+              <Edit size={14} className="mr-1.5" />
+              แก้ไข
+            </button>
+            <button
+              onClick={async () => {
+                if ((customer as any).isBlocked) return;
+                const ok = window.confirm(
+                  "คุณแน่ใจหรือไม่ว่าต้องการบล็อคลูกค้ารายนี้?",
+                );
+                if (!ok) return;
+                const reason =
+                  window.prompt(
+                    "กรุณาระบุเหตุผลในการบล็อค (อย่างน้อย 5 ตัวอักษร)",
+                  ) || "";
+                if (!reason || reason.trim().length < 5) {
+                  alert("กรุณากรอกเหตุผลอย่างน้อย 5 ตัวอักษร");
+                  return;
+                }
+                try {
+                  await (
+                    await import("../services/api")
+                  ).createCustomerBlock({
+                    customerId: customer.id,
+                    reason: reason.trim(),
+                    blockedBy: user.id,
+                  });
+                  alert("บล็อคลูกค้าเรียบร้อย");
+                  window.location.reload();
+                } catch (e) {
+                  console.error("block customer failed", e);
+                  alert("บล็อคลูกค้าไม่สำเร็จ");
+                }
+              }}
+              className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center flex-1 whitespace-nowrap ${(customer as any).isBlocked ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
+            >
+              <ShieldAlert size={14} className="mr-1.5" /> บล็อค
+            </button>
+          </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <h3 className="font-semibold mb-4 text-gray-700">สถิติสรุป</h3>
             <div className="grid grid-cols-2 gap-4 text-center">
@@ -1517,9 +1533,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 </div>
               )}
           </div>
-        </div>
-      </div>
-    </div>
+        </div >
+      </div >
+    </div >
   );
 };
 

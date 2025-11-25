@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, PaymentMethod, PaymentStatus } from '../types';
 import OrderTable from '../components/OrderTable';
 import { CreditCard, List, History, ListChecks, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import usePersistentState from '../utils/usePersistentState';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 
@@ -69,10 +70,17 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
 
   const advRef = useRef<HTMLDivElement | null>(null);
-  const initialPageRef = useRef<number | null>(initialPagination.hasStoredPage ? initialPagination.page : null);
-
-  const [itemsPerPage, setItemsPerPage] = useState<number>(initialPagination.itemsPerPage);
-  const [currentPage, setCurrentPage] = useState<number>(initialPagination.page);
+  
+  // Use persistent state for pagination
+  const paginationKey = `telesale_orders_pagination_${user?.id ?? '0'}`;
+  const [itemsPerPage, setItemsPerPage] = usePersistentState<number>(
+    `${paginationKey}:itemsPerPage`,
+    initialPagination.itemsPerPage
+  );
+  const [currentPage, setCurrentPage] = usePersistentState<number>(
+    `${paginationKey}:currentPage`,
+    initialPagination.page
+  );
 
   // Load saved filters (key depends on user)
   useEffect(() => {
@@ -108,7 +116,6 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
         const savedPage = Number(saved.currentPage);
         if (Number.isFinite(savedPage) && savedPage >= 1) {
           const normalized = Math.floor(savedPage);
-          initialPageRef.current = normalized;
           setCurrentPage(normalized);
         }
       }
@@ -145,7 +152,17 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   }, [activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
 
   const myOrders = useMemo(() => {
-    return orders.filter(order => order.creatorId === user.id);
+    return orders.filter(order => {
+      // Include orders where user is the original creator
+      if (order.creatorId === user.id) {
+        return true;
+      }
+      // Include orders where user is creator of any items (for upsell)
+      if (order.items && Array.isArray(order.items)) {
+        return order.items.some((item: any) => item.creatorId === user.id);
+      }
+      return false;
+    });
   }, [orders, user.id]);
 
   const pendingSlipOrders = useMemo(() => {
@@ -266,14 +283,10 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
 
   useEffect(() => {
     setCurrentPage((prev) => {
-      const target = initialPageRef.current ?? prev;
-      const next = Math.min(Math.max(target, 1), totalPages);
+      const next = Math.min(Math.max(prev, 1), totalPages);
       return next === prev ? prev : next;
     });
-    if (initialPageRef.current && totalPages >= initialPageRef.current) {
-      initialPageRef.current = null;
-    }
-  }, [totalPages]);
+  }, [totalPages, setCurrentPage]);
 
   const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
   const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;

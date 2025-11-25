@@ -293,14 +293,14 @@ export async function updatePlatform(id: number, payload: {
 }) {
   // Build payload with showPagesFrom handling
   const updatePayload: any = { ...payload };
-  
+
   // If showPagesFrom is explicitly provided (even if null), include it in the update
   if (payload.showPagesFrom !== undefined) {
-    updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== '' 
-      ? payload.showPagesFrom 
+    updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
+      ? payload.showPagesFrom
       : null;
   }
-  
+
   return apiFetch(`platforms/${id}`, {
     method: "PATCH",
     body: JSON.stringify(updatePayload),
@@ -633,17 +633,17 @@ export async function uploadSlipImageFile(orderId: string, file: File): Promise<
   const form = new FormData();
   form.append("file", file);
   form.append("order_id", orderId);
-  
+
   // Use direct fetch for FormData (not through apiFetch which expects JSON)
   const res = await fetch("api/Slip_DB/upload_slip_image.php", {
     method: "POST",
     body: form,
   });
-  
+
   if (!res.ok) {
     throw new Error(`Upload failed: ${res.statusText}`);
   }
-  
+
   const data = await res.json();
   return data;
 }
@@ -672,11 +672,11 @@ export async function createOrderSlipWithPayment(data: {
       company_id: data.companyId,
     }),
   });
-  
+
   if (!res.ok) {
     throw new Error(`Request failed: ${res.statusText}`);
   }
-  
+
   return await res.json();
 }
 

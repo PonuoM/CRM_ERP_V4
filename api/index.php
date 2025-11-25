@@ -1417,6 +1417,18 @@ function release_order_allocations(PDO $pdo, string $orderId): array {
     return $released;
 }
 
+function calculate_order_item_net_total(array $item): float {
+    $quantity = isset($item['quantity']) ? (int)$item['quantity'] : 0;
+    $quantity = $quantity < 0 ? 0 : $quantity;
+    $pricePerUnit = isset($item['pricePerUnit']) ? (float)$item['pricePerUnit'] : (float)($item['price_per_unit'] ?? 0);
+    $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
+    $discount = isset($item['discount']) ? (float)$item['discount'] : 0.0;
+    $isFreebie = !empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int)$item['is_freebie'] === 1);
+    if ($isFreebie) { return 0.0; }
+    $net = ($pricePerUnit * $quantity) - $discount;
+    return $net > 0 ? $net : 0.0;
+}
+
 function handle_orders(PDO $pdo, ?string $id): void {
     // Handle sequence endpoint for order ID generation
     if ($id === 'sequence') {
@@ -1536,7 +1548,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     // Fetch items from main orders and sub orders
                     $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
                     $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
-                                       oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number, 
+                                       oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
                                        oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                        oi.creator_id, oi.parent_order_id,
                                        p.sku as product_sku
@@ -1552,6 +1564,9 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     // Map items to main order IDs
                     // Items from sub orders (mainOrderId-1, mainOrderId-2) should be mapped to main order (mainOrderId)
                     foreach ($items as $item) {
+                        if (!isset($item['net_total']) || $item['net_total'] === null) {
+                            $item['net_total'] = calculate_order_item_net_total($item);
+                        }
                         $itemOrderId = $item['order_id'];
                         // Check if this is a sub order (ends with -number)
                         if (preg_match('/^(.+)-(\d+)$/', $itemOrderId, $matches)) {
@@ -1683,13 +1698,36 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $recipientFirstName = $addr['recipientFirstName'] ?? ($addr['recipient_first_name'] ?? null);
                 $recipientLastName = $addr['recipientLastName'] ?? ($addr['recipient_last_name'] ?? null);
                 
+                // Normalize payment method: handle empty string, null, or undefined
+                // Also normalize Thai values to match database enum ('COD','Transfer','PayAfter')
+                $paymentMethod = $in['paymentMethod'] ?? null;
+                if ($paymentMethod === '' || $paymentMethod === 'null' || $paymentMethod === 'undefined') {
+                    $paymentMethod = null;
+                } else if ($paymentMethod !== null) {
+                    // Normalize payment method values to match database enum
+                    // Database enum: 'COD', 'Transfer', 'PayAfter'
+                    $paymentMethodStr = strval($paymentMethod);
+                    if ($paymentMethodStr === 'COD' || $paymentMethodStr === 'cod' || $paymentMethodStr === 'C.O.D' || $paymentMethodStr === 'cash_on_delivery') {
+                        $paymentMethod = 'COD';
+                    } else if ($paymentMethodStr === 'Transfer' || $paymentMethodStr === 'transfer' || $paymentMethodStr === 'bank_transfer' || $paymentMethodStr === 'โอน') {
+                        $paymentMethod = 'Transfer';
+                    } else if ($paymentMethodStr === 'PayAfter' || $paymentMethodStr === 'pay_after' || $paymentMethodStr === 'pay-after' || 
+                               $paymentMethodStr === 'หลังจากรับสินค้า' || $paymentMethodStr === 'รับสินค้าก่อน' || $paymentMethodStr === 'ผ่อนชำระ' || $paymentMethodStr === 'ผ่อน') {
+                        $paymentMethod = 'PayAfter';
+                    } else {
+                        // If value doesn't match any known pattern, log warning and set to null
+                        error_log('Warning: Unknown payment method value: ' . $paymentMethodStr);
+                        $paymentMethod = null;
+                    }
+                }
+                
                 $values = [
                     $in['id'], $in['customerId'], $in['companyId'], $in['creatorId'], $in['orderDate'], $in['deliveryDate'],
                     $addr['street'] ?? null, $addr['subdistrict'] ?? null, $addr['district'] ?? null, $addr['province'] ?? null, $addr['postalCode'] ?? null,
                     $recipientFirstName,
                     $recipientLastName,
                     $in['shippingCost'] ?? 0, $in['billDiscount'] ?? 0, $in['totalAmount'] ?? 0,
-                    $in['paymentMethod'] ?? null, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $in['codAmount'] ?? null,
+                    $paymentMethod, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $in['codAmount'] ?? null,
                     $in['orderStatus'] ?? null, $in['notes'] ?? null, $in['salesChannel'] ?? null, $in['salesChannelPageId'] ?? null, $in['warehouseId'] ?? null,
                 ];
                 
@@ -1750,8 +1788,24 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
 
                 if (!empty($in['items']) && is_array($in['items'])) {
-                    // Two‑phase insert to satisfy FK parent_item_id -> order_items(id)
-                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                    // Two-phase insert to satisfy FK parent_item_id -> order_items(id)
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+
+                    $computeNetValues = function(array $item): array {
+                        $quantity = isset($item['quantity']) ? (int)$item['quantity'] : 0;
+                        $quantity = $quantity < 0 ? 0 : $quantity;
+                        $pricePerUnit = isset($item['pricePerUnit']) ? (float)$item['pricePerUnit'] : (float)($item['price_per_unit'] ?? 0.0);
+                        $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
+                        $discount = isset($item['discount']) ? (float)$item['discount'] : 0.0;
+                        $isFreebie = (!empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int)$item['is_freebie'] === 1)) ? 1 : 0;
+                        $netTotal = calculate_order_item_net_total([
+                            'quantity' => $quantity,
+                            'pricePerUnit' => $pricePerUnit,
+                            'discount' => $discount,
+                            'isFreebie' => $isFreebie,
+                        ]);
+                        return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];
+                    };
 
                     // Helper function to get order_id based on box_number (using synthesized per-box IDs)
                     $getOrderIdForBox = function($boxNumber) use ($mainOrderId, $subOrderIds) {
@@ -1774,10 +1828,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         if ($isParent) {
                             $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
                             $ins->execute([
                                 $orderIdForItem, $mainOrderId,
-                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
                                 $it['promotionId'] ?? null, null, 1, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1795,10 +1850,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         if (!$isParent && !$hasParent) {
                             $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
                             $ins->execute([
                                 $orderIdForItem, $mainOrderId,
-                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
                                 $it['promotionId'] ?? null, null, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1817,10 +1873,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             }
                             $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
                             $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
                             $ins->execute([
                                 $orderIdForItem, $mainOrderId,
-                                $it['productId'] ?? null, $it['productName'] ?? null, $it['quantity'] ?? 0,
-                                $it['pricePerUnit'] ?? 0, $it['discount'] ?? 0, !empty($it['isFreebie']) ? 1 : 0, $boxNumber,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
                                 $it['promotionId'] ?? null, $resolved, 0, $creatorId,
                             ]);
                             $dbId = (int)$pdo->lastInsertId();
@@ -1876,6 +1933,51 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         $in['customerId'] ?? null
                     );
                 }
+                
+                // Update customer total_purchases and grade after order creation
+                try {
+                    $customerId = $in['customerId'] ?? null;
+                    $orderTotal = floatval($in['totalAmount'] ?? 0);
+                    
+                    if ($customerId && $orderTotal > 0) {
+                        // Find customer by id (varchar) or customer_ref_id (varchar) or customer_id (int PK)
+                        // orders.customer_id is varchar and references customers.id (varchar) or customers.customer_ref_id (varchar)
+                        $customerCheck = $pdo->prepare('SELECT customer_id, total_purchases FROM customers WHERE id = ? OR customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $customerCheck->execute([$customerId, $customerId, $customerId]);
+                        $customerData = $customerCheck->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($customerData) {
+                            $customerPk = $customerData['customer_id']; // This is the int PK
+                            $currentTotal = floatval($customerData['total_purchases'] ?? 0);
+                            $newTotal = $currentTotal + $orderTotal;
+                            
+                            // Calculate new grade based on total purchases
+                            // Grade thresholds: A >= 50000, B >= 10000, C >= 5000, D >= 2000, else D
+                            $newGrade = 'D';
+                            if ($newTotal >= 50000) {
+                                $newGrade = 'A';
+                            } else if ($newTotal >= 10000) {
+                                $newGrade = 'B';
+                            } else if ($newTotal >= 5000) {
+                                $newGrade = 'C';
+                            } else if ($newTotal >= 2000) {
+                                $newGrade = 'D';
+                            }
+                            
+                            // Update customer total_purchases and grade using customer_id (int PK)
+                            $updateCustomer = $pdo->prepare('UPDATE customers SET total_purchases = ?, grade = ? WHERE customer_id = ?');
+                            $updateCustomer->execute([$newTotal, $newGrade, $customerPk]);
+                            
+                            error_log("Updated customer {$customerPk}: total_purchases={$newTotal}, grade={$newGrade}");
+                        } else {
+                            error_log("Customer not found for ID: {$customerId}");
+                        }
+                    }
+                } catch (Throwable $e) {
+                    // Log error but don't fail the order creation
+                    error_log('Failed to update customer total_purchases/grade: ' . $e->getMessage());
+                }
+                
                 $pdo->commit();
                 error_log('Order created successfully: ' . $in['id']);
                 json_response(['ok' => true, 'id' => $in['id']]);
@@ -2924,6 +3026,12 @@ function get_order(PDO $pdo, string $id): ?array {
     $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.order_id IN ($placeholders) ORDER BY oi.order_id, oi.id");
     $items->execute($allOrderIds);
     $allItems = $items->fetchAll();
+    foreach ($allItems as &$itemRow) {
+        if (!isset($itemRow['net_total']) || $itemRow['net_total'] === null) {
+            $itemRow['net_total'] = calculate_order_item_net_total($itemRow);
+        }
+    }
+    unset($itemRow);
     
     // Filter items: if this is a sub order request, only return items for that sub order
     // Otherwise, return all items from main order and sub orders
@@ -4720,13 +4828,20 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 
                 // Find orders that are eligible for upsell:
                 // 1. order_status = 'Pending'
-                // 2. order_date is within 24 hours from now
+                // 2. order_date is within the last 24 hours
+                // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
                 $stmt = $pdo->prepare("
                     SELECT COUNT(*) as eligible_count
-                    FROM orders
-                    WHERE customer_id = ?
-                    AND order_status = 'Pending'
-                    AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    FROM orders o
+                    WHERE o.customer_id = ?
+                    AND o.order_status = 'Pending'
+                    AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM order_items oi 
+                        WHERE oi.parent_order_id = o.id 
+                        AND oi.creator_id != o.creator_id
+                    )
                 ");
                 $stmt->execute([$customerId]);
                 $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -4744,6 +4859,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 }
                 
                 // Get orders that are eligible for upsell
+                // 1. order_status = 'Pending'
+                // 2. order_date is within the last 24 hours
+                // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
                 $stmt = $pdo->prepare("
                     SELECT o.id, o.order_date, o.delivery_date, o.order_status, o.total_amount, o.creator_id,
                            o.sales_channel_page_id, o.sales_channel, o.payment_method, o.payment_status,
@@ -4755,6 +4873,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     WHERE o.customer_id = ?
                     AND o.order_status = 'Pending'
                     AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM order_items oi2 
+                        WHERE oi2.parent_order_id = o.id 
+                        AND oi2.creator_id != o.creator_id
+                    )
                     GROUP BY o.id
                     ORDER BY o.order_date DESC
                 ");
@@ -4766,7 +4890,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     $orderId = $order['id'];
                     $itemStmt = $pdo->prepare("
                         SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity,
-                               oi.price_per_unit, oi.discount, oi.is_freebie, oi.box_number,
+                               oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number,
                                oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                oi.creator_id, oi.parent_order_id,
                                p.sku as product_sku
@@ -4777,6 +4901,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     ");
                     $itemStmt->execute([$orderId]);
                     $order['items'] = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($order['items'] as &$orderItem) {
+                        if (!isset($orderItem['net_total']) || $orderItem['net_total'] === null) {
+                            $orderItem['net_total'] = calculate_order_item_net_total($orderItem);
+                        }
+                    }
+                    unset($orderItem);
                 }
                 
                 json_response($orders);
@@ -4834,14 +4964,15 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     return;
                 }
                 
-                // Validate creator_id exists
-                $creatorCheck = $pdo->prepare('SELECT id, status FROM users WHERE id = ?');
+                // Validate creator_id exists and get creator name
+                $creatorCheck = $pdo->prepare('SELECT id, status, first_name, last_name FROM users WHERE id = ?');
                 $creatorCheck->execute([$creatorId]);
                 $creatorData = $creatorCheck->fetch(PDO::FETCH_ASSOC);
                 if (!$creatorData || $creatorData['status'] !== 'active') {
                     json_response(['error' => 'INVALID_CREATOR', 'message' => 'Creator user not found or inactive'], 400);
                     return;
                 }
+                $creatorName = trim(($creatorData['first_name'] ?? '') . ' ' . ($creatorData['last_name'] ?? ''));
                 
                 $pdo->beginTransaction();
                 try {
@@ -4857,13 +4988,20 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     foreach ($items as $item) {
                         $productId = $item['productId'] ?? null;
                         $productName = $item['productName'] ?? '';
-                        $quantity = (int)($item['quantity'] ?? 1);
-                        $pricePerUnit = (float)($item['pricePerUnit'] ?? 0);
+                        $quantity = max(0, (int)($item['quantity'] ?? 1));
+                        $pricePerUnit = isset($item['pricePerUnit']) ? (float)$item['pricePerUnit'] : (float)($item['price_per_unit'] ?? 0);
+                        $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
                         $discount = (float)($item['discount'] ?? 0);
                         $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
                         $promotionId = $item['promotionId'] ?? null;
                         $parentItemId = $item['parentItemId'] ?? null;
                         $isPromotionParent = isset($item['isPromotionParent']) && $item['isPromotionParent'] ? 1 : 0;
+                        $netTotal = calculate_order_item_net_total([
+                            'quantity' => $quantity,
+                            'pricePerUnit' => $pricePerUnit,
+                            'discount' => $discount,
+                            'isFreebie' => $isFreebie,
+                        ]);
                         
                         // Determine box_number (increment if needed)
                         $boxNumber = $item['boxNumber'] ?? ($currentBoxNumber + 1);
@@ -4878,9 +5016,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                         $itemStmt = $pdo->prepare("
                             INSERT INTO order_items (
                                 order_id, parent_order_id, product_id, product_name, quantity,
-                                price_per_unit, discount, is_freebie, box_number,
+                                price_per_unit, discount, net_total, is_freebie, box_number,
                                 promotion_id, parent_item_id, is_promotion_parent, creator_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ");
                         
                         $itemStmt->execute([
@@ -4891,6 +5029,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                             $quantity,
                             $pricePerUnit,
                             $discount,
+                            $netTotal,
                             $isFreebie,
                             $boxNumber,
                             $promotionId,
@@ -4901,11 +5040,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                         
                         $itemId = $pdo->lastInsertId();
                         
-                        // Calculate item total (if not freebie)
-                        if (!$isFreebie) {
-                            $itemTotal = ($pricePerUnit * $quantity) - $discount;
-                            $newTotalAmount += $itemTotal;
-                        }
+                        $newTotalAmount += $netTotal;
                         
                         $insertedItems[] = [
                             'id' => $itemId,
@@ -4916,6 +5051,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                             'quantity' => $quantity,
                             'price_per_unit' => $pricePerUnit,
                             'discount' => $discount,
+                            'net_total' => $netTotal,
                             'is_freebie' => $isFreebie,
                             'box_number' => $boxNumber,
                             'promotion_id' => $promotionId,
@@ -4928,6 +5064,17 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     // Update order total_amount
                     $updateOrderStmt = $pdo->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
                     $updateOrderStmt->execute([$newTotalAmount, $orderId]);
+                    
+                    // Create activity log for successful upsell
+                    $activityStmt = $pdo->prepare('INSERT INTO activities (customer_id, timestamp, type, description, actor_name) VALUES (?, NOW(), ?, ?, ?)');
+                    $itemCount = count($items);
+                    $activityDescription = "เพิ่มรายการสินค้าในออเดอร์ {$orderId} (Upsell) - เพิ่ม {$itemCount} รายการ";
+                    $activityStmt->execute([
+                        $order['customer_id'],
+                        'order_status_changed', // ActivityType.OrderStatusChanged
+                        $activityDescription,
+                        $creatorName ?: 'System'
+                    ]);
                     
                     $pdo->commit();
                     

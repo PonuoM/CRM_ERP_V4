@@ -18,7 +18,7 @@ import {
   User,
 } from "../types";
 
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import {
   updateCustomer,
   listBankAccounts,
@@ -250,6 +250,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   users,
   onSave,
   onCancel,
+  onSuccess,
   initialData,
   onUpsellSuccess,
 }) => {
@@ -268,6 +269,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [upsellSaving, setUpsellSaving] = useState(false);
   const [upsellError, setUpsellError] = useState<string | null>(null);
   const [upsellItems, setUpsellItems] = useState<LineItem[]>([]);
+  const [showUpsellSuccessModal, setShowUpsellSuccessModal] = useState(false);
+  const [upsellBoxes, setUpsellBoxes] = useState<CodBox[]>([]);
+  const [numUpsellBoxes, setNumUpsellBoxes] = useState(1);
   const [upsellProductSelectorOpen, setUpsellProductSelectorOpen] = useState(false);
   const [upsellEditingItemId, setUpsellEditingItemId] = useState<number | null>(null);
   const [upsellSelectorTab, setUpsellSelectorTab] = useState<"products" | "promotions">("products");
@@ -384,6 +388,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       isPromotionParent: Boolean(
         it.is_promotion_parent ?? it.isPromotionParent ?? false,
       ),
+      sku: it.sku ?? it.product_sku ?? it.product?.sku ?? "-",
+      // Add creator_id from order_items
+      creatorId: typeof it.creator_id !== "undefined" && it.creator_id !== null
+        ? Number(it.creator_id)
+        : typeof it.creatorId !== "undefined" && it.creatorId !== null
+          ? Number(it.creatorId)
+          : undefined,
     }));
   };
 
@@ -705,16 +716,108 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       .reduce((sum, item) => sum + calculateUpsellItemTotal(item), 0);
 
   const getUpsellOrderTotal = (order: Order) => {
-    const rawTotal = (order as any).totalAmount ?? (order as any).total_amount;
-    const numericTotal = Number(rawTotal);
-    if (!Number.isNaN(numericTotal) && numericTotal > 0) {
-      return numericTotal;
-    }
+    // Always calculate from items to ensure accuracy (includes all upsell items)
     const items = Array.isArray(order.items) ? order.items : [];
-    return items.reduce(
+    const calculatedTotal = items.reduce(
       (sum, item) => sum + calculateUpsellItemTotal(item as LineItem),
       0,
     );
+    // Return calculated total (more accurate than totalAmount which might be outdated)
+    return calculatedTotal;
+  };
+
+  // Get max box number from original order items
+  const getMaxOriginalBoxNumber = () => {
+    if (!selectedUpsellOrder?.items) return 0;
+    const boxNumbers = selectedUpsellOrder.items.map((item: any) => Number(item.boxNumber) || 1);
+    if (boxNumbers.length === 0) return 0;
+    return Math.max(...boxNumbers);
+  };
+
+  // Calculate COD totals for upsell
+  const upsellNewItemsTotal = useMemo(() => calculateUpsellNewItemsTotal(), [upsellItems]);
+  const upsellCodTotal = useMemo(() => {
+    return upsellBoxes.reduce((sum, box) => sum + (box.codAmount || 0), 0);
+  }, [upsellBoxes]);
+  const upsellCodRemaining = upsellNewItemsTotal - upsellCodTotal;
+  const isUpsellCodValid = Math.abs(upsellCodRemaining) < 0.01;
+
+  // Store previous upsellBoxes to preserve codAmount
+  const prevUpsellBoxesRef = useRef<CodBox[]>([]);
+
+  // Update upsell boxes when numUpsellBoxes changes
+  useEffect(() => {
+    if (!isUpsellMode || selectedUpsellOrder?.paymentMethod !== PaymentMethod.COD) {
+      if (upsellBoxes.length > 0) {
+        setUpsellBoxes([]);
+        prevUpsellBoxesRef.current = [];
+      }
+      return;
+    }
+
+    const maxOriginalBox = getMaxOriginalBoxNumber();
+
+    // Always create boxes from 1 to numUpsellBoxes (preserve existing codAmount)
+    const newBoxes: CodBox[] = [];
+    for (let i = 1; i <= numUpsellBoxes; i++) {
+      const actualBoxNumber = maxOriginalBox + i;
+      // Try to preserve existing codAmount from previous boxes
+      const existingBox = prevUpsellBoxesRef.current.find(b => b.boxNumber === actualBoxNumber);
+      newBoxes.push({
+        boxNumber: actualBoxNumber,
+        codAmount: existingBox?.codAmount || 0,
+      });
+    }
+
+    // Only update if boxes changed (compare by boxNumber only, not codAmount)
+    const currentBoxNumbers = new Set(upsellBoxes.map(b => b.boxNumber));
+    const newBoxNumbers = new Set(newBoxes.map(b => b.boxNumber));
+    const boxesChanged = currentBoxNumbers.size !== newBoxNumbers.size ||
+      !Array.from(currentBoxNumbers).every((n: number) => newBoxNumbers.has(n));
+
+    if (boxesChanged) {
+      setUpsellBoxes(newBoxes);
+      prevUpsellBoxesRef.current = newBoxes;
+    } else {
+      // Update ref even if boxes didn't change (to preserve codAmount from user input)
+      prevUpsellBoxesRef.current = upsellBoxes;
+    }
+  }, [numUpsellBoxes, selectedUpsellOrder?.id, selectedUpsellOrder?.paymentMethod, isUpsellMode]);
+
+  // Update ref when upsellBoxes changes (from user input)
+  useEffect(() => {
+    if (upsellBoxes.length > 0) {
+      prevUpsellBoxesRef.current = upsellBoxes;
+    }
+  }, [upsellBoxes]);
+
+  const handleUpsellCodBoxAmountChange = (index: number, amount: number) => {
+    const updatedBoxes = [...upsellBoxes];
+    updatedBoxes[index].codAmount = amount;
+    setUpsellBoxes(updatedBoxes);
+  };
+
+  const divideUpsellCodEqually = () => {
+    if (numUpsellBoxes <= 0 || upsellNewItemsTotal <= 0) return;
+    const amountPerBox = upsellNewItemsTotal / numUpsellBoxes;
+    const newBoxes: CodBox[] = [];
+    const maxOriginalBox = getMaxOriginalBoxNumber();
+
+    let distributedAmount = 0;
+    for (let i = 0; i < numUpsellBoxes - 1; i++) {
+      const roundedAmount = Math.floor(amountPerBox * 100) / 100;
+      newBoxes.push({
+        boxNumber: maxOriginalBox + i + 1,
+        codAmount: roundedAmount,
+      });
+      distributedAmount += roundedAmount;
+    }
+    newBoxes.push({
+      boxNumber: maxOriginalBox + numUpsellBoxes,
+      codAmount: parseFloat((upsellNewItemsTotal - distributedAmount).toFixed(2)),
+    });
+
+    setUpsellBoxes(newBoxes);
   };
 
   const handleUpsellSave = async () => {
@@ -733,6 +836,33 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       setUpsellError("กรุณาเลือกสินค้าให้ครบทุกแถว");
       return;
     }
+
+    // Validate COD boxes if payment method is COD
+    if (selectedUpsellOrder.paymentMethod === PaymentMethod.COD) {
+      // Check if all items have box number assigned
+      const itemsWithoutBox = upsellItems.filter(
+        item => !item.isFreebie && !item.parentItemId && (!item.boxNumber || item.boxNumber < 1 || item.boxNumber > numUpsellBoxes)
+      );
+      if (itemsWithoutBox.length > 0) {
+        setUpsellError("กรุณาเลือกกล่องให้ครบทุกรายการสินค้า");
+        return;
+      }
+
+      // Get boxes that actually have items (don't require all boxes from 1 to numUpsellBoxes)
+      const uniqueBoxes = new Set<number>();
+      upsellItems.forEach(item => {
+        if (!item.isFreebie && !item.parentItemId && item.boxNumber && item.boxNumber >= 1 && item.boxNumber <= numUpsellBoxes) {
+          uniqueBoxes.add(item.boxNumber);
+        }
+      });
+
+      // Validate COD amounts - only check boxes that have items
+      if (!isUpsellCodValid) {
+        setUpsellError(`ยอด COD ในแต่ละกล่องรวมกันต้องเท่ากับยอดเพิ่มใหม่ (${upsellNewItemsTotal.toFixed(2)} บาท)`);
+        return;
+      }
+    }
+
     try {
       setUpsellSaving(true);
       setUpsellError(null);
@@ -749,10 +879,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         isPromotionParent: item.isPromotionParent || false,
       }));
       await addUpsellItems(selectedUpsellOrder.id, currentUser.id, itemsToAdd);
-      if (onUpsellSuccess) {
-        onUpsellSuccess();
-      }
-      onCancel();
+
+      // Show success modal
+      setShowUpsellSuccessModal(true);
     } catch (err: any) {
       setUpsellError(err?.message || "บันทึกเพิ่มสินค้าไม่สำเร็จ");
     } finally {
@@ -3520,14 +3649,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="w-full mx-auto flex items-center justify-between">
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-[#0e141b]">{TH.title}</h1>
               <p className="text-[#4e7397]">
                 {TH.customer}: {initialData?.customer?.firstName} {initialData?.customer?.lastName} ({initialData?.customer?.phone})
               </p>
               {selectedUpsellOrder && (
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                   <div>
                     <span className="text-gray-500">วันที่สั่งซื้อ:</span>
                     <span className="ml-2 font-medium text-gray-800">
@@ -3561,14 +3690,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       )}
                     </span>
                   </div>
-                </div>
-              )}
-              {selectedUpsellOrder && (
-                <div className="mt-2 text-sm">
-                  <span className="text-gray-500">สถานะ:</span>
-                  <span className="ml-2 font-medium text-gray-800">
-                    {selectedUpsellOrder.orderStatus || "-"}
-                  </span>
+                  <div>
+                    <span className="text-gray-500">สถานะ:</span>
+                    <span className="ml-2 font-medium text-gray-800">
+                      {selectedUpsellOrder.orderStatus || "-"}
+                    </span>
+                  </div>
                 </div>
               )}
               {selectedUpsellOrder?.shippingAddress && (
@@ -3595,7 +3722,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           </div>
         </div>
 
-        <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <div className="w-full mx-auto p-6 space-y-6">
           {upsellError && (
             <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">
               {upsellError}
@@ -3615,6 +3742,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 setSelectedUpsellOrder(order || null);
                 setUpsellItems([]);
                 setUpsellError(null);
+                setUpsellBoxes([]);
+                setNumUpsellBoxes(1);
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={upsellLoading}
@@ -3665,11 +3794,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-4 py-2 text-left">รหัสสินค้า</th>
                         <th className="px-4 py-2 text-left">{TH.colProduct}</th>
                         <th className="px-4 py-2 text-right">{TH.colQty}</th>
                         <th className="px-4 py-2 text-right">{TH.colUnitPrice}</th>
                         <th className="px-4 py-2 text-right">{TH.colDiscount}</th>
                         <th className="px-4 py-2 text-right">{TH.colNet}</th>
+                        <th className="px-4 py-2 text-right">กล่องที่</th>
+                        <th className="px-4 py-2 text-left">ชื่อผู้ขาย</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3677,6 +3809,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         const lineTotal = calculateUpsellItemTotal(item as LineItem);
                         return (
                           <tr key={item.id} className="border-b last:border-0">
+                            <td className="px-4 py-2">
+                              {(item as any).sku || (item as any).productSku || "-"}
+                            </td>
                             <td className="px-4 py-2">
                               {item.productName || `Product ID: ${item.productId}`}
                             </td>
@@ -3689,6 +3824,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </td>
                             <td className="px-4 py-2 text-right font-semibold">
                               {item.isFreebie ? TH.freebie : formatCurrency(lineTotal)}
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              {item.boxNumber || 1}
+                            </td>
+                            <td className="px-4 py-2">
+                              {(() => {
+                                // Use item's creator_id if available, otherwise fallback to order's creatorId
+                                const itemCreatorId = (item as any).creatorId || (item as any).creator_id;
+                                const creatorId = itemCreatorId ? Number(itemCreatorId) : Number(selectedUpsellOrder.creatorId);
+                                const creator = upsellUsersById.get(creatorId);
+                                return creator ? `${creator.firstName} ${creator.lastName}` : "-";
+                              })()}
                             </td>
                           </tr>
                         );
@@ -3768,7 +3915,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               />
                             </div>
                             <div className="col-span-3">
-                              <label className="text-xs text-[#4e7397] mb-1 block">{TH.name}</label>
+                              <label className="text-xs text-[#4e7397] mb-1 block">
+                                {TH.name}
+                                {selectedUpsellOrder?.paymentMethod === PaymentMethod.COD && item.boxNumber && (
+                                  <span className="ml-2 text-blue-600 font-semibold">
+                                    (กล่องที่ {item.boxNumber})
+                                  </span>
+                                )}
+                              </label>
                               <input
                                 type="text"
                                 value={item.productName || ""}
@@ -3783,7 +3937,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
                               />
                             </div>
-                            <div className="col-span-1 flex items-center h-full">
+                            <div className="col-span-1 flex items-end h-full">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3857,19 +4011,39 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </div>
                             <div className="col-span-1">
                               <label className="text-xs text-[#4e7397] mb-1 block">{TH.box}</label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={item.boxNumber || 1}
-                                onChange={(e) =>
-                                  handleUpsellUpdateItem(
-                                    item.id,
-                                    "boxNumber",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
-                              />
+                              {selectedUpsellOrder?.paymentMethod === PaymentMethod.COD ? (
+                                <select
+                                  value={item.boxNumber || 1}
+                                  onChange={(e) =>
+                                    handleUpsellUpdateItem(
+                                      item.id,
+                                      "boxNumber",
+                                      Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
+                                >
+                                  {Array.from({ length: numUpsellBoxes }, (_, i) => i + 1).map((n) => (
+                                    <option key={n} value={n}>
+                                      {n}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.boxNumber || 1}
+                                  onChange={(e) =>
+                                    handleUpsellUpdateItem(
+                                      item.id,
+                                      "boxNumber",
+                                      Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm"
+                                />
+                              )}
                             </div>
                             <div className="col-span-1 flex flex-col items-center justify-center">
                               <label className="text-xs text-[#4e7397] mb-1">{TH.freebieLabel}</label>
@@ -3911,6 +4085,115 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 </button>
               </div>
 
+              {/* COD Box Section */}
+              {selectedUpsellOrder.paymentMethod === PaymentMethod.COD && upsellItems.length > 0 && (
+                <div className="mt-6 p-4 border border-gray-300 rounded-md bg-slate-50">
+                  <h4 className="font-semibold text-gray-800 mb-4">
+                    รายละเอียดการเก็บเงินปลายทาง (กล่องที่เพิ่มขึ้น)
+                  </h4>
+                  <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-gray-800 mb-4">
+                    โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดเพิ่มใหม่:{" "}
+                    <strong>{formatCurrency(upsellNewItemsTotal)}</strong>
+                    <span className="ml-2">
+                      (ยอดรวมปัจจุบัน:{" "}
+                      <span
+                        className={
+                          !isUpsellCodValid
+                            ? "text-red-600 font-bold"
+                            : "text-green-700 font-bold"
+                        }
+                      >
+                        {formatCurrency(upsellCodTotal)}
+                      </span>
+                      )
+                    </span>
+                    <span className="block mt-1">
+                      {upsellCodRemaining === 0 ? (
+                        <span className="text-green-700 font-medium">
+                          ครบถ้วนแล้ว
+                        </span>
+                      ) : upsellCodRemaining > 0 ? (
+                        <span className="text-orange-600 font-medium">
+                          คงเหลือ: {formatCurrency(Math.abs(upsellCodRemaining))}
+                        </span>
+                      ) : (
+                        <span className="text-red-600 font-medium">
+                          เกิน: {formatCurrency(Math.abs(upsellCodRemaining))}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      จำนวนกล่อง (สำหรับสินค้าใหม่)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={numUpsellBoxes}
+                      onChange={(e) => {
+                        const newValue = Math.max(1, Number(e.target.value));
+                        setNumUpsellBoxes(newValue);
+                        setUpsellError(null);
+                      }}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      จำนวนกล่องที่ต้องการสำหรับสินค้าใหม่ (สามารถเพิ่มได้ตามต้องการ)
+                    </p>
+                  </div>
+                  <button
+                    onClick={divideUpsellCodEqually}
+                    className="text-sm text-blue-600 font-medium hover:underline mb-4"
+                  >
+                    แบ่งยอดเท่าๆ กัน
+                  </button>
+                  <div className="space-y-2">
+                    {upsellBoxes.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic">
+                        กรุณาเลือกกล่องให้กับสินค้าก่อน (ระบบจะแสดงกล่องที่เลือกไว้เท่านั้น)
+                      </p>
+                    ) : (
+                      upsellBoxes.map((box, index) => {
+                        const maxOriginalBox = getMaxOriginalBoxNumber();
+                        const displayBoxNumber = box.boxNumber - maxOriginalBox;
+                        return (
+                          <div key={index} className="flex items-center gap-4">
+                            <label className="font-medium text-gray-800 w-32">
+                              กล่องที่ {displayBoxNumber}:
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="ยอด COD"
+                              value={box.codAmount}
+                              onChange={(e) =>
+                                handleUpsellCodBoxAmountChange(
+                                  index,
+                                  Number(e.target.value) || 0,
+                                )
+                              }
+                              className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                              min="0"
+                              step="0.01"
+                            />
+                            {displayBoxNumber === 1 && maxOriginalBox >= 1 && (
+                              <span className="text-xs text-gray-500 italic">
+                                (สามารถรวมกับกล่องที่ 1 ของต้นทาง หรือใส่ 0 หากไม่รวม)
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  {!isUpsellCodValid && (
+                    <p className="text-red-600 text-sm font-medium mt-2">
+                      ยอดรวม COD ไม่ถูกต้อง
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                   {TH.addTotal}: {" "}
@@ -3936,6 +4219,56 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 </div>
               </div>
             </>
+          )}
+
+          {/* Upsell Success Modal */}
+          {showUpsellSuccessModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+              <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-[#0e141b]">
+                  สร้างคำสั่งซื้อเพิ่มเติมสำเร็จ
+                </h3>
+                {selectedUpsellOrder && (
+                  <p className="mt-1 text-sm text-[#4e7397]">
+                    หมายเลขคำสั่งซื้อ {selectedUpsellOrder.id}
+                  </p>
+                )}
+                <p className="mt-4 text-sm text-[#4e7397]">
+                  สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
+                </p>
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={() => {
+                      setShowUpsellSuccessModal(false);
+                      if (onUpsellSuccess) {
+                        onUpsellSuccess();
+                      } else {
+                        onCancel();
+                      }
+                    }}
+                    className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                  >
+                    กลับสู่หน้าหลัก
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Upsell Product Selector Modal */}
@@ -4101,7 +4434,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </div >
     );
   };
   if (isUpsellMode) {
@@ -4122,7 +4455,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+        <div className="w-full mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-[#0e141b]">
               สร้างคำสั่งซื้อ
@@ -4141,7 +4474,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className="max-w-[1400px] mx-auto p-6">
+      <div className="w-full mx-auto p-6">
         <div className="space-y-6">
           {/* Left Column: Customer Information & Shipping Address */}
           <div className="space-y-6">
@@ -6384,7 +6717,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
               <button
                 onClick={() => {
                   setShowSuccessModal(false);
-                  onCancel();
+                  // On success, call onSuccess callback (goes to Dashboard)
+                  if (onSuccess) {
+                    onSuccess();
+                  } else {
+                    onCancel();
+                  }
                 }}
                 className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               >
@@ -6398,4 +6736,4 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   );
 };
 
-export default CreateOrderPage;
+export { CreateOrderPage };

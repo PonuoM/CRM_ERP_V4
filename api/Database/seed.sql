@@ -68,11 +68,11 @@ INSERT INTO orders (
   '123 Sukhumvit Rd', 'Khlong Toei', 'Khlong Toei', 'Bangkok', '10110',
   70, 0, 1800, 'PayAfter', 'Unpaid', NULL, NULL, NULL, NULL, 'Shipping', 'Pay after delivery order');
 
-INSERT INTO order_items (order_id, product_id, product_name, quantity, price_per_unit, discount, is_freebie, box_number) VALUES
-('ORD-100000001', 1, 'Seed A', 10, 200, 0, 0, 1),
-('ORD-100000002', 1, 'Seed A', 8, 200, 0, 0, 1),
-('ORD-100000003', 1, 'Seed A', 6, 200, 0, 0, 1),
-('ORD-100000004', 1, 'Seed A', 9, 200, 0, 0, 1);
+INSERT INTO order_items (order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number) VALUES
+('ORD-100000001', 1, 'Seed A', 10, 200, 0, 2000, 0, 1),
+('ORD-100000002', 1, 'Seed A', 8, 200, 0, 1600, 0, 1),
+('ORD-100000003', 1, 'Seed A', 6, 200, 0, 1200, 0, 1),
+('ORD-100000004', 1, 'Seed A', 9, 200, 0, 1800, 0, 1);
 
 INSERT INTO order_tracking_numbers (order_id, tracking_number) VALUES
 ('ORD-100000001', 'TH1234567890'),

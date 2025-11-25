@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   quantity INT NOT NULL,
   price_per_unit DECIMAL(12,2) NOT NULL,
   discount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  net_total DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'ยอดสุทธิของรายการ (price_per_unit * quantity - discount)',
   is_freebie TINYINT(1) NOT NULL DEFAULT 0,
   box_number INT NULL,
   CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,

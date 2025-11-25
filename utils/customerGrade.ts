@@ -17,6 +17,8 @@ export const calculateCustomerGrade = (totalAmount: number | null | undefined): 
   if (amount >= 2000) {
     return CustomerGrade.D;
   }
-  return CustomerGrade.E;
+  // For amounts less than 2000, return D as the lowest grade
+  // Note: Database enum only supports 'D','C','B','A','A+' (no 'E')
+  return CustomerGrade.D;
 };
 

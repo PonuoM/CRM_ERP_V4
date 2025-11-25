@@ -2067,6 +2067,7 @@ CREATE TABLE IF NOT EXISTS `order_items` (
 `quantity` INT NULL,
 `price_per_unit` DECIMAL(12, 2) NULL,
 `discount` DECIMAL(12, 2) NULL,
+`net_total` DECIMAL(12, 2) NULL,
 `is_freebie` BOOLEAN NULL,
 `box_number` INT NULL,
 `promotion_id` INT NULL,
@@ -2139,6 +2140,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'discount'
 ) = 0,
   'ALTER TABLE `order_items` ADD COLUMN `discount` DECIMAL(12, 2) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'net_total'
+) = 0,
+  'ALTER TABLE `order_items` ADD COLUMN `net_total` DECIMAL(12, 2) NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

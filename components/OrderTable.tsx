@@ -1,5 +1,21 @@
 ﻿import React from 'react';
 import { Order, Customer, ModalType, OrderStatus, PaymentStatus, PaymentMethod, User, UserRole } from '../types';
+import { ShoppingCart } from 'lucide-react';
+
+// Upsell tag with orange-red gradient
+const UpsellTag: React.FC = () => {
+  return (
+    <span 
+      className="inline-flex items-center justify-center px-2 py-1 rounded-full text-[10px] font-bold text-white uppercase shadow-md"
+      style={{
+        background: 'linear-gradient(90deg, #f97316 0%, #ef4444 100%)',
+      }}
+    >
+      <ShoppingCart size={12} className="mr-1.5" />
+      UPSell
+    </span>
+  );
+};
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.Pending]: 'รอ Export',
@@ -61,17 +77,26 @@ export const getStatusChip = (status: OrderStatus) => {
 };
 
 
-export const getPaymentMethodChip = (method: PaymentMethod) => {
-  switch (method) {
-    case PaymentMethod.COD:
-      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">COD</span>;
-    case PaymentMethod.Transfer:
-      return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">โอนเงิน</span>;
-    case PaymentMethod.PayAfter:
-      return <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">จ่ายหลังส่ง</span>;
-    default:
-      return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
+export const getPaymentMethodChip = (method: PaymentMethod | undefined | null) => {
+  if (!method) {
+    return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
   }
+  
+  // Handle both enum value and string comparison
+  const methodStr = String(method);
+  
+  if (method === PaymentMethod.COD || methodStr === "COD" || methodStr === "cod") {
+    return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">COD</span>;
+  }
+  if (method === PaymentMethod.Transfer || methodStr === "Transfer" || methodStr === "transfer") {
+    return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">โอนเงิน</span>;
+  }
+  if (method === PaymentMethod.PayAfter || methodStr === "PayAfter" || methodStr === "payafter" || 
+      methodStr === "หลังจากรับสินค้า" || methodStr === "รับสินค้าก่อน" || methodStr === "ผ่อนชำระ") {
+    return <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">จ่ายหลังส่ง</span>;
+  }
+  
+  return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
 };
 
 export const getPaymentStatusChip = (status: PaymentStatus, _method: PaymentMethod, amountPaid?: number, totalAmount?: number) => {
@@ -154,6 +179,23 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
     else onSelectionChange([...selectedIds, orderId]);
   };
 
+  // Check if order has upsell items (items with creatorId different from order.creatorId)
+  const isUpsellOrder = (order: Order): boolean => {
+    if (!order.items || !Array.isArray(order.items) || order.items.length === 0) {
+      return false;
+    }
+    // Check if any item has a creatorId that differs from the order's creatorId
+    return order.items.some((item) => {
+      if (item.creatorId === undefined || item.creatorId === null) {
+        return false;
+      }
+      // Compare creatorId of item with order's creatorId
+      const itemCreatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
+      const orderCreatorId = typeof order.creatorId === 'number' ? order.creatorId : Number(order.creatorId);
+      return itemCreatorId !== orderCreatorId;
+    });
+  };
+
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="overflow-x-auto">
@@ -172,7 +214,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
               )}
               <th className="px-6 py-3">ORDER ID</th>
               <th className="px-6 py-3">ชื่อลูกค้า</th>
-              <th className="px-6 py-3">ผู้ขาย</th>
+              <th className="px-6 py-3 min-w-[140px]">ผู้ขาย</th>
               <th className="px-6 py-3">วันที่ส่ง</th>
               <th className="px-6 py-3">ราคา</th>
               <th className="px-6 py-3">ช่องทางการชำระ</th>
@@ -246,7 +288,12 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                       </div>
                     ) : 'N/A'}
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{seller ? `${seller.firstName} ${seller.lastName}` : '-'}</td>
+                  <td className="px-6 py-4 text-gray-600 min-w-[140px]">
+                    <div className="flex flex-col gap-1">
+                      <span>{seller ? `${seller.firstName} ${seller.lastName}` : '-'}</span>
+                      {isUpsellOrder(order) && <UpsellTag />}
+                    </div>
+                  </td>
                   <td className="px-6 py-4">{new Date(order.deliveryDate).toLocaleDateString('th-TH')}</td>
                   <td className="px-6 py-4 font-semibold">฿{order.totalAmount.toLocaleString()}</td>
                   <td className="px-6 py-4">{getPaymentMethodChip(order.paymentMethod)}</td>

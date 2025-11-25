@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Customer, Order, Product, User, LineItem } from "../types";
+import React, { useState, useEffect, useMemo } from "react";
+import { Customer, Order, Product, User, LineItem, PaymentMethod, CodBox } from "../types";
 import { ArrowLeft, ShoppingCart, Plus, Trash2, Save, X } from "lucide-react";
 import { getUpsellOrders, addUpsellItems } from "@/services/api";
 import { formatThaiDateTime } from "@/utils/time";
@@ -27,6 +27,9 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
   const [saving, setSaving] = useState(false);
   const [newItems, setNewItems] = useState<LineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [upsellBoxes, setUpsellBoxes] = useState<CodBox[]>([]);
+  const [numUpsellBoxes, setNumUpsellBoxes] = useState(1);
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -111,6 +114,95 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
     return newItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
   };
 
+  // Get max box number from original order items
+  const getMaxOriginalBoxNumber = () => {
+    if (!selectedOrder?.items) return 0;
+    const maxBox = Math.max(...selectedOrder.items.map((item: any) => item.boxNumber || 1));
+    return maxBox;
+  };
+
+  // Calculate unique box numbers from new items
+  const getUniqueBoxNumbers = () => {
+    const boxNumbers = new Set<number>();
+    newItems.forEach(item => {
+      if (item.boxNumber) {
+        boxNumbers.add(item.boxNumber);
+      }
+    });
+    return Array.from(boxNumbers).sort((a, b) => a - b);
+  };
+
+  // Update upsell boxes when numUpsellBoxes changes
+  useEffect(() => {
+    if (selectedOrder?.paymentMethod !== PaymentMethod.COD) {
+      if (upsellBoxes.length > 0) {
+        setUpsellBoxes([]);
+      }
+      return;
+    }
+    
+    const maxOriginalBox = getMaxOriginalBoxNumber();
+    
+    // Always create boxes from 1 to numUpsellBoxes (preserve existing codAmount)
+    const newBoxes: CodBox[] = [];
+    for (let i = 1; i <= numUpsellBoxes; i++) {
+      const actualBoxNumber = maxOriginalBox + i;
+      // Try to preserve existing codAmount if box number matches
+      const existingBox = upsellBoxes.find(b => b.boxNumber === actualBoxNumber);
+      newBoxes.push({
+        boxNumber: actualBoxNumber,
+        codAmount: existingBox?.codAmount || 0,
+      });
+    }
+    
+    // Only update if boxes changed (compare by boxNumber only, not codAmount)
+    const currentBoxNumbers = new Set(upsellBoxes.map(b => b.boxNumber));
+    const newBoxNumbers = new Set(newBoxes.map(b => b.boxNumber));
+    const boxesChanged = currentBoxNumbers.size !== newBoxNumbers.size || 
+      !Array.from(currentBoxNumbers).every((n: number) => newBoxNumbers.has(n));
+    
+    if (boxesChanged) {
+      setUpsellBoxes(newBoxes);
+    }
+  }, [numUpsellBoxes, selectedOrder?.id, selectedOrder?.paymentMethod]);
+
+  // Calculate COD totals
+  const newItemsTotal = useMemo(() => calculateNewItemsTotal(), [newItems]);
+  const codTotal = useMemo(() => {
+    return upsellBoxes.reduce((sum, box) => sum + (box.codAmount || 0), 0);
+  }, [upsellBoxes]);
+  const codRemaining = newItemsTotal - codTotal;
+  const isCodValid = Math.abs(codRemaining) < 0.01; // Allow small floating point differences
+
+  const handleCodBoxAmountChange = (index: number, amount: number) => {
+    const updatedBoxes = [...upsellBoxes];
+    updatedBoxes[index].codAmount = amount;
+    setUpsellBoxes(updatedBoxes);
+  };
+
+  const divideCodEqually = () => {
+    if (numUpsellBoxes <= 0 || newItemsTotal <= 0) return;
+    const amountPerBox = newItemsTotal / numUpsellBoxes;
+    const newBoxes: CodBox[] = [];
+    const maxOriginalBox = getMaxOriginalBoxNumber();
+    
+    let distributedAmount = 0;
+    for (let i = 0; i < numUpsellBoxes - 1; i++) {
+      const roundedAmount = Math.floor(amountPerBox * 100) / 100;
+      newBoxes.push({
+        boxNumber: maxOriginalBox + i + 1,
+        codAmount: roundedAmount,
+      });
+      distributedAmount += roundedAmount;
+    }
+    newBoxes.push({
+      boxNumber: maxOriginalBox + numUpsellBoxes,
+      codAmount: parseFloat((newItemsTotal - distributedAmount).toFixed(2)),
+    });
+    
+    setUpsellBoxes(newBoxes);
+  };
+
   const handleSave = async () => {
     if (!selectedOrder) {
       setError("กรุณาเลือกออเดอร์");
@@ -127,6 +219,32 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
     if (invalidItems.length > 0) {
       setError("กรุณาเลือกสินค้าทุกรายการ");
       return;
+    }
+
+    // Validate COD boxes if payment method is COD
+    if (selectedOrder.paymentMethod === PaymentMethod.COD) {
+      // Check if all items have box number assigned
+      const itemsWithoutBox = newItems.filter(
+        item => !item.isFreebie && (!item.boxNumber || item.boxNumber < 1 || item.boxNumber > numUpsellBoxes)
+      );
+      if (itemsWithoutBox.length > 0) {
+        setError("กรุณาเลือกกล่องให้ครบทุกรายการสินค้า");
+        return;
+      }
+
+      // Get boxes that actually have items (don't require all boxes from 1 to numUpsellBoxes)
+      const uniqueBoxes = new Set<number>();
+      newItems.forEach(item => {
+        if (!item.isFreebie && item.boxNumber && item.boxNumber >= 1 && item.boxNumber <= numUpsellBoxes) {
+          uniqueBoxes.add(item.boxNumber);
+        }
+      });
+      
+      // Validate COD amounts - only check boxes that have items
+      if (!isCodValid) {
+        setError(`ยอด COD ในแต่ละกล่องรวมกันต้องเท่ากับยอดสุทธิ (${newItemsTotal.toFixed(2)} บาท)`);
+        return;
+      }
     }
 
     try {
@@ -148,11 +266,8 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
 
       await addUpsellItems(selectedOrder.id, currentUser.id, itemsToAdd);
       
-      if (onSuccess) {
-        onSuccess();
-      } else {
-        onCancel();
-      }
+      // Show success modal
+      setShowSuccessModal(true);
     } catch (err: any) {
       setError(err.message || "เกิดข้อผิดพลาดในการบันทึก");
     } finally {
@@ -223,6 +338,8 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
             setSelectedOrder(order || null);
             setNewItems([]);
             setError(null);
+            setUpsellBoxes([]);
+            setNumUpsellBoxes(1);
           }}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
@@ -328,6 +445,9 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
                       <th className="px-4 py-2 text-right">ราคาต่อหน่วย</th>
                       <th className="px-4 py-2 text-right">ส่วนลด</th>
                       <th className="px-4 py-2 text-right">รวม</th>
+                      {selectedOrder.paymentMethod === PaymentMethod.COD && (
+                        <th className="px-4 py-2 text-center">กล่อง</th>
+                      )}
                       <th className="px-4 py-2 text-center">จัดการ</th>
                     </tr>
                   </thead>
@@ -335,18 +455,25 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
                     {newItems.map((item) => (
                       <tr key={item.id} className="border-b">
                         <td className="px-4 py-2">
-                          <select
-                            value={item.productId || ""}
-                            onChange={(e) => handleProductSelect(item.id, Number(e.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 rounded"
-                          >
-                            <option value="">เลือกสินค้า</option>
-                            {products.map(product => (
-                              <option key={product.id} value={product.id}>
-                                {product.name} - ฿{product.price?.toLocaleString()}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={item.productId || ""}
+                              onChange={(e) => handleProductSelect(item.id, Number(e.target.value))}
+                              className="flex-1 px-2 py-1 border border-gray-300 rounded"
+                            >
+                              <option value="">เลือกสินค้า</option>
+                              {products.map(product => (
+                                <option key={product.id} value={product.id}>
+                                  {product.name} - ฿{product.price?.toLocaleString()}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedOrder.paymentMethod === PaymentMethod.COD && item.boxNumber && (
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded whitespace-nowrap">
+                                กล่องที่ {item.boxNumber}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-2">
                           <input
@@ -380,6 +507,21 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
                         <td className="px-4 py-2 text-right font-semibold">
                           ฿{calculateItemTotal(item).toLocaleString()}
                         </td>
+                        {selectedOrder.paymentMethod === PaymentMethod.COD && (
+                          <td className="px-4 py-2 text-center">
+                            <select
+                              value={item.boxNumber || 1}
+                              onChange={(e) => handleUpdateNewItem(item.id, "boxNumber", Number(e.target.value))}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
+                            >
+                              {Array.from({ length: numUpsellBoxes }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
                         <td className="px-4 py-2 text-center">
                           <button
                             onClick={() => handleRemoveNewItem(item.id)}
@@ -417,6 +559,115 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
                 <p className="text-sm mt-2">กดปุ่ม "เพิ่มรายการ" เพื่อเริ่มต้น</p>
               </div>
             )}
+
+            {/* COD Box Section */}
+            {selectedOrder.paymentMethod === PaymentMethod.COD && newItems.length > 0 && (
+              <div className="mt-6 p-4 border border-gray-300 rounded-md bg-slate-50">
+                <h4 className="font-semibold text-gray-800 mb-4">
+                  รายละเอียดการเก็บเงินปลายทาง (กล่องที่เพิ่มขึ้น)
+                </h4>
+                <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-gray-800 mb-4">
+                  โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดเพิ่มใหม่:{" "}
+                  <strong>฿{newItemsTotal.toFixed(2)}</strong>
+                  <span className="ml-2">
+                    (ยอดรวมปัจจุบัน:{" "}
+                    <span
+                      className={
+                        !isCodValid
+                          ? "text-red-600 font-bold"
+                          : "text-green-700 font-bold"
+                      }
+                    >
+                      ฿{codTotal.toFixed(2)}
+                    </span>
+                    )
+                  </span>
+                  <span className="block mt-1">
+                    {codRemaining === 0 ? (
+                      <span className="text-green-700 font-medium">
+                        ครบถ้วนแล้ว
+                      </span>
+                    ) : codRemaining > 0 ? (
+                      <span className="text-orange-600 font-medium">
+                        คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-red-600 font-medium">
+                        เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    จำนวนกล่อง (สำหรับสินค้าใหม่)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={numUpsellBoxes}
+                    onChange={(e) => {
+                      const newValue = Math.max(1, Number(e.target.value));
+                      setNumUpsellBoxes(newValue);
+                      setError(null);
+                    }}
+                    className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    จำนวนกล่องที่ต้องการสำหรับสินค้าใหม่ (สามารถเพิ่มได้ตามต้องการ)
+                  </p>
+                </div>
+                <button
+                  onClick={divideCodEqually}
+                  className="text-sm text-blue-600 font-medium hover:underline mb-4"
+                >
+                  แบ่งยอดเท่าๆ กัน
+                </button>
+                <div className="space-y-2">
+                  {upsellBoxes.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">
+                      กรุณาเลือกกล่องให้กับสินค้าก่อน (ระบบจะแสดงกล่องที่เลือกไว้เท่านั้น)
+                    </p>
+                  ) : (
+                    upsellBoxes.map((box, index) => {
+                      const maxOriginalBox = getMaxOriginalBoxNumber();
+                      const displayBoxNumber = box.boxNumber - maxOriginalBox;
+                      return (
+                        <div key={index} className="flex items-center gap-4">
+                          <label className="font-medium text-gray-800 w-32">
+                            กล่องที่ {displayBoxNumber}:
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="ยอด COD"
+                            value={box.codAmount}
+                            onChange={(e) =>
+                              handleCodBoxAmountChange(
+                                index,
+                                Number(e.target.value) || 0,
+                              )
+                            }
+                            className="w-40 px-3 py-2 border border-gray-300 rounded-md"
+                            min="0"
+                            step="0.01"
+                          />
+                          {displayBoxNumber === 1 && maxOriginalBox >= 1 && (
+                            <span className="text-xs text-gray-500 italic">
+                              (สามารถรวมกับกล่องที่ 1 ของต้นทาง หรือใส่ 0 หากไม่รวม)
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {!isCodValid && (
+                  <p className="text-red-600 text-sm font-medium mt-2">
+                    ยอดรวม COD ไม่ถูกต้อง
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Save Button */}
@@ -446,6 +697,56 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
             </button>
           </div>
         </>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-[#0e141b]">
+              สร้างคำสั่งซื้อเพิ่มเติมสำเร็จ
+            </h3>
+            {selectedOrder && (
+              <p className="mt-1 text-sm text-[#4e7397]">
+                หมายเลขคำสั่งซื้อ {selectedOrder.id}
+              </p>
+            )}
+            <p className="mt-4 text-sm text-[#4e7397]">
+              สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
+            </p>
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  if (onSuccess) {
+                    onSuccess();
+                  } else {
+                    onCancel();
+                  }
+                }}
+                className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              >
+                กลับสู่หน้าหลัก
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

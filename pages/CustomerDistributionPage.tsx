@@ -60,7 +60,6 @@ const gradeOrder = [
   CustomerGrade.B,
   CustomerGrade.C,
   CustomerGrade.D,
-  CustomerGrade.E,
 ];
 
 const toLifecycleStatus = (
@@ -181,7 +180,23 @@ const normalizeApiCustomer = (api: any): Customer => {
     ownershipExpires: api?.ownership_expires ?? "",
     lifecycleStatus: toLifecycleStatus(api?.lifecycle_status),
     behavioralStatus: toBehavioralStatus(api?.behavioral_status),
-    grade: calculateCustomerGrade(Number(api?.total_purchases ?? 0)),
+    grade: (() => {
+      // Use grade from API if available, otherwise calculate from total_purchases
+      const apiGrade = api?.grade;
+      if (apiGrade) {
+        // Normalize grade from API (handle "A+", "A", "B", "C", "D")
+        const gradeStr = String(apiGrade).trim().toUpperCase();
+        if (gradeStr === "A+" || gradeStr === "A_PLUS" || gradeStr === "A-PLUS") {
+          return CustomerGrade.APlus;
+        }
+        if (gradeStr === "A") return CustomerGrade.A;
+        if (gradeStr === "B") return CustomerGrade.B;
+        if (gradeStr === "C") return CustomerGrade.C;
+        if (gradeStr === "D") return CustomerGrade.D;
+      }
+      // Fallback: calculate from total_purchases if grade not provided
+      return calculateCustomerGrade(Number(api?.total_purchases ?? 0));
+    })(),
     tags,
     assignmentHistory,
     totalPurchases: Number(api?.total_purchases ?? 0),
@@ -317,7 +332,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     );
     const gradeCounts = agentCustomers.reduce(
       (acc, customer) => {
-        acc[customer.grade] = (acc[customer.grade] || 0) + 1;
+        const grade = customer.grade;
+        // Normalize APlus to A for display purposes
+        const normalizedGrade = grade === CustomerGrade.APlus ? CustomerGrade.A : grade;
+        acc[normalizedGrade] = (acc[normalizedGrade] || 0) + 1;
         return acc;
       },
       {} as Record<CustomerGrade, number>,
@@ -325,11 +343,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     return {
       total: agentCustomers.length,
-      [CustomerGrade.A]: gradeCounts[CustomerGrade.A] || 0,
+      [CustomerGrade.A]: (gradeCounts[CustomerGrade.A] || 0) + (gradeCounts[CustomerGrade.APlus] || 0),
       [CustomerGrade.B]: gradeCounts[CustomerGrade.B] || 0,
       [CustomerGrade.C]: gradeCounts[CustomerGrade.C] || 0,
       [CustomerGrade.D]: gradeCounts[CustomerGrade.D] || 0,
-      [CustomerGrade.E]: gradeCounts[CustomerGrade.E] || 0,
     };
   };
 
@@ -704,39 +721,37 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   )
                 </h4>
                 <div className="space-y-4">
-                  {Object.entries(previewAssignments as PreviewAssignments).map(
-                    ([agentId, customers]) => {
+                  {Object.entries(previewAssignments as PreviewAssignments)
+                    .filter(([agentId, customers]) => customers.length > 0)
+                    .map(([agentId, customers]) => {
                       const agent = telesaleAgents.find(
                         (a) => a.id === parseInt(agentId),
                       );
                       return (
-                        customers.length > 0 && (
-                          <div
-                            key={agentId}
-                            className="border rounded-lg p-4 bg-gray-50"
-                          >
-                            <p className="font-medium text-gray-800 mb-3">
-                              {agent
-                                ? `${agent.firstName} ${agent.lastName}`
-                                : ""}{" "}
-                              <span className="font-normal text-gray-500">
-                                ({customers.length} รายชื่อ)
-                              </span>
-                            </p>
-                            <div className="max-h-64 overflow-y-auto pr-2">
-                              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 pl-2">
-                                {customers.map((c) => (
-                                  <li key={c.id} className="py-1">
-                                    {`${c.firstName} ${c.lastName}`} ({c.phone})
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                        <div
+                          key={agentId}
+                          className="border rounded-lg p-4 bg-gray-50"
+                        >
+                          <p className="font-medium text-gray-800 mb-3">
+                            {agent
+                              ? `${agent.firstName} ${agent.lastName}`
+                              : ""}{" "}
+                            <span className="font-normal text-gray-500">
+                              ({customers.length} รายชื่อ)
+                            </span>
+                          </p>
+                          <div className="max-h-64 overflow-y-auto pr-2">
+                            <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 pl-2">
+                              {customers.map((c) => (
+                                <li key={c.id} className="py-1">
+                                  {`${c.firstName} ${c.lastName}`} ({c.phone})
+                                </li>
+                              ))}
+                            </ul>
                           </div>
-                        )
+                        </div>
                       );
-                    },
-                  )}
+                    })}
                 </div>
               </div>
               <div>
@@ -1103,8 +1118,8 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   </th>
                   <th className="px-6 py-3">พนักงาน</th>
                   <th className="px-6 py-3 text-center">ลูกค้าทั้งหมด</th>
-                  {gradeOrder.map((grade) => (
-                    <th key={grade} className="px-2 py-3 text-center">
+                  {gradeOrder.map((grade, index) => (
+                    <th key={`grade-header-${grade}-${index}`} className="px-2 py-3 text-center">
                       {grade}
                     </th>
                   ))}
@@ -1131,9 +1146,9 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                       <td className="px-6 py-2 text-center font-bold">
                         {workload.total}
                       </td>
-                      {gradeOrder.map((grade) => (
-                        <td key={grade} className="px-2 py-2 text-center">
-                          {workload[grade]}
+                      {gradeOrder.map((grade, index) => (
+                        <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
+                          {workload[grade] ?? 0}
                         </td>
                       ))}
                     </tr>
