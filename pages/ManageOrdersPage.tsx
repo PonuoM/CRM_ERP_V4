@@ -18,15 +18,14 @@ interface ManageOrdersPageProps {
   onCancelOrders: (orderIds: string[]) => void;
 }
 
-const DateFilterButton: React.FC<{label: string, value: string, activeValue: string, onClick: (value: string) => void}> = ({ label, value, activeValue, onClick }) => (
-    <button 
-        onClick={() => onClick(value)}
-        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            activeValue === value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        }`}
-    >
-        {label}
-    </button>
+const DateFilterButton: React.FC<{ label: string, value: string, activeValue: string, onClick: (value: string) => void }> = ({ label, value, activeValue, onClick }) => (
+  <button
+    onClick={() => onClick(value)}
+    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeValue === value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+      }`}
+  >
+    {label}
+  </button>
 );
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
@@ -76,11 +75,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setDateRange(saved.dateRange ?? { start: '', end: '' });
         setActiveTab(
           saved.activeTab === 'completed' ? 'completed' :
-          saved.activeTab === 'awaiting_account' ? 'awaiting_account' :
-          saved.activeTab === 'preparing' ? 'preparing' :
-          saved.activeTab === 'processed' ? 'preparing' : // Migrate old 'processed' to 'preparing'
-          saved.activeTab === 'verified' ? 'verified' :
-          saved.activeTab === 'shipping' ? 'shipping' : 'pending'
+            saved.activeTab === 'awaiting_account' ? 'awaiting_account' :
+              saved.activeTab === 'preparing' ? 'preparing' :
+                saved.activeTab === 'processed' ? 'preparing' : // Migrate old 'processed' to 'preparing'
+                  saved.activeTab === 'verified' ? 'verified' :
+                    saved.activeTab === 'shipping' ? 'shipping' : 'pending'
         );
         setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvanced(!!saved.showAdvanced);
@@ -102,7 +101,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setAfCustomerName(saved.afCustomerName ?? saved.fCustomerName ?? '');
         setAfCustomerPhone(saved.afCustomerPhone ?? saved.fCustomerPhone ?? '');
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Save filters whenever they change
@@ -132,7 +131,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         afCustomerPhone,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
-    } catch {}
+    } catch { }
   }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   useEffect(() => {
@@ -180,10 +179,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }),
     [orders],
   );
-  
+
   // กำลังจัดเตรียม: หลัง export/ดึงข้อมูลแล้ว (Preparing, Picking)
-  const preparingOrders = useMemo(() => 
-    orders.filter(o => 
+  const preparingOrders = useMemo(() =>
+    orders.filter(o =>
       (o.orderStatus === OrderStatus.Preparing || o.orderStatus === OrderStatus.Picking) &&
       (!o.trackingNumbers || o.trackingNumbers.length === 0) // ยังไม่มี tracking
     ), [orders]
@@ -196,14 +195,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   );
 
   // เสร็จสิ้น: Approved หรือ Paid
-  const completedOrders = useMemo(() => 
-    orders.filter(o => 
-      o.paymentStatus === PaymentStatus.Approved || 
+  const completedOrders = useMemo(() =>
+    orders.filter(o =>
+      o.paymentStatus === PaymentStatus.Approved ||
       o.paymentStatus === PaymentStatus.Paid ||
       o.orderStatus === OrderStatus.Delivered
     ), [orders]
   );
-  
+
   const awaitingExportOrders = useMemo(
     () =>
       orders.filter((o) => {
@@ -252,7 +251,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }),
     [orders],
   );
-  
+
   const displayedOrders = useMemo(() => {
     let sourceOrders;
     if (activeTab === 'pending') {
@@ -270,64 +269,23 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     } else {
       sourceOrders = [];
     }
-    
+
     // กรองตามวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" เท่านั้น
     if (activeTab !== 'verified') {
       return sourceOrders;
     }
-    
+
     if (activeDatePreset === 'all') {
       return sourceOrders;
     }
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     return sourceOrders.filter(order => {
-        const deliveryDate = new Date(order.deliveryDate);
-        deliveryDate.setHours(0, 0, 0, 0);
-        
-        switch (activeDatePreset) {
-            case 'today':
-                return deliveryDate.getTime() === today.getTime();
-            case 'tomorrow':
-                const tomorrow = new Date(today);
-                tomorrow.setDate(today.getDate() + 1);
-                return deliveryDate.getTime() === tomorrow.getTime();
-            case 'next7days':
-                const sevenDaysLater = new Date(today);
-                sevenDaysLater.setDate(today.getDate() + 7);
-                return deliveryDate >= today && deliveryDate <= sevenDaysLater;
-            case 'next30days':
-                const thirtyDaysLater = new Date(today);
-                thirtyDaysLater.setDate(today.getDate() + 30);
-                return deliveryDate >= today && deliveryDate <= thirtyDaysLater;
-            case 'range':
-                if (!dateRange.start || !dateRange.end) return true;
-                const startDate = new Date(dateRange.start);
-                startDate.setHours(0,0,0,0);
-                const endDate = new Date(dateRange.end);
-                endDate.setHours(0,0,0,0);
-                return deliveryDate >= startDate && deliveryDate <= endDate;
-            default:
-                return true;
-        }
-    });
-  }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
-
-  // Filter orders by delivery date for "รอดึงข้อมูล" tab only (for display count in date filter section)
-  const filteredAwaitingExportOrders = useMemo(() => {
-    if (activeDatePreset === 'all') {
-      return awaitingExportOrders;
-    }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return awaitingExportOrders.filter(order => {
       const deliveryDate = new Date(order.deliveryDate);
       deliveryDate.setHours(0, 0, 0, 0);
-      
+
       switch (activeDatePreset) {
         case 'today':
           return deliveryDate.getTime() === today.getTime();
@@ -346,9 +304,50 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         case 'range':
           if (!dateRange.start || !dateRange.end) return true;
           const startDate = new Date(dateRange.start);
-          startDate.setHours(0,0,0,0);
+          startDate.setHours(0, 0, 0, 0);
           const endDate = new Date(dateRange.end);
-          endDate.setHours(0,0,0,0);
+          endDate.setHours(0, 0, 0, 0);
+          return deliveryDate >= startDate && deliveryDate <= endDate;
+        default:
+          return true;
+      }
+    });
+  }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
+
+  // Filter orders by delivery date for "รอดึงข้อมูล" tab only (for display count in date filter section)
+  const filteredAwaitingExportOrders = useMemo(() => {
+    if (activeDatePreset === 'all') {
+      return awaitingExportOrders;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return awaitingExportOrders.filter(order => {
+      const deliveryDate = new Date(order.deliveryDate);
+      deliveryDate.setHours(0, 0, 0, 0);
+
+      switch (activeDatePreset) {
+        case 'today':
+          return deliveryDate.getTime() === today.getTime();
+        case 'tomorrow':
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          return deliveryDate.getTime() === tomorrow.getTime();
+        case 'next7days':
+          const sevenDaysLater = new Date(today);
+          sevenDaysLater.setDate(today.getDate() + 7);
+          return deliveryDate >= today && deliveryDate <= sevenDaysLater;
+        case 'next30days':
+          const thirtyDaysLater = new Date(today);
+          thirtyDaysLater.setDate(today.getDate() + 30);
+          return deliveryDate >= today && deliveryDate <= thirtyDaysLater;
+        case 'range':
+          if (!dateRange.start || !dateRange.end) return true;
+          const startDate = new Date(dateRange.start);
+          startDate.setHours(0, 0, 0, 0);
+          const endDate = new Date(dateRange.end);
+          endDate.setHours(0, 0, 0, 0);
           return deliveryDate >= startDate && deliveryDate <= endDate;
         default:
           return true;
@@ -369,10 +368,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     const trackTerm = afTracking.trim().toLowerCase();
     if (idTerm) list = list.filter(o => o.id.toLowerCase().includes(idTerm));
     if (trackTerm) list = list.filter(o => (o.trackingNumbers || []).some(t => t.toLowerCase().includes(trackTerm)));
-    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
-    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0,0,0,0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0,0,0,0); return d >= s; }); }
-    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23,59,59,999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
+    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
+    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
+    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
+    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
     if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
     // Payment status filtering is done via advanced filters only
     if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
@@ -381,8 +380,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       list = list.filter(o => {
         const c = customerById.get(o.customerId as any);
         if (!c) return false;
-        const full = `${(c.firstName||'').toString()} ${(c.lastName||'').toString()}`.toLowerCase();
-        return full.includes(nameTerm) || (c.firstName||'').toString().toLowerCase().includes(nameTerm) || (c.lastName||'').toString().toLowerCase().includes(nameTerm);
+        const full = `${(c.firstName || '').toString()} ${(c.lastName || '').toString()}`.toLowerCase();
+        return full.includes(nameTerm) || (c.firstName || '').toString().toLowerCase().includes(nameTerm) || (c.lastName || '').toString().toLowerCase().includes(nameTerm);
       });
     }
     const phoneTerm = afCustomerPhone.replace(/\D/g, '');
@@ -390,7 +389,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       list = list.filter(o => {
         const c = customerById.get(o.customerId as any);
         if (!c) return false;
-        const p = ((c.phone||'') as any).toString().replace(/\D/g, '');
+        const p = ((c.phone || '') as any).toString().replace(/\D/g, '');
         return p.includes(phoneTerm);
       });
     }
@@ -404,9 +403,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
   const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;
   const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
-  
-  const paginatedOrders = useMemo(() => 
-    finalDisplayedOrders.slice(startIndex, endIndex), 
+
+  const paginatedOrders = useMemo(() =>
+    finalDisplayedOrders.slice(startIndex, endIndex),
     [finalDisplayedOrders, startIndex, endIndex]
   );
 
@@ -429,7 +428,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       setCurrentPage(1);
     }
   }, [activeTab, setCurrentPage]);
-  
+
   // Save current page per tab
   useEffect(() => {
     const tabPageKey = `manageOrders:currentPage:${activeTab}`;
@@ -602,142 +601,135 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
 
   const generateAndDownloadCsv = async (selectedOrders: Order[]) => {
-      const headers = [
-          'หมายเลขออเดอร์ออนไลน์', 'ชื่อร้านค้า', 'เวลาที่สั่งซื้อ', 'บัญชีร้านค้า',
-          'หมายเลขใบชำระเงิน', 'COD', 'ช่องทางชำระเงิน', 'เวลาชำระเงิน',
-          'หมายเหตุใบสั่งซื้อ', 'ข้อความจากร้านค้า', 'ค่าขนส่ง', 'จำนวนเงินที่ต้องชำระ',
-          'ผู้รับสินค้า', 'นามสกุลผู้รับสินค้า', 'หมายเลขโทรศัพท์', 'หมายเลขมือถือ',
-          'สถานที่', 'ภูมิภาค', 'อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์', 'ประเทศ',
-          'รับสินค้าที่ร้านหรือไม่', 'รหัสสินค้าบนแพลตฟอร์ม', 'รหัสสินค้าในระบบ',
-          'ชื่อสินค้า', 'สีและรูปแบบ', 'จำนวน', 'ราคาสินค้าต่อหน่วย',
-          'บริษัทขนส่ง', 'หมายเลขขนส่ง', 'เวลาส่งสินค้า', 'สถานะ',
-          'พนักงานขาย', 'หมายเหตุออฟไลน์', 'รูปแบบคำสั่งซื้อ', 'รูปแบบการชำระ'
-      ];
+    const headers = [
+      'หมายเลขออเดอร์ออนไลน์', 'ชื่อร้านค้า', 'เวลาที่สั่งซื้อ', 'บัญชีร้านค้า',
+      'หมายเลขใบชำระเงิน', 'COD', 'ช่องทางชำระเงิน', 'เวลาชำระเงิน',
+      'หมายเหตุใบสั่งซื้อ', 'ข้อความจากร้านค้า', 'ค่าขนส่ง', 'จำนวนเงินที่ต้องชำระ',
+      'ผู้รับสินค้า', 'นามสกุลผู้รับสินค้า', 'หมายเลขโทรศัพท์', 'หมายเลขมือถือ',
+      'สถานที่', 'ภูมิภาค', 'อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์', 'ประเทศ',
+      'รับสินค้าที่ร้านหรือไม่', 'รหัสสินค้าบนแพลตฟอร์ม', 'รหัสสินค้าในระบบ',
+      'ชื่อสินค้า', 'สีและรูปแบบ', 'จำนวน', 'ราคาสินค้าต่อหน่วย',
+      'บริษัทขนส่ง', 'หมายเลขขนส่ง', 'เวลาส่งสินค้า', 'สถานะ',
+      'พนักงานขาย', 'หมายเหตุออฟไลน์', 'รูปแบบคำสั่งซื้อ', 'รูปแบบการชำระ'
+    ];
 
-      const escapeCsvCell = (cellData: any): string => {
-          const str = String(cellData ?? '');
-          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-              return `"${str.replace(/"/g, '""')}"`;
-          }
-          return str;
-      };
-
-      const rows = selectedOrders.flatMap(order => {
-          // Match customer by pk (customer_id) or id (string)
-          const customer = customers.find(c => {
-            if (c.pk && typeof order.customerId === 'number') {
-              return c.pk === order.customerId;
-            }
-            return String(c.id) === String(order.customerId) || 
-                   String(c.pk) === String(order.customerId);
-          });
-          // Match seller by id (ensure type compatibility)
-          const seller = users.find(u => {
-            if (!order.creatorId) return false;
-            if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
-              return u.id === order.creatorId;
-            }
-            return String(u.id) === String(order.creatorId);
-          });
-          const address =
-            order.shippingAddress || {
-              recipientFirstName: '',
-              recipientLastName: '',
-              street: '',
-              subdistrict: '',
-              district: '',
-              province: '',
-              postalCode: '',
-            };
-
-
-          return order.items.map(item => {
-              const codAmount = order.paymentMethod === PaymentMethod.COD ? (order.boxes?.reduce((sum, box) => sum + box.codAmount, 0) || order.totalAmount) : 0;
-              const rowData: { [key: string]: string | number | undefined } = {
-                  'หมายเลขออเดอร์ออนไลน์': (item as any).orderId ?? (item as any).order_id ?? order.id,
-                  // online order number (per item)
-                  // (legacy aggregate mapping removed)
-
-
-
-
-
-
-
-
-
-                  'ชื่อร้านค้า': 'N/A',
-                  'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
-                  'บัญชีร้านค้า': 'N/A',
-                  'หมายเลขใบชำระเงิน': '',
-                  'COD': codAmount,
-                  'ช่องทางชำระเงิน': order.paymentMethod,
-                  'เวลาชำระเงิน': '',
-                  'หมายเหตุใบสั่งซื้อ': order.notes,
-                  'ข้อความจากร้านค้า': '',
-                  'ค่าขนส่ง': order.shippingCost,
-                  'จำนวนเงินที่ต้องชำระ': order.totalAmount,
-                  'ผู้รับสินค้า': customer?.firstName,
-                  'นามสกุลผู้รับสินค้า': customer?.lastName,
-                  'หมายเลขโทรศัพท์': customer?.phone,
-                  'หมายเลขมือถือ': customer?.phone,
-                  'สถานที่': address.street,
-                  'ภูมิภาค': address.subdistrict,
-                  'อำเภอ': address.district,
-                  'จังหวัด': address.province,
-                  'รหัสไปรษณีย์': address.postalCode,
-                  'ประเทศ': 'ไทย',
-                  'รับสินค้าที่ร้านหรือไม่': 'ไม่',
-                  'รหัสสินค้าบนแพลตฟอร์ม': item.id,
-                  'รหัสสินค้าในระบบ': item.id,
-                  'ชื่อสินค้า': item.productName,
-                  'สีและรูปแบบ': '',
-                  'จำนวน': item.quantity,
-                  'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
-                  'บริษัทขนส่ง': '',
-                  'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
-                  'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
-                  'สถานะ': order.orderStatus,
-                  'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
-                  'หมายเหตุออฟไลน์': '',
-                  'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
-                  'รูปแบบการชำระ': order.paymentMethod,
-              };
-              
-              return headers.map(header => rowData[header]);
-          });
-      });
-      
-      const csvContent = [
-          headers.join(','),
-          ...rows.map(row => row.map(escapeCsvCell).join(','))
-      ].join('\n');
-
-      const fullContent = '\uFEFF' + csvContent;
-      const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      const filename = `orders_export_${new Date().toISOString().slice(0,10)}.csv`;
-      link.setAttribute("download", filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      try {
-        const b64 = btoa(unescape(encodeURIComponent(fullContent)));
-        await createExportLog({
-          filename,
-          contentBase64: b64,
-          ordersCount: selectedOrders.length,
-          userId: user?.id,
-          exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || undefined,
-        });
-      } catch (e) {
-        console.error('Failed to log export file', e);
+    const escapeCsvCell = (cellData: any): string => {
+      const str = String(cellData ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
       }
+      return str;
+    };
+
+    const rows = selectedOrders.flatMap(order => {
+      // Match customer by pk (customer_id) or id (string)
+      const customer = customers.find(c => {
+        if (c.pk && typeof order.customerId === 'number') {
+          return c.pk === order.customerId;
+        }
+        return String(c.id) === String(order.customerId) ||
+          String(c.pk) === String(order.customerId);
+      });
+      // Match seller by id (ensure type compatibility)
+      const seller = users.find(u => {
+        if (!order.creatorId) return false;
+        if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
+          return u.id === order.creatorId;
+        }
+        return String(u.id) === String(order.creatorId);
+      });
+      const address =
+        order.shippingAddress || {
+          recipientFirstName: '',
+          recipientLastName: '',
+          street: '',
+          subdistrict: '',
+          district: '',
+          province: '',
+          postalCode: '',
+        };
+
+
+      return order.items.map(item => {
+        const codAmount = order.paymentMethod === PaymentMethod.COD
+          ? (order.boxes?.reduce((sum, box) => sum + box.codAmount, 0) || order.totalAmount)
+          : 0;
+        const itemCodAmount = (item as any).isFreebie ? 0 : codAmount;
+        // (legacy aggregate mapping removed)
+        const rowData: { [key: string]: string | number | undefined } = {
+          'หมายเลขออเดอร์ออนไลน์': (item as any).orderId ?? (item as any).order_id ?? order.id,
+          'ชื่อร้านค้า': 'N/A',
+          'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
+          'บัญชีร้านค้า': 'N/A',
+          'หมายเลขใบชำระเงิน': '',
+          'COD': itemCodAmount,
+          'ช่องทางชำระเงิน': order.paymentMethod,
+          'เวลาชำระเงิน': '',
+          'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
+          'ข้อความจากร้านค้า': '',
+          'ค่าขนส่ง': order.shippingCost,
+          'จำนวนเงินที่ต้องชำระ': (item as any).isFreebie ? 0 : order.totalAmount,
+          'ผู้รับสินค้า': customer?.firstName ?? '',
+          'นามสกุลผู้รับสินค้า': customer?.lastName ?? '',
+          'หมายเลขโทรศัพท์': customer?.phone ?? '',
+          'หมายเลขมือถือ': customer?.phone ?? '',
+          'สถานที่': address.street,
+          'ภูมิภาค': address.subdistrict,
+          'อำเภอ': address.district,
+          'จังหวัด': address.province,
+          'รหัสไปรษณีย์': address.postalCode,
+          'ประเทศ': 'ไทย',
+          'รับสินค้าที่ร้านหรือไม่': 'ไม่',
+          'รหัสสินค้าบนแพลตฟอร์ม': item.id,
+          'รหัสสินค้าในระบบ': item.id,
+          'ชื่อสินค้า': item.productName,
+          'สีและรูปแบบ': '',
+          'จำนวน': item.quantity,
+          'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
+          'บริษัทขนส่ง': '',
+          'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
+          'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
+          'สถานะ': order.orderStatus,
+          'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
+          'หมายเหตุออฟไลน์': '',
+          'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
+          'รูปแบบการชำระ': order.paymentMethod,
+        };
+
+        return headers.map(header => rowData[header]);
+      });
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCsvCell).join(','))
+    ].join('\n');
+
+    const fullContent = '\uFEFF' + csvContent;
+    const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    const filename = `orders_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    try {
+      const b64 = btoa(unescape(encodeURIComponent(fullContent)));
+      await createExportLog({
+        filename,
+        contentBase64: b64,
+        ordersCount: selectedOrders.length,
+        userId: user?.id,
+        exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || undefined,
+      });
+    } catch (e) {
+      console.error('Failed to log export file', e);
+    }
   };
 
 
@@ -783,24 +775,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               postalCode:
                 (r.postal_code ?? (fallback as any).shippingAddress?.postalCode) || '',
             },
-              items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-                id: Number(it.id ?? i + 1),
-                productName: String(it.product_name ?? ''),
-                quantity: Number(it.quantity ?? 0),
-                pricePerUnit: Number(it.price_per_unit ?? 0),
-                discount: Number(it.discount ?? 0),
-                isFreebie: !!(it.is_freebie ?? 0),
-                boxNumber: Number(it.box_number ?? 0),
-                // Preserve raw order_items IDs so CSV export can use them
-                orderId:
-                  typeof it.order_id !== 'undefined' && it.order_id !== null
-                    ? String(it.order_id)
-                    : undefined,
-                parentOrderId:
-                  typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
-                    ? String(it.parent_order_id)
-                    : undefined,
-              })) : (fallback.items || []),
+            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+              id: Number(it.id ?? i + 1),
+              productName: String(it.product_name ?? ''),
+              quantity: Number(it.quantity ?? 0),
+              pricePerUnit: Number(it.price_per_unit ?? 0),
+              discount: Number(it.discount ?? 0),
+              isFreebie: !!(it.is_freebie ?? 0),
+              boxNumber: Number(it.box_number ?? 0),
+              // Preserve raw order_items IDs so CSV export can use them
+              orderId:
+                typeof it.order_id !== 'undefined' && it.order_id !== null
+                  ? String(it.order_id)
+                  : undefined,
+              parentOrderId:
+                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
+                  ? String(it.parent_order_id)
+                  : undefined,
+            })) : (fallback.items || []),
             shippingCost: Number(r.shipping_cost ?? fallback.shippingCost ?? 0),
             billDiscount: Number(r.bill_discount ?? fallback.billDiscount ?? 0),
             totalAmount: Number(r.total_amount ?? fallback.totalAmount ?? 0),
@@ -877,14 +869,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   const handleMoveToAwaitingExport = async () => {
     if (selectedIds.length === 0) return;
-    
+
     if (window.confirm(`คุณต้องการย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" ใช่หรือไม่?`)) {
       try {
         // อัปเดตสถานะของออเดอร์ที่เลือกเป็น Verified
         const updatedOrders = selectedIds.map(id => {
           const order = orders.find(o => o.id === id);
           if (!order) return null;
-          
+
           return {
             ...order,
             paymentStatus: PaymentStatus.Verified,
@@ -895,13 +887,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }
           };
         }).filter(Boolean) as Order[];
-        
+
         // ส่งข้อมูลที่อัปเดตกลับไปยัง parent component
         onProcessOrders(selectedIds);
-        
+
         // แสดงข้อความยืนยัน
         alert(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
-        
+
         // ล้างการเลือก
         setSelectedIds([]);
       } catch (error) {
@@ -915,17 +907,17 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setActiveDatePreset(preset);
     setDateRange({ start: '', end: '' });
   };
-  
+
   const handleDateRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setDateRange(prev => {
-        const newRange = { ...prev, [name]: value };
-        if (newRange.start && newRange.end) {
-            setActiveDatePreset('range');
-        } else if (!newRange.start && !newRange.end) {
-             setActiveDatePreset('today'); // Reset to 'today' instead of 'all' when date range is cleared
-        }
-        return newRange;
+      const newRange = { ...prev, [name]: value };
+      if (newRange.start && newRange.end) {
+        setActiveDatePreset('range');
+      } else if (!newRange.start && !newRange.end) {
+        setActiveDatePreset('today'); // Reset to 'today' instead of 'all' when date range is cleared
+      }
+      return newRange;
     });
   };
 
@@ -1011,8 +1003,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
         <div>
-            <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
-            <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
+          <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
+          <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
         {activeTab !== 'pending' && (
           <div className="flex items-center space-x-2">
@@ -1063,11 +1055,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           </div>
         )}
       </div>
-      
+
       {/* ตัวกรองขั้นสูง toggle and panel */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowAdvanced(v=>!v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
+          <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
             ตัวกรองขั้นสูง
             {advancedCount > 0 ? (
@@ -1087,23 +1079,23 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
-              <input value={fCustomerName} onChange={e=>setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
+              <input value={fCustomerName} onChange={e => setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
-              <input value={fCustomerPhone} onChange={e=>setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
+              <input value={fCustomerPhone} onChange={e => setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">เลขออเดอร์</label>
-              <input value={fOrderId} onChange={e=>setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />
+              <input value={fOrderId} onChange={e => setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ค้นหา Tracking</label>
-              <input value={fTracking} onChange={e=>setFTracking(e.target.value)} className="w-full p-2 border rounded" placeholder="TH..." />
+              <input value={fTracking} onChange={e => setFTracking(e.target.value)} className="w-full p-2 border rounded" placeholder="TH..." />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วิธีการชำระ</label>
-              <select value={fPaymentMethod} onChange={e=>setFPaymentMethod((e.target.value as any)||'')} className="w-full p-2 border rounded">
+              <select value={fPaymentMethod} onChange={e => setFPaymentMethod((e.target.value as any) || '')} className="w-full p-2 border rounded">
                 <option value="">ทั้งหมด</option>
                 <option value={PaymentMethod.Transfer}>โอนเงิน</option>
                 <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
@@ -1112,7 +1104,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
-              <select value={fPaymentStatus} onChange={e=>setFPaymentStatus((e.target.value as any)||'')} className="w-full p-2 border rounded">
+              <select value={fPaymentStatus} onChange={e => setFPaymentStatus((e.target.value as any) || '')} className="w-full p-2 border rounded">
                 <option value="">ทั้งหมด</option>
                 <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
                 <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
@@ -1124,163 +1116,151 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (จาก)</label>
-              <input type="date" value={fOrderDate.start} onChange={e=>setFOrderDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fOrderDate.start} onChange={e => setFOrderDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (ถึง)</label>
-              <input type="date" value={fOrderDate.end} onChange={e=>setFOrderDate(v=>({...v,end:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fOrderDate.end} onChange={e => setFOrderDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (จาก)</label>
-              <input type="date" value={fDeliveryDate.start} onChange={e=>setFDeliveryDate(v=>({...v,start:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fDeliveryDate.start} onChange={e => setFDeliveryDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (ถึง)</label>
-              <input type="date" value={fDeliveryDate.end} onChange={e=>setFDeliveryDate(v=>({...v,end:e.target.value}))} className="w-full p-2 border rounded" />
+              <input type="date" value={fDeliveryDate.end} onChange={e => setFDeliveryDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
           </div>
         )}
       </div>
 
       <div className="flex border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'pending'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'pending'
+              ? 'border-b-2 border-blue-600 text-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <ListChecks size={16} />
-            <span>รอตรวจสอบสลิป</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
-             }`}>{pendingOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('verified')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'verified'
-                ? 'border-b-2 border-yellow-600 text-yellow-600'
-                : 'text-gray-500 hover:text-gray-700'
+        >
+          <ListChecks size={16} />
+          <span>รอตรวจสอบสลิป</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+            }`}>{pendingOrders.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('verified')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'verified'
+              ? 'border-b-2 border-yellow-600 text-yellow-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <ListChecks size={16} />
-            <span>รอดึงข้อมูล</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
-             }`}>{awaitingExportOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('preparing')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'preparing'
-                ? 'border-b-2 border-green-600 text-green-600'
-                : 'text-gray-500 hover:text-gray-700'
+        >
+          <ListChecks size={16} />
+          <span>รอดึงข้อมูล</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
+            }`}>{awaitingExportOrders.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('preparing')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'preparing'
+              ? 'border-b-2 border-green-600 text-green-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <Package size={16} />
-            <span>กำลังจัดเตรียม</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
-             }`}>{preparingOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('shipping')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'shipping'
-                ? 'border-b-2 border-purple-600 text-purple-600'
-                : 'text-gray-500 hover:text-gray-700'
+        >
+          <Package size={16} />
+          <span>กำลังจัดเตรียม</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
+            }`}>{preparingOrders.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('shipping')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'shipping'
+              ? 'border-b-2 border-purple-600 text-purple-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <Send size={16} />
-            <span>กำลังจัดส่ง</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
-             }`}>{shippingOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('awaiting_account')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'awaiting_account'
-                ? 'border-b-2 border-orange-600 text-orange-600'
-                : 'text-gray-500 hover:text-gray-700'
+        >
+          <Send size={16} />
+          <span>กำลังจัดส่ง</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
+            }`}>{shippingOrders.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('awaiting_account')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'awaiting_account'
+              ? 'border-b-2 border-orange-600 text-orange-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <Clock size={16} />
-            <span>รอตรวจสอบจากบัญชี</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-             }`}>{awaitingAccountCheckOrders.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'completed'
-                ? 'border-b-2 border-gray-600 text-gray-600'
-                : 'text-gray-500 hover:text-gray-700'
+        >
+          <Clock size={16} />
+          <span>รอตรวจสอบจากบัญชี</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+            }`}>{awaitingAccountCheckOrders.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('completed')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'completed'
+              ? 'border-b-2 border-gray-600 text-gray-600'
+              : 'text-gray-500 hover:text-gray-700'
             }`}
-          >
-            <CheckCircle2 size={16} />
-            <span>เสร็จสิ้น</span>
-             <span className={`px-2 py-0.5 rounded-full text-xs ${
-                activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
-             }`}>{completedOrders.length}</span>
-          </button>
+        >
+          <CheckCircle2 size={16} />
+          <span>เสร็จสิ้น</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
+            }`}>{completedOrders.length}</span>
+        </button>
       </div>
 
       {/* แสดงตัวกรองวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" */}
       {activeTab === 'verified' && (
         <div className="bg-white p-4 rounded-lg shadow mb-6">
           <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center mr-4">
-                  <Calendar size={16} className="text-gray-500 mr-2"/>
-                  <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
-                  <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} รายการ)</span>
-              </div>
-              {datePresets.map((preset, index) => (
-                  <React.Fragment key={preset.value}>
-                      <DateFilterButton 
-                          label={preset.label}
-                          value={preset.value}
-                          activeValue={activeDatePreset}
-                          onClick={handleDatePresetClick}
-                      />
-                      {preset.hasSpacing && <div className="w-8" />}
-                  </React.Fragment>
-              ))}
-              <div className="flex items-center gap-2 ml-auto">
-                    <input 
-                      type="date" 
-                      name="start"
-                      value={dateRange.start}
-                      onChange={handleDateRangeChange}
-                      className="p-1 border border-gray-300 rounded-md text-sm"
-                    />
-                    <span className="text-gray-500 text-sm">ถึง</span>
-                     <input 
-                      type="date" 
-                      name="end"
-                      value={dateRange.end}
-                      onChange={handleDateRangeChange}
-                      className="p-1 border border-gray-300 rounded-md text-sm"
-                    />
-              </div>
+            <div className="flex items-center mr-4">
+              <Calendar size={16} className="text-gray-500 mr-2" />
+              <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
+              <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} รายการ)</span>
+            </div>
+            {datePresets.map((preset, index) => (
+              <React.Fragment key={preset.value}>
+                <DateFilterButton
+                  label={preset.label}
+                  value={preset.value}
+                  activeValue={activeDatePreset}
+                  onClick={handleDatePresetClick}
+                />
+                {preset.hasSpacing && <div className="w-8" />}
+              </React.Fragment>
+            ))}
+            <div className="flex items-center gap-2 ml-auto">
+              <input
+                type="date"
+                name="start"
+                value={dateRange.start}
+                onChange={handleDateRangeChange}
+                className="p-1 border border-gray-300 rounded-md text-sm"
+              />
+              <span className="text-gray-500 text-sm">ถึง</span>
+              <input
+                type="date"
+                name="end"
+                value={dateRange.end}
+                onChange={handleDateRangeChange}
+                className="p-1 border border-gray-300 rounded-md text-sm"
+              />
+            </div>
           </div>
         </div>
       )}
-      
+
       <div className="bg-white rounded-lg shadow">
-        <OrderTable 
-            orders={paginatedOrders} 
-            customers={customers} 
-            openModal={openModal}
-            users={users}
-            selectable={activeTab === 'pending' || activeTab === 'verified'}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
+        <OrderTable
+          orders={paginatedOrders}
+          customers={customers}
+          openModal={openModal}
+          users={users}
+          selectable={activeTab === 'pending' || activeTab === 'verified'}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
-        
+
         {/* Pagination Controls */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
@@ -1324,13 +1304,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                       typeof page === "number" ? handlePageChange(page) : undefined
                     }
                     disabled={page === "..."}
-                    className={`px-3 py-1 text-sm rounded ${
-                      page === effectivePage
+                    className={`px-3 py-1 text-sm rounded ${page === effectivePage
                         ? "bg-blue-600 text-white"
                         : page === "..."
                           ? "text-gray-400 cursor-default"
                           : "text-gray-700 hover:bg-gray-100"
-                    }`}
+                      }`}
                   >
                     {page}
                   </button>
