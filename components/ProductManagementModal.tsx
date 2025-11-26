@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Product, Warehouse } from '../types';
 import { ArrowLeft, Edit, PlusCircle, X, CheckSquare, RefreshCcw, Info, BarChart3, Folder, Tag, AlignLeft, ShoppingCart, DollarSign, Archive, Calculator, Package, Plus, Trash2 } from 'lucide-react';
 import { listProductLots } from '@/services/api';
+import { saveProductWithLots, deleteProductWithLots } from '@/services/productApi';
 
 interface ProductManagementModalProps {
   product?: Product;
@@ -13,14 +14,14 @@ interface ProductManagementModalProps {
 }
 
 const FormField: React.FC<{ icon: React.ElementType, label: string, required?: boolean, hint?: string, children: React.ReactNode }> = ({ icon: Icon, label, required, hint, children }) => (
-    <div>
-        <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-            <Icon size={16} className="mr-2 text-gray-400"/>
-            {label} {required && <span className="text-red-500 ml-1">*</span>}
-        </label>
-        {children}
-        {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
-    </div>
+  <div>
+    <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+      <Icon size={16} className="mr-2 text-gray-400" />
+      {label} {required && <span className="text-red-500 ml-1">*</span>}
+    </label>
+    {children}
+    {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+  </div>
 );
 
 const productCategories = ['ปุ๋ย', 'ยาฆ่าแมลง', 'เมล็ดพันธุ์', 'วัสดุปลูก', 'อุปกรณ์การเกษตร'];
@@ -29,7 +30,7 @@ const productUnits = ['กระสอบ', 'ขวด', 'ซอง', 'ถุง
 
 const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product, onSave, onClose, companyId, warehouses = [], products = [] }) => {
   const [activeTab, setActiveTab] = useState<'basic' | 'lots'>('basic');
-  
+
   // ดึงรายการร้านค้าที่มีอยู่แล้ว (เฉพาะบริษัทตัวเอง)
   const existingShops = useMemo(() => {
     const shops = products
@@ -39,21 +40,21 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       .sort();
     return shops;
   }, [products, companyId]);
-  
+
   const getInitialState = () => ({
-      sku: product?.sku || '',
-      name: product?.name || '',
-      description: product?.description || '',
-      category: product?.category || '',
-      unit: product?.unit || '',
-      cost: product?.cost.toString() || '0',
-      price: product?.price.toString() || '0',
-      stock: product?.stock.toString() || '0',
-      shop: product?.shop || '',
+    sku: product?.sku || '',
+    name: product?.name || '',
+    description: product?.description || '',
+    category: product?.category || '',
+    unit: product?.unit || '',
+    cost: product?.cost.toString() || '0',
+    price: product?.price.toString() || '0',
+    stock: product?.stock.toString() || '0',
+    shop: product?.shop || '',
   });
-  
+
   const [formData, setFormData] = useState(getInitialState);
-  
+
   // State for managing lots
   const [lots, setLots] = useState<Array<{
     id?: number;
@@ -69,7 +70,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
   // Load existing lots when editing a product
   useEffect(() => {
     setFormData(getInitialState());
-    
+
     // Load existing lots if editing a product
     if (product && product.id) {
       loadProductLots(product.id);
@@ -102,13 +103,13 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     const costNum = parseFloat(formData.cost) || 0;
     const priceNum = parseFloat(formData.price) || 0;
     if (priceNum > 0 && costNum >= 0) {
-        const profitVal = priceNum - costNum;
-        const marginVal = (profitVal / priceNum) * 100;
-        return { profit: profitVal, margin: marginVal };
+      const profitVal = priceNum - costNum;
+      const marginVal = (profitVal / priceNum) * 100;
+      return { profit: profitVal, margin: marginVal };
     }
     return { profit: 0, margin: 0 };
   }, [formData.cost, formData.price]);
-  
+
   // Functions for managing lots
   const addLot = () => {
     const newLot = {
@@ -134,14 +135,14 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-      const { name, value } = e.target;
-      setFormData(prev => ({...prev, [name]: value}));
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   }
 
-  const handleSave = () => {
-    if(!formData.sku || !formData.name || !formData.unit || !formData.cost || !formData.price || !formData.stock) {
-        alert('กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน');
-        return;
+  const handleSave = async () => {
+    if (!formData.sku || !formData.name || !formData.unit || !formData.cost || !formData.price || !formData.stock) {
+      alert('กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน');
+      return;
     }
 
     // Validate lots if any
@@ -168,10 +169,34 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       lots: activeTab === 'lots' ? lots : [],
     };
 
-    if (product) {
-      onSave({ ...productData, id: product.id });
-    } else {
-      onSave(productData);
+    try {
+      const result = await saveProductWithLots({ ...productData, id: product?.id });
+      if (result.success) {
+        onSave({ ...productData, id: result.id || product?.id });
+      } else {
+        alert('Error: ' + result.message);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to save product.');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!product?.id) return;
+    if (!confirm('Are you sure you want to delete this product?')) return;
+
+    try {
+      const result = await deleteProductWithLots(product.id);
+      if (result.success) {
+        onClose();
+        window.location.reload();
+      } else {
+        alert('Error: ' + result.message);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to delete product.');
     }
   };
 
@@ -182,10 +207,10 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
       <div className="bg-[#F9FAFB] rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
         <header className="flex justify-between items-center p-4 border-b flex-shrink-0">
-          <h2 className="text-xl font-semibold text-gray-800 flex items-center"><PlusCircle className="mr-3 text-gray-600"/>{title}</h2>
+          <h2 className="text-xl font-semibold text-gray-800 flex items-center"><PlusCircle className="mr-3 text-gray-600" />{title}</h2>
           <button onClick={onClose} className="bg-gray-200 text-gray-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-gray-300">
-             <ArrowLeft size={16} className="mr-2"/>
-             กลับไปรายการสินค้า
+            <ArrowLeft size={16} className="mr-2" />
+            กลับไปรายการสินค้า
           </button>
         </header>
 
@@ -195,24 +220,22 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
             <nav className="space-y-2">
               <button
                 onClick={() => setActiveTab('basic')}
-                className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${
-                  activeTab === 'basic' 
-                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-700' 
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${activeTab === 'basic'
+                  ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-700'
+                  : 'text-gray-600 hover:bg-gray-50'
+                  }`}
               >
-                <Package size={18} className="mr-3"/>
+                <Package size={18} className="mr-3" />
                 ข้อมูลสินค้า
               </button>
               <button
                 onClick={() => setActiveTab('lots')}
-                className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${
-                  activeTab === 'lots' 
-                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-700' 
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${activeTab === 'lots'
+                  ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-700'
+                  : 'text-gray-600 hover:bg-gray-50'
+                  }`}
               >
-                <Package size={18} className="mr-3"/>
+                <Package size={18} className="mr-3" />
                 จัดการ Lot
                 {lots.length > 0 && (
                   <span className="ml-auto bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
@@ -231,111 +254,111 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                   {/* Left Column */}
                   <div className="space-y-6">
                     <div className="p-4 border rounded-md">
-                        <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><Folder size={16} className="mr-2"/>ข้อมูลพื้นฐาน</h4>
-                        <div className="space-y-4">
-                            <FormField label="รหัสสินค้า (SKU)" required icon={Tag}>
-                                <input type="text" name="sku" value={formData.sku} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="เช่น PRD-001" />
-                            </FormField>
-                            <FormField label="ชื่อสินค้า" required icon={Folder}>
-                                <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="กรอกชื่อสินค้า" />
-                            </FormField>
-                            <FormField label="หมวดหมู่" icon={BarChart3}>
-                                <select name="category" value={formData.category} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
-                                    <option value="">เลือกหมวดหมู่</option>
-                                    {productCategories.map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                            </FormField>
-                            <FormField label="หน่วยนับ" required icon={Info}>
-                                <select name="unit" value={formData.unit} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
-                                    <option value="">เลือกหน่วย</option>
-                                    {productUnits.map(unit => (
-                                        <option key={unit} value={unit}>{unit}</option>
-                                    ))}
-                                </select>
-                            </FormField>
-                            <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        name="shop" 
-                                        value={formData.shop} 
-                                        onChange={handleChange} 
-                                        list="shop-list"
-                                        className="w-full p-2 border rounded-md bg-white text-black" 
-                                        placeholder="เลือกหรือพิมพ์ชื่อร้านค้า" 
-                                    />
-                                    {existingShops.length > 0 && (
-                                        <datalist id="shop-list">
-                                            {existingShops.map((shop, index) => (
-                                                <option key={index} value={shop} />
-                                            ))}
-                                        </datalist>
-                                    )}
-                                </div>
-                            </FormField>
-                        </div>
+                      <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><Folder size={16} className="mr-2" />ข้อมูลพื้นฐาน</h4>
+                      <div className="space-y-4">
+                        <FormField label="รหัสสินค้า (SKU)" required icon={Tag}>
+                          <input type="text" name="sku" value={formData.sku} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="เช่น PRD-001" />
+                        </FormField>
+                        <FormField label="ชื่อสินค้า" required icon={Folder}>
+                          <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="กรอกชื่อสินค้า" />
+                        </FormField>
+                        <FormField label="หมวดหมู่" icon={BarChart3}>
+                          <select name="category" value={formData.category} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
+                            <option value="">เลือกหมวดหมู่</option>
+                            {productCategories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <FormField label="หน่วยนับ" required icon={Info}>
+                          <select name="unit" value={formData.unit} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
+                            <option value="">เลือกหน่วย</option>
+                            {productUnits.map(unit => (
+                              <option key={unit} value={unit}>{unit}</option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              name="shop"
+                              value={formData.shop}
+                              onChange={handleChange}
+                              list="shop-list"
+                              className="w-full p-2 border rounded-md bg-white text-black"
+                              placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+                            />
+                            {existingShops.length > 0 && (
+                              <datalist id="shop-list">
+                                {existingShops.map((shop, index) => (
+                                  <option key={index} value={shop} />
+                                ))}
+                              </datalist>
+                            )}
+                          </div>
+                        </FormField>
+                      </div>
                     </div>
                     <div className="p-4 border rounded-md">
-                        <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><AlignLeft size={16} className="mr-2"/>รายละเอียดเพิ่มเติม</h4>
-                        <FormField label="รายละเอียดสินค้า" icon={AlignLeft}>
-                            <textarea name="description" value={formData.description} onChange={handleChange} rows={5} className="w-full p-2 border rounded-md bg-white text-black" placeholder="อธิบายรายละเอียดของสินค้า..."></textarea>
-                        </FormField>
+                      <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><AlignLeft size={16} className="mr-2" />รายละเอียดเพิ่มเติม</h4>
+                      <FormField label="รายละเอียดสินค้า" icon={AlignLeft}>
+                        <textarea name="description" value={formData.description} onChange={handleChange} rows={5} className="w-full p-2 border rounded-md bg-white text-black" placeholder="อธิบายรายละเอียดของสินค้า..."></textarea>
+                      </FormField>
                     </div>
                   </div>
 
                   {/* Right Column */}
                   <div className="space-y-6">
                     <div className="p-4 border rounded-md">
-                        <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><DollarSign size={16} className="mr-2"/>ราคาและสต็อก</h4>
-                         <div className="space-y-4">
-                            <FormField label="ต้นทุน (บาท)" required icon={ShoppingCart}>
-                                 <input type="number" name="cost" value={formData.cost} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
-                            </FormField>
-                            <FormField label="ราคาขาย (บาท)" required icon={Tag}>
-                                 <input type="number" name="price" value={formData.price} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
-                            </FormField>
-                            <FormField label="จำนวนคงเหลือ" required icon={Archive}>
-                                <input type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
-                            </FormField>
-                        </div>
+                      <h4 className="font-semibold text-gray-600 mb-4 flex items-center"><DollarSign size={16} className="mr-2" />ราคาและสต็อก</h4>
+                      <div className="space-y-4">
+                        <FormField label="ต้นทุน (บาท)" required icon={ShoppingCart}>
+                          <input type="number" name="cost" value={formData.cost} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
+                        </FormField>
+                        <FormField label="ราคาขาย (บาท)" required icon={Tag}>
+                          <input type="number" name="price" value={formData.price} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
+                        </FormField>
+                        <FormField label="จำนวนคงเหลือ" required icon={Archive}>
+                          <input type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" />
+                        </FormField>
+                      </div>
                     </div>
                     <div className="p-4 bg-gray-50 rounded-lg border">
-                         <h4 className="font-semibold text-gray-600 mb-3 flex items-center"><Calculator size={16} className="mr-2"/>การคำนวณกำไร</h4>
-                         <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-500">กำไรต่อหน่วย:</span>
-                            <span className="font-bold text-lg text-green-700">฿{profit.toFixed(2)}</span>
-                         </div>
-                         <div className="flex justify-between items-center text-sm mt-1">
-                            <span className="text-gray-500">อัตรากำไร:</span>
-                            <span className="font-bold text-lg text-green-700">{margin.toFixed(2)}%</span>
-                         </div>
+                      <h4 className="font-semibold text-gray-600 mb-3 flex items-center"><Calculator size={16} className="mr-2" />การคำนวณกำไร</h4>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500">กำไรต่อหน่วย:</span>
+                        <span className="font-bold text-lg text-green-700">฿{profit.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-gray-500">อัตรากำไร:</span>
+                        <span className="font-bold text-lg text-green-700">{margin.toFixed(2)}%</span>
+                      </div>
                     </div>
                   </div>
-               </div>
-             </div>
+                </div>
+              </div>
             )}
 
             {activeTab === 'lots' && (
               <div className="bg-white p-6 rounded-lg shadow-md border">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                    <Package size={18} className="mr-3 text-gray-500"/>
+                    <Package size={18} className="mr-3 text-gray-500" />
                     จัดการ Lot ของสินค้า
                   </h3>
                   <button
                     onClick={addLot}
                     className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200"
                   >
-                    <Plus size={16} className="mr-2"/>
+                    <Plus size={16} className="mr-2" />
                     เพิ่ม Lot ใหม่
                   </button>
                 </div>
 
                 {lots.length === 0 ? (
                   <div className="text-center py-10 text-gray-500 border-2 border-dashed rounded-lg">
-                    <Package size={48} className="mx-auto mb-4 text-gray-300"/>
+                    <Package size={48} className="mx-auto mb-4 text-gray-300" />
                     <p>ยังไม่มีข้อมูล Lot</p>
                     <p className="text-sm mt-2">คลิก "เพิ่ม Lot ใหม่" เพื่อเพิ่มข้อมูล Lot ของสินค้า</p>
                   </div>
@@ -442,6 +465,15 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
           >
             ยกเลิก
           </button>
+          {product && (
+            <button
+              onClick={handleDelete}
+              className="bg-red-100 text-red-700 font-semibold text-sm rounded-md py-2 px-4 hover:bg-red-200 mr-auto"
+            >
+              <Trash2 size={16} className="mr-2 inline" />
+              ลบสินค้า
+            </button>
+          )}
           <button
             onClick={handleSave}
             className="bg-green-600 text-white font-semibold text-sm rounded-md py-2 px-4 hover:bg-green-700"
