@@ -699,55 +699,76 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           postalCode: '',
         };
 
-
-      return order.items.map(item => {
-        const codAmount = order.paymentMethod === PaymentMethod.COD
-          ? (order.boxes?.reduce((sum, box) => sum + (box.collectionAmount ?? box.codAmount), 0) || order.totalAmount)
-          : 0;
-        const itemCodAmount = (item as any).isFreebie ? 0 : codAmount;
-        // (legacy aggregate mapping removed)
-        const rowData: { [key: string]: string | number | undefined } = {
-          'หมายเลขออเดอร์ออนไลน์': (item as any).orderId ?? (item as any).order_id ?? order.id,
-          'ชื่อร้านค้า': 'N/A',
-          'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
-          'บัญชีร้านค้า': 'N/A',
-          'หมายเลขใบชำระเงิน': '',
-          'COD': item.netTotal ?? 0,
-          'ช่องทางชำระเงิน': order.paymentMethod,
-          'เวลาชำระเงิน': '',
-          'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
-          'ข้อความจากร้านค้า': '',
-          'ค่าขนส่ง': order.shippingCost,
-          'จำนวนเงินที่ต้องชำระ': item.netTotal ?? 0,
-          'ผู้รับสินค้า': customer?.firstName ?? '',
-          'นามสกุลผู้รับสินค้า': customer?.lastName ?? '',
-          'หมายเลขโทรศัพท์': customer?.phone ?? '',
-          'หมายเลขมือถือ': customer?.phone ?? '',
-          'สถานที่': address.street,
-          'ภูมิภาค': address.subdistrict,
-          'อำเภอ': address.district,
-          'จังหวัด': address.province,
-          'รหัสไปรษณีย์': address.postalCode,
-          'ประเทศ': 'ไทย',
-          'รับสินค้าที่ร้านหรือไม่': 'ไม่',
-          'รหัสสินค้าบนแพลตฟอร์ม': item.id,
-          'รหัสสินค้าในระบบ': item.id,
-          'ชื่อสินค้า': item.productName,
-          'สีและรูปแบบ': '',
-          'จำนวน': item.quantity,
-          'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
-          'บริษัทขนส่ง': '',
-          'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
-          'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
-          'สถานะ': order.orderStatus,
-          'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
-          'หมายเหตุออฟไลน์': '',
-          'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
-          'รูปแบบการชำระ': order.paymentMethod,
-        };
-
-        return headers.map(header => rowData[header]);
+      // Group items by orderId (หมายเลขออเดอร์ออนไลน์)
+      const itemsByOrderId = new Map<string, typeof order.items>();
+      order.items.forEach(item => {
+        const onlineOrderId = (item as any).orderId ?? (item as any).order_id ?? order.id;
+        if (!itemsByOrderId.has(onlineOrderId)) {
+          itemsByOrderId.set(onlineOrderId, []);
+        }
+        itemsByOrderId.get(onlineOrderId)!.push(item);
       });
+
+      // สร้างแถวสำหรับแต่ละ orderId
+      const orderRows: any[] = [];
+      itemsByOrderId.forEach((items, onlineOrderId) => {
+        items.forEach((item, index) => {
+          const codAmount = order.paymentMethod === PaymentMethod.COD
+            ? (order.boxes?.reduce((sum, box) => sum + (box.collectionAmount ?? box.codAmount), 0) || order.totalAmount)
+            : 0;
+          const itemCodAmount = (item as any).isFreebie ? 0 : codAmount;
+
+          // คำนวณ totalAmount สำหรับ orderId นี้
+          const orderIdTotalAmount = items.reduce((sum, it) => sum + (it.netTotal ?? 0), 0);
+
+          const rowData: { [key: string]: string | number | undefined } = {
+            // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
+            'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
+            'ชื่อร้านค้า': 'N/A',
+            'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
+            'บัญชีร้านค้า': 'N/A',
+            'หมายเลขใบชำระเงิน': '',
+            'COD': item.netTotal ?? 0,
+            'ช่องทางชำระเงิน': order.paymentMethod,
+            'เวลาชำระเงิน': '',
+            'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
+            'ข้อความจากร้านค้า': '',
+            'ค่าขนส่ง': order.shippingCost,
+            // แสดงข้อมูลที่อยู่เฉพาะแถวแรกของแต่ละ orderId
+            'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
+            'ผู้รับสินค้า': index === 0 ? (customer?.firstName ?? '') : '',
+            'นามสกุลผู้รับสินค้า': index === 0 ? (customer?.lastName ?? '') : '',
+            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ?? '') : '',
+            'หมายเลขมือถือ': index === 0 ? (customer?.phone ?? '') : '',
+            'สถานที่': index === 0 ? address.street : '',
+            'ภูมิภาค': index === 0 ? address.subdistrict : '',
+            'อำเภอ': index === 0 ? address.district : '',
+            'จังหวัด': index === 0 ? address.province : '',
+            'รหัสไปรษณีย์': index === 0 ? address.postalCode : '',
+            'ประเทศ': index === 0 ? 'ไทย' : '',
+            // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
+            'รับสินค้าที่ร้านหรือไม่': '',
+            'รหัสสินค้าบนแพลตฟอร์ม': item.id,
+            'รหัสสินค้าในระบบ': item.id,
+            'ชื่อสินค้า': item.productName,
+            'สีและรูปแบบ': '',
+            'จำนวน': item.quantity,
+            'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
+            'บริษัทขนส่ง': '',
+            'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
+            'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
+            'สถานะ': order.orderStatus,
+            'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
+            'หมายเหตุออฟไลน์': '',
+            'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
+            'รูปแบบการชำระ': order.paymentMethod,
+          };
+
+          orderRows.push(headers.map(header => rowData[header]));
+        });
+      });
+
+      return orderRows;
     });
 
     const csvContent = [
