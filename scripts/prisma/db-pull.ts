@@ -25,7 +25,7 @@ try {
 
   // Now pull the database schema
   console.log("📥 Pulling database schema...");
-  execSync("npx prisma db pull", { stdio: "inherit" });
+  execSync("npx prisma db pull --force", { stdio: "inherit" });
 
   // Generate the Prisma client
   console.log("🏗️ Generating Prisma client...");
