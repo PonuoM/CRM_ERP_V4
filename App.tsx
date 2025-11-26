@@ -575,6 +575,7 @@ const App: React.FC = () => {
       price: Number(r.price || 0),
       stock: Number(r.stock || 0),
       companyId,
+      shop: r.shop ?? undefined,
       status: normalizeProductStatus(
         typeof r.status !== "undefined" ? r.status : r.active,
       ),
@@ -871,6 +872,7 @@ const App: React.FC = () => {
             province: r.province || "",
             postalCode: r.postal_code || "",
           },
+          shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
           items: Array.isArray(r.items)
             ? r.items.map((it: any, i: number) => ({
               id: Number(it.id ?? i + 1),
@@ -901,7 +903,7 @@ const App: React.FC = () => {
                   it.creator_id !== null
                   ? Number(it.creator_id)
                   : undefined,
-            }))
+          }))
             : [],
           shippingCost: Number(r.shipping_cost ?? 0),
           billDiscount: Number(r.bill_discount ?? 0),
@@ -1179,6 +1181,7 @@ const App: React.FC = () => {
                   : undefined,
             }))
             : [],
+          shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
           shippingCost: Number(r.shipping_cost ?? 0),
           billDiscount: Number(r.bill_discount ?? 0),
           totalAmount: Number(r.total_amount || 0),
@@ -1945,6 +1948,14 @@ const App: React.FC = () => {
           codAmount: (updatedOrder as any).codAmount ?? null,
           notes: updatedOrder.notes ?? null,
         };
+        if (updatedOrder.boxes && updatedOrder.boxes.length > 0) {
+          payload.boxes = updatedOrder.boxes.map((b) => ({
+            boxNumber: b.boxNumber,
+            collectionAmount: b.collectionAmount ?? b.codAmount ?? 0,
+            collectedAmount: b.collectedAmount ?? 0,
+            waivedAmount: b.waivedAmount ?? 0,
+          }));
+        }
         if (typeof (updatedOrder as any).slipUrl !== "undefined")
           payload.slipUrl = (updatedOrder as any).slipUrl;
         if (updatedOrder.orderStatus)
@@ -2038,6 +2049,53 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCancelOrdersBulk = async (orderIds: string[]) => {
+    const validIds = orderIds.filter((id) => {
+      const order = orders.find((o) => o.id === id);
+      return order && order.orderStatus === OrderStatus.Pending;
+    });
+    if (validIds.length === 0) return;
+
+    const activitiesToAdd: Activity[] = [];
+    validIds.forEach((orderId) => {
+      const orderToCancel = orders.find((o) => o.id === orderId);
+      if (!orderToCancel) return;
+      activitiesToAdd.push({
+        id: Date.now() + Math.random(),
+        customerId: orderToCancel.customerId,
+        timestamp: new Date().toISOString(),
+        type: ActivityType.OrderCancelled,
+        description: `ยกเลิกออเดอร์ ${orderId}`,
+        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+      });
+    });
+
+    setActivities((prev) => [...activitiesToAdd, ...prev]);
+    setOrders((prevOrders) =>
+      prevOrders.map((o) =>
+        validIds.includes(o.id) ? { ...o, orderStatus: OrderStatus.Cancelled } : o,
+      ),
+    );
+
+    for (const activity of activitiesToAdd) {
+      if (true) {
+        try {
+          await createActivity(activity);
+        } catch (e) {
+          console.error("Failed to create activity", e);
+        }
+      }
+    }
+
+    for (const id of validIds) {
+      try {
+        await apiPatchOrder(id, { orderStatus: "Cancelled" });
+      } catch (e) {
+        console.error("cancel API", e);
+      }
+    }
+  };
+
   const handleProcessOrders = async (orderIds: string[]) => {
     const activitiesToAdd: Activity[] = [];
     setOrders((prevOrders) => {
@@ -2081,6 +2139,22 @@ const App: React.FC = () => {
           console.error("batch patch", e);
         }
       }
+    }
+  };
+
+  const handleUpdateShippingProvider = async (orderId: string, shippingProvider: string) => {
+    const previous = orders.find((o) => o.id === orderId)?.shippingProvider;
+    setOrders((prevOrders) =>
+      prevOrders.map((o) => (o.id === orderId ? { ...o, shippingProvider } : o)),
+    );
+    try {
+      await apiPatchOrder(orderId, { shippingProvider });
+    } catch (error) {
+      console.error('update shipping provider failed', error);
+      setOrders((prevOrders) =>
+        prevOrders.map((o) => (o.id === orderId ? { ...o, shippingProvider: previous } : o)),
+      );
+      alert('ไม่สามารถอัปเดตขนส่งได้');
     }
   };
 
@@ -2744,6 +2818,7 @@ const App: React.FC = () => {
           status: o.status,
           paymentMethod: o.payment_method,
           shippingAddress: o.shipping_address,
+          shippingProvider: o.shipping_provider ?? o.shippingProvider ?? undefined,
           trackingNumber: o.tracking_number,
           orderDate: o.order_date,
           deliveryDate: o.delivery_date,
@@ -4581,6 +4656,7 @@ const App: React.FC = () => {
         orderDate: orderDateIso,
         deliveryDate: orderDateIso,
         shippingAddress,
+        shippingProvider: undefined,
         items: payloadItems,
         shippingCost: 0,
         billDiscount: 0,
@@ -4618,6 +4694,7 @@ const App: React.FC = () => {
         orderDate: orderDateIso,
         deliveryDate: orderDateIso,
         shippingAddress,
+        shippingProvider: undefined,
         items: lineItems,
         shippingCost: 0,
         billDiscount: 0,
@@ -5157,8 +5234,11 @@ const App: React.FC = () => {
             orders={companyOrders}
             customers={companyCustomers}
             users={companyUsers}
+            products={companyProducts}
             openModal={openModal}
             onProcessOrders={handleProcessOrders}
+            onCancelOrders={handleCancelOrdersBulk}
+            onUpdateShippingProvider={handleUpdateShippingProvider}
           />
         );
       }
@@ -5819,8 +5899,11 @@ const App: React.FC = () => {
                 orders={companyOrders}
                 customers={companyCustomers}
                 users={companyUsers}
+                products={companyProducts}
                 openModal={openModal}
                 onProcessOrders={handleProcessOrders}
+                onCancelOrders={handleCancelOrdersBulk}
+                onUpdateShippingProvider={handleUpdateShippingProvider}
               />
             );
           case "เพิ่ม Tracking":
@@ -5964,6 +6047,7 @@ const App: React.FC = () => {
             onClose={closeModal}
             companyId={currentUser.companyId}
             warehouses={warehouses}
+            products={companyProducts}
           />
         );
       case "editCustomer":

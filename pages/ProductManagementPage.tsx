@@ -14,6 +14,7 @@ interface ProductManagementPageProps {
 const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products, openModal, currentUser, allCompanies }) => {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [companyFilter, setCompanyFilter] = useState<string>('');
+  const [shopFilter, setShopFilter] = useState<string>('');
   const [selectedProductLots, setSelectedProductLots] = useState<any[]>([]);
   const [showLotsModal, setShowLotsModal] = useState(false);
   const [selectedProductName, setSelectedProductName] = useState('');
@@ -182,15 +183,20 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
     return [...new Set(products.map(p => p.category))];
   }, [products]);
 
+  const productShops = useMemo(() => {
+    return [...new Set(products.map(p => p.shop).filter(Boolean))].sort();
+  }, [products]);
+
   const isSuperAdmin = currentUser.role === UserRole.SuperAdmin;
 
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const categoryMatch = !categoryFilter || product.category === categoryFilter;
       const companyMatch = !isSuperAdmin || !companyFilter || product.companyId === parseInt(companyFilter);
-      return categoryMatch && companyMatch;
+      const shopMatch = !shopFilter || product.shop === shopFilter;
+      return categoryMatch && companyMatch && shopMatch;
     });
-  }, [products, categoryFilter, companyFilter, isSuperAdmin]);
+  }, [products, categoryFilter, companyFilter, shopFilter, isSuperAdmin]);
 
   return (
     <div className="p-6">
@@ -224,6 +230,21 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
             ))}
           </select>
         </div>
+        <div className="flex-1">
+          <label htmlFor="shop-filter" className="block text-sm font-medium text-gray-700 mb-1">กรองตามร้านค้า</label>
+          <select
+            id="shop-filter"
+            value={shopFilter}
+            onChange={(e) => setShopFilter(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
+            style={{ colorScheme: 'light' }}
+          >
+            <option value="">ทุกร้านค้า</option>
+            {productShops.map(shop => (
+              <option key={shop} value={shop}>{shop}</option>
+            ))}
+          </select>
+        </div>
         {isSuperAdmin && (
           <div className="flex-1">
             <label htmlFor="company-filter" className="block text-sm font-medium text-gray-700 mb-1">กรองตามบริษัท</label>
@@ -250,6 +271,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
               <th scope="col" className="px-6 py-3">ID</th>
               <th scope="col" className="px-6 py-3">รหัสสินค้า (SKU)</th>
               <th scope="col" className="px-6 py-3">ชื่อสินค้า</th>
+              <th scope="col" className="px-6 py-3">ร้านค้า</th>
               <th scope="col" className="px-6 py-3">ต้นทุน(เฉลี่ย)</th>
               <th scope="col" className="px-6 py-3">ราคาขาย(เฉลี่ย)</th>
               <th scope="col" className="px-6 py-3">สต็อกทั้งหมด</th>
@@ -264,6 +286,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                 <td className="px-6 py-4 font-mono text-xs">{product.id}</td>
                 <td className="px-6 py-4 font-mono text-xs">{product.sku}</td>
                 <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
+                <td className="px-6 py-4 text-gray-600">{product.shop || '-'}</td>
                 <td className="px-6 py-4">฿{getAverageCost(product.id).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className="px-6 py-4">฿{getAveragePrice(product.id).toLocaleString()}</td>
                 <td className="px-6 py-4">

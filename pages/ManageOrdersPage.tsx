@@ -1,7 +1,7 @@
 ﻿
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
+import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createExportLog, listOrderSlips } from '../services/api';
@@ -13,9 +13,11 @@ interface ManageOrdersPageProps {
   orders: Order[];
   customers: Customer[];
   users: User[];
+  products: Product[];
   openModal: (type: ModalType, data: Order) => void;
   onProcessOrders: (orderIds: string[]) => void;
   onCancelOrders: (orderIds: string[]) => void;
+  onUpdateShippingProvider: (orderId: string, shippingProvider: string) => Promise<void> | void;
 }
 
 const DateFilterButton: React.FC<{ label: string, value: string, activeValue: string, onClick: (value: string) => void }> = ({ label, value, activeValue, onClick }) => (
@@ -29,8 +31,9 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
 );
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
+const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic"];
 
-const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, openModal, onProcessOrders, onCancelOrders }) => {
+const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -48,6 +51,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [fPaymentStatus, setFPaymentStatus] = useState<PaymentStatus | ''>('');
   const [fCustomerName, setFCustomerName] = useState('');
   const [fCustomerPhone, setFCustomerPhone] = useState('');
+  const [fShop, setFShop] = useState<string>('');
   // Applied (effective) advanced filter values - only used after user presses Search
   const [afOrderId, setAfOrderId] = useState('');
   const [afTracking, setAfTracking] = useState('');
@@ -57,9 +61,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [afPaymentStatus, setAfPaymentStatus] = useState<PaymentStatus | ''>('');
   const [afCustomerName, setAfCustomerName] = useState('');
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
+  const [afShop, setAfShop] = useState<string>('');
 
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
+  const [shippingSavingIds, setShippingSavingIds] = useState<Set<string>>(new Set());
 
   // Persist filters across page switches
   const filterStorageKey = 'manage_orders_filters';
@@ -91,6 +97,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setFPaymentStatus(saved.fPaymentStatus ?? ''); // Always restore saved payment status
         setFCustomerName(saved.fCustomerName ?? '');
         setFCustomerPhone(saved.fCustomerPhone ?? '');
+        setFShop(saved.fShop ?? '');
         // Applied values (fallback to edited values if not present)
         setAfOrderId(saved.afOrderId ?? saved.fOrderId ?? '');
         setAfTracking(saved.afTracking ?? saved.fTracking ?? '');
@@ -100,6 +107,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setAfPaymentStatus(saved.afPaymentStatus ?? saved.fPaymentStatus ?? '');
         setAfCustomerName(saved.afCustomerName ?? saved.fCustomerName ?? '');
         setAfCustomerPhone(saved.afCustomerPhone ?? saved.fCustomerPhone ?? '');
+        setAfShop(saved.afShop ?? saved.fShop ?? '');
       }
     } catch { }
   }, []);
@@ -120,6 +128,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         fPaymentStatus, // No longer conditional on payTab
         fCustomerName,
         fCustomerPhone,
+        fShop,
         // Applied values
         afOrderId,
         afTracking,
@@ -129,10 +138,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         afPaymentStatus,
         afCustomerName,
         afCustomerPhone,
+        afShop,
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch { }
-  }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -361,6 +371,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     for (const c of customers) m.set(c.id as any, c);
     return m;
   }, [customers]);
+  const productCategoryMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of products) {
+      if (p && typeof p.id !== 'undefined' && p.id !== null) {
+        m.set(Number(p.id), p.shop || '');
+      }
+    }
+    return m;
+  }, [products]);
+  const normalizedAfShop = useMemo(() => (afShop || '').trim().toLowerCase(), [afShop]);
+  const shopOptions = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => {
+      const shop = (p.shop || '').trim();
+      if (shop) set.add(shop);
+    });
+    return Array.from(set).sort();
+  }, [products]);
 
   const finalDisplayedOrders = useMemo(() => {
     let list = displayedOrders.slice();
@@ -393,8 +421,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         return p.includes(phoneTerm);
       });
     }
+    if (normalizedAfShop) {
+      list = list.filter(o => {
+        if (!Array.isArray(o.items) || o.items.length === 0) return false;
+        return o.items.some((it: any) => {
+          const pid = Number(it.productId ?? it.product_id);
+          if (!pid || Number.isNaN(pid)) return false;
+          const shop = productCategoryMap.get(pid);
+          if (!shop) return false;
+          return String(shop).trim().toLowerCase() === normalizedAfShop;
+        });
+      });
+    }
     return list;
-  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, customerById]);
+  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, normalizedAfShop, customerById, productCategoryMap]);
 
   // Pagination logic
   const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[1];
@@ -584,7 +624,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             trackingNumbers: Array.isArray(r.trackingNumbers)
               ? r.trackingNumbers
               : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
-            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({ boxNumber: Number(b.box_number ?? 0), codAmount: Number(b.cod_amount ?? 0) })) : [],
+            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
+              boxNumber: Number(b.box_number ?? 0),
+              codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+              collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+              collectedAmount: Number(b.collected_amount ?? 0),
+              waivedAmount: Number(b.waived_amount ?? 0),
+              paymentMethod: b.payment_method ?? undefined,
+              status: b.status ?? undefined,
+              subOrderId: b.sub_order_id ?? undefined,
+            })) : [],
             notes: r.notes ?? undefined,
           };
           updates[missing[idx]] = mapped;
@@ -653,7 +702,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       return order.items.map(item => {
         const codAmount = order.paymentMethod === PaymentMethod.COD
-          ? (order.boxes?.reduce((sum, box) => sum + box.codAmount, 0) || order.totalAmount)
+          ? (order.boxes?.reduce((sum, box) => sum + (box.collectionAmount ?? box.codAmount), 0) || order.totalAmount)
           : 0;
         const itemCodAmount = (item as any).isFreebie ? 0 : codAmount;
         // (legacy aggregate mapping removed)
@@ -803,7 +852,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             trackingNumbers: Array.isArray(r.trackingNumbers)
               ? r.trackingNumbers
               : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : (fallback.trackingNumbers || [])),
-            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({ boxNumber: Number(b.box_number ?? 0), codAmount: Number(b.cod_amount ?? 0) })) : (fallback.boxes || []),
+            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
+              boxNumber: Number(b.box_number ?? 0),
+              codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+              collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+              collectedAmount: Number(b.collected_amount ?? 0),
+              waivedAmount: Number(b.waived_amount ?? 0),
+              paymentMethod: b.payment_method ?? undefined,
+              status: b.status ?? undefined,
+              subOrderId: b.sub_order_id ?? undefined,
+            })) : (fallback.boxes || []),
             notes: r.notes ?? fallback.notes,
           };
           merged.push(mapped);
@@ -939,8 +997,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     ];
     let c = baseFields.filter(v => !!v && String(v).trim() !== '').length;
     if (afPaymentStatus && String(afPaymentStatus).trim() !== '') c += 1; // No longer conditional on payTab
+    if (afShop && String(afShop).trim() !== '') c += 1;
     return c;
-  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
 
   const clearFilters = () => {
     // Reset all filters
@@ -954,6 +1013,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setActiveDatePreset('today'); // Reset to 'today' instead of 'all'
     setDateRange({ start: '', end: '' });
     // Also clear applied values immediately
+    setFShop('');
     setAfOrderId('');
     setAfTracking('');
     setAfOrderDate({ start: '', end: '' });
@@ -964,6 +1024,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setFCustomerPhone('');
     setAfCustomerName('');
     setAfCustomerPhone('');
+    setAfShop('');
   };
 
   // Apply (Search) advanced filters
@@ -976,7 +1037,28 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfPaymentStatus(fPaymentStatus || '' as any); // Unconditional set
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
+    setAfShop(fShop.trim());
     setShowAdvanced(false);
+  };
+
+  const handleShippingProviderChange = async (orderId: string, shippingProvider: string) => {
+    setShippingSavingIds(prev => {
+      const next = new Set(prev);
+      next.add(orderId);
+      return next;
+    });
+    try {
+      await onUpdateShippingProvider(orderId, shippingProvider);
+    } catch (error) {
+      console.error('Failed to update shipping provider', error);
+      alert('ไม่สามารถอัปเดตขนส่งได้');
+    } finally {
+      setShippingSavingIds(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+    }
   };
 
   // Click outside to collapse advanced filters
@@ -1113,6 +1195,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <option value={PaymentStatus.PreApproved}>Pre Approved</option>
                 <option value={PaymentStatus.Approved}>Approved</option>
                 <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ร้านค้า</label>
+              <select value={fShop} onChange={e => setFShop(e.target.value)} className="w-full p-2 border rounded">
+                <option value="">ทั้งหมด</option>
+                {shopOptions.map((shop) => (
+                  <option key={shop} value={shop}>{shop}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -1260,6 +1351,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           selectable={activeTab === 'pending' || activeTab === 'verified'}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
+          showShippingColumn
+          shippingEditable={activeTab === 'verified'}
+          shippingOptions={SHIPPING_PROVIDERS}
+          shippingSavingIds={Array.from(shippingSavingIds)}
+          onShippingChange={handleShippingProviderChange}
         />
 
         {/* Pagination Controls */}

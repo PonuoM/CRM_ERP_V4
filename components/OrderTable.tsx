@@ -52,6 +52,11 @@ export interface OrderTableProps {
   selectable?: boolean;
   selectedIds?: string[];
   onSelectionChange?: (newSelectedIds: string[]) => void;
+  showShippingColumn?: boolean;
+  shippingEditable?: boolean;
+  shippingOptions?: string[];
+  shippingSavingIds?: string[];
+  onShippingChange?: (orderId: string, provider: string) => void;
 }
 
 // Exported helpers (used by other components)
@@ -167,7 +172,22 @@ const OrderStatusPipeline: React.FC<{ status: OrderStatus }> = ({ status }) => {
 };
 
 
-const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, user, users, onCancelOrder, selectable, selectedIds, onSelectionChange }) => {
+const OrderTable: React.FC<OrderTableProps> = ({
+  orders,
+  customers,
+  openModal,
+  user,
+  users,
+  onCancelOrder,
+  selectable,
+  selectedIds,
+  onSelectionChange,
+  showShippingColumn = false,
+  shippingEditable = false,
+  shippingOptions = [],
+  shippingSavingIds = [],
+  onShippingChange,
+}) => {
   const handleSelectAll = () => {
     if (!onSelectionChange) return;
     if (selectedIds && selectedIds.length === orders.length) onSelectionChange([]);
@@ -219,7 +239,8 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
               <th className="px-6 py-3">ราคา</th>
               <th className="px-6 py-3">ช่องทางการชำระ</th>
               <th className="px-6 py-3">สถานะชำระ</th>
-              <th className="px-6 py-3">ยอดชำระ</th>
+              <th className="px-6 py-3 text-center">ยอดชำระ</th>
+              {showShippingColumn && <th className="px-6 py-3 text-center">ขนส่ง</th>}
               <th className="px-6 py-3">TRACKING</th>
               <th className="px-6 py-3">จัดการ</th>
               <th className="px-6 py-3">สถานะออเดอร์</th>
@@ -265,6 +286,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
               const paid = (order.amountPaid ?? 0) as number;
               const diff = order.totalAmount - paid;
               const paidText = `฿${(paid || 0).toLocaleString()}`;
+              const isSavingShipping = shippingSavingIds?.includes(order.id);
               return (
                 <tr key={order.id} className="bg-white border-b hover:bg-gray-50">
                   {selectable && (
@@ -298,7 +320,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                   <td className="px-6 py-4 font-semibold">฿{order.totalAmount.toLocaleString()}</td>
                   <td className="px-6 py-4">{getPaymentMethodChip(order.paymentMethod)}</td>
                   <td className="px-6 py-4">{getPaymentStatusChip(order.paymentStatus, order.paymentMethod, order.amountPaid, order.totalAmount)}</td>
-                  <td className="px-6 py-4 font-medium min-w-[170px] paid-break">
+                  <td className="px-6 py-4 font-medium min-w-[170px] paid-break text-center">
                     {paid === 0 ? (
                       <span className="text-gray-500">{paidText}</span>
                     ) : diff > 0 ? (
@@ -309,6 +331,25 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
                       <span>{paidText} <span className="text-green-600">(ครบ)</span></span>
                     )}
                   </td>
+                  {showShippingColumn && (
+                    <td className="px-6 py-4 text-center">
+                      {shippingEditable && onShippingChange ? (
+                        <select
+                          value={order.shippingProvider || ''}
+                          onChange={(e) => onShippingChange(order.id, e.target.value)}
+                          disabled={isSavingShipping}
+                          className="w-full px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 shadow-sm transition"
+                        >
+                          <option value="">เลือกขนส่ง</option>
+                          {shippingOptions.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-gray-700">{order.shippingProvider || '-'}</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers.join(', ') || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {/* Always allow managing (e.g., upload slip) */}
@@ -327,7 +368,7 @@ const OrderTable: React.FC<OrderTableProps> = ({ orders, customers, openModal, u
             })}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={selectable ? 12 : 11} className="text-center py-10 text-gray-500">ไม่มีข้อมูลออเดอร์</td>
+                <td colSpan={selectable ? (showShippingColumn ? 13 : 12) : (showShippingColumn ? 12 : 11)} className="text-center py-10 text-gray-500">ไม่มีข้อมูลออเดอร์</td>
               </tr>
             )}
           </tbody>

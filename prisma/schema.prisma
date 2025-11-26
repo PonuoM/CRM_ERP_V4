@@ -630,6 +630,7 @@ model orders {
   postal_code            String?                  @db.VarChar(16)
   recipient_first_name   String?                  @db.VarChar(128)
   recipient_last_name    String?                  @db.VarChar(128)
+  shipping_provider      String?                  @db.VarChar(128)
   shipping_cost          Decimal                  @default(0.00) @db.Decimal(12, 2)
   bill_discount          Decimal                  @default(0.00) @db.Decimal(12, 2)
   total_amount           Decimal                  @default(0.00) @db.Decimal(12, 2)
@@ -862,6 +863,7 @@ model products {
   price                  Decimal                  @default(0.00) @db.Decimal(12, 2)
   stock                  Int                      @default(0)
   company_id             Int
+  shop                   String?                  @db.VarChar(128)
   status                 products_status          @default(Active)
   order_item_allocations order_item_allocations[]
   order_items            order_items[]
@@ -1322,15 +1324,15 @@ enum order_item_allocations_status {
   CANCELLED
 }
 
-enum products_status {
-  Active
-  Inactive
-}
-
 enum product_lots_status {
   Active
   Depleted
   Expired
+}
+
+enum products_status {
+  Active
+  Inactive
 }
 
 enum order_box_collection_logs_old_payment_method {

@@ -877,10 +877,10 @@ function handle_products(PDO $pdo, ?string $id): void {
             break;
         case 'POST':
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO products (sku, name, description, category, unit, cost, price, stock, company_id, shop, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
                 $in['sku'] ?? '', $in['name'] ?? '', $in['description'] ?? null, $in['category'] ?? '', $in['unit'] ?? '',
-                $in['cost'] ?? 0, $in['price'] ?? 0, $in['stock'] ?? 0, $in['companyId'] ?? null, $in['status'] ?? 'Active'
+                $in['cost'] ?? 0, $in['price'] ?? 0, $in['stock'] ?? 0, $in['companyId'] ?? null, $in['shop'] ?? null, $in['status'] ?? 'Active'
             ]);
             json_response(['id' => $pdo->lastInsertId()]);
             break;
@@ -899,7 +899,8 @@ function handle_products(PDO $pdo, ?string $id): void {
                 'price' => 'price',
                 'stock' => 'stock',
                 'status' => 'status',
-                'companyId' => 'company_id'
+                'companyId' => 'company_id',
+                'shop' => 'shop'
             ];
             foreach ($map as $inKey => $col) {
                 if (array_key_exists($inKey, $in)) {
@@ -1490,14 +1491,23 @@ function handle_orders(PDO $pdo, ?string $id): void {
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 
-                $sql = 'SELECT o.id, o.customer_id, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
-                               o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name,
-                               o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
+                $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+                $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
+                $hasShippingProvider = in_array('shipping_provider', $ordersColumns);
+
+                $selectCols = 'o.id, o.customer_id, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
+                               o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name';
+                if ($hasShippingProvider) {
+                    $selectCols .= ', o.shipping_provider';
+                }
+                $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
-                               o.bank_account_id, o.transfer_date
+                               o.bank_account_id, o.transfer_date';
+
+                $sql = "SELECT $selectCols
                         FROM orders o
-                        LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id';
+                        LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
                 
                 $params = [];
                 $whereConditions = [];
@@ -1679,9 +1689,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 $hasBankAccountId = in_array('bank_account_id', $existingColumns);
                 $hasTransferDate = in_array('transfer_date', $existingColumns);
+                $hasShippingProvider = in_array('shipping_provider', $existingColumns);
                 
                 // Build INSERT query dynamically based on available columns
-                $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name', 'shipping_cost', 'bill_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id'];
+                $columns = ['id', 'customer_id', 'company_id', 'creator_id', 'order_date', 'delivery_date', 'street', 'subdistrict', 'district', 'province', 'postal_code', 'recipient_first_name', 'recipient_last_name'];
+                if ($hasShippingProvider) {
+                    $columns[] = 'shipping_provider';
+                }
+                $columns = array_merge($columns, ['shipping_cost', 'bill_discount', 'total_amount', 'payment_method', 'payment_status', 'slip_url', 'amount_paid', 'cod_amount', 'order_status', 'notes', 'sales_channel', 'sales_channel_page_id', 'warehouse_id']);
                 $values = [];
                 $placeholders = [];
                 
@@ -1825,15 +1840,25 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $subOrderIds[] = "{$mainOrderId}-{$i}";
                 }
 
+                $shippingProvider = $in['shippingProvider'] ?? ($in['shipping_provider'] ?? null);
+                if ($shippingProvider !== null && trim((string)$shippingProvider) === '') {
+                    $shippingProvider = null;
+                }
+
                 $values = [
                     $mainOrderId, $in['customerId'], $in['companyId'], $in['creatorId'], $in['orderDate'], $in['deliveryDate'],
                     $addr['street'] ?? null, $addr['subdistrict'] ?? null, $addr['district'] ?? null, $addr['province'] ?? null, $addr['postalCode'] ?? null,
                     $recipientFirstName,
                     $recipientLastName,
+                ];
+                if ($hasShippingProvider) {
+                    $values[] = $shippingProvider;
+                }
+                $values = array_merge($values, [
                     $in['shippingCost'] ?? 0, $in['billDiscount'] ?? 0, $in['totalAmount'] ?? 0,
                     $paymentMethod, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $codAmountValue,
                     $in['orderStatus'] ?? null, $in['notes'] ?? null, $in['salesChannel'] ?? null, $in['salesChannelPageId'] ?? null, $in['warehouseId'] ?? null,
-                ];
+                ]);
                 
                 if ($hasBankAccountId) {
                     $values[] = isset($in['bankAccountId']) && $in['bankAccountId'] !== null && $in['bankAccountId'] !== '' ? (int)$in['bankAccountId'] : null;
@@ -2084,6 +2109,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
             $codAmount     = array_key_exists('codAmount', $in) ? $in['codAmount'] : null; if ($codAmount === '') $codAmount = null;
             $notes         = array_key_exists('notes', $in) ? $in['notes'] : null; if ($notes === '') $notes = null;
             $salesChannel  = array_key_exists('salesChannel', $in) ? $in['salesChannel'] : null; if ($salesChannel === '') $salesChannel = null;
+            $shippingProvider = array_key_exists('shippingProvider', $in) ? trim((string)$in['shippingProvider']) : (array_key_exists('shipping_provider', $in) ? trim((string)$in['shipping_provider']) : null); if ($shippingProvider === '') $shippingProvider = null;
 
             $slipUrl = array_key_exists('slipUrl', $in) ? $in['slipUrl'] : null; if ($slipUrl === '') $slipUrl = null;
             // If slipUrl is a data URL image, persist to file and store path
@@ -2111,7 +2137,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
             $pdo->beginTransaction();
             try {
-                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id FROM orders WHERE id = ? FOR UPDATE');
+                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount FROM orders WHERE id = ? FOR UPDATE');
                 $lockStmt->execute([$id]);
                 $existingOrder = $lockStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$existingOrder) {
@@ -2123,10 +2149,22 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $previousPayment = (string)($existingOrder['payment_status'] ?? '');
                 $customerId = $existingOrder['customer_id'] ?? null;
 
-                $stmt = $pdo->prepare('UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel) WHERE id=?');
-                $stmt->execute([$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $id]);
+                $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+                $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
+                $hasShippingProvider = in_array('shipping_provider', $existingColumns);
 
-                $orderRowStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id FROM orders WHERE id=?');
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel)';
+                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel];
+                if ($hasShippingProvider) {
+                    $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
+                    $params[] = $shippingProvider;
+                }
+                $updateSql .= ' WHERE id=?';
+                $params[] = $id;
+                $stmt = $pdo->prepare($updateSql);
+                $stmt->execute($params);
+
+                $orderRowStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount FROM orders WHERE id=?');
                 $orderRowStmt->execute([$id]);
                 $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$updatedOrder) {
@@ -2203,6 +2241,116 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 }
 
+                if (isset($in['boxes']) && is_array($in['boxes'])) {
+                    $effectivePaymentMethod = $updatedOrder['payment_method'] ?? $existingOrder['payment_method'] ?? 'COD';
+                    $orderTotal = isset($updatedOrder['total_amount']) ? (float)$updatedOrder['total_amount'] : (float)($existingOrder['total_amount'] ?? 0);
+                    $codTarget = $codAmount !== null ? (float)$codAmount : (isset($updatedOrder['cod_amount']) ? (float)$updatedOrder['cod_amount'] : null);
+                    if ($codTarget === null || $codTarget <= 0) {
+                        $codTarget = $orderTotal;
+                    }
+
+                    $normalizedBoxes = [];
+                    foreach ($in['boxes'] as $box) {
+                        $num = isset($box['boxNumber']) ? (int)$box['boxNumber'] : (int)($box['box_number'] ?? 0);
+                        if ($num <= 0) { $num = 1; }
+                        $collectionAmount = (float)($box['collectionAmount'] ?? $box['codAmount'] ?? $box['cod_amount'] ?? 0);
+                        if ($collectionAmount < 0) { $collectionAmount = 0.0; }
+                        $collectedAmount = (float)($box['collectedAmount'] ?? $box['collected_amount'] ?? 0);
+                        if ($collectedAmount < 0) { $collectedAmount = 0.0; }
+                        $waivedAmount = (float)($box['waivedAmount'] ?? $box['waived_amount'] ?? 0);
+                        if ($waivedAmount < 0) { $waivedAmount = 0.0; }
+                        $normalizedBoxes[$num] = [
+                            'box_number' => $num,
+                            'collection_amount' => $collectionAmount,
+                            'collected_amount' => $collectedAmount,
+                            'waived_amount' => $waivedAmount,
+                        ];
+                    }
+
+                    ksort($normalizedBoxes);
+                    $expected = 1;
+                    foreach ($normalizedBoxes as $num => $_) {
+                        if ($num !== $expected) {
+                            throw new RuntimeException('INVALID_BOX_NUMBER_SEQUENCE');
+                        }
+                        $expected++;
+                    }
+
+                    if ($effectivePaymentMethod !== 'COD') {
+                        if (count($normalizedBoxes) !== 1) {
+                            throw new RuntimeException('NON_COD_SINGLE_BOX_ONLY');
+                        }
+                        $normalizedBoxes = [
+                            1 => [
+                                'box_number' => 1,
+                                'collection_amount' => $orderTotal,
+                                'collected_amount' => $normalizedBoxes[1]['collected_amount'] ?? 0,
+                                'waived_amount' => $normalizedBoxes[1]['waived_amount'] ?? 0,
+                            ]
+                        ];
+                        $codTarget = null;
+                    }
+
+                    $boxSum = array_reduce($normalizedBoxes, function($carry, $b) {
+                        return $carry + (float)($b['collection_amount'] ?? 0);
+                    }, 0.0);
+
+                    if ($effectivePaymentMethod === 'COD') {
+                        if (abs($boxSum - $codTarget) > 0.01) {
+                            throw new RuntimeException('COD_BOX_TOTAL_MISMATCH');
+                        }
+                    }
+
+                    $selectBox = $pdo->prepare('SELECT id FROM order_boxes WHERE order_id=? AND box_number=? LIMIT 1');
+                    $updateBox = $pdo->prepare('UPDATE order_boxes SET payment_method=?, collection_amount=?, cod_amount=?, collected_amount=?, waived_amount=?, sub_order_id=?, status=COALESCE(status, \'PENDING\') WHERE order_id=? AND box_number=?');
+                    $insertBox = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,\'PENDING\')');
+
+                    foreach ($normalizedBoxes as $num => $box) {
+                        $subOrderId = "{$id}-{$num}";
+                        $selectBox->execute([$id, $num]);
+                        $existingBoxId = $selectBox->fetchColumn();
+                        if ($existingBoxId) {
+                            $updateBox->execute([
+                                $effectivePaymentMethod,
+                                $box['collection_amount'],
+                                $box['collection_amount'],
+                                $box['collected_amount'],
+                                $box['waived_amount'],
+                                $subOrderId,
+                                $id,
+                                $num,
+                            ]);
+                        } else {
+                            $insertBox->execute([
+                                $id,
+                                $subOrderId,
+                                $num,
+                                $effectivePaymentMethod,
+                                $box['collection_amount'],
+                                $box['collection_amount'],
+                                $box['collected_amount'],
+                                $box['waived_amount'],
+                            ]);
+                        }
+                    }
+
+                    $boxNumbers = array_keys($normalizedBoxes);
+                    if (!empty($boxNumbers)) {
+                        $ph = implode(',', array_fill(0, count($boxNumbers), '?'));
+                        $delParams = array_merge([$id], $boxNumbers);
+                        $del = $pdo->prepare("DELETE FROM order_boxes WHERE order_id=? AND box_number NOT IN ($ph)");
+                        $del->execute($delParams);
+                    }
+
+                    if ($effectivePaymentMethod === 'COD') {
+                        $updCodAmount = $pdo->prepare('UPDATE orders SET cod_amount=? WHERE id=?');
+                        $updCodAmount->execute([$boxSum, $id]);
+                    } else {
+                        $updCodAmount = $pdo->prepare('UPDATE orders SET cod_amount=NULL WHERE id=?');
+                        $updCodAmount->execute([$id]);
+                    }
+                }
+
                 $pdo->commit();
 
                 $response = ['ok' => true];
@@ -2225,6 +2373,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $statusCode = 409;
                 } elseif ($msg === 'ORDER_RELOAD_FAILED') {
                     $statusCode = 500;
+                } elseif (in_array($msg, ['INVALID_BOX_NUMBER_SEQUENCE', 'NON_COD_SINGLE_BOX_ONLY', 'COD_BOX_TOTAL_MISMATCH'])) {
+                    $statusCode = 400;
                 }
                 json_response(['error' => 'ORDER_UPDATE_FAILED', 'message' => $msg], $statusCode);
             }

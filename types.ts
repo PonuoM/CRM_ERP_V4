@@ -372,6 +372,13 @@ export interface LineItem {
 export interface CodBox {
   boxNumber: number;
   codAmount: number;
+  collectionAmount?: number;
+  collectedAmount?: number;
+  waivedAmount?: number;
+  paymentMethod?: PaymentMethod;
+  status?: string;
+  subOrderId?: string;
+  trackingNumber?: string;
 }
 
 export interface TrackingEntry {
@@ -395,6 +402,7 @@ export interface Order {
   orderDate: string;
   deliveryDate: string;
   shippingAddress: Address;
+  shippingProvider?: string;
   items: LineItem[];
   shippingCost: number;
   billDiscount: number;
@@ -433,6 +441,7 @@ export interface Product {
   price: number;
   stock: number;
   companyId: number;
+  shop?: string;
   status?: string;
 }
 

@@ -9,6 +9,7 @@ interface ProductManagementModalProps {
   onClose: () => void;
   companyId: number;
   warehouses?: Warehouse[];
+  products?: Product[];
 }
 
 const FormField: React.FC<{ icon: React.ElementType, label: string, required?: boolean, hint?: string, children: React.ReactNode }> = ({ icon: Icon, label, required, hint, children }) => (
@@ -26,8 +27,18 @@ const productCategories = ['ปุ๋ย', 'ยาฆ่าแมลง', 'เ�
 const productUnits = ['กระสอบ', 'ขวด', 'ซอง', 'ถุง', 'ชิ้น', 'กิโลกรัม'];
 
 
-const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product, onSave, onClose, companyId, warehouses = [] }) => {
+const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product, onSave, onClose, companyId, warehouses = [], products = [] }) => {
   const [activeTab, setActiveTab] = useState<'basic' | 'lots'>('basic');
+  
+  // ดึงรายการร้านค้าที่มีอยู่แล้ว (เฉพาะบริษัทตัวเอง)
+  const existingShops = useMemo(() => {
+    const shops = products
+      .filter(p => p.companyId === companyId && p.shop)
+      .map(p => p.shop!)
+      .filter((shop, index, self) => self.indexOf(shop) === index) // unique
+      .sort();
+    return shops;
+  }, [products, companyId]);
   
   const getInitialState = () => ({
       sku: product?.sku || '',
@@ -38,6 +49,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       cost: product?.cost.toString() || '0',
       price: product?.price.toString() || '0',
       stock: product?.stock.toString() || '0',
+      shop: product?.shop || '',
   });
   
   const [formData, setFormData] = useState(getInitialState);
@@ -152,6 +164,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       price: parseFloat(formData.price) || 0,
       stock: parseInt(formData.stock, 10) || 0,
       companyId,
+      shop: formData.shop || undefined,
       lots: activeTab === 'lots' ? lots : [],
     };
 
@@ -241,6 +254,26 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                                         <option key={unit} value={unit}>{unit}</option>
                                     ))}
                                 </select>
+                            </FormField>
+                            <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        name="shop" 
+                                        value={formData.shop} 
+                                        onChange={handleChange} 
+                                        list="shop-list"
+                                        className="w-full p-2 border rounded-md bg-white text-black" 
+                                        placeholder="เลือกหรือพิมพ์ชื่อร้านค้า" 
+                                    />
+                                    {existingShops.length > 0 && (
+                                        <datalist id="shop-list">
+                                            {existingShops.map((shop, index) => (
+                                                <option key={index} value={shop} />
+                                            ))}
+                                        </datalist>
+                                    )}
+                                </div>
                             </FormField>
                         </div>
                     </div>
