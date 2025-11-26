@@ -604,6 +604,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               discount: Number(it.discount ?? 0),
               isFreebie: !!(it.is_freebie ?? 0),
               boxNumber: Number(it.box_number ?? 0),
+              productId: it.product_id ? Number(it.product_id) : undefined,
               // Preserve raw order_items IDs so CSV export can use them
               orderId:
                 typeof it.order_id !== 'undefined' && it.order_id !== null
@@ -753,10 +754,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
           // ถ้าไม่ใช่แถวแรก (index > 0) ให้เป็นค่าว่าง
 
+          // ค้นหาข้อมูล shop จาก products โดยใช้ productId
+          const product = item.productId ? products.find(p => p.id === item.productId) : null;
+          const shopName = product?.shop ?? 'N/A';
+
           const rowData: { [key: string]: string | number | undefined } = {
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
-            'ชื่อร้านค้า': 'N/A',
+            'ชื่อร้านค้า': shopName,
             'เวลาที่สั่งซื้อ': '', // ว่างเปล่า
             'บัญชีร้านค้า': '', // ว่างเปล่า
             'หมายเลขใบชำระเงิน': '',
@@ -886,6 +891,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               discount: Number(it.discount ?? 0),
               isFreebie: !!(it.is_freebie ?? 0),
               boxNumber: Number(it.box_number ?? 0),
+              productId: it.product_id ? Number(it.product_id) : undefined,
               // Preserve raw order_items IDs so CSV export can use them
               orderId:
                 typeof it.order_id !== 'undefined' && it.order_id !== null
