@@ -721,6 +721,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           // คำนวณ totalAmount สำหรับ orderId นี้
           const orderIdTotalAmount = items.reduce((sum, it) => sum + (it.netTotal ?? 0), 0);
 
+          // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
+          const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
+          const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
+
+          // สร้างชื่อผู้รับพร้อมนามสกุลและ (กล่องที่ X) ถ้ามี boxNumber
+          let recipientName = '';
+          if (index === 0) {
+            const firstName = customer?.firstName ?? '';
+            const lastName = customer?.lastName ?? '';
+            const fullName = `${firstName} ${lastName}`.trim();
+
+            if (fullName && boxNumber !== null) {
+              recipientName = `${fullName} (กล่องที่ ${boxNumber})`;
+            } else {
+              recipientName = fullName;
+            }
+          }
+
           const rowData: { [key: string]: string | number | undefined } = {
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
@@ -736,8 +754,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ค่าขนส่ง': order.shippingCost,
             // แสดงข้อมูลที่อยู่เฉพาะแถวแรกของแต่ละ orderId
             'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
-            'ผู้รับสินค้า': index === 0 ? (customer?.firstName ?? '') : '',
-            'นามสกุลผู้รับสินค้า': index === 0 ? (customer?.lastName ?? '') : '',
+            'ผู้รับสินค้า': recipientName,
+            'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
             'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ?? '') : '',
             'หมายเลขมือถือ': index === 0 ? (customer?.phone ?? '') : '',
             'สถานที่': index === 0 ? address.street : '',
