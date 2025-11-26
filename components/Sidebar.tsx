@@ -413,9 +413,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           ...(canView("nav.cod_management")
             ? ([{ icon: FileText, label: "COD Management" }] as NavItem[])
             : []),
-          ...(canView("nav.cod_record")
-            ? ([{ icon: DollarSign, label: "COD Record" }] as NavItem[])
-            : []),
           ...(user.role === UserRole.Backoffice && canView("nav.statement_management")
             ? ([{ icon: FileText, label: "Statement Management" }] as NavItem[])
             : []),

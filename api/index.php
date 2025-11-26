@@ -136,6 +136,9 @@ if ($resource === '' || $resource === 'health') {
     case 'call_history':
         handle_calls($pdo, $id);
         break;
+    case 'cod_documents':
+        handle_cod_documents($pdo, $id);
+        break;
     case 'cod_records':
         handle_cod_records($pdo, $id);
         break;
@@ -1721,23 +1724,6 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 }
                 
-                $values = [
-                    $in['id'], $in['customerId'], $in['companyId'], $in['creatorId'], $in['orderDate'], $in['deliveryDate'],
-                    $addr['street'] ?? null, $addr['subdistrict'] ?? null, $addr['district'] ?? null, $addr['province'] ?? null, $addr['postalCode'] ?? null,
-                    $recipientFirstName,
-                    $recipientLastName,
-                    $in['shippingCost'] ?? 0, $in['billDiscount'] ?? 0, $in['totalAmount'] ?? 0,
-                    $paymentMethod, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $in['codAmount'] ?? null,
-                    $in['orderStatus'] ?? null, $in['notes'] ?? null, $in['salesChannel'] ?? null, $in['salesChannelPageId'] ?? null, $in['warehouseId'] ?? null,
-                ];
-                
-                if ($hasBankAccountId) {
-                    $values[] = isset($in['bankAccountId']) && $in['bankAccountId'] !== null && $in['bankAccountId'] !== '' ? (int)$in['bankAccountId'] : null;
-                }
-                if ($hasTransferDate) {
-                    $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
-                }
-                
                 // Get main order ID and validate it doesn't have sub order suffix
                 $mainOrderId = $in['id'];
                 // Ensure main order ID doesn't have sub order suffix (e.g., -1, -2)
@@ -1746,33 +1732,114 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $mainOrderId = $matches[1];
                     error_log("Warning: Main order ID had sub order suffix, using base ID: {$mainOrderId}");
                 }
-                
-                // Update the id in values array to use the correct main order ID
-                $values[0] = $mainOrderId;
                 $in['id'] = $mainOrderId;
 
-                // Determine number of boxes (fallback to provided subOrderIds / boxCount where possible)
-                $boxCount = 1;
-                if (!empty($in['boxes']) && is_array($in['boxes'])) {
-                    $boxCount = max(1, count($in['boxes']));
-                } elseif (isset($in['boxCount'])) {
-                    $boxCount = max(1, (int)$in['boxCount']);
-                }
-
-                // Generate per-box order IDs used only for order_items/order allocations
-                $subOrderIds = [];
-                if (!empty($in['subOrderIds']) && is_array($in['subOrderIds'])) {
-                    foreach ($in['subOrderIds'] as $candidate) {
-                        $candidateId = trim((string)$candidate);
-                        if ($candidateId !== '') {
-                            $subOrderIds[] = $candidateId;
+                // Collect box numbers from items to ensure we cover all boxes
+                $itemBoxNumbers = [];
+                $maxItemBoxNumber = 1;
+                if (!empty($in['items']) && is_array($in['items'])) {
+                    foreach ($in['items'] as $it) {
+                        $bn = isset($it['boxNumber']) ? (int)$it['boxNumber'] : (int)($it['box_number'] ?? 1);
+                        $bn = $bn > 0 ? $bn : 1;
+                        $itemBoxNumbers[] = $bn;
+                        if ($bn > $maxItemBoxNumber) {
+                            $maxItemBoxNumber = $bn;
                         }
                     }
                 }
-                if (empty($subOrderIds)) {
-                    for ($i = 1; $i <= $boxCount; $i++) {
-                        $subOrderIds[] = "{$mainOrderId}-{$i}";
+
+                // Normalize boxes payload (support codAmount / collectionAmount)
+                $normalizedBoxes = [];
+                if (!empty($in['boxes']) && is_array($in['boxes'])) {
+                    foreach ($in['boxes'] as $box) {
+                        $num = isset($box['boxNumber']) ? (int)$box['boxNumber'] : (int)($box['box_number'] ?? 0);
+                        if ($num <= 0) { $num = 1; }
+                        $amountRaw = $box['collectionAmount'] ?? $box['codAmount'] ?? $box['amount'] ?? $box['cod_amount'] ?? 0;
+                        $amount = (float)$amountRaw;
+                        if ($amount < 0) { $amount = 0.0; }
+                        $normalizedBoxes[$num] = [
+                            'box_number' => $num,
+                            'collection_amount' => $amount,
+                        ];
                     }
+                }
+
+                // Ensure at least one box exists
+                $primaryAmount = isset($in['codAmount']) && $in['codAmount'] !== '' ? (float)$in['codAmount'] : (float)($in['totalAmount'] ?? 0);
+                if (empty($normalizedBoxes)) {
+                    $normalizedBoxes[1] = ['box_number' => 1, 'collection_amount' => $primaryAmount];
+                }
+
+                // Ensure boxes cover all item box numbers (fill missing with 0)
+                $maxBoxNumber = max($maxItemBoxNumber, (!empty($normalizedBoxes) ? max(array_keys($normalizedBoxes)) : 1));
+                for ($i = 1; $i <= $maxBoxNumber; $i++) {
+                    if (!isset($normalizedBoxes[$i])) {
+                        $normalizedBoxes[$i] = ['box_number' => $i, 'collection_amount' => 0.0];
+                    }
+                }
+                ksort($normalizedBoxes);
+
+                // Validate sequential numbering (1..N)
+                $expectedSeq = 1;
+                foreach ($normalizedBoxes as $num => $_) {
+                    if ($num !== $expectedSeq) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'INVALID_BOX_NUMBER', 'message' => 'boxNumber ต้องเรียงจาก 1 และห้ามข้ามเลข'], 400);
+                        return;
+                    }
+                    $expectedSeq++;
+                }
+
+                $boxCount = count($normalizedBoxes);
+                $totalAmount = isset($in['totalAmount']) ? (float)$in['totalAmount'] : 0.0;
+                $boxTotal = array_reduce($normalizedBoxes, function($carry, $b) {
+                    return $carry + (float)($b['collection_amount'] ?? 0);
+                }, 0.0);
+
+                $effectivePaymentMethod = $paymentMethod ?? 'COD';
+                if ($effectivePaymentMethod === 'COD') {
+                    $expectedCod = isset($in['codAmount']) && $in['codAmount'] !== '' ? (float)$in['codAmount'] : $totalAmount;
+                    $expectedCod = max(0.0, $expectedCod);
+                    if (abs($boxTotal - $expectedCod) > 0.01) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'COD_BOX_TOTAL_MISMATCH', 'message' => 'ยอด COD ต่อกล่องรวมไม่ตรงกับยอด COD ทั้งหมด'], 400);
+                        return;
+                    }
+                    $codAmountValue = $boxTotal;
+                } else {
+                    if ($boxCount !== 1 || $maxItemBoxNumber > 1) {
+                        $pdo->rollBack();
+                        json_response(['error' => 'NON_COD_SINGLE_BOX_ONLY', 'message' => 'ออเดอร์ที่ไม่ใช่ COD ต้องมี 1 กล่อง'], 400);
+                        return;
+                    }
+                    // Force single box for non-COD with full amount
+                    $normalizedBoxes = [1 => ['box_number' => 1, 'collection_amount' => $totalAmount]];
+                    $boxCount = 1;
+                    $boxTotal = $totalAmount;
+                    $codAmountValue = null;
+                }
+
+                // Build per-box order IDs used only for order_items/order allocations
+                $subOrderIds = [];
+                for ($i = 1; $i <= $boxCount; $i++) {
+                    $subOrderIds[] = "{$mainOrderId}-{$i}";
+                }
+
+                $values = [
+                    $mainOrderId, $in['customerId'], $in['companyId'], $in['creatorId'], $in['orderDate'], $in['deliveryDate'],
+                    $addr['street'] ?? null, $addr['subdistrict'] ?? null, $addr['district'] ?? null, $addr['province'] ?? null, $addr['postalCode'] ?? null,
+                    $recipientFirstName,
+                    $recipientLastName,
+                    $in['shippingCost'] ?? 0, $in['billDiscount'] ?? 0, $in['totalAmount'] ?? 0,
+                    $paymentMethod, $in['paymentStatus'] ?? null, $in['slipUrl'] ?? null, $in['amountPaid'] ?? null, $codAmountValue,
+                    $in['orderStatus'] ?? null, $in['notes'] ?? null, $in['salesChannel'] ?? null, $in['salesChannelPageId'] ?? null, $in['warehouseId'] ?? null,
+                ];
+                
+                if ($hasBankAccountId) {
+                    $values[] = isset($in['bankAccountId']) && $in['bankAccountId'] !== null && $in['bankAccountId'] !== '' ? (int)$in['bankAccountId'] : null;
+                }
+                if ($hasTransferDate) {
+                    $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
                 }
 
                 try {
@@ -1785,6 +1852,25 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         return;
                     }
                     throw $e;
+                }
+
+                // Insert order_boxes for per-box COD/collection tracking
+                $boxIns = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,?)');
+                foreach ($normalizedBoxes as $box) {
+                    $boxNumber = (int)($box['box_number'] ?? 1);
+                    $collectionAmount = (float)($box['collection_amount'] ?? 0.0);
+                    $subOrderIdForBox = "{$mainOrderId}-{$boxNumber}";
+                    $boxIns->execute([
+                        $mainOrderId,
+                        $subOrderIdForBox,
+                        $boxNumber,
+                        $paymentMethod ?? 'COD',
+                        $collectionAmount,
+                        $collectionAmount, // keep cod_amount in sync for compatibility
+                        0.0,
+                        0.0,
+                        'PENDING',
+                    ]);
                 }
 
                 if (!empty($in['items']) && is_array($in['items'])) {
@@ -3062,7 +3148,7 @@ function get_order(PDO $pdo, string $id): ?array {
     $o['trackingNumbers'] = array_values(array_unique($tnList));
     
     // Fetch boxes from main order
-    $bx = $pdo->prepare('SELECT box_number, cod_amount FROM order_boxes WHERE order_id=?');
+    $bx = $pdo->prepare('SELECT box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, sub_order_id FROM order_boxes WHERE order_id=? ORDER BY box_number');
     $bx->execute([$mainOrderId]);
     $o['boxes'] = $bx->fetchAll();
     
@@ -3169,6 +3255,139 @@ function handle_calls(PDO $pdo, ?string $id): void {
     }
 }
 
+function handle_cod_documents(PDO $pdo, ?string $id): void {
+    switch (method()) {
+        case 'GET':
+            $companyId = $_GET['companyId'] ?? null;
+            $includeItems = isset($_GET['includeItems']) && $_GET['includeItems'] === 'true';
+            if ($id) {
+                $sql = 'SELECT cd.*, b.bank, b.bank_number 
+                        FROM cod_documents cd 
+                        LEFT JOIN bank_account b ON b.id = cd.bank_account_id
+                        WHERE cd.id = ?';
+                $params = [$id];
+                if ($companyId) {
+                    $sql .= ' AND cd.company_id = ?';
+                    $params[] = $companyId;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $doc = $stmt->fetch();
+                if (!$doc) {
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                }
+                if ($includeItems) {
+                    $itemsStmt = $pdo->prepare('SELECT * FROM cod_records WHERE document_id = ? ORDER BY id');
+                    $itemsStmt->execute([$doc['id']]);
+                    $doc['items'] = $itemsStmt->fetchAll();
+                }
+                json_response($doc);
+            } else {
+                $params = [];
+                $sql = 'SELECT cd.*, b.bank, b.bank_number 
+                        FROM cod_documents cd 
+                        LEFT JOIN bank_account b ON b.id = cd.bank_account_id
+                        WHERE 1=1';
+                if ($companyId) {
+                    $sql .= ' AND cd.company_id = ?';
+                    $params[] = $companyId;
+                }
+                $sql .= ' ORDER BY cd.document_datetime DESC, cd.id DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                json_response($stmt->fetchAll());
+            }
+            break;
+        case 'POST':
+            $in = json_input();
+            $documentNumber = trim((string)($in['document_number'] ?? ''));
+            $documentDatetimeRaw = $in['document_datetime'] ?? null;
+            $companyId = $in['company_id'] ?? null;
+            $bankAccountId = $in['bank_account_id'] ?? null;
+            $notes = $in['notes'] ?? null;
+            $createdBy = $in['created_by'] ?? null;
+            $items = isset($in['items']) && is_array($in['items']) ? $in['items'] : [];
+
+            if ($documentNumber === '' || !$companyId) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'document_number and company_id are required'], 400);
+            }
+            if (empty($items)) {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'items are required'], 400);
+            }
+
+            $documentDatetime = $documentDatetimeRaw ? date('Y-m-d H:i:s', strtotime((string)$documentDatetimeRaw)) : date('Y-m-d H:i:s');
+
+            $totalInput = 0.0;
+            $totalOrder = 0.0;
+            foreach ($items as $it) {
+                $totalInput += (float)($it['cod_amount'] ?? 0);
+                $totalOrder += (float)($it['order_amount'] ?? 0);
+            }
+
+            try {
+                $pdo->beginTransaction();
+                $docStmt = $pdo->prepare('INSERT INTO cod_documents (document_number, document_datetime, bank_account_id, company_id, total_input_amount, total_order_amount, notes, created_by) VALUES (?,?,?,?,?,?,?,?)');
+                $docStmt->execute([
+                    $documentNumber,
+                    $documentDatetime,
+                    $bankAccountId ?: null,
+                    $companyId,
+                    $totalInput,
+                    $totalOrder,
+                    $notes,
+                    $createdBy ?: null,
+                ]);
+                $docId = (int)$pdo->lastInsertId();
+
+                $itemStmt = $pdo->prepare('INSERT INTO cod_records (document_id, tracking_number, order_id, cod_amount, order_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)');
+
+                foreach ($items as $it) {
+                    $trackingNumber = trim((string)($it['tracking_number'] ?? ''));
+                    if ($trackingNumber === '') {
+                        continue;
+                    }
+                    $orderId = isset($it['order_id']) ? trim((string)$it['order_id']) : null;
+                    $codAmount = (float)($it['cod_amount'] ?? 0);
+                    $orderAmount = (float)($it['order_amount'] ?? ($it['received_amount'] ?? 0));
+                    $difference = $codAmount - $orderAmount;
+                    $status = $it['status'] ?? null;
+                    if ($status === null) {
+                        if ($orderId && $orderAmount > 0) {
+                            $status = abs($difference) < 0.01 ? 'matched' : 'unmatched';
+                        } else {
+                            $status = 'pending';
+                        }
+                    }
+                    $itemStmt->execute([
+                        $docId,
+                        $trackingNumber,
+                        $orderId ?: null,
+                        $codAmount,
+                        $orderAmount,
+                        $orderAmount,
+                        $difference,
+                        $status,
+                        $companyId,
+                        $createdBy ?: null,
+                    ]);
+                }
+
+                $pdo->commit();
+                json_response(['id' => $docId]);
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                $code = 500;
+                if (strpos($e->getMessage(), 'uniq_cod_document_company_number') !== false) {
+                    $code = 409;
+                }
+                json_response(['error' => 'CREATE_FAILED', 'message' => $e->getMessage()], $code);
+            }
+            break;
+        default:
+            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+}
+
 function handle_cod_records(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
@@ -3195,20 +3414,28 @@ function handle_cod_records(PDO $pdo, ?string $id): void {
         case 'POST':
             $in = json_input();
             $trackingNumber = $in['tracking_number'] ?? '';
+            $orderId = $in['order_id'] ?? ($in['orderId'] ?? null);
             $deliveryStartDate = $in['delivery_start_date'] ?? null;
             $deliveryEndDate = $in['delivery_end_date'] ?? null;
             $codAmount = isset($in['cod_amount']) ? (float)$in['cod_amount'] : 0;
+            $orderAmount = isset($in['order_amount']) ? (float)$in['order_amount'] : null;
             $receivedAmount = isset($in['received_amount']) ? (float)$in['received_amount'] : 0;
+            if ($orderAmount === null) {
+                $orderAmount = $receivedAmount;
+            }
             $companyId = $in['company_id'] ?? null;
             $createdBy = $in['created_by'] ?? null;
+            $documentId = $in['document_id'] ?? null;
             
             if (!$trackingNumber || !$companyId) {
                 json_response(['error' => 'VALIDATION_FAILED', 'message' => 'tracking_number and company_id are required'], 400);
             }
             
-            $difference = $codAmount - $receivedAmount;
+            $difference = $codAmount - ($orderAmount ?? 0);
             $status = 'pending';
-            if ($receivedAmount === 0) {
+            if ($orderId && $orderAmount !== null && $orderAmount > 0) {
+                $status = abs($difference) < 0.01 ? 'matched' : 'unmatched';
+            } elseif ($receivedAmount === 0) {
                 $status = 'missing';
             } elseif ($receivedAmount === $codAmount) {
                 $status = 'received';
@@ -3216,9 +3443,20 @@ function handle_cod_records(PDO $pdo, ?string $id): void {
                 $status = 'partial';
             }
             
-            $stmt = $pdo->prepare('INSERT INTO cod_records (tracking_number, delivery_start_date, delivery_end_date, cod_amount, received_amount, difference, status, company_id, created_by) VALUES (?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO cod_records (tracking_number, order_id, delivery_start_date, delivery_end_date, cod_amount, order_amount, received_amount, difference, status, company_id, created_by, document_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
-                $trackingNumber, $deliveryStartDate, $deliveryEndDate, $codAmount, $receivedAmount, $difference, $status, $companyId, $createdBy
+                $trackingNumber,
+                $orderId ?: null,
+                $deliveryStartDate,
+                $deliveryEndDate,
+                $codAmount,
+                $orderAmount,
+                $orderAmount ?? $receivedAmount,
+                $difference,
+                $status,
+                $companyId,
+                $createdBy,
+                $documentId ?: null,
             ]);
             json_response(['id' => $pdo->lastInsertId()]);
             break;
@@ -3228,18 +3466,27 @@ function handle_cod_records(PDO $pdo, ?string $id): void {
             $updates = [];
             $params = [];
             
+            if (isset($in['order_id'])) {
+                $updates[] = 'order_id = ?';
+                $params[] = $in['order_id'] !== '' ? $in['order_id'] : null;
+            }
+            if (isset($in['order_amount'])) {
+                $updates[] = 'order_amount = ?';
+                $params[] = (float)$in['order_amount'];
+            }
             if (isset($in['received_amount'])) {
                 $receivedAmount = (float)$in['received_amount'];
                 $updates[] = 'received_amount = ?';
                 $params[] = $receivedAmount;
                 
                 // Recalculate difference and status
-                $stmt = $pdo->prepare('SELECT cod_amount FROM cod_records WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT cod_amount, order_amount FROM cod_records WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
                 if ($row) {
                     $codAmount = (float)$row['cod_amount'];
-                    $difference = $codAmount - $receivedAmount;
+                    $orderAmount = isset($row['order_amount']) ? (float)$row['order_amount'] : $receivedAmount;
+                    $difference = $codAmount - ($orderAmount ?? $receivedAmount);
                     $status = 'pending';
                     if ($receivedAmount === 0) {
                         $status = 'missing';
@@ -3249,6 +3496,31 @@ function handle_cod_records(PDO $pdo, ?string $id): void {
                         $status = 'partial';
                     }
                     
+                    $updates[] = 'difference = ?';
+                    $params[] = $difference;
+                    $updates[] = 'status = ?';
+                    $params[] = $status;
+                }
+            }
+
+            if (isset($in['order_amount']) && !isset($in['received_amount'])) {
+                $stmt = $pdo->prepare('SELECT cod_amount, received_amount, order_id FROM cod_records WHERE id = ?');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $codAmount = (float)$row['cod_amount'];
+                    $receivedAmount = isset($row['received_amount']) ? (float)$row['received_amount'] : (float)$in['order_amount'];
+                    $difference = $codAmount - (float)$in['order_amount'];
+                    $status = 'pending';
+                    if (!empty($row['order_id'])) {
+                        $status = abs($difference) < 0.01 ? 'matched' : 'unmatched';
+                    } elseif ($receivedAmount === 0) {
+                        $status = 'missing';
+                    } elseif ($receivedAmount === $codAmount) {
+                        $status = 'received';
+                    } elseif ($receivedAmount > 0) {
+                        $status = 'partial';
+                    }
                     $updates[] = 'difference = ?';
                     $params[] = $difference;
                     $updates[] = 'status = ?';

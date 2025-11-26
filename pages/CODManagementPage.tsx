@@ -1,8 +1,7 @@
-﻿import React, { useState, useMemo } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   User,
   Order,
-  PaymentMethod,
   PaymentStatus,
 } from "../types";
 import {
@@ -63,6 +62,13 @@ interface RowData {
   manualStatus?: "ศูนย์หาย" | "ไม่สำเร็จ" | "หายศูนย์" | "";
 }
 
+interface BankAccount {
+  id: number;
+  bank: string;
+  bank_number: string;
+  is_active?: boolean;
+}
+
 const createEmptyRow = (id: number): RowData => ({
   id,
   trackingNumber: '',
@@ -73,6 +79,23 @@ const createEmptyRow = (id: number): RowData => ({
 
 const normalizeTrackingNumber = (value: string) =>
   value.replace(/\s+/g, "").toLowerCase();
+
+const parseAmount = (value: string) =>
+  parseFloat(value.replace(/[^\d.-]/g, "")) || 0;
+
+const getTodayDate = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const getCurrentTime = () => {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
 
 const formatCurrency = (amount: number) =>
   `฿${amount.toLocaleString("th-TH", {
@@ -101,6 +124,36 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showReturnedOnly, setShowReturnedOnly] = useState(false);
+
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [documentDate, setDocumentDate] = useState(getTodayDate());
+  const [documentTime, setDocumentTime] = useState(getCurrentTime());
+  const [bankAccountId, setBankAccountId] = useState<number | "">("");
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [isLoadingBanks, setIsLoadingBanks] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const fetchBanks = async () => {
+      if (!user?.companyId) return;
+      try {
+        setIsLoadingBanks(true);
+        const qs = new URLSearchParams({ companyId: String(user.companyId), active: 'true' });
+        const data = await apiFetch(`bank_accounts?${qs.toString()}`);
+        if (Array.isArray(data)) {
+          setBankAccounts(data as BankAccount[]);
+          if (!bankAccountId && data.length > 0) {
+            setBankAccountId(data[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load bank accounts', error);
+      } finally {
+        setIsLoadingBanks(false);
+      }
+    };
+    fetchBanks();
+  }, [user?.companyId]);
 
   const handleInputChange = (index: number, field: 'trackingNumber' | 'codAmount', value: string) => {
     const newRows = [...rows];
@@ -155,44 +208,99 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     setRows(rows.filter((_, i) => i !== index).map((row, i) => ({ ...row, id: i + 1 })));
   };
 
+  const trackingLookup = useMemo(() => {
+    const map = new Map<string, { orderId: string; parentOrderId: string; boxNumber?: number; expectedAmount: number }>();
+    orders.forEach((order) => {
+      const details = (order as any).trackingDetails ?? (order as any).tracking_details ?? [];
+      const boxes = (order as any).boxes ?? [];
+      const boxAmountMap = new Map<number, number>();
+      boxes.forEach((b: any) => {
+        const boxNumRaw = b.boxNumber ?? b.box_number;
+        const boxNum = boxNumRaw !== undefined && boxNumRaw !== null ? Number(boxNumRaw) : NaN;
+        if (!Number.isNaN(boxNum)) {
+          const amt = parseFloat(String(b.codAmount ?? b.cod_amount ?? 0));
+          boxAmountMap.set(boxNum, Number.isFinite(amt) ? amt : 0);
+        }
+      });
+      const fallbackAmount =
+        typeof order.codAmount === 'number'
+          ? order.codAmount
+          : typeof order.totalAmount === 'number'
+            ? order.totalAmount
+            : 0;
+      details.forEach((detail: any) => {
+        const tn = detail.tracking_number ?? detail.trackingNumber ?? '';
+        const normalized = normalizeTrackingNumber(String(tn));
+        if (!normalized) return;
+        if (map.has(normalized)) return;
+        const boxNumber = detail.box_number ?? detail.boxNumber;
+        const boxNum = boxNumber !== undefined && boxNumber !== null ? Number(boxNumber) : undefined;
+        const expectedAmount =
+          boxNum !== undefined && boxAmountMap.has(boxNum)
+            ? boxAmountMap.get(boxNum) || 0
+            : fallbackAmount || 0;
+        const orderId = detail.order_id ?? detail.orderId ?? order.id;
+        const parentOrderId = detail.parent_order_id ?? detail.parentOrderId ?? order.id;
+        map.set(normalized, {
+          orderId,
+          parentOrderId,
+          boxNumber: boxNum,
+          expectedAmount,
+        });
+      });
+      if (details.length === 0 && Array.isArray(order.trackingNumbers)) {
+        order.trackingNumbers.forEach((tn) => {
+          const normalized = normalizeTrackingNumber(String(tn));
+          if (!normalized || map.has(normalized)) return;
+          map.set(normalized, {
+            orderId: order.id,
+            parentOrderId: order.id,
+            boxNumber: undefined,
+            expectedAmount: fallbackAmount || 0,
+          });
+        });
+      }
+    });
+    return map;
+  }, [orders]);
+
   const handleValidate = () => {
     const validatedRows = rows.map(row => {
-      if (!row.trackingNumber.trim() && !row.codAmount.trim()) {
+      const trimmedTracking = row.trackingNumber.trim();
+      if (!trimmedTracking && !row.codAmount.trim()) {
         return { ...row, status: 'unchecked' as ValidationStatus, message: '' };
       }
-      if (!row.trackingNumber.trim() || !row.codAmount.trim()) {
-        return { ...row, status: 'pending' as ValidationStatus, message: 'ข้อมูลไม่ครบถ้วน' };
+      if (!trimmedTracking || !row.codAmount.trim()) {
+        return { ...row, status: 'pending' as ValidationStatus, message: 'กรอกข้อมูลไม่ครบ' };
       }
 
-      const codAmount = parseFloat(row.codAmount.replace(/[^\d.-]/g, ''));
-      if (isNaN(codAmount) || codAmount <= 0) {
-        return { ...row, status: 'pending' as ValidationStatus, message: 'ยอดเงินไม่ถูกต้อง' };
+      const codAmountValue = parseAmount(row.codAmount);
+      if (!codAmountValue || codAmountValue <= 0) {
+        return { ...row, status: 'pending' as ValidationStatus, message: 'จำนวนเงินไม่ถูกต้อง' };
       }
 
-      // Find order by tracking number
-      const matchedOrder = orders.find(
-        (order) =>
-          order.paymentMethod === PaymentMethod.COD &&
-          order.trackingNumbers?.some((tn) =>
-            tn.toLowerCase().includes(row.trackingNumber.toLowerCase())
-          )
-      );
+      const normalized = normalizeTrackingNumber(trimmedTracking);
+      const matched = normalized ? trackingLookup.get(normalized) : undefined;
 
-      if (matchedOrder) {
-        const orderCodAmount = matchedOrder.codAmount || matchedOrder.totalAmount;
-        const difference = codAmount - orderCodAmount;
+      if (matched) {
+        const orderCodAmount = matched.expectedAmount || 0;
+        const difference = codAmountValue - orderCodAmount;
         return {
           ...row,
+          trackingNumber: trimmedTracking,
           codAmount: row.codAmount,
-          orderId: matchedOrder.id,
+          orderId: matched.orderId,
           orderAmount: orderCodAmount,
           difference: difference,
-          status: difference === 0 ? 'matched' as ValidationStatus : 'unmatched' as ValidationStatus,
-          message: difference === 0 ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
+          status: difference === 0 ? ('matched' as ValidationStatus) : ('unmatched' as ValidationStatus),
+          message:
+            difference === 0
+              ? 'ตรงกัน'
+              : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
         };
       }
 
-      return { ...row, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบออเดอร์' };
+      return { ...row, trackingNumber: trimmedTracking, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบ Tracking' };
     });
     setRows(validatedRows);
     setIsVerified(true);
@@ -308,7 +416,20 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       (row) => row.status === "matched" || row.status === "unmatched",
     );
     if (readyRows.length === 0) {
-      alert("ไม่มีรายการที่พร้อมสำหรับนำเข้า");
+      alert("ไม่มีรายการที่พร้อมนำเข้า (สถานะ matched หรือ unmatched)");
+      return;
+    }
+
+    if (!documentNumber.trim()) {
+      alert("กรุณากรอกเลขที่เอกสาร");
+      return;
+    }
+    if (!documentDate || !documentTime) {
+      alert("กรุณากรอกวันที่และเวลาเอกสาร");
+      return;
+    }
+    if (!bankAccountId) {
+      alert("กรุณาเลือกบัญชีธนาคาร");
       return;
     }
 
@@ -325,12 +446,12 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     });
 
     if (uniqueRowsByTracking.size === 0) {
-      alert("ไม่พบข้อมูล COD ที่พร้อมบันทึก");
+      alert("ไม่มีข้อมูล COD ที่จะนำเข้า");
       return;
     }
 
     if (!user?.companyId) {
-      alert("ไม่พบข้อมูลบริษัทสำหรับตรวจสอบรายการ COD");
+      alert("ไม่สามารถระบุบริษัทสำหรับนำเข้า COD");
       return;
     }
 
@@ -358,7 +479,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       );
     } catch (error) {
       console.error("COD duplicate lookup failed", error);
-      alert("ไม่สามารถตรวจสอบรายการ COD ซ้ำได้ กรุณาลองใหม่อีกครั้ง");
+      alert("เกิดข้อผิดพลาดในการตรวจสอบ COD ซ้ำ กรุณาลองใหม่");
       return;
     }
 
@@ -367,7 +488,6 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       .map((normalized) => uniqueRowsByTracking.get(normalized)!)
       .filter(Boolean);
 
-    // Filter out orders that are already paid to prevent duplicates
     const finalRowsToImport = rowsToImport.filter(row => {
       if (!row.orderId) return true;
       const baseId = getBaseOrderId(row.orderId);
@@ -380,24 +500,26 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     });
 
     if (finalRowsToImport.length === 0) {
-      alert("ไม่มีรายการใหม่ให้บันทึก (tracking ทั้งหมดถูกนำเข้าแล้ว หรือออเดอร์มีการชำระเงินแล้ว)");
+      alert("ไม่มีรายการที่จะนำเข้า (tracking อาจซ้ำ หรือออเดอร์มีการจ่ายเงินแล้ว)");
       return;
     }
 
     const skipMessages: string[] = [];
     if (duplicateRowsInUpload.length > 0) {
-      skipMessages.push(`${duplicateRowsInUpload.length} ซ้ำในไฟล์ที่นำเข้า`);
+      skipMessages.push(`${duplicateRowsInUpload.length} รายการซ้ำในไฟล์อัปโหลด`);
     }
     if (existingTrackingNumbers.size > 0) {
-      skipMessages.push(`${existingTrackingNumbers.size} อยู่ในระบบแล้ว`);
+      skipMessages.push(`${existingTrackingNumbers.size} รายการมีอยู่แล้ว`);
     }
     if (rowsToImport.length > finalRowsToImport.length) {
-      skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} ออเดอร์มีการชำระเงินแล้ว`);
+      skipMessages.push(`${rowsToImport.length - finalRowsToImport.length} รายการถูกข้าม (จ่ายแล้ว)`);
     }
 
     const confirmMessage = [
-      `คุณต้องการบันทึกข้อมูล COD จำนวน ${finalRowsToImport.length} รายการหรือไม่?`,
-      skipMessages.length > 0 ? `ระบบจะข้าม ${skipMessages.join(" / ")}` : "",
+      `ยืนยันนำเข้า COD จำนวน ${finalRowsToImport.length} รายการ สำหรับเอกสาร ${documentNumber}?`,
+      skipMessages.length > 0 ? `ข้าม: ${skipMessages.join(" / ")}` : "",
+      `ยอดรวมนำเข้า: ฿${totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
+      `ยอดรวมออเดอร์ที่ตรง: ฿${totalMatchedOrderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -408,27 +530,34 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
     const payloadRows = finalRowsToImport.map((row) => ({
       row,
-      codAmount: parseFloat(row.codAmount.replace(/[^\d.-]/g, "")) || 0,
+      codAmount: parseAmount(row.codAmount),
       orderAmount: row.orderAmount ?? 0,
     }));
 
+    setIsSubmitting(true);
+    const documentDateTime = `${documentDate} ${documentTime || "00:00"}:00`;
+
     try {
-      await Promise.all(
-        payloadRows.map(({ row, codAmount, orderAmount }) =>
-          apiFetch("cod_records", {
-            method: "POST",
-            body: JSON.stringify({
-              tracking_number: row.trackingNumber.trim(),
-              cod_amount: codAmount,
-              received_amount: orderAmount,
-              delivery_start_date: null,
-              delivery_end_date: null,
-              company_id: user.companyId,
-              created_by: user.id,
-            }),
-          }),
-        ),
-      );
+      await apiFetch("cod_documents", {
+        method: "POST",
+        body: JSON.stringify({
+          document_number: documentNumber.trim(),
+          document_datetime: documentDateTime,
+          bank_account_id: bankAccountId === "" ? null : bankAccountId,
+          company_id: user.companyId,
+          created_by: user.id,
+          total_input_amount: totalInputAmount,
+          total_order_amount: totalMatchedOrderAmount,
+          items: payloadRows.map(({ row, codAmount, orderAmount }) => ({
+            tracking_number: row.trackingNumber.trim(),
+            cod_amount: codAmount,
+            order_amount: orderAmount,
+            order_id: row.orderId || null,
+            difference: row.difference ?? codAmount - orderAmount,
+            status: row.status,
+          })),
+        }),
+      });
 
       const totalsByOrder = new Map<
         string,
@@ -466,9 +595,8 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               paymentStatus: nextStatus,
             };
 
-            // Update OrderStatus to PreApproved if PaymentStatus is PreApproved
             if (nextStatus === PaymentStatus.PreApproved) {
-              updatePayload.orderStatus = 'PreApproved'; // Using string literal to avoid import issues if OrderStatus not imported
+              updatePayload.orderStatus = 'PreApproved';
             }
 
             orderUpdates[orderId] = {
@@ -485,19 +613,23 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
       const summaryLines = Array.from(totalsByOrder.entries()).map(
         ([orderId, totals]) =>
-          `${orderId}: รับแล้ว ${formatCurrency(totals.totalPaid)} / ${formatCurrency(
+          `${orderId}: จ่าย ${formatCurrency(totals.totalPaid)} / ${formatCurrency(
             totals.totalExpected,
           )}`,
       );
       const successMessage = summaryLines.length
-        ? `COD import completed ${rowsToImport.length} รายการ\n${summaryLines.join("\n")}`
-        : `COD import completed ${rowsToImport.length} รายการ`;
+        ? `นำเข้าเอกสาร ${documentNumber} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)\n${summaryLines.join("\n")}`
+        : `นำเข้าเอกสาร ${documentNumber} สำเร็จ (รวม ${finalRowsToImport.length} รายการ)`;
       alert(successMessage);
       setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
       setIsVerified(false);
+      setDocumentNumber("");
+      setDocumentTime(getCurrentTime());
     } catch (error) {
       console.error("COD import failed", error);
-      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล COD กรุณาลองใหม่อีกครั้ง");
+      alert("เกิดข้อผิดพลาดในการนำเข้า COD กรุณาลองใหม่");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -524,6 +656,19 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
     return filtered;
   }, [rows, searchTerm, filterStatus, showReturnedOnly]);
+
+  const { totalInputAmount, totalMatchedOrderAmount } = useMemo(() => {
+    return rows.reduce((acc, r) => {
+      const input = parseAmount(r.codAmount);
+      if (input > 0) {
+        acc.totalInputAmount += input;
+      }
+      if (r.orderAmount !== undefined && r.orderAmount !== null) {
+        acc.totalMatchedOrderAmount += Number(r.orderAmount) || 0;
+      }
+      return acc;
+    }, { totalInputAmount: 0, totalMatchedOrderAmount: 0 });
+  }, [rows]);
 
   // Statistics
   const { validCount, unmatchedCount, pendingCount, returnedCount } = useMemo(() => {
@@ -557,6 +702,67 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Tracking Number, COD Amount) แล้ววางลงในตารางด้านล่าง</p>
 
       <div className="bg-white p-4 rounded-lg shadow mb-4">
+        <div className="grid gap-4 md:grid-cols-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">เลขที่เอกสาร</label>
+            <input
+              type="text"
+              value={documentNumber}
+              onChange={(e) => setDocumentNumber(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="เช่น JAT25-11-2025-1556"
+            />
+            <p className="text-xs text-gray-500 mt-1">แนะนำ: ชื่อขนส่ง+วันที่+เวลา</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">วันที่เอกสาร</label>
+              <input
+                type="date"
+                value={documentDate}
+                onChange={(e) => setDocumentDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">เวลา</label>
+              <input
+                type="time"
+                value={documentTime}
+                onChange={(e) => setDocumentTime(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">บัญชีธนาคาร</label>
+            <select
+              value={bankAccountId}
+              onChange={(e) => setBankAccountId(e.target.value ? Number(e.target.value) : "")}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoadingBanks}
+            >
+              <option value="">-- เลือก --</option>
+              {bankAccounts.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {`${b.bank} - ${b.bank_number}`}
+                </option>
+              ))}
+            </select>
+            {isLoadingBanks && <p className="text-xs text-gray-500 mt-1">กำลังโหลดบัญชี...</p>}
+            {!isLoadingBanks && bankAccounts.length === 0 && (
+              <p className="text-xs text-orange-600 mt-1">ไม่พบบัญชีที่ใช้งาน</p>
+            )}
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">ยอดรวม</p>
+            <div className="mt-1 text-sm text-gray-700">ยอดนำเข้า: ฿{totalInputAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+            <div className="text-sm text-gray-700">ยอดออเดอร์ตรง: ฿{totalMatchedOrderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg shadow mb-4">
         <div className="flex justify-between items-center">
           {isVerified ? (
             <div className="flex items-center space-x-4 text-sm">
@@ -582,9 +788,21 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
               />
             </label>
             <button onClick={handleValidate} className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 hover:bg-gray-50">ตรวจสอบข้อมูล</button>
-            <button onClick={handleImport} disabled={!isVerified || validCount + unmatchedCount === 0} className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
+            <button
+              onClick={handleImport}
+              disabled={
+                !isVerified ||
+                validCount + unmatchedCount === 0 ||
+                isSubmitting ||
+                !documentNumber.trim() ||
+                !documentDate ||
+                !documentTime ||
+                !bankAccountId
+              }
+              className="bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
+            >
               <UploadCloud size={16} className="mr-2" />
-              ยืนยันการนำเข้า ({validCount + unmatchedCount})
+              {isSubmitting ? "กำลังนำเข้า..." : `นำเข้าข้อมูล (${validCount + unmatchedCount})`}
             </button>
           </div>
         </div>
@@ -638,7 +856,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
                   )}
                 </td>
                 <td className="px-6 py-1 text-sm text-right">
-                  {row.orderAmount ? (
+                  {row.orderAmount !== undefined && row.orderAmount !== null ? (
                     <span>฿{row.orderAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
                   ) : (
                     <span className="text-gray-400">-</span>

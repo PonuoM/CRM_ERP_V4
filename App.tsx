@@ -201,7 +201,6 @@ import SlipDetail from "./pages/SlipDetail";
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
-import CODRecordPage from "./pages/CODRecordPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
 
@@ -5872,6 +5871,7 @@ const App: React.FC = () => {
           case SLIP_DETAIL_LABEL:
             return <SlipDetail />;
           case "COD Management":
+          case "COD Record":
             return (
               <CODManagementPage
                 user={currentUser}
@@ -5880,8 +5880,6 @@ const App: React.FC = () => {
                 users={companyUsers}
               />
             );
-          case "COD Record":
-            return <CODRecordPage user={currentUser} />;
           case "Statement Management":
             return (
               <StatementManagementPage
