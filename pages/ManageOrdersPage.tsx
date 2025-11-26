@@ -757,15 +757,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
             'ชื่อร้านค้า': 'N/A',
-            'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
-            'บัญชีร้านค้า': 'N/A',
+            'เวลาที่สั่งซื้อ': '', // ว่างเปล่า
+            'บัญชีร้านค้า': '', // ว่างเปล่า
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
             'ช่องทางชำระเงิน': order.paymentMethod,
             'เวลาชำระเงิน': '',
             'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
             'ข้อความจากร้านค้า': '',
-            'ค่าขนส่ง': order.shippingCost,
+            'ค่าขนส่ง': '', // ว่างเปล่า
             // แสดงข้อมูลที่อยู่เฉพาะแถวแรกของแต่ละ orderId
             'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
@@ -780,7 +780,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ประเทศ': index === 0 ? 'ไทย' : '',
             // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
             'รับสินค้าที่ร้านหรือไม่': '',
-            'รหัสสินค้าบนแพลตฟอร์ม': item.id,
+            'รหัสสินค้าบนแพลตฟอร์ม': '', // ว่างเปล่า
             'รหัสสินค้าในระบบ': item.id,
             'ชื่อสินค้า': item.productName,
             'สีและรูปแบบ': '',
