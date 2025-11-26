@@ -279,24 +279,22 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                           </select>
                         </FormField>
                         <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              name="shop"
-                              value={formData.shop}
-                              onChange={handleChange}
-                              list="shop-list"
-                              className="w-full p-2 border rounded-md bg-white text-black"
-                              placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
-                            />
-                            {existingShops.length > 0 && (
-                              <datalist id="shop-list">
-                                {existingShops.map((shop, index) => (
-                                  <option key={index} value={shop} />
-                                ))}
-                              </datalist>
-                            )}
-                          </div>
+                          <input
+                            type="text"
+                            name="shop"
+                            value={formData.shop}
+                            onChange={handleChange}
+                            list="shop-list"
+                            className="w-full p-2 border rounded-md bg-white text-black"
+                            placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+                          />
+                          {existingShops.length > 0 && (
+                            <datalist id="shop-list">
+                              {existingShops.map((shop, index) => (
+                                <option key={index} value={shop} />
+                              ))}
+                            </datalist>
+                          )}
                         </FormField>
                       </div>
                     </div>
