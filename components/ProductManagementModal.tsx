@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, Warehouse } from '../types';
-import { ArrowLeft, Edit, PlusCircle, X, CheckSquare, RefreshCcw, Info, BarChart3, Folder, Tag, AlignLeft, ShoppingCart, DollarSign, Archive, Calculator, Package, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit, PlusCircle, X, CheckSquare, RefreshCcw, Info, BarChart3, Folder, Tag, AlignLeft, ShoppingCart, DollarSign, Archive, Calculator, Package, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { listProductLots } from '@/services/api';
 import { saveProductWithLots, deleteProductWithLots } from '@/services/productApi';
 
@@ -23,6 +23,82 @@ const FormField: React.FC<{ icon: React.ElementType, label: string, required?: b
     {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
   </div>
 );
+
+// Custom Dropdown Component for Shop Selection
+const ShopDropdown: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}> = ({ value, onChange, options }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter(option =>
+    option.toLowerCase().includes(inputValue.toLowerCase())
+  );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+    onChange(newValue);
+    setIsOpen(true);
+  };
+
+  const handleSelectOption = (option: string) => {
+    setInputValue(option);
+    onChange(option);
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          className="w-full p-2 pr-8 border rounded-md bg-white text-black"
+          placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+          autoComplete="off"
+        />
+        <ChevronDown
+          size={16}
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none"
+        />
+      </div>
+      {isOpen && filteredOptions.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+          {filteredOptions.map((option, index) => (
+            <div
+              key={index}
+              onClick={() => handleSelectOption(option)}
+              className="px-3 py-2 cursor-pointer hover:bg-blue-50 transition-colors"
+            >
+              {option}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const productCategories = ['ปุ๋ย', 'ยาฆ่าแมลง', 'เมล็ดพันธุ์', 'วัสดุปลูก', 'อุปกรณ์การเกษตร'];
 const productUnits = ['กระสอบ', 'ขวด', 'ซอง', 'ถุง', 'ชิ้น', 'กิโลกรัม'];
@@ -138,6 +214,10 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   }
+
+  const handleShopChange = (value: string) => {
+    setFormData(prev => ({ ...prev, shop: value }));
+  };
 
   const handleSave = async () => {
     if (!formData.sku || !formData.name || !formData.unit || !formData.cost || !formData.price || !formData.stock) {
@@ -279,22 +359,11 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                           </select>
                         </FormField>
                         <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
-                          <input
-                            type="text"
-                            name="shop"
+                          <ShopDropdown
                             value={formData.shop}
-                            onChange={handleChange}
-                            list="shop-list"
-                            className="w-full p-2 border rounded-md bg-white text-black"
-                            placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+                            onChange={handleShopChange}
+                            options={existingShops}
                           />
-                          {existingShops.length > 0 && (
-                            <datalist id="shop-list">
-                              {existingShops.map((shop, index) => (
-                                <option key={index} value={shop} />
-                              ))}
-                            </datalist>
-                          )}
                         </FormField>
                       </div>
                     </div>
