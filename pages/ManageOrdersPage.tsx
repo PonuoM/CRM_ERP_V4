@@ -739,6 +739,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }
           }
 
+          // กำหนดค่า COD ตามเงื่อนไข
+          let codValue: string | number = '';
+          if (index === 0) {
+            // แถวแรกของ orderId
+            if (orderIdTotalAmount === 0 || !orderIdTotalAmount) {
+              codValue = 'ไม่';
+            } else if (order.paymentMethod === PaymentMethod.COD) {
+              codValue = 'ใช่';
+            } else {
+              codValue = 'ไม่';
+            }
+          }
+          // ถ้าไม่ใช่แถวแรก (index > 0) ให้เป็นค่าว่าง
+
           const rowData: { [key: string]: string | number | undefined } = {
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
@@ -746,7 +760,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'เวลาที่สั่งซื้อ': new Date(order.orderDate).toLocaleString('th-TH'),
             'บัญชีร้านค้า': 'N/A',
             'หมายเลขใบชำระเงิน': '',
-            'COD': item.netTotal ?? 0,
+            'COD': codValue,
             'ช่องทางชำระเงิน': order.paymentMethod,
             'เวลาชำระเงิน': '',
             'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
