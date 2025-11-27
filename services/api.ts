@@ -603,6 +603,8 @@ export async function createOrderSlip(
     bankAccountId?: number;
     transferDate?: string;
     amount?: number;
+    uploadedBy?: number;
+    uploadedByName?: string;
   }
 ) {
   return apiFetch("order_slips", {
@@ -613,6 +615,16 @@ export async function createOrderSlip(
       ...(options?.bankAccountId !== undefined && { bankAccountId: options.bankAccountId }),
       ...(options?.transferDate !== undefined && { transferDate: options.transferDate }),
       ...(options?.amount !== undefined && { amount: options.amount }),
+      ...(options?.uploadedBy !== undefined && {
+        uploadedBy: options.uploadedBy,
+        uploadBy: options.uploadedBy,
+        upload_by: options.uploadedBy,
+      }),
+      ...(options?.uploadedByName !== undefined && {
+        uploadedByName: options.uploadedByName,
+        uploadByName: options.uploadedByName,
+        upload_by_name: options.uploadedByName,
+      }),
     }),
   });
 }
@@ -656,6 +668,8 @@ export async function createOrderSlipWithPayment(data: {
   transferDate: string;
   url?: string | null;
   companyId?: number;
+  uploadBy?: number;
+  uploadByName?: string;
 }): Promise<{ success: boolean; message?: string; data?: any }> {
   // Use direct fetch for legacy PHP endpoint (not through apiFetch router)
   const res = await fetch("api/Slip_DB/insert_order_slip.php", {
@@ -670,6 +684,8 @@ export async function createOrderSlipWithPayment(data: {
       transfer_date: data.transferDate,
       url: data.url,
       company_id: data.companyId,
+      upload_by: data.uploadBy,
+      upload_by_name: data.uploadByName,
     }),
   });
 
@@ -1058,12 +1074,23 @@ export async function updatePageUserConnection(
 }
 
 // Upsell API functions
-export async function checkUpsellEligibility(customerId: string | number): Promise<{ hasEligibleOrders: boolean; eligibleCount: number }> {
-  return apiFetch(`upsell/check?customerId=${customerId}`);
+export async function checkUpsellEligibility(
+  customerId: string | number,
+  userId?: number,
+): Promise<{ hasEligibleOrders: boolean; eligibleCount: number }> {
+  const qs = new URLSearchParams({ customerId: String(customerId) });
+  if (userId != null) {
+    qs.set("userId", String(userId));
+  }
+  return apiFetch(`upsell/check?${qs.toString()}`);
 }
 
-export async function getUpsellOrders(customerId: string | number): Promise<any[]> {
-  return apiFetch(`upsell/orders?customerId=${customerId}`);
+export async function getUpsellOrders(customerId: string | number, userId?: number): Promise<any[]> {
+  const qs = new URLSearchParams({ customerId: String(customerId) });
+  if (userId != null) {
+    qs.set("userId", String(userId));
+  }
+  return apiFetch(`upsell/orders?${qs.toString()}`);
 }
 
 export async function addUpsellItems(orderId: string, creatorId: number, items: any[]): Promise<{ success: boolean; orderId: string; newTotalAmount: number; items: any[] }> {

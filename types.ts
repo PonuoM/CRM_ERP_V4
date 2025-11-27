@@ -402,6 +402,8 @@ export interface OrderSlip {
   id: number;
   url: string;
   createdAt?: string;
+  uploadedBy?: number;
+  uploadedByName?: string;
 }
 
 export interface Order {

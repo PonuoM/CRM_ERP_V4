@@ -2616,6 +2616,8 @@ const App: React.FC = () => {
               await createOrderSlip(createdOrderId, slipContent, {
                 bankAccountId,
                 transferDate,
+                uploadedBy: currentUser.id,
+                uploadedByName: `${currentUser.firstName} ${currentUser.lastName}`,
               });
             } catch (err) {
               console.error("Failed to upload slip", err);

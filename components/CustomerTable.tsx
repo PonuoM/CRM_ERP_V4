@@ -14,17 +14,18 @@ interface CustomerTableProps {
   hideGrade?: boolean;
   storageKey?: string;
   onUpsellClick?: (customer: Customer) => void;
+  currentUserId?: number;
 }
 
 const NOOP_STORAGE: Storage = {
   get length() {
     return 0;
   },
-  clear: () => {},
+  clear: () => { },
   getItem: () => null,
   key: () => null,
-  removeItem: () => {},
-  setItem: () => {},
+  removeItem: () => { },
+  setItem: () => { },
 };
 
 const lifecycleLabel = (code: string) =>
@@ -56,6 +57,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     hideGrade = false,
     storageKey,
     onUpsellClick,
+    currentUserId,
   } = props;
 
   const defaultItemsPerPage = pageSizeOptions[0] ?? 10;
@@ -117,7 +119,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   const TagColumn: React.FC<{ customer: Customer }> = ({ customer }) => {
     const [hasUpsell, setHasUpsell] = useState(false);
     const [upsellLoading, setUpsellLoading] = useState(true);
-    
+
     useEffect(() => {
       let mounted = true;
       const checkUpsell = async () => {
@@ -128,7 +130,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             setUpsellLoading(false);
             return;
           }
-          const result = await checkUpsellEligibility(customerId);
+          const result = await checkUpsellEligibility(customerId, currentUserId);
           if (mounted) {
             setHasUpsell(result.hasEligibleOrders);
             setUpsellLoading(false);
@@ -141,17 +143,17 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
           }
         }
       };
-      
+
       checkUpsell();
       // Re-check every 30 seconds
       const interval = setInterval(checkUpsell, 30000);
-      
+
       return () => {
         mounted = false;
         clearInterval(interval);
       };
-    }, [customer.id, customer.customerId, customer.customerRefId]);
-    
+    }, [customer.id, customer.customerId, customer.customerRefId, currentUserId]);
+
     const visibleTags = customer.tags.slice(0, 2);
     const hiddenCount = customer.tags.length - visibleTags.length;
     const showUpsellTag = hasUpsell && !upsellLoading;
@@ -291,8 +293,8 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             </tr>
           </thead>
           <tbody>
-              {currentCustomers.length > 0 ? (
-                currentCustomers.map((customer, index) => {
+            {currentCustomers.length > 0 ? (
+              currentCustomers.map((customer, index) => {
                 const remainingTime = getRemainingTimeRounded(
                   customer.ownershipExpires,
                 );
@@ -437,13 +439,12 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                   typeof page === "number" ? handlePageChange(page) : undefined
                 }
                 disabled={page === "..."}
-                className={`px-3 py-1 text-sm rounded ${
-                  page === currentPage
+                className={`px-3 py-1 text-sm rounded ${page === currentPage
                     ? "bg-blue-600 text-white"
                     : page === "..."
                       ? "text-gray-400 cursor-default"
                       : "text-gray-700 hover:bg-gray-100"
-                }`}
+                  }`}
               >
                 {page}
               </button>

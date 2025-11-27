@@ -532,6 +532,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
         openModal={(type, data) => { if (openModal) openModal(type, data); }}
         pageSizeOptions={[5, 10, 20, 50, 100, 500]}
         storageKey={`manageCustomers:${currentUser.id}`}
+        currentUserId={currentUser.id}
         onUpsellClick={(customer) => {
           if (onUpsellClick) {
             onUpsellClick(customer);

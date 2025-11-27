@@ -154,7 +154,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           setUpsellLoading(false);
           return;
         }
-        const result = await checkUpsellEligibility(customerId);
+        const result = await checkUpsellEligibility(customerId, user?.id);
         if (mounted) {
           setHasUpsell(result.hasEligibleOrders);
           setUpsellLoading(false);
@@ -176,7 +176,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [customer.id, customer.customerId, customer.customerRefId]);
+  }, [customer.id, customer.customerId, customer.customerRefId, user?.id]);
 
   const eligibleOwners = useMemo(() => {
     const sameCompanyUsers =

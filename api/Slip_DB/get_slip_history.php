@@ -44,6 +44,8 @@ try {
               os.bank_account_id,
               os.transfer_date,
               os.url,
+              os.upload_by,
+              os.upload_by_name,
               os.created_at,
               os.updated_at,
               ba.bank,
@@ -69,6 +71,8 @@ try {
       "bank_number" => (string) ($row["bank_number"] ?? "N/A"),
       "transfer_date" => (string) $row["transfer_date"],
       "url" => (string) $row["url"],
+      "upload_by" => isset($row["upload_by"]) ? (int) $row["upload_by"] : null,
+      "upload_by_name" => isset($row["upload_by_name"]) ? (string) $row["upload_by_name"] : null,
       "created_at" => (string) $row["created_at"],
       "updated_at" => (string) $row["updated_at"],
     ];

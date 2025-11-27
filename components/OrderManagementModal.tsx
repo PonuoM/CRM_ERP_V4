@@ -3,7 +3,7 @@ import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Ac
 import Modal from './Modal';
 import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
-import { apiFetch, createOrderSlip, deleteOrderSlip, listBankAccounts } from '../services/api';
+import { apiFetch, createOrderSlip, deleteOrderSlip, listBankAccounts, listOrderSlips } from '../services/api';
 
 interface OrderManagementModalProps {
   order: Order;
@@ -91,15 +91,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     currentUser?.role === UserRole.Backoffice ||
     currentUser?.role === UserRole.Admin ||
     currentUser?.role === UserRole.SuperAdmin;
-  const initialSlips = Array.isArray((order as any).slips) ? (order as any).slips.map((s: any) => ({ id: Number(s.id), url: String(s.url) })) : [];
+  const initialSlips = Array.isArray((order as any).slips)
+    ? (order as any).slips.map((s: any) => ({
+      id: Number(s.id),
+      url: String(s.url),
+      uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+      uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+      createdAt: s.createdAt ?? s.created_at,
+    }))
+    : [];
   const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || (initialSlips[0]?.url ?? null));
-  const [slips, setSlips] = useState<{ id: number; url: string }[]>(initialSlips);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [slips, setSlips] = useState<{ id: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string }[]>(initialSlips);
+  const [lightboxSlip, setLightboxSlip] = useState<{ id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string } | null>(null);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
-
+  const resolveUploaderName = (uploadedBy?: number, uploadedByName?: string) => {
+    if (uploadedByName) return uploadedByName;
+    if (!uploadedBy) return undefined;
+    const u = users.find(user => user.id === uploadedBy);
+    return u ? `${u.firstName} ${u.lastName}` : undefined;
+  };
 
   useEffect(() => {
-    const nextSlips = Array.isArray((order as any).slips) ? (order as any).slips.map((s: any) => ({ id: Number(s.id), url: String(s.url) })) : [];
+    const nextSlips = Array.isArray((order as any).slips)
+      ? (order as any).slips.map((s: any) => ({
+        id: Number(s.id),
+        url: String(s.url),
+        uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+        uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+        createdAt: s.createdAt ?? s.created_at,
+      }))
+      : [];
     setCurrentOrder(order);
     setSlips(nextSlips);
     setSlipPreview(order.slipUrl || (nextSlips[0]?.url ?? null));
@@ -257,7 +278,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
         }));
         if (Array.isArray(r.slips)) {
           try {
-            const nextSlips = r.slips.map((s: any) => ({ id: Number(s.id), url: String(s.url) }));
+            const nextSlips = r.slips.map((s: any) => ({
+              id: Number(s.id),
+              url: String(s.url),
+              uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+              uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+              createdAt: s.createdAt ?? s.created_at,
+            }));
             setSlips(nextSlips);
             if (!prev.slipUrl && !slipPreview && nextSlips.length > 0) {
               setSlipPreview(nextSlips[0].url);
@@ -270,6 +297,64 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     })();
     return () => { cancelled = true; };
   }, [order]);
+
+  // Ensure slip history is available even when the minimal order payload already has a slipUrl
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res: any = await listOrderSlips(order.id);
+        if (cancelled) return;
+        const fetched = Array.isArray(res) ? res : (Array.isArray(res?.rows) ? res.rows : []);
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          const normalized = fetched
+            .map((s: any) => ({
+              id: Number(s.id),
+              url: String(s.url),
+              uploadedBy: typeof s.uploadedBy !== 'undefined'
+                ? Number(s.uploadedBy)
+                : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+              uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+              createdAt: s.createdAt ?? s.created_at,
+            }))
+            .filter(slip => slip.id && slip.url);
+          if (normalized.length > 0) {
+            setSlips(prev => {
+              const byId: Record<number, typeof normalized[number]> = {};
+              normalized.forEach(slip => { byId[slip.id] = slip; });
+
+              const merged = prev.map(slip => {
+                const enriched = byId[slip.id];
+                if (enriched) {
+                  return {
+                    ...slip,
+                    ...enriched,
+                    uploadedBy: enriched.uploadedBy ?? slip.uploadedBy,
+                    uploadedByName: enriched.uploadedByName ?? slip.uploadedByName,
+                    createdAt: enriched.createdAt ?? slip.createdAt,
+                  };
+                }
+                return slip;
+              });
+
+              // add new ones not previously in list
+              normalized.forEach(slip => {
+                if (!merged.some(s => s.id === slip.id || s.url === slip.url)) {
+                  merged.unshift(slip);
+                }
+              });
+
+              return merged;
+            });
+            setSlipPreview(prev => prev ?? normalized[0].url);
+          }
+        }
+      } catch (e) {
+        console.error('load order slips', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [order.id]);
 
   const customer = useMemo(() => {
     return customers.find(c => {
@@ -292,6 +377,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     setCurrentOrder(prev => ({ ...prev, [field]: value }));
   };
 
+  const openSlipViewer = (slip: { id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string }) => {
+    setLightboxSlip(slip);
+  };
+
   const handleSlipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.currentTarget as HTMLInputElement | null;
     const files = inputEl?.files ? Array.from(inputEl.files) : [];
@@ -302,9 +391,24 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
         reader.onloadend = async () => {
           const dataUrl = reader.result as string;
           try {
-            const res = await createOrderSlip(currentOrder.id, dataUrl);
+            const res = await createOrderSlip(currentOrder.id, dataUrl, {
+              uploadedBy: currentUser?.id,
+              uploadedByName: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined,
+            });
             if (res && res.id && res.url) {
-              setSlips(prev => [{ id: Number(res.id), url: String(res.url) }, ...prev]);
+              const uploaded = {
+                id: Number(res.id),
+                url: String(res.url),
+                uploadedBy: typeof res.uploadedBy !== 'undefined'
+                  ? Number(res.uploadedBy)
+                  : (typeof res.uploaded_by !== 'undefined'
+                    ? Number(res.uploaded_by)
+                    : (typeof res.upload_by !== 'undefined' ? Number(res.upload_by) : currentUser?.id)),
+                uploadedByName: res.uploadedByName ?? res.uploaded_by_name ?? res.upload_by_name ?? (currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined),
+                createdAt: res.createdAt ?? res.created_at ?? new Date().toISOString(),
+              };
+              setSlips(prev => [uploaded, ...prev]);
+              setSlipPreview(prev => prev ?? uploaded.url);
             }
           } catch (err) { console.error('upload slip', err); }
           resolve();
@@ -321,23 +425,41 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     handleFieldChange('slipUrl', undefined);
     handleFieldChange('paymentStatus', PaymentStatus.Unpaid);
   };
-  const handleDeleteSlip = async (slipId: number) => {
+  const handleDeleteSlip = async (slipId?: number, slipUrl?: string) => {
+    const confirmDelete = window.confirm('ต้องการลบสลิปนี้หรือไม่?');
+    if (!confirmDelete) return;
+    if (!slipId) {
+      removeSlip();
+      setLightboxSlip(null);
+      return;
+    }
     try {
       await deleteOrderSlip(slipId);
-      setSlips(prev => prev.filter(s => s.id !== slipId));
+      setSlips(prev => {
+        const next = prev.filter(s => s.id !== slipId);
+        const nextPreview = next[0]?.url ?? null;
+        setSlipPreview(prevPreview => {
+          if (!prevPreview) return nextPreview;
+          if (slipUrl && prevPreview === slipUrl) return nextPreview;
+          return prevPreview;
+        });
+        return next;
+      });
     } catch (e) { console.error('delete slip', e); }
+    setLightboxSlip(null);
   };
 
   const hasTransferSlip = Boolean(slipPreview || currentOrder.slipUrl || slips.length > 0);
 
   const handleAcceptSlip = () => {
-    const totalAmount = Number(currentOrder.totalAmount || 0);
-    const paidAmount =
+    const totalAmount = Number(calculatedTotals.totalAmount || 0);
+    const basePaidAmount =
       currentOrder.amountPaid && currentOrder.amountPaid > 0
         ? currentOrder.amountPaid
-        : totalAmount > 0
-          ? totalAmount
-          : 0;
+        : 0;
+    const paidAmount = totalAmount > 0
+      ? Math.max(basePaidAmount, totalAmount)
+      : basePaidAmount;
     if (paidAmount <= 0) {
       alert("กรุณาระบุจำนวนเงินที่ได้รับก่อนยืนยันสลิป");
       return;
@@ -356,6 +478,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
     const updated: Order = {
       ...currentOrder,
+      totalAmount: calculatedTotals.totalAmount,
       amountPaid: paidAmount,
       paymentStatus: newPaymentStatus,
       verificationInfo: verificationInfo,
@@ -370,7 +493,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     let newPaymentStatus = currentOrder.paymentStatus;
     if (newAmount === 0) {
       newPaymentStatus = PaymentStatus.Unpaid;
-    } else if (newAmount < currentOrder.totalAmount) {
+    } else if (newAmount < calculatedTotals.totalAmount) {
       newPaymentStatus = PaymentStatus.PendingVerification; // partial
     } else {
       newPaymentStatus = PaymentStatus.Verified; // paid or overpaid (Verified)
@@ -402,7 +525,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
   // Removed manual confirm button: payment status derives from amountPaid
 
   const handleSave = () => {
-    onSave(currentOrder);
+    const updatedOrder = { ...currentOrder, totalAmount: calculatedTotals.totalAmount };
+    setCurrentOrder(updatedOrder);
+    onSave(updatedOrder);
   };
 
   const formatAddress = (address?: Address | null) => {
@@ -438,12 +563,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     return parts.length > 0 ? parts.join(", ") : "-";
   }
 
-  const remainingBalance = useMemo(() => {
-    const paid = currentOrder.amountPaid || 0;
-    return currentOrder.totalAmount - paid; // negative means overpaid
-  }, [currentOrder.totalAmount, currentOrder.amountPaid]);
-
-  // คำนวณยอดรวมจากรายการทั้งหมด
+  // Totals derived from items minus discounts plus shipping
   const calculatedTotals = useMemo(() => {
     const itemsSubtotal = currentOrder.items.reduce((sum, item) => {
       const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
@@ -462,6 +582,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       totalAmount
     };
   }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount]);
+
+  const remainingBalance = useMemo(() => {
+    const paid = currentOrder.amountPaid || 0;
+    return calculatedTotals.totalAmount - paid; // negative means overpaid
+  }, [calculatedTotals.totalAmount, currentOrder.amountPaid]);
 
   const derivedAmountStatus = useMemo(() => {
     const diff = remainingBalance;
@@ -750,7 +875,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
             <InfoCard icon={CreditCard} title="การชำระเงิน">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-medium text-gray-600">วิธีชำระ: {currentOrder.paymentMethod}</span>
-                {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod, currentOrder.amountPaid, currentOrder.totalAmount)}
+                {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod, currentOrder.amountPaid, calculatedTotals.totalAmount)}
               </div>
               <div className="flex items-center justify-between mb-2 text-xs">
                 <span className="text-gray-500">สถานะการชำระ</span>
@@ -781,12 +906,45 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                   <div className="space-y-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
-                      {(slipPreview || currentOrder.slipUrl) ? (
+                      {slips.length > 0 ? (
+                        <div className="flex flex-wrap gap-3 mb-2">
+                          {slips.map(slip => {
+                            const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+                            return (
+                              <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
+                                <img
+                                  onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                                  src={slip.url}
+                                  alt="Slip preview"
+                                  className="w-full h-full object-contain cursor-pointer"
+                                />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                                  <button
+                                    onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                                    className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                                  >
+                                    <Eye size={16} className="mr-1" /> ดู
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (slipPreview || currentOrder.slipUrl) ? (
                         <div className="group relative w-32 h-32 border rounded-md p-1">
-                          <img onClick={() => setLightboxUrl(slipPreview || (currentOrder.slipUrl as string))} src={slipPreview || (currentOrder.slipUrl as string)} alt="Slip preview" className="w-full h-full object-contain" />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center space-x-2">
-                            <a href={slipPreview || (currentOrder.slipUrl as string)} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/80 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"><Eye size={16} /></a>
-                            <button onClick={removeSlip} className="p-2 bg-white/80 rounded-full text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
+                          <img
+                            onClick={() => openSlipViewer({ url: slipPreview || (currentOrder.slipUrl as string) })}
+                            src={slipPreview || (currentOrder.slipUrl as string)}
+                            alt="Slip preview"
+                            className="w-full h-full object-contain cursor-pointer"
+                          />
+                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                            <button
+                              onClick={() => openSlipViewer({ url: slipPreview || (currentOrder.slipUrl as string) })}
+                              className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                            >
+                              <Eye size={16} className="mr-1" /> ดู
+                            </button>
                           </div>
                         </div>
                       ) : (
@@ -882,32 +1040,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                       <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
                       {slips.length > 0 ? (
                         <div className="flex flex-wrap gap-3 mb-2">
-                          {slips.map(slip => (
-                            <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
-                              <img
-                                onClick={() => setLightboxUrl(slip.url)}
-                                src={slip.url}
-                                alt="Slip preview"
-                                className="w-full h-full object-contain cursor-pointer"
-                              />
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center space-x-2">
-                                <a
-                                  href={slip.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 bg-white/80 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Eye size={16} />
-                                </a>
-                                <button
-                                  onClick={() => handleDeleteSlip(slip.id)}
-                                  className="p-2 bg-white/80 rounded-full text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                          {slips.map(slip => {
+                            const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+                            return (
+                              <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
+                                <img
+                                  onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                                  src={slip.url}
+                                  alt="Slip preview"
+                                  className="w-full h-full object-contain cursor-pointer"
+                                />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                                  <button
+                                    onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                                    className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                                  >
+                                    <Eye size={16} className="mr-1" /> ดู
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="text-xs text-gray-400 mb-2">ยังไม่มีหลักฐานการชำระเงิน</p>
@@ -1014,15 +1167,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                   <div className="mt-2">
                     <h4 className="text-xs font-medium text-gray-500 mb-1">สลิปที่อัปโหลด</h4>
                     <div className="flex flex-wrap gap-3">
-                      {slips.map(slip => (
-                        <div key={slip.id} className="relative w-24 h-24 border rounded-md overflow-hidden group">
-                          <img onClick={() => setLightboxUrl(slip.url)} src={slip.url} alt="Slip" className="w-full h-full object-cover" />
-                          <button onClick={() => handleDeleteSlip(slip.id)} title="ลบ"
-                            className="absolute top-1 right-1 bg-white/80 rounded-full text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
+                      {slips.map(slip => {
+                        const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+                        return (
+                          <div key={slip.id} className="relative w-24 h-24 border rounded-md overflow-hidden group">
+                            <img
+                              onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                              src={slip.url}
+                              alt="Slip"
+                              className="w-full h-full object-cover cursor-pointer"
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+                              <button
+                                onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+                                className="p-1.5 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                              >
+                                <Eye size={14} className="mr-1" /> ดู
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1213,13 +1378,57 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
           </button>
         </div>
       </div >
-      {lightboxUrl && (<div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setLightboxUrl(null)}><img src={lightboxUrl} className="max-w-[90vw] max-h-[90vh] rounded" /></div>)}
+      {lightboxSlip && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-4 md:p-6 relative">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">สลิปการชำระเงิน</h3>
+              <button onClick={() => setLightboxSlip(null)} className="text-gray-500 hover:text-gray-700">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-center bg-gray-50 rounded-md p-2 border">
+                <img src={lightboxSlip.url} alt="Slip" className="max-h-[70vh] object-contain rounded" />
+              </div>
+              <div className="space-y-2 text-sm text-gray-700">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="text-gray-500">ผู้อัพโหลด</span>
+                  <span className="font-medium">{resolveUploaderName(lightboxSlip.uploadedBy, lightboxSlip.uploadedByName) ?? 'ไม่ทราบ'}</span>
+                </div>
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="text-gray-500">เวลาอัพโหลด</span>
+                  <span className="font-medium">
+                    {lightboxSlip.createdAt
+                      ? new Date(lightboxSlip.createdAt).toLocaleString('th-TH')
+                      : '-'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                onClick={() => setLightboxSlip(null)}
+                className="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
+              >
+                ปิด
+              </button>
+              <button
+                onClick={() => handleDeleteSlip(lightboxSlip.id, lightboxSlip.url)}
+                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!lightboxSlip.id && !slipPreview}
+              >
+                ลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal >
   );
 };
 
 export default OrderManagementModal;
-
 
 
 

@@ -24,6 +24,8 @@ import {
   listBankAccounts,
   getUpsellOrders,
   addUpsellItems,
+  createOrderSlip,
+  listOrderSlips,
 } from "../services/api";
 import { formatThaiDateTime } from "../utils/time";
 
@@ -41,6 +43,14 @@ interface TransferSlipUpload {
   id: number;
   name: string;
   dataUrl: string;
+}
+
+interface UpsellSlip {
+  id?: number;
+  url: string;
+  uploadedBy?: number | null;
+  uploadedByName?: string | null;
+  createdAt?: string;
 }
 
 const sanitizeAddressValue = (value?: string | null): string => {
@@ -276,6 +286,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [upsellEditingItemId, setUpsellEditingItemId] = useState<number | null>(null);
   const [upsellSelectorTab, setUpsellSelectorTab] = useState<"products" | "promotions">("products");
   const [upsellSelectorSearchTerm, setUpsellSelectorSearchTerm] = useState("");
+  const [upsellSlips, setUpsellSlips] = useState<UpsellSlip[]>([]);
+  const [upsellSlipLoading, setUpsellSlipLoading] = useState(false);
+  const [upsellSlipError, setUpsellSlipError] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
   const [selectedSubDistrict, setSelectedSubDistrict] = useState<number | null>(
     null,
@@ -349,6 +362,35 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const upsellUsersById = useMemo(
     () => new Map(users.map((u) => [u.id, u])),
     [users],
+  );
+
+  const normalizeUpsellSlip = useCallback(
+    (raw: any): UpsellSlip => ({
+      id: raw?.id ? Number(raw.id) : undefined,
+      url: raw?.url ?? "",
+      uploadedBy: (() => {
+        const val =
+          raw?.uploadedBy ??
+          raw?.uploaded_by ??
+          raw?.upload_by ??
+          raw?.uploadBy ??
+          raw?.upload_by_id;
+        const num = val == null ? undefined : Number(val);
+        return Number.isFinite(num) ? num : undefined;
+      })(),
+      uploadedByName:
+        raw?.uploadedByName ??
+        raw?.uploaded_by_name ??
+        raw?.upload_by_name ??
+        null,
+      createdAt: raw?.createdAt ?? raw?.created_at,
+    }),
+    [],
+  );
+
+  const upsellSlipInputId = useMemo(
+    () => (selectedUpsellOrder ? `upsell-slip-${selectedUpsellOrder.id}` : "upsell-slip"),
+    [selectedUpsellOrder?.id],
   );
 
   const normalizeUpsellItems = (items: any[] | undefined | null): LineItem[] => {
@@ -459,7 +501,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     let cancelled = false;
     setUpsellLoading(true);
     setUpsellError(null);
-    getUpsellOrders(customerId)
+    getUpsellOrders(customerId, currentUser?.id)
       .then((list: any) => {
         if (cancelled) return;
         const normalized = normalizeUpsellOrders(list);
@@ -485,7 +527,56 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     initialData?.customer?.id,
     initialData?.customer?.customerId,
     initialData?.customer?.customerRefId,
+    currentUser?.id,
   ]);
+
+  useEffect(() => {
+    const pm = selectedUpsellOrder
+      ? normalizePaymentMethod(
+        selectedUpsellOrder.paymentMethod ?? (selectedUpsellOrder as any).payment_method,
+      )
+      : undefined;
+
+    if (!selectedUpsellOrder || pm !== PaymentMethod.Transfer) {
+      setUpsellSlips([]);
+      setUpsellSlipError(null);
+      setUpsellSlipLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setUpsellSlipLoading(true);
+    setUpsellSlipError(null);
+    listOrderSlips(String(selectedUpsellOrder.id))
+      .then((list: any[]) => {
+        if (cancelled) return;
+        const normalized = (list || [])
+          .map((item) => normalizeUpsellSlip(item))
+          .filter((s) => s.url);
+        setUpsellSlips(normalized);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        console.error("load upsell slips", err);
+        setUpsellSlipError(err?.message || "โหลดสลิปไม่สำเร็จ");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setUpsellSlipLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizeUpsellSlip, selectedUpsellOrder]);
+
+  const isUpsellTransferPayment = useMemo(() => {
+    if (!selectedUpsellOrder) return false;
+    const pm = normalizePaymentMethod(
+      selectedUpsellOrder.paymentMethod ?? (selectedUpsellOrder as any).payment_method,
+    );
+    return pm === PaymentMethod.Transfer;
+  }, [selectedUpsellOrder]);
 
   const handleUpsellAddNewItem = () => {
     setUpsellItems((prev) => [
@@ -686,6 +777,80 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     setUpsellProductSelectorOpen(false);
     setUpsellEditingItemId(null);
+  };
+
+  const handleUpsellSlipUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = event.target.files;
+    if (!files || !selectedUpsellOrder) return;
+
+    const normalizedPayment = normalizePaymentMethod(
+      selectedUpsellOrder.paymentMethod ?? (selectedUpsellOrder as any).payment_method,
+    );
+    if (normalizedPayment !== PaymentMethod.Transfer) {
+      event.target.value = "";
+      return;
+    }
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const ALLOWED_FILE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+    const validFiles = Array.from(files).filter((file) => {
+      const isAllowed = ALLOWED_FILE_TYPES.includes(file.type);
+      const isSizeOk = file.size <= MAX_FILE_SIZE;
+      if (!isAllowed) {
+        alert(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ (รองรับ: JPG, PNG, GIF, WebP เท่านั้น)`);
+      } else if (!isSizeOk) {
+        alert(`ไม่สามารถแนบไฟล์ "${file.name}" ได้ เนื่องจากขนาดไฟล์เกิน 10MB`);
+      }
+      return isAllowed && isSizeOk;
+    });
+
+    if (validFiles.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
+    setUpsellSlipLoading(true);
+    setUpsellSlipError(null);
+    try {
+      for (const file of validFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const res = await createOrderSlip(String(selectedUpsellOrder.id), dataUrl, {
+          uploadedBy: currentUser?.id,
+          uploadedByName: currentUser
+            ? `${currentUser.firstName} ${currentUser.lastName}`
+            : undefined,
+        });
+        const normalized = normalizeUpsellSlip({
+          ...(res || {}),
+          url: res?.url ?? res?.slipUrl ?? "",
+        });
+        if (normalized.url) {
+          setUpsellSlips((prev) => [normalized, ...prev]);
+        }
+      }
+    } catch (error: any) {
+      console.error("Upload upsell slip failed:", error);
+      setUpsellSlipError(error?.message || "อัปโหลดสลิปไม่สำเร็จ");
+    } finally {
+      setUpsellSlipLoading(false);
+      event.target.value = "";
+    }
+  };
+
+  const resolveUpsellSlipUploaderName = (slip: UpsellSlip) => {
+    if (slip.uploadedByName) return slip.uploadedByName;
+    if (slip.uploadedBy) {
+      const uploader = upsellUsersById.get(Number(slip.uploadedBy));
+      if (uploader) {
+        const first = (uploader as any).firstName || (uploader as any).first_name || "";
+        const last = (uploader as any).lastName || (uploader as any).last_name || "";
+        return `${first} ${last}`.trim() || `ID ${slip.uploadedBy}`;
+      }
+      return `ID ${slip.uploadedBy}`;
+    }
+    return "ไม่ระบุ";
   };
 
   const calculateUpsellItemTotal = (item: LineItem) => {
@@ -3844,6 +4009,63 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </table>
                 </div>
               </div>
+
+              {isUpsellTransferPayment && (
+                <div className="bg-white rounded-lg shadow-sm border p-6 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800">หลักฐานการโอน</h3>
+                      <p className="text-sm text-gray-600">
+                        อัปโหลดสลิปการโอนสำหรับคำสั่งซื้อเดิม (Transfer)
+                      </p>
+                    </div>
+                    {upsellSlipLoading && (
+                      <span className="text-sm text-gray-500">กำลังโหลด...</span>
+                    )}
+                  </div>
+                  {upsellSlipError && (
+                    <div className="text-sm text-red-600">{upsellSlipError}</div>
+                  )}
+                  {upsellSlips.length > 0 ? (
+                    <div className="flex flex-wrap gap-3">
+                      {upsellSlips.map((slip) => (
+                        <div
+                          key={slip.id || slip.url}
+                          className="w-28 h-28 border rounded-md p-1 relative bg-white"
+                        >
+                          <img
+                            src={slip.url}
+                            alt="Transfer slip"
+                            className="w-full h-full object-contain rounded"
+                          />
+                          <div className="absolute inset-x-1 bottom-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded">
+                            {resolveUpsellSlipUploaderName(slip)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">ยังไม่มีหลักฐานการโอน</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor={upsellSlipInputId}
+                      className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      อัปโหลดสลิปเพิ่มเติม
+                    </label>
+                    <input
+                      id={upsellSlipInputId}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleUpsellSlipUpload}
+                      disabled={upsellSlipLoading}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="bg-white rounded-lg shadow-sm border p-6 space-y-4">
                 <div className="flex items-center justify-between">

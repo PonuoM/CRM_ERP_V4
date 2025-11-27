@@ -317,6 +317,8 @@ const SlipUpload: React.FC = () => {
         transferDate: slipFormData.transfer_date,
         url: slipUrl,
         companyId: companyId,
+        uploadBy: user.id,
+        uploadByName: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.full_name || undefined,
       });
 
       if (insertResult.success) {

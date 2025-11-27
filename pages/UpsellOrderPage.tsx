@@ -40,7 +40,7 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
           setError("ไม่พบรหัสลูกค้า");
           return;
         }
-        const upsellOrders = await getUpsellOrders(customerId);
+        const upsellOrders = await getUpsellOrders(customerId, currentUser?.id);
         setOrders(upsellOrders as any);
         if (upsellOrders.length > 0) {
           setSelectedOrder(upsellOrders[0] as any);
@@ -53,7 +53,7 @@ const UpsellOrderPage: React.FC<UpsellOrderPageProps> = ({
     };
 
     loadOrders();
-  }, [customer]);
+  }, [customer, currentUser?.id]);
 
   const usersById = new Map(users.map(u => [u.id, u]));
 

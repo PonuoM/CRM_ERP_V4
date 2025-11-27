@@ -97,6 +97,8 @@ try {
     'amount' => 'INT NULL AFTER `id`',
     'bank_account_id' => 'INT NULL AFTER `amount`',
     'transfer_date' => 'DATETIME NULL AFTER `bank_account_id`',
+    'upload_by' => 'INT NULL AFTER `url`',
+    'upload_by_name' => 'VARCHAR(255) NULL AFTER `upload_by`',
   ];
   
   foreach ($columns_to_add as $column => $definition) {
@@ -205,8 +207,8 @@ try {
   $transfer_date = $data["transfer_date"];
   $url = $data["url"] ?? null; // Optional URL field
 
-  $insert_sql = "INSERT INTO order_slips (order_id, amount, bank_account_id, transfer_date, url)
-                   VALUES (?, ?, ?, ?, ?)";
+  $insert_sql = "INSERT INTO order_slips (order_id, amount, bank_account_id, transfer_date, url, upload_by, upload_by_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)";
 
   $insert_stmt = $conn->prepare($insert_sql);
   $result = $insert_stmt->execute([
@@ -215,6 +217,8 @@ try {
     $bank_account_id,
     $transfer_date,
     $url,
+    isset($data["upload_by"]) ? (int)$data["upload_by"] : null,
+    isset($data["upload_by_name"]) ? $data["upload_by_name"] : null,
   ]);
 
   if ($result) {

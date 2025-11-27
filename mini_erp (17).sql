@@ -23995,6 +23995,8 @@ CREATE TABLE `order_slips` (
   `transfer_date` datetime DEFAULT NULL,
   `order_id` varchar(32) NOT NULL,
   `url` varchar(1024) NOT NULL,
+  `upload_by` int(11) DEFAULT NULL,
+  `upload_by_name` varchar(255) COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

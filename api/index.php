@@ -2970,6 +2970,22 @@ function ensure_order_slips_table(PDO $pdo): void {
             // Column may already exist, ignore
         }
     }
+    if (!in_array('upload_by', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN upload_by INT NULL AFTER url');
+            $columns[] = 'upload_by';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
+    if (!in_array('upload_by_name', $columns)) {
+        try {
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN upload_by_name VARCHAR(255) NULL AFTER upload_by');
+            $columns[] = 'upload_by_name';
+        } catch (Exception $e) {
+            // Column may already exist, ignore
+        }
+    }
     
     // Add index for bank_account_id if it doesn't exist
     if (in_array('bank_account_id', $columns)) {
@@ -3101,7 +3117,7 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
         case 'GET':
             $orderId = $_GET['orderId'] ?? null;
             if (!$orderId) { json_response(['error' => 'ORDER_ID_REQUIRED'], 400); }
-            $st = $pdo->prepare('SELECT id, url, created_at FROM order_slips WHERE order_id=? ORDER BY id DESC');
+            $st = $pdo->prepare('SELECT id, url, created_at, upload_by, upload_by_name FROM order_slips WHERE order_id=? ORDER BY id DESC');
             $st->execute([$orderId]);
             json_response($st->fetchAll());
             break;
@@ -3112,6 +3128,8 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
             $bankAccountId = isset($in['bankAccountId']) ? (int)$in['bankAccountId'] : null;
             $transferDate = $in['transferDate'] ?? null;
             $amount = isset($in['amount']) ? (int)$in['amount'] : null;
+            $uploadedBy = $in['uploadedBy'] ?? $in['uploadBy'] ?? $in['upload_by'] ?? null;
+            $uploadedByName = $in['uploadedByName'] ?? $in['uploadByName'] ?? $in['upload_by_name'] ?? null;
             
             if ($orderId === '' || $content === '') { json_response(['error' => 'INVALID_INPUT'], 400); }
             $url = null;
@@ -3174,10 +3192,27 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
                 $placeholders[] = '?';
             }
             
+            if (in_array('upload_by', $existingColumns) && $uploadedBy !== null && $uploadedBy !== '') {
+                $columns[] = 'upload_by';
+                $values[] = $uploadedBy;
+                $placeholders[] = '?';
+            }
+            if (in_array('upload_by_name', $existingColumns) && $uploadedByName !== null && $uploadedByName !== '') {
+                $columns[] = 'upload_by_name';
+                $values[] = $uploadedByName;
+                $placeholders[] = '?';
+            }
+            
             $sql = 'INSERT INTO order_slips (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';
             $st = $pdo->prepare($sql);
             $st->execute($values);
-            json_response(['ok' => true, 'id' => $pdo->lastInsertId(), 'url' => $url]);
+            json_response([
+                'ok' => true,
+                'id' => $pdo->lastInsertId(),
+                'url' => $url,
+                'uploaded_by' => $uploadedBy,
+                'uploaded_by_name' => $uploadedByName,
+            ]);
             break;
         case 'DELETE':
             if (!$id) { json_response(['error' => 'ID_REQUIRED'], 400); }
@@ -5437,29 +5472,39 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
             if ($id === 'check') {
                 // Check if customer has orders eligible for upsell
                 $customerId = $_GET['customerId'] ?? null;
+                $requesterId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
                 if (!$customerId) {
                     json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
                     return;
                 }
-                
+
                 // Find orders that are eligible for upsell:
                 // 1. order_status = 'Pending'
                 // 2. order_date is within the last 24 hours
                 // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                $excludeCreatorClause = '';
+                $params = [$customerId];
+                if ($requesterId !== null) {
+                    // Do not surface upsell for orders created by the same requester
+                    $excludeCreatorClause = " AND (o.creator_id IS NULL OR o.creator_id != ?)";
+                    $params[] = $requesterId;
+                }
+
                 $stmt = $pdo->prepare("
                     SELECT COUNT(*) as eligible_count
                     FROM orders o
                     WHERE o.customer_id = ?
                     AND o.order_status = 'Pending'
                     AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    {$excludeCreatorClause}
                     AND NOT EXISTS (
-                        SELECT 1 
-                        FROM order_items oi 
-                        WHERE oi.parent_order_id = o.id 
+                        SELECT 1
+                        FROM order_items oi
+                        WHERE oi.parent_order_id = o.id
                         AND oi.creator_id != o.creator_id
                     )
                 ");
-                $stmt->execute([$customerId]);
+                $stmt->execute($params);
                 $result = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 json_response([
@@ -5469,15 +5514,24 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
             } else if ($id === 'orders') {
                 // Get orders eligible for upsell for a customer
                 $customerId = $_GET['customerId'] ?? null;
+                $requesterId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
                 if (!$customerId) {
                     json_response(['error' => 'CUSTOMER_ID_REQUIRED'], 400);
                     return;
                 }
-                
+
                 // Get orders that are eligible for upsell
                 // 1. order_status = 'Pending'
                 // 2. order_date is within the last 24 hours
                 // 3. No upsell items exist yet (no order_items with creator_id != order.creator_id)
+                $excludeCreatorClause = '';
+                $params = [$customerId];
+                if ($requesterId !== null) {
+                    // Do not surface upsell for orders created by the same requester
+                    $excludeCreatorClause = " AND (o.creator_id IS NULL OR o.creator_id != ?)";
+                    $params[] = $requesterId;
+                }
+
                 $stmt = $pdo->prepare("
                     SELECT o.id, o.order_date, o.delivery_date, o.order_status, o.total_amount, o.creator_id,
                            o.sales_channel_page_id, o.sales_channel, o.payment_method, o.payment_status,
@@ -5489,16 +5543,17 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     WHERE o.customer_id = ?
                     AND o.order_status = 'Pending'
                     AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    {$excludeCreatorClause}
                     AND NOT EXISTS (
-                        SELECT 1 
-                        FROM order_items oi2 
-                        WHERE oi2.parent_order_id = o.id 
+                        SELECT 1
+                        FROM order_items oi2
+                        WHERE oi2.parent_order_id = o.id
                         AND oi2.creator_id != o.creator_id
                     )
                     GROUP BY o.id
                     ORDER BY o.order_date DESC
                 ");
-                $stmt->execute([$customerId]);
+                $stmt->execute($params);
                 $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
                 // For each order, fetch items with creator_id
@@ -5547,7 +5602,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 
                 // Validate order exists and is eligible for upsell
                 $orderCheck = $pdo->prepare("
-                    SELECT id, customer_id, order_status, order_date
+                    SELECT id, customer_id, order_status, order_date, creator_id
                     FROM orders
                     WHERE id = ?
                 ");
@@ -5564,7 +5619,14 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     json_response(['error' => 'ORDER_NOT_ELIGIBLE', 'message' => 'Order status must be Pending'], 400);
                     return;
                 }
-                
+
+                // Prevent upsell on orders created by the same requester
+                $orderCreatorId = isset($order['creator_id']) ? (int)$order['creator_id'] : null;
+                if ($orderCreatorId !== null && (int)$creatorId === $orderCreatorId) {
+                    json_response(['error' => 'ORDER_NOT_ELIGIBLE', 'message' => 'Upsell is not allowed on orders you created'], 400);
+                    return;
+                }
+
                 // Check if order is within 24 hours
                 $timeCheck = $pdo->prepare("
                     SELECT COUNT(*) as is_eligible
