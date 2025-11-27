@@ -108,7 +108,39 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 
   const handleValidate = () => {
     const seenAssignments = new Map<string, Set<number>>();
-    const validatedRows = rows.map((row) => {
+
+    // Build a global tracking number lookup to check for duplicates across all orders
+    const globalTrackingMap = new Map<string, { orderId: string; boxNumber: number }>();
+    orders.forEach(order => {
+      const trackingEntries = order.trackingEntries ?? [];
+      trackingEntries.forEach(entry => {
+        const trackingNum = entry.trackingNumber?.trim();
+        if (trackingNum) {
+          globalTrackingMap.set(trackingNum.toLowerCase(), {
+            orderId: order.id,
+            boxNumber: entry.boxNumber ?? 1
+          });
+        }
+      });
+
+      // Also check trackingNumbers array if exists
+      const trackingNumbers = order.trackingNumbers ?? [];
+      trackingNumbers.forEach(tn => {
+        const trackingNum = tn?.trim();
+        if (trackingNum && !globalTrackingMap.has(trackingNum.toLowerCase())) {
+          globalTrackingMap.set(trackingNum.toLowerCase(), {
+            orderId: order.id,
+            boxNumber: 1
+          });
+        }
+      });
+    });
+
+    // Check for duplicate tracking numbers and order+box in the current import batch
+    const batchTrackingMap = new Map<string, number>(); // tracking -> row index
+    const batchOrderBoxMap = new Map<string, number>(); // orderId+boxNumber -> row index
+
+    const validatedRows = rows.map((row, rowIndex) => {
       const orderInput = row.orderId.trim();
       const trackingInput = row.trackingNumber.trim();
 
@@ -198,16 +230,48 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
         };
       }
 
-      // Check if this specific box already has a tracking number
+      // **Collect validation errors**
+      const errors: string[] = [];
+
+      // Check if this specific box already has a tracking number in the system
       if (
         trackingEntries.some(
           (entry) => (entry.boxNumber ?? 1) === resolvedBoxNumber,
         )
       ) {
+        errors.push("กล่องนี้มีเลข Tracking อยู่แล้ว");
+      }
+
+      // Check for duplicate order+box in batch
+      const orderBoxKey = `${order.id.toLowerCase()}-${resolvedBoxNumber}`;
+      if (batchOrderBoxMap.has(orderBoxKey)) {
+        const firstOccurrenceRow = batchOrderBoxMap.get(orderBoxKey)!;
+        errors.push(`Order+กล่องซ้ำกับแถวที่ ${firstOccurrenceRow + 1}`);
+      } else {
+        batchOrderBoxMap.set(orderBoxKey, rowIndex);
+      }
+
+      // Check if tracking number exists globally in any order
+      const normalizedTracking = trackingInput.toLowerCase();
+      const existingTracking = globalTrackingMap.get(normalizedTracking);
+      if (existingTracking) {
+        errors.push(`Tracking ถูกใช้ในออเดอร์ ${existingTracking.orderId} (กล่อง ${existingTracking.boxNumber})`);
+      }
+
+      // Check if tracking number is duplicated in the current import batch
+      if (batchTrackingMap.has(normalizedTracking)) {
+        const firstOccurrenceRow = batchTrackingMap.get(normalizedTracking)!;
+        errors.push(`Tracking ซ้ำกับแถวที่ ${firstOccurrenceRow + 1}`);
+      } else {
+        batchTrackingMap.set(normalizedTracking, rowIndex);
+      }
+
+      // If there are any errors, return error status with combined message
+      if (errors.length > 0) {
         return {
           ...row,
-          status: "duplicate" as ValidationStatus,
-          message: "กล่องนี้มีเลข Tracking อยู่แล้ว",
+          status: "error" as ValidationStatus,
+          message: errors.join(' และ '),
           normalizedOrderId: order.id,
           boxNumber: resolvedBoxNumber,
         };
@@ -215,7 +279,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 
       const existingNumbers = order.trackingNumbers ?? [];
 
-      // Case 1: Tracking Number already exists in this order (Duplicate)
+      // Case 1: Tracking Number already exists in this order (Duplicate) - should be caught by global check above
       if (
         existingNumbers.some(
           (tn) => tn.toLowerCase() === trackingInput.toLowerCase(),

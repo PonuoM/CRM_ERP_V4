@@ -468,16 +468,104 @@ const App: React.FC = () => {
     }
   };
   const fromApiPaymentMethod = (s: any): PaymentMethod => {
-    switch (String(s)) {
-      case "COD":
-        return PaymentMethod.COD as any;
-      case "Transfer":
-        return PaymentMethod.Transfer as any;
-      case "PayAfter":
-        return PaymentMethod.PayAfter as any;
-      default:
-        return PaymentMethod.COD as any;
+    const raw = String(s ?? "").trim();
+    const value = raw.toLowerCase();
+    if (value === "cod" || value === "c.o.d" || value === "cash_on_delivery") {
+      return PaymentMethod.COD as any;
     }
+    if (value === "transfer" || value === "bank_transfer" || value === "โอน" || value === "�1,�,-�,t") {
+      return PaymentMethod.Transfer as any;
+    }
+    if (value === "payafter" || value === "pay_after" || value === "pay-after" || value === "เก็บเงินปลายทางแบบผ่อน") {
+      return PaymentMethod.PayAfter as any;
+    }
+    return PaymentMethod.COD as any;
+  };
+  const mapTrackingDetailsFromApi = (raw: any): any[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((t: any) => {
+      const orderId = t.order_id ?? t.orderId ?? undefined;
+      const parentOrderId = t.parent_order_id ?? t.parentOrderId ?? undefined;
+      const trackingNumber = t.tracking_number ?? t.trackingNumber ?? "";
+      const boxNumRaw = t.box_number ?? t.boxNumber;
+      const boxNumber =
+        boxNumRaw !== undefined &&
+          boxNumRaw !== null &&
+          !Number.isNaN(Number(boxNumRaw))
+          ? Number(boxNumRaw)
+          : undefined;
+
+      return {
+        orderId,
+        parentOrderId,
+        trackingNumber,
+        boxNumber,
+        order_id: orderId,
+        parent_order_id: parentOrderId,
+        tracking_number: trackingNumber,
+        box_number: boxNumber,
+      };
+    });
+  };
+  const mapOrderBoxesFromApi = (raw: any, trackingDetails: any[]): any[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((b: any) => {
+      const boxNumRaw = b.box_number ?? b.boxNumber;
+      const boxNumber =
+        boxNumRaw !== undefined &&
+          boxNumRaw !== null &&
+          !Number.isNaN(Number(boxNumRaw))
+          ? Number(boxNumRaw)
+          : undefined;
+      const codAmount = Number(
+        b.cod_amount ?? b.codAmount ?? b.collection_amount ?? b.collectionAmount ?? 0,
+      );
+      const collectionAmount = Number(
+        b.collection_amount ?? b.collectionAmount ?? codAmount ?? 0,
+      );
+      const collectedAmount = Number(b.collected_amount ?? b.collectedAmount ?? 0);
+      const waivedAmount = Number(b.waived_amount ?? b.waivedAmount ?? 0);
+      const paymentMethodRaw = b.payment_method ?? b.paymentMethod;
+      const trackingForBox =
+        typeof boxNumber === "number"
+          ? trackingDetails.find((t: any) => {
+            const tBox = t.box_number ?? t.boxNumber;
+            return (
+              tBox !== undefined &&
+              tBox !== null &&
+              Number(tBox) === boxNumber
+            );
+          })
+          : undefined;
+      const trackingNumber =
+        trackingForBox?.tracking_number ??
+        trackingForBox?.trackingNumber ??
+        b.tracking_number ??
+        b.trackingNumber;
+      const subOrderId = b.sub_order_id ?? b.subOrderId ?? undefined;
+
+      return {
+        subOrderId,
+        sub_order_id: subOrderId,
+        boxNumber,
+        box_number: boxNumber,
+        codAmount,
+        cod_amount: codAmount,
+        collectionAmount,
+        collection_amount: collectionAmount,
+        collectedAmount,
+        collected_amount: collectedAmount,
+        waivedAmount,
+        waived_amount: waivedAmount,
+        paymentMethod: paymentMethodRaw
+          ? fromApiPaymentMethod(paymentMethodRaw)
+          : undefined,
+        payment_method: paymentMethodRaw,
+        status: b.status ?? undefined,
+        trackingNumber: trackingNumber ? String(trackingNumber) : undefined,
+        tracking_number: trackingNumber ? String(trackingNumber) : undefined,
+      };
+    });
   };
   const toApiOrderStatus = (s: OrderStatus): string => {
     switch (s) {
@@ -856,93 +944,101 @@ const App: React.FC = () => {
           };
         };
 
-        const mapOrder = (r: any): Order => ({
-          id: r.id,
-          customerId: r.customer_id,
-          companyId: r.company_id,
-          creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
-          orderDate: r.order_date,
-          deliveryDate: r.delivery_date ?? "",
-          shippingAddress: {
-            recipientFirstName: r.recipient_first_name || "",
-            recipientLastName: r.recipient_last_name || "",
-            street: r.street || "",
-            subdistrict: r.subdistrict || "",
-            district: r.district || "",
-            province: r.province || "",
-            postalCode: r.postal_code || "",
-          },
-          shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
-          items: Array.isArray(r.items)
-            ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productId:
-                typeof it.product_id !== "undefined" && it.product_id !== null
-                  ? Number(it.product_id)
-                  : undefined,
-              productName: String(it.product_name ?? ""),
-              productSku: it.product_sku || undefined,
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-              promotionId:
-                typeof it.promotion_id !== "undefined" &&
-                  it.promotion_id !== null
-                  ? Number(it.promotion_id)
-                  : undefined,
-              parentItemId:
-                typeof it.parent_item_id !== "undefined" &&
-                  it.parent_item_id !== null
-                  ? Number(it.parent_item_id)
-                  : undefined,
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              creatorId:
-                typeof it.creator_id !== "undefined" &&
-                  it.creator_id !== null
-                  ? Number(it.creator_id)
-                  : undefined,
-          }))
-            : [],
-          shippingCost: Number(r.shipping_cost ?? 0),
-          billDiscount: Number(r.bill_discount ?? 0),
-          totalAmount: Number(r.total_amount || 0),
-          slipUrl: r.slip_url ?? undefined,
-          amountPaid:
-            typeof r.amount_paid !== "undefined"
-              ? Number(r.amount_paid)
-              : undefined,
-          codAmount:
-            typeof r.cod_amount !== "undefined"
-              ? Number(r.cod_amount)
-              : undefined,
-          paymentMethod: fromApiPaymentMethod(r.payment_method),
-          paymentStatus: fromApiPaymentStatus(r.payment_status ?? "Unpaid"),
-          orderStatus: fromApiOrderStatus(r.order_status ?? "Pending"),
-          trackingNumbers: r.tracking_numbers
-            ? String(r.tracking_numbers).split(",").filter(Boolean)
-            : Array.isArray(r.trackingNumbers)
-              ? r.trackingNumbers
+        const mapOrder = (r: any): Order => {
+          const trackingDetails = mapTrackingDetailsFromApi(
+            r.tracking_details ?? r.trackingDetails,
+          );
+          const boxes = mapOrderBoxesFromApi(r.boxes, trackingDetails);
+          return {
+            id: r.id,
+            customerId: r.customer_id,
+            companyId: r.company_id,
+            creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
+            orderDate: r.order_date,
+            deliveryDate: r.delivery_date ?? "",
+            shippingAddress: {
+              recipientFirstName: r.recipient_first_name || "",
+              recipientLastName: r.recipient_last_name || "",
+              street: r.street || "",
+              subdistrict: r.subdistrict || "",
+              district: r.district || "",
+              province: r.province || "",
+              postalCode: r.postal_code || "",
+            },
+            shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
+            items: Array.isArray(r.items)
+              ? r.items.map((it: any, i: number) => ({
+                id: Number(it.id ?? i + 1),
+                productId:
+                  typeof it.product_id !== "undefined" && it.product_id !== null
+                    ? Number(it.product_id)
+                    : undefined,
+                productName: String(it.product_name ?? ""),
+                productSku: it.product_sku || undefined,
+                quantity: Number(it.quantity ?? 0),
+                pricePerUnit: Number(it.price_per_unit ?? 0),
+                discount: Number(it.discount ?? 0),
+                isFreebie: !!(it.is_freebie ?? 0),
+                boxNumber: Number(it.box_number ?? 0),
+                promotionId:
+                  typeof it.promotion_id !== "undefined" &&
+                    it.promotion_id !== null
+                    ? Number(it.promotion_id)
+                    : undefined,
+                parentItemId:
+                  typeof it.parent_item_id !== "undefined" &&
+                    it.parent_item_id !== null
+                    ? Number(it.parent_item_id)
+                    : undefined,
+                isPromotionParent: !!(it.is_promotion_parent ?? 0),
+                creatorId:
+                  typeof it.creator_id !== "undefined" &&
+                    it.creator_id !== null
+                    ? Number(it.creator_id)
+                    : undefined,
+              }))
               : [],
-          notes: r.notes ?? undefined,
-          warehouseId:
-            typeof r.warehouse_id !== "undefined" && r.warehouse_id !== null
-              ? Number(r.warehouse_id)
+            shippingCost: Number(r.shipping_cost ?? 0),
+            billDiscount: Number(r.bill_discount ?? 0),
+            totalAmount: Number(r.total_amount || 0),
+            slipUrl: r.slip_url ?? undefined,
+            amountPaid:
+              typeof r.amount_paid !== "undefined"
+                ? Number(r.amount_paid)
+                : undefined,
+            codAmount:
+              typeof r.cod_amount !== "undefined"
+                ? Number(r.cod_amount)
+                : undefined,
+            paymentMethod: fromApiPaymentMethod(r.payment_method),
+            paymentStatus: fromApiPaymentStatus(r.payment_status ?? "Unpaid"),
+            orderStatus: fromApiOrderStatus(r.order_status ?? "Pending"),
+            trackingNumbers: r.tracking_numbers
+              ? String(r.tracking_numbers).split(",").filter(Boolean)
+              : Array.isArray(r.trackingNumbers)
+                ? r.trackingNumbers
+                : [],
+            trackingDetails,
+            boxes,
+            notes: r.notes ?? undefined,
+            warehouseId:
+              typeof r.warehouse_id !== "undefined" && r.warehouse_id !== null
+                ? Number(r.warehouse_id)
+                : undefined,
+            salesChannel: r.sales_channel ?? undefined,
+            salesChannelPageId:
+              typeof r.sales_channel_page_id !== "undefined"
+                ? Number(r.sales_channel_page_id)
+                : undefined,
+            slips: Array.isArray(r.slips)
+              ? (r.slips as any[]).map((s) => ({
+                id: Number(s.id),
+                url: s.url,
+                createdAt: s.created_at,
+              }))
               : undefined,
-          salesChannel: r.sales_channel ?? undefined,
-          salesChannelPageId:
-            typeof r.sales_channel_page_id !== "undefined"
-              ? Number(r.sales_channel_page_id)
-              : undefined,
-          slips: Array.isArray(r.slips)
-            ? (r.slips as any[]).map((s) => ({
-              id: Number(s.id),
-              url: s.url,
-              createdAt: s.created_at,
-            }))
-            : undefined,
-        });
+          };
+        };
 
         const mapCall = (r: any): CallHistory => ({
           id: r.id,
@@ -1133,93 +1229,101 @@ const App: React.FC = () => {
           return !/-\d+$/.test(orderId);
         });
 
-        setOrders(mainOrders.map((r: any) => ({
-          id: r.id,
-          customerId: r.customer_id,
-          companyId: r.company_id,
-          creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
-          orderDate: r.order_date,
-          deliveryDate: r.delivery_date ?? "",
-          shippingAddress: {
-            recipientFirstName: r.recipient_first_name || "",
-            recipientLastName: r.recipient_last_name || "",
-            street: r.street || "",
-            subdistrict: r.subdistrict || "",
-            district: r.district || "",
-            province: r.province || "",
-            postalCode: r.postal_code || "",
-          },
-          items: Array.isArray(r.items)
-            ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productId:
-                typeof it.product_id !== "undefined" && it.product_id !== null
-                  ? Number(it.product_id)
-                  : undefined,
-              productName: String(it.product_name ?? ""),
-              productSku: it.product_sku || undefined,
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-              promotionId:
-                typeof it.promotion_id !== "undefined" &&
-                  it.promotion_id !== null
-                  ? Number(it.promotion_id)
-                  : undefined,
-              parentItemId:
-                typeof it.parent_item_id !== "undefined" &&
-                  it.parent_item_id !== null
-                  ? Number(it.parent_item_id)
-                  : undefined,
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              creatorId:
-                typeof it.creator_id !== "undefined" &&
-                  it.creator_id !== null
-                  ? Number(it.creator_id)
-                  : undefined,
-            }))
-            : [],
-          shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
-          shippingCost: Number(r.shipping_cost ?? 0),
-          billDiscount: Number(r.bill_discount ?? 0),
-          totalAmount: Number(r.total_amount || 0),
-          slipUrl: r.slip_url ?? undefined,
-          amountPaid:
-            typeof r.amount_paid !== "undefined"
-              ? Number(r.amount_paid)
-              : undefined,
-          codAmount:
-            typeof r.cod_amount !== "undefined"
-              ? Number(r.cod_amount)
-              : undefined,
-          paymentMethod: fromApiPaymentMethod(r.payment_method),
-          paymentStatus: fromApiPaymentStatus(r.payment_status ?? "Unpaid"),
-          orderStatus: fromApiOrderStatus(r.order_status ?? "Pending"),
-          trackingNumbers: r.tracking_numbers
-            ? String(r.tracking_numbers).split(",").filter(Boolean)
-            : Array.isArray(r.trackingNumbers)
-              ? r.trackingNumbers
+        setOrders(mainOrders.map((r: any) => {
+          const trackingDetails = mapTrackingDetailsFromApi(
+            r.tracking_details ?? r.trackingDetails,
+          );
+          const boxes = mapOrderBoxesFromApi(r.boxes, trackingDetails);
+          return {
+            id: r.id,
+            customerId: r.customer_id,
+            companyId: r.company_id,
+            creatorId: typeof r.creator_id === 'number' ? r.creator_id : Number(r.creator_id) || 0,
+            orderDate: r.order_date,
+            deliveryDate: r.delivery_date ?? "",
+            shippingAddress: {
+              recipientFirstName: r.recipient_first_name || "",
+              recipientLastName: r.recipient_last_name || "",
+              street: r.street || "",
+              subdistrict: r.subdistrict || "",
+              district: r.district || "",
+              province: r.province || "",
+              postalCode: r.postal_code || "",
+            },
+            items: Array.isArray(r.items)
+              ? r.items.map((it: any, i: number) => ({
+                id: Number(it.id ?? i + 1),
+                productId:
+                  typeof it.product_id !== "undefined" && it.product_id !== null
+                    ? Number(it.product_id)
+                    : undefined,
+                productName: String(it.product_name ?? ""),
+                productSku: it.product_sku || undefined,
+                quantity: Number(it.quantity ?? 0),
+                pricePerUnit: Number(it.price_per_unit ?? 0),
+                discount: Number(it.discount ?? 0),
+                isFreebie: !!(it.is_freebie ?? 0),
+                boxNumber: Number(it.box_number ?? 0),
+                promotionId:
+                  typeof it.promotion_id !== "undefined" &&
+                    it.promotion_id !== null
+                    ? Number(it.promotion_id)
+                    : undefined,
+                parentItemId:
+                  typeof it.parent_item_id !== "undefined" &&
+                    it.parent_item_id !== null
+                    ? Number(it.parent_item_id)
+                    : undefined,
+                isPromotionParent: !!(it.is_promotion_parent ?? 0),
+                creatorId:
+                  typeof it.creator_id !== "undefined" &&
+                    it.creator_id !== null
+                    ? Number(it.creator_id)
+                    : undefined,
+              }))
               : [],
-          notes: r.notes ?? undefined,
-          warehouseId:
-            typeof r.warehouse_id !== "undefined" && r.warehouse_id !== null
-              ? Number(r.warehouse_id)
+            shippingProvider: r.shipping_provider ?? r.shippingProvider ?? undefined,
+            shippingCost: Number(r.shipping_cost ?? 0),
+            billDiscount: Number(r.bill_discount ?? 0),
+            totalAmount: Number(r.total_amount || 0),
+            slipUrl: r.slip_url ?? undefined,
+            amountPaid:
+              typeof r.amount_paid !== "undefined"
+                ? Number(r.amount_paid)
+                : undefined,
+            codAmount:
+              typeof r.cod_amount !== "undefined"
+                ? Number(r.cod_amount)
+                : undefined,
+            paymentMethod: fromApiPaymentMethod(r.payment_method),
+            paymentStatus: fromApiPaymentStatus(r.payment_status ?? "Unpaid"),
+            orderStatus: fromApiOrderStatus(r.order_status ?? "Pending"),
+            trackingNumbers: r.tracking_numbers
+              ? String(r.tracking_numbers).split(",").filter(Boolean)
+              : Array.isArray(r.trackingNumbers)
+                ? r.trackingNumbers
+                : [],
+            trackingDetails,
+            boxes,
+            notes: r.notes ?? undefined,
+            warehouseId:
+              typeof r.warehouse_id !== "undefined" && r.warehouse_id !== null
+                ? Number(r.warehouse_id)
+                : undefined,
+            salesChannel: r.sales_channel ?? undefined,
+            salesChannelPageId:
+              typeof r.sales_channel_page_id !== "undefined"
+                ? Number(r.sales_channel_page_id)
+                : undefined,
+            slips: Array.isArray(r.slips)
+              ? (r.slips as any[]).map((s) => ({
+                id: Number(s.id),
+                url: s.url,
+                createdAt: s.created_at,
+              }))
               : undefined,
-          salesChannel: r.sales_channel ?? undefined,
-          salesChannelPageId:
-            typeof r.sales_channel_page_id !== "undefined"
-              ? Number(r.sales_channel_page_id)
-              : undefined,
-          slips: Array.isArray(r.slips)
-            ? (r.slips as any[]).map((s) => ({
-              id: Number(s.id),
-              url: s.url,
-              createdAt: s.created_at,
-            }))
-            : undefined,
-        })));
+          };
+        }));
       })
       .catch((err) => {
         console.error('Failed to refresh orders:', err);
@@ -1881,14 +1985,8 @@ const App: React.FC = () => {
         updatedOrder.paymentMethod === PaymentMethod.Transfer ||
         updatedOrder.paymentMethod === PaymentMethod.PayAfter
       ) {
-        if (updatedOrder.paymentStatus === PaymentStatus.Verified) {
-          updatedOrder.orderStatus = OrderStatus.PreApproved;
-        } else if (
-          updatedOrder.orderStatus === OrderStatus.Picking ||
-          updatedOrder.orderStatus === OrderStatus.Preparing
-        ) {
-          updatedOrder.orderStatus = OrderStatus.Shipping;
-        }
+        // เมื่อกรอก Tracking ให้รอฝ่ายบัญชีตรวจสอบทันที (ไม่ค้างที่ Shipping)
+        updatedOrder.orderStatus = OrderStatus.PreApproved;
       } else if (updatedOrder.paymentMethod === PaymentMethod.COD) {
         if (
           updatedOrder.orderStatus === OrderStatus.Picking ||
@@ -2195,7 +2293,8 @@ const App: React.FC = () => {
                     (orderToUpdate as Order).paymentMethod ===
                     PaymentMethod.PayAfter)
                   ? OrderStatus.PreApproved
-                  : (orderToUpdate as Order).orderStatus === OrderStatus.Picking
+                  : (orderToUpdate as Order).orderStatus === OrderStatus.Picking ||
+                    (orderToUpdate as Order).orderStatus === OrderStatus.Preparing
                     ? OrderStatus.Shipping
                     : (orderToUpdate as Order).orderStatus,
             };

@@ -213,41 +213,93 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     orders.forEach((order) => {
       const details = (order as any).trackingDetails ?? (order as any).tracking_details ?? [];
       const boxes = (order as any).boxes ?? [];
-      const boxAmountMap = new Map<number, number>();
+      
+      // Create map of sub_order_id -> cod_amount from order_boxes
+      // This ensures we get the correct COD amount per box
+      const subOrderIdToAmountMap = new Map<string, number>();
+      const boxNumberToAmountMap = new Map<number, number>();
+      const boxNumberToSubOrderIdMap = new Map<number, string>();
       boxes.forEach((b: any) => {
+        const subOrderId = b.sub_order_id ?? b.subOrderId;
         const boxNumRaw = b.boxNumber ?? b.box_number;
         const boxNum = boxNumRaw !== undefined && boxNumRaw !== null ? Number(boxNumRaw) : NaN;
+        const amt = parseFloat(String(b.codAmount ?? b.cod_amount ?? b.collectionAmount ?? b.collection_amount ?? 0));
+        const codAmount = Number.isFinite(amt) ? amt : 0;
+        
+        if (subOrderId && subOrderId !== '') {
+          subOrderIdToAmountMap.set(String(subOrderId), codAmount);
+        }
         if (!Number.isNaN(boxNum)) {
-          const amt = parseFloat(String(b.codAmount ?? b.cod_amount ?? 0));
-          boxAmountMap.set(boxNum, Number.isFinite(amt) ? amt : 0);
+          boxNumberToAmountMap.set(boxNum, codAmount);
+          if (subOrderId && subOrderId !== '') {
+            boxNumberToSubOrderIdMap.set(boxNum, String(subOrderId));
+          }
         }
       });
+      
       const fallbackAmount =
         typeof order.codAmount === 'number'
           ? order.codAmount
           : typeof order.totalAmount === 'number'
             ? order.totalAmount
             : 0;
+      
       details.forEach((detail: any) => {
         const tn = detail.tracking_number ?? detail.trackingNumber ?? '';
         const normalized = normalizeTrackingNumber(String(tn));
         if (!normalized) return;
         if (map.has(normalized)) return;
+        
         const boxNumber = detail.box_number ?? detail.boxNumber;
         const boxNum = boxNumber !== undefined && boxNumber !== null ? Number(boxNumber) : undefined;
-        const expectedAmount =
-          boxNum !== undefined && boxAmountMap.has(boxNum)
-            ? boxAmountMap.get(boxNum) || 0
-            : fallbackAmount || 0;
-        const orderId = detail.order_id ?? detail.orderId ?? order.id;
+        const detailOrderId = detail.order_id ?? detail.orderId;
         const parentOrderId = detail.parent_order_id ?? detail.parentOrderId ?? order.id;
+        const resolvedSubOrderId =
+          (detailOrderId && subOrderIdToAmountMap.has(detailOrderId) ? detailOrderId : undefined) ??
+          (boxNum !== undefined ? boxNumberToSubOrderIdMap.get(boxNum) : undefined) ??
+          (detailOrderId ?? undefined);
+        
+        // Priority: Use sub_order_id from order_boxes, then box_number, then fallback
+        let expectedAmount = fallbackAmount;
+        
+        // First try: Use sub_order_id to find COD amount from order_boxes
+        if (resolvedSubOrderId && subOrderIdToAmountMap.has(resolvedSubOrderId)) {
+          expectedAmount = subOrderIdToAmountMap.get(resolvedSubOrderId) || 0;
+        }
+        // Second try: Use box_number to find COD amount from order_boxes
+        else if (boxNum !== undefined && boxNumberToAmountMap.has(boxNum)) {
+          expectedAmount = boxNumberToAmountMap.get(boxNum) || 0;
+        }
+        
+        // Debug log for order 251126-00031telesale17x
+        if (parentOrderId === '251126-00031telesale17x') {
+          console.log('DEBUG trackingLookup:', {
+            tracking: normalized,
+            orderId: resolvedSubOrderId ?? detailOrderId ?? order.id,
+            parentOrderId,
+            boxNum,
+            subOrderIdToAmountMapKeys: Array.from(subOrderIdToAmountMap.keys()),
+            boxNumberToAmountMapKeys: Array.from(boxNumberToAmountMap.keys()),
+            boxNumberToSubOrderIdMapEntries: Array.from(boxNumberToSubOrderIdMap.entries()),
+            expectedAmount,
+            fallbackAmount,
+            boxes: boxes.map((b: any) => ({
+              sub_order_id: b.sub_order_id ?? b.subOrderId,
+              box_number: b.boxNumber ?? b.box_number,
+              collection_amount: b.collectionAmount ?? b.codAmount ?? b.cod_amount,
+            })),
+            detail,
+          });
+        }
+        
         map.set(normalized, {
-          orderId,
+          orderId: resolvedSubOrderId ?? parentOrderId ?? order.id, // Prefer sub order id from order_boxes
           parentOrderId,
           boxNumber: boxNum,
           expectedAmount,
         });
       });
+      
       if (details.length === 0 && Array.isArray(order.trackingNumbers)) {
         order.trackingNumbers.forEach((tn) => {
           const normalized = normalizeTrackingNumber(String(tn));

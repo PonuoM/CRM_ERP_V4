@@ -381,6 +381,17 @@ export interface CodBox {
   trackingNumber?: string;
 }
 
+export interface TrackingDetail {
+  orderId?: string;
+  parentOrderId?: string;
+  trackingNumber?: string;
+  boxNumber?: number | null;
+  order_id?: string;
+  parent_order_id?: string;
+  tracking_number?: string;
+  box_number?: number | null;
+}
+
 export interface TrackingEntry {
   orderId: string;
   trackingNumber: string;
@@ -415,6 +426,7 @@ export interface Order {
   orderStatus: OrderStatus;
   trackingNumbers: string[];
   trackingEntries?: TrackingEntry[];
+  trackingDetails?: TrackingDetail[];
   boxes?: CodBox[];
   notes?: string;
   warehouseId?: number;

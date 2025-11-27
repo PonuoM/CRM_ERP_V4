@@ -1637,18 +1637,47 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         }
                         $trackingMap[$parentId][] = [
                             'order_id' => $trackingRow['order_id'],
+                            'parent_order_id' => $trackingRow['parent_order_id'],
                             'tracking_number' => $trackingRow['tracking_number'],
                             'box_number' => $trackingRow['box_number'],
                         ];
                     }
+                    
+                    // Fetch boxes from order_boxes for each main order
+                    $boxesMap = [];
+                    $boxesSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status
+                                 FROM order_boxes
+                                 WHERE order_id IN ($parentPlaceholders)
+                                 ORDER BY order_id, box_number";
+                    $boxesStmt = $pdo->prepare($boxesSql);
+                    $boxesStmt->execute($orderIds);
+                    $boxesRows = $boxesStmt->fetchAll();
+                    foreach ($boxesRows as $boxRow) {
+                        $orderId = $boxRow['order_id'] ?? null;
+                        if ($orderId === null) continue;
+                        if (!isset($boxesMap[$orderId])) {
+                            $boxesMap[$orderId] = [];
+                        }
+                        $boxesMap[$orderId][] = [
+                            'sub_order_id' => $boxRow['sub_order_id'] ?? null,
+                            'box_number' => $boxRow['box_number'] ?? null,
+                            'cod_amount' => $boxRow['cod_amount'] ?? null,
+                            'collection_amount' => $boxRow['collection_amount'] ?? null,
+                            'collected_amount' => $boxRow['collected_amount'] ?? null,
+                            'waived_amount' => $boxRow['waived_amount'] ?? null,
+                            'payment_method' => $boxRow['payment_method'] ?? null,
+                            'status' => $boxRow['status'] ?? null,
+                        ];
+                    }
                 }
                 
-                // Add items and slips to each order
+                // Add items, slips, tracking details, and boxes to each order
                 foreach ($orders as &$order) {
                     $order['items'] = $itemsMap[$order['id']] ?? [];
                     $order['slips'] = $slipsMap[$order['id']] ?? [];
                     $order['tracking_details'] = $trackingMap[$order['id']] ?? [];
                     $order['trackingDetails'] = $order['tracking_details'];
+                    $order['boxes'] = $boxesMap[$order['id']] ?? [];
                 }
                 
                 json_response($orders);
@@ -2213,14 +2242,41 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
 
-                if (isset($in['trackingEntries']) && is_array($in['trackingEntries'])) {
+                $hasTrackingUpdate = false;
+                if (isset($in['trackingEntries']) && is_array($in['trackingEntries']) && !empty($in['trackingEntries'])) {
                     save_order_tracking_entries($pdo, $id, $in['trackingEntries'], true);
-                } elseif (isset($in['trackingNumbers']) && is_array($in['trackingNumbers'])) {
+                    $hasTrackingUpdate = true;
+                } elseif (isset($in['trackingNumbers']) && is_array($in['trackingNumbers']) && !empty($in['trackingNumbers'])) {
                     $legacyEntries = [];
                     foreach ($in['trackingNumbers'] as $tnRaw) {
-                        $legacyEntries[] = ['trackingNumber' => $tnRaw];
+                        $tn = trim((string)$tnRaw);
+                        if ($tn !== '') {
+                            $legacyEntries[] = ['trackingNumber' => $tn];
+                        }
                     }
-                    save_order_tracking_entries($pdo, $id, $legacyEntries, true);
+                    if (!empty($legacyEntries)) {
+                        save_order_tracking_entries($pdo, $id, $legacyEntries, true);
+                        $hasTrackingUpdate = true;
+                    }
+                }
+                
+                // Auto-update order_status to Shipping when tracking is added and order is Picking or Preparing
+                // Only if order_status is not explicitly set in the request
+                if ($hasTrackingUpdate && $orderStatus === null) {
+                    $currentStatus = strtoupper((string)($updatedOrder['order_status'] ?? $previousStatus));
+                    // If order is Picking or Preparing, and has tracking, change to Shipping
+                    if (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
+                        $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
+                        $autoShippingStmt->execute(['Shipping', $id]);
+                        $newStatus = 'Shipping';
+                        $updatedOrder['order_status'] = 'Shipping';
+                        // Reload order to get updated status
+                        $orderRowStmt->execute([$id]);
+                        $updatedOrder = $orderRowStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($updatedOrder) {
+                            $newStatus = (string)($updatedOrder['order_status'] ?? $newStatus);
+                        }
+                    }
                 }
 
                 if ($orderStatus !== null) {
@@ -2943,6 +2999,99 @@ function ensure_order_slips_table(PDO $pdo): void {
     }
 }
 
+function ensure_cod_schema(PDO $pdo): void {
+    try {
+        $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+    } catch (Throwable $e) {
+        return;
+    }
+
+    // 1) cod_documents table
+    try {
+        $tableExists = $pdo->query("SELECT COUNT(*) FROM information_schema.tables 
+                                    WHERE table_schema = '$dbName' AND table_name = 'cod_documents'")->fetchColumn();
+        if ((int)$tableExists === 0) {
+            $pdo->exec("CREATE TABLE cod_documents (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                document_number VARCHAR(64) NOT NULL,
+                document_datetime DATETIME NOT NULL,
+                bank_account_id INT NULL,
+                company_id INT NOT NULL,
+                total_input_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                total_order_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                notes TEXT NULL,
+                created_by INT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_cod_document_company_number (company_id, document_number),
+                KEY idx_cod_documents_company (company_id),
+                KEY idx_cod_documents_datetime (document_datetime),
+                CONSTRAINT fk_cod_documents_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                CONSTRAINT fk_cod_documents_bank FOREIGN KEY (bank_account_id) REFERENCES bank_account(id) ON DELETE SET NULL,
+                CONSTRAINT fk_cod_documents_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // 2) Ensure cod_records columns exist
+    $columns = [];
+    try {
+        $columnRows = $pdo->query("SELECT column_name, column_type, data_type FROM information_schema.columns 
+                                   WHERE table_schema = '$dbName' AND table_name = 'cod_records'")
+            ->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($columnRows as $col) {
+            $columns[strtolower($col['column_name'])] = $col;
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // document_id
+    if (!isset($columns['document_id'])) {
+        try { $pdo->exec("ALTER TABLE cod_records ADD COLUMN document_id INT NULL AFTER id"); } catch (Throwable $e) { /* ignore */ }
+    }
+    try {
+        $idx = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics 
+                            WHERE table_schema = '$dbName' AND table_name = 'cod_records' AND index_name = 'idx_cod_records_document'")->fetchColumn();
+        if ((int)$idx === 0) {
+            $pdo->exec("ALTER TABLE cod_records ADD INDEX idx_cod_records_document (document_id)");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+    try {
+        $fkExists = $pdo->query("SELECT COUNT(*) FROM information_schema.table_constraints 
+                                 WHERE table_schema = '$dbName' AND table_name = 'cod_records' AND constraint_name = 'fk_cod_records_document'")->fetchColumn();
+        if ((int)$fkExists === 0) {
+            $pdo->exec("ALTER TABLE cod_records 
+                ADD CONSTRAINT fk_cod_records_document FOREIGN KEY (document_id) REFERENCES cod_documents(id) ON DELETE SET NULL");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // order_id
+    if (!isset($columns['order_id'])) {
+        try { $pdo->exec("ALTER TABLE cod_records ADD COLUMN order_id VARCHAR(32) NULL AFTER tracking_number"); } catch (Throwable $e) { /* ignore */ }
+    }
+    try {
+        $idx = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics 
+                            WHERE table_schema = '$dbName' AND table_name = 'cod_records' AND index_name = 'idx_cod_records_order'")->fetchColumn();
+        if ((int)$idx === 0) {
+            $pdo->exec("ALTER TABLE cod_records ADD INDEX idx_cod_records_order (order_id)");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // order_amount
+    if (!isset($columns['order_amount'])) {
+        try { $pdo->exec("ALTER TABLE cod_records ADD COLUMN order_amount DECIMAL(12,2) NULL DEFAULT 0.00 AFTER cod_amount"); } catch (Throwable $e) { /* ignore */ }
+    }
+
+    // status should accept new values; relax to VARCHAR
+    try {
+        $statusCol = $columns['status'] ?? null;
+        $isVarchar = $statusCol && strtolower($statusCol['data_type']) === 'varchar';
+        $supportsMatched = $statusCol && isset($statusCol['column_type']) && stripos($statusCol['column_type'], 'matched') !== false;
+        if (!$isVarchar || !$supportsMatched) {
+            $pdo->exec("ALTER TABLE cod_records MODIFY status VARCHAR(32) NOT NULL DEFAULT 'pending'");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+}
+
 function handle_order_slips(PDO $pdo, ?string $id): void {
     ensure_order_slips_table($pdo);
     $baseDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'slips';
@@ -3190,7 +3339,20 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
         $del->execute([$parentOrderId]);
     }
 
+    // Check if order has boxes - if yes, auto-assign box_number to tracking entries without box_number
+    $boxCount = 0;
+    try {
+        $boxStmt = $pdo->prepare('SELECT COUNT(*) FROM order_boxes WHERE order_id = ?');
+        $boxStmt->execute([$parentOrderId]);
+        $boxCount = (int)$boxStmt->fetchColumn();
+    } catch (Throwable $e) {
+        // If order_boxes table doesn't exist or error, ignore
+    }
+
     $normalized = [];
+    $mainTrackingIndex = 0; // Index for tracking without box_number to prevent overwriting
+    $autoBoxIndex = 1; // Auto-assign box number starting from 1
+    
     foreach ($entries as $entry) {
         $trackingRaw = $entry['trackingNumber'] ?? ($entry['tracking_number'] ?? null);
         $tn = trim((string)$trackingRaw);
@@ -3210,8 +3372,32 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
                 $boxNumber = (int)$m[1];
             }
         }
+        
+        // Auto-assign box_number if order has boxes and tracking doesn't have box_number
+        if ($boxNumber === null && $boxCount > 0) {
+            // If order has multiple boxes, assign box_number sequentially (1, 2, 3, ...)
+            if ($boxCount > 1) {
+                if ($autoBoxIndex <= $boxCount) {
+                    $boxNumber = $autoBoxIndex;
+                    $autoBoxIndex++;
+                }
+                // If tracking count exceeds box count, leave box_number as null for extra tracking
+            } else {
+                // Single box, assign box_number = 1
+                $boxNumber = 1;
+            }
+        }
 
-        $boxKey = $boxNumber !== null ? 'box_' . $boxNumber : 'box_main';
+        // Use box_number as key if available, otherwise use index to prevent overwriting
+        // This allows multiple tracking numbers without box_number to be stored
+        if ($boxNumber !== null) {
+            $boxKey = 'box_' . $boxNumber;
+        } else {
+            // Use tracking number + index as key to prevent overwriting when multiple tracking without box_number
+            $boxKey = 'main_' . $mainTrackingIndex . '_' . $tn;
+            $mainTrackingIndex++;
+        }
+        
         $normalized[$boxKey] = [
             'tracking_number' => $tn,
             'box_number' => $boxNumber,
@@ -3225,6 +3411,8 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
     $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, parent_order_id, box_number, tracking_number) VALUES (?,?,?,?)');
     foreach ($normalized as $data) {
         $boxNumber = $data['box_number'];
+        // order_id should be sub-order ID (parentOrderId-boxNumber) if box_number exists, otherwise use parentOrderId
+        // This allows tracking to be linked to specific boxes
         $subOrderId = $boxNumber !== null ? "{$parentOrderId}-{$boxNumber}" : $parentOrderId;
         $ins->execute([$subOrderId, $parentOrderId, $boxNumber, $data['tracking_number']]);
     }
@@ -3406,6 +3594,9 @@ function handle_calls(PDO $pdo, ?string $id): void {
 }
 
 function handle_cod_documents(PDO $pdo, ?string $id): void {
+    // Auto-migrate minimal COD schema so the feature works without manual SQL
+    ensure_cod_schema($pdo);
+
     switch (method()) {
         case 'GET':
             $companyId = $_GET['companyId'] ?? null;
@@ -3539,6 +3730,9 @@ function handle_cod_documents(PDO $pdo, ?string $id): void {
 }
 
 function handle_cod_records(PDO $pdo, ?string $id): void {
+    // Ensure schema before any operation (covers direct cod_records API use)
+    ensure_cod_schema($pdo);
+
     switch (method()) {
         case 'GET':
             if ($id) {
