@@ -33,6 +33,7 @@ interface PaymentSlip {
   transferDate?: string;
   fileExists?: boolean;
   originalUrl?: string;
+  paymentMethod?: string;
 }
 
 interface OrderSlipGroup {
@@ -43,6 +44,7 @@ interface OrderSlipGroup {
   slips: PaymentSlip[];
   latestUpload: string;
   status: "pending" | "verified" | "rejected";
+  paymentMethod?: string;
 }
 
 const SlipAll: React.FC = () => {
@@ -62,6 +64,8 @@ const SlipAll: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<
     "all" | "today" | "week" | "month"
   >("all");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<OrderSlipGroup | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +159,7 @@ const SlipAll: React.FC = () => {
             transferDate: item.transfer_date || undefined,
             fileExists,
             originalUrl: item.original_url || apiUrl,
+            paymentMethod: item.payment_method || undefined,
           };
         })
         : [];
@@ -175,7 +180,8 @@ const SlipAll: React.FC = () => {
               orderTotal: slip.orderTotal,
               slips: [],
               latestUpload: slip.uploadedAt,
-              status: slip.status
+              status: slip.status,
+              paymentMethod: slip.paymentMethod,
             };
           }
           groups[slip.orderId].slips.push(slip);
@@ -212,7 +218,8 @@ const SlipAll: React.FC = () => {
           orderTotal: slip.orderTotal,
           slips: [slip],
           latestUpload: slip.uploadedAt,
-          status: slip.status
+          status: slip.status,
+          paymentMethod: slip.paymentMethod,
         });
       });
 
@@ -239,6 +246,26 @@ const SlipAll: React.FC = () => {
 
   useEffect(() => {
     loadSlips();
+
+    // Fetch payment methods
+    const fetchPaymentMethods = async () => {
+      try {
+        const sessionUser = localStorage.getItem("sessionUser");
+        if (sessionUser) {
+          const parsed = JSON.parse(sessionUser);
+          if (parsed.company_id) {
+            const res = await fetch(`/api/Slip_DB/get_payment_methods.php?company_id=${parsed.company_id}`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.data)) {
+              setPaymentMethods(data.data);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch payment methods:", err);
+      }
+    };
+    fetchPaymentMethods();
   }, [loadSlips]);
 
   const filteredGroups = orderGroups.filter((group) => {
@@ -264,7 +291,10 @@ const SlipAll: React.FC = () => {
       matchesDate = slipDate >= monthAgo;
     }
 
-    return matchesSearch && matchesStatus && matchesDate;
+    const matchesPaymentMethod =
+      paymentMethodFilter === "all" || group.paymentMethod === paymentMethodFilter;
+
+    return matchesSearch && matchesStatus && matchesDate && matchesPaymentMethod;
   });
 
   const getStatusIcon = (status: PaymentSlip["status"]) => {
@@ -457,6 +487,21 @@ const SlipAll: React.FC = () => {
               <option value="month">30 วันล่าสุด</option>
             </select>
           </div>
+
+          {/* Payment Method Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <select
+              value={paymentMethodFilter}
+              onChange={(e) => setPaymentMethodFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">ทุกช่องทางชำระ</option>
+              {paymentMethods.map(method => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 text-sm text-gray-600">
@@ -489,6 +534,9 @@ const SlipAll: React.FC = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ลูกค้า
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ช่องทางชำระ
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     จำนวนเงิน
@@ -545,6 +593,11 @@ const SlipAll: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
                         {group.customerName || "-"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900">
+                        {group.paymentMethod || "-"}
                       </div>
                     </td>
                     <td className="px-6 py-4">

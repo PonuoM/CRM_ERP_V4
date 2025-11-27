@@ -220,6 +220,7 @@ try {
         $updatedAtSelect AS updated_at,
         o.total_amount,
         o.payment_status,
+        o.payment_method,
         o.order_status,
         o.order_date,
         o.delivery_date,
@@ -318,6 +319,7 @@ try {
       "file_name" => $fileName,
       "file_exists" => $fileExists,
       "original_url" => $rawUrl,
+      "payment_method" => $row["payment_method"],
     ];
   }
 
