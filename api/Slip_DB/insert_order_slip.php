@@ -25,7 +25,8 @@ if (!$data) {
 // Validate required fields
 $required_fields = ["order_id", "amount", "bank_account_id", "transfer_date"];
 foreach ($required_fields as $field) {
-  if (empty($data[$field])) {
+  // Allow 0 as a valid value for amount
+  if (empty($data[$field]) && $data[$field] !== 0 && $data[$field] !== '0') {
     echo json_encode([
       "success" => false,
       "message" => "Field '$field' is required",
@@ -188,7 +189,8 @@ try {
     exit();
   }
 
-  // Check if slip already exists for this order
+  // Check if slip already exists for this order - REMOVED to allow multiple slips
+  /*
   $existing_slip_sql = "SELECT id FROM order_slips WHERE order_id = ?";
   $existing_stmt = $conn->prepare($existing_slip_sql);
   $existing_stmt->execute([$order_id]);
@@ -201,6 +203,7 @@ try {
     ]);
     exit();
   }
+  */
 
   // Insert new order slip
   $amount = (int) $data["amount"];

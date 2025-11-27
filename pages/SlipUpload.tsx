@@ -510,6 +510,8 @@ const SlipUpload: React.FC = () => {
             transferDate: slipFormData.transfer_date,
             url: slipUrl,
             companyId: companyId,
+            uploadBy: user.id,
+            uploadByName: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.full_name || undefined,
           });
 
           if (insertResult.success) {
@@ -518,21 +520,8 @@ const SlipUpload: React.FC = () => {
         }
       }
 
-      // Insert the order slip record using API service
-      const insertResult = await createOrderSlipWithPayment({
-        orderId: slipFormData.order_id,
-        amount: parseInt(slipFormData.amount),
-        bankAccountId: parseInt(slipFormData.bank_account_id),
-        transferDate: slipFormData.transfer_date,
-        url: slipUrl,
-        companyId: companyId,
-        uploadBy: user.id,
-        uploadByName: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.full_name || undefined,
-      });
-
-      if (insertResult.success) {
-        showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
-        // Close modal first
+      if (successCount > 0) {
+        showMessage("success", `บันทึกข้อมูลสลิปเรียบร้อยแล้ว (${successCount}/${slipImages.length} รูป)`);
         setShowSlipModal(false);
         setSlipFormData((prev) => ({
           ...prev,
