@@ -5,7 +5,7 @@ import { ShoppingCart } from 'lucide-react';
 // Upsell tag with orange-red gradient
 const UpsellTag: React.FC = () => {
   return (
-    <span 
+    <span
       className="inline-flex items-center justify-center px-2 py-1 rounded-full text-[10px] font-bold text-white uppercase shadow-md"
       style={{
         background: 'linear-gradient(90deg, #f97316 0%, #ef4444 100%)',
@@ -57,6 +57,7 @@ export interface OrderTableProps {
   shippingOptions?: string[];
   shippingSavingIds?: string[];
   onShippingChange?: (orderId: string, provider: string) => void;
+  highlightedOrderId?: string | null;
 }
 
 // Exported helpers (used by other components)
@@ -86,21 +87,21 @@ export const getPaymentMethodChip = (method: PaymentMethod | undefined | null) =
   if (!method) {
     return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
   }
-  
+
   // Handle both enum value and string comparison
   const methodStr = String(method);
-  
+
   if (method === PaymentMethod.COD || methodStr === "COD" || methodStr === "cod") {
     return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">COD</span>;
   }
   if (method === PaymentMethod.Transfer || methodStr === "Transfer" || methodStr === "transfer") {
     return <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">โอนเงิน</span>;
   }
-  if (method === PaymentMethod.PayAfter || methodStr === "PayAfter" || methodStr === "payafter" || 
-      methodStr === "หลังจากรับสินค้า" || methodStr === "รับสินค้าก่อน" || methodStr === "ผ่อนชำระ") {
+  if (method === PaymentMethod.PayAfter || methodStr === "PayAfter" || methodStr === "payafter" ||
+    methodStr === "หลังจากรับสินค้า" || methodStr === "รับสินค้าก่อน" || methodStr === "ผ่อนชำระ") {
     return <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">จ่ายหลังส่ง</span>;
   }
-  
+
   return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
 };
 
@@ -187,6 +188,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
   shippingOptions = [],
   shippingSavingIds = [],
   onShippingChange,
+  highlightedOrderId,
 }) => {
   const handleSelectAll = () => {
     if (!onSelectionChange) return;
@@ -215,6 +217,15 @@ const OrderTable: React.FC<OrderTableProps> = ({
       return itemCreatorId !== orderCreatorId;
     });
   };
+
+  React.useEffect(() => {
+    if (highlightedOrderId) {
+      const element = document.getElementById(`order-row-${highlightedOrderId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [highlightedOrderId]);
 
   return (
     <div className="bg-white rounded-lg shadow">
@@ -255,8 +266,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
                   return c.pk === order.customerId;
                 }
                 // Fallback to string comparison
-                return String(c.id) === String(order.customerId) || 
-                       String(c.pk) === String(order.customerId);
+                return String(c.id) === String(order.customerId) ||
+                  String(c.pk) === String(order.customerId);
               });
               // Match seller by id (ensure type compatibility)
               const seller = users?.find((u) => {
@@ -287,8 +298,13 @@ const OrderTable: React.FC<OrderTableProps> = ({
               const diff = order.totalAmount - paid;
               const paidText = `฿${(paid || 0).toLocaleString()}`;
               const isSavingShipping = shippingSavingIds?.includes(order.id);
+              const isHighlighted = highlightedOrderId === order.id;
               return (
-                <tr key={order.id} className="bg-white border-b hover:bg-gray-50">
+                <tr
+                  key={order.id}
+                  id={`order-row-${order.id}`}
+                  className={`bg-white border-b hover:bg-gray-50 ${isHighlighted ? 'border-2 border-red-500' : ''}`}
+                >
                   {selectable && (
                     <td className="p-4">
                       <input
@@ -338,7 +354,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                           value={order.shippingProvider || ''}
                           onChange={(e) => onShippingChange(order.id, e.target.value)}
                           disabled={isSavingShipping}
-                          className="w-full px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 shadow-sm transition"
+                          className="w-full min-w-[150px] px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 shadow-sm transition"
                         >
                           <option value="">เลือกขนส่ง</option>
                           {shippingOptions.map((opt) => (

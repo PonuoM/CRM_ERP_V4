@@ -66,6 +66,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
   const [shippingSavingIds, setShippingSavingIds] = useState<Set<string>>(new Set());
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
 
   // Persist filters across page switches
   const filterStorageKey = 'manage_orders_filters';
@@ -791,14 +792,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'สีและรูปแบบ': '',
             'จำนวน': item.quantity,
             'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
-            'บริษัทขนส่ง': '',
+            'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
-            'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
-            'สถานะ': order.orderStatus,
-            'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
+            'เวลาส่งสินค้า': '',
+            'สถานะ': order.orderStatus === 'Pending' ? 'ชำระแล้วรอตรวจสอบ' : order.orderStatus,
+            'พนักงานขาย': '',
             'หมายเหตุออฟไลน์': '',
-            'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
-            'รูปแบบการชำระ': order.paymentMethod,
+            'รูปแบบคำสั่งซื้อ': '',
+            'รูปแบบการชำระ': '',
           };
 
           orderRows.push(headers.map(header => rowData[header]));
@@ -843,9 +844,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   const handleExportAndProcessSelected = async () => {
     // Prefer full details for selected orders when available (with items)
+    // Prefer full details for selected orders when available (with items)
     const baseMap = new Map(displayedOrders.map(o => [o.id, o]));
     let selectedOrders = selectedIds
-      .map(id => fullOrdersById[id] || baseMap.get(id))
+      .map(id => {
+        const full = fullOrdersById[id];
+        const base = baseMap.get(id);
+        if (full) {
+          // Ensure we have the latest shippingProvider from base if full is stale (though we try to keep full updated)
+          if (!full.shippingProvider && (base as any)?.shippingProvider) {
+            return { ...full, shippingProvider: (base as any).shippingProvider };
+          }
+          return full;
+        }
+        return base;
+      })
       .filter((o): o is Order => !!o);
     if (selectedOrders.length === 0) return;
 
@@ -960,9 +973,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         alert(`ออเดอร์ต่อไปนี้ต้องมีสลิปและสถานะการชำระ (โอน) ต้องไม่เป็นค้างชำระก่อน Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
         return;
       }
+
+      // Validate Shipping Provider Selection
+      const missingShipping = selectedOrders.find(o => !o.shippingProvider || o.shippingProvider.trim() === '');
+      if (missingShipping) {
+        setHighlightedOrderId(missingShipping.id);
+        alert(`กรุณาเลือกขนส่งสำหรับออเดอร์ ${missingShipping.id} ก่อนทำการ Export`);
+        return;
+      } else {
+        setHighlightedOrderId(null);
+      }
+
     } catch (e) {
       console.error('pre-export validation failed', e);
-      alert('ตรวจสอบสลิปก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
+      alert('ตรวจสอบข้อมูลก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
       return;
     }
 
@@ -1101,6 +1125,22 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const handleShippingProviderChange = async (orderId: string, shippingProvider: string) => {
+    if (highlightedOrderId === orderId) {
+      setHighlightedOrderId(null);
+    }
+
+    // Optimistically update fullOrdersById to ensure export validation sees the change immediately
+    setFullOrdersById(prev => {
+      if (!prev[orderId]) return prev;
+      return {
+        ...prev,
+        [orderId]: {
+          ...prev[orderId],
+          shippingProvider
+        }
+      };
+    });
+
     setShippingSavingIds(prev => {
       const next = new Set(prev);
       next.add(orderId);
@@ -1141,6 +1181,31 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     { label: 'ทั้งหมด', value: 'all' },
   ];
 
+  const handleBulkShippingChange = async (provider: string) => {
+    if (!provider) return;
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`คุณต้องการเปลี่ยนขนส่งของออเดอร์ ${selectedIds.length} รายการเป็น "${provider}" ใช่หรือไม่?`)) return;
+
+    // Optimistic update
+    setFullOrdersById(prev => {
+      const next = { ...prev };
+      selectedIds.forEach(id => {
+        if (next[id]) {
+          next[id] = { ...next[id], shippingProvider: provider };
+        }
+      });
+      return next;
+    });
+
+    try {
+      await Promise.all(selectedIds.map(id => onUpdateShippingProvider(id, provider)));
+      alert('อัปเดตขนส่งเรียบร้อยแล้ว');
+    } catch (error) {
+      console.error('Failed to bulk update shipping provider', error);
+      alert('เกิดข้อผิดพลาดในการอัปเดตขนส่ง');
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -1148,7 +1213,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
           <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
-        {activeTab !== 'pending' && (
+        {activeTab !== 'pending' && activeTab !== 'verified' && (
           <div className="flex items-center space-x-2">
             <button
               onClick={handleExportAndProcessSelected}
@@ -1186,6 +1251,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         )}
         {activeTab === 'verified' && (
           <div className="flex items-center space-x-2">
+            <select
+              disabled={selectedIds.length === 0}
+              onChange={(e) => {
+                handleBulkShippingChange(e.target.value);
+                e.target.value = ''; // Reset selection
+              }}
+              defaultValue=""
+              className="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="" disabled>เลือกขนส่ง ({selectedIds.length})</option>
+              {SHIPPING_PROVIDERS.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
             <button
               onClick={handleExportAndProcessSelected}
               disabled={selectedIds.length === 0}
@@ -1415,6 +1494,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           shippingOptions={SHIPPING_PROVIDERS}
           shippingSavingIds={Array.from(shippingSavingIds)}
           onShippingChange={handleShippingProviderChange}
+          highlightedOrderId={highlightedOrderId}
         />
 
         {/* Pagination Controls */}
