@@ -270,22 +270,29 @@ const SlipUpload: React.FC = () => {
     pageSize: 10,
     maxPage: 1,
   });
+
   // Input filters - what user is typing (not applied until search button clicked)
-  const [inputFilters, setInputFilters] = useState<FilterOptions>({
-    order_id: "",
-    customer_name: "",
-    phone: "",
-    sale_month: "",
-    sale_year: "",
+  const [inputFilters, setInputFilters] = useState<FilterOptions>(() => {
+    const now = new Date();
+    return {
+      order_id: "",
+      customer_name: "",
+      phone: "",
+      sale_month: (now.getMonth() + 1).toString(),
+      sale_year: now.getFullYear().toString(),
+    };
   });
 
   // Active filters - what's actually being used for search
-  const [activeFilters, setActiveFilters] = useState<FilterOptions>({
-    order_id: "",
-    customer_name: "",
-    phone: "",
-    sale_month: "",
-    sale_year: "",
+  const [activeFilters, setActiveFilters] = useState<FilterOptions>(() => {
+    const now = new Date();
+    return {
+      order_id: "",
+      customer_name: "",
+      phone: "",
+      sale_month: (now.getMonth() + 1).toString(),
+      sale_year: now.getFullYear().toString(),
+    };
   });
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -417,7 +424,7 @@ const SlipUpload: React.FC = () => {
   const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const newFiles = Array.from(files);
+      const newFiles = Array.from(files) as File[];
 
       for (const file of newFiles) {
         try {
@@ -638,6 +645,8 @@ const SlipUpload: React.FC = () => {
     }
   };
 
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
   // Fetch bank accounts on component mount
   useEffect(() => {
     fetchBankAccounts();
@@ -649,26 +658,43 @@ const SlipUpload: React.FC = () => {
   }, [pagination.currentPage, pagination.pageSize, activeFilters]); // Re-fetch when pagination or activeFilters change
 
   const handleFilterChange = (field: keyof FilterOptions, value: string) => {
-    setInputFilters((prev) => ({ ...prev, [field]: value }));
+    const newFilters = { ...inputFilters, [field]: value };
+    setInputFilters(newFilters);
+
+    // Clear existing timeout
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (field === 'sale_month' || field === 'sale_year') {
+      // Immediate update for dropdowns
+      setActiveFilters(newFilters);
+      setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    } else {
+      // Debounce for text inputs (500ms)
+      debounceRef.current = setTimeout(() => {
+        setActiveFilters(newFilters);
+        setPagination((prev) => ({ ...prev, currentPage: 1 }));
+      }, 500);
+    }
   };
 
   const clearFilters = () => {
-    const emptyFilters = {
+    const now = new Date();
+    const defaultFilters = {
       order_id: "",
       customer_name: "",
       phone: "",
-      sale_month: "",
-      sale_year: "",
+      sale_month: (now.getMonth() + 1).toString(),
+      sale_year: now.getFullYear().toString(),
     };
-    setInputFilters(emptyFilters);
-    setActiveFilters(emptyFilters);
+    setInputFilters(defaultFilters);
+    setActiveFilters(defaultFilters);
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
-  };
 
-  const applyFilters = () => {
-    // Apply input filters to active filters when search button is clicked
-    setActiveFilters(inputFilters);
-    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
   };
 
   const handlePageChange = (newPage: number) => {
@@ -790,9 +816,9 @@ const SlipUpload: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen" >
       {/* Header */}
-      <div className="mb-6">
+      < div className="mb-6" >
         <div className="flex items-center gap-3">
           <div className="p-3 bg-blue-100 rounded-lg">
             <FileText className="w-6 h-6 text-blue-600" />
@@ -806,24 +832,26 @@ const SlipUpload: React.FC = () => {
             </p>
           </div>
         </div>
-      </div>
+      </div >
 
       {/* Alert Message */}
-      {message && (
-        <div
-          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
-            ? "bg-green-100 text-green-800"
-            : "bg-red-100 text-red-800"
-            }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle className="w-5 h-5 text-green-600" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-600" />
-          )}
-          {message.text}
-        </div>
-      )}
+      {
+        message && (
+          <div
+            className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+              }`}
+          >
+            {message.type === "success" ? (
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600" />
+            )}
+            {message.text}
+          </div>
+        )
+      }
 
       <div className="w-full">
         {/* Orders Table */}
@@ -967,13 +995,6 @@ const SlipUpload: React.FC = () => {
             {/* Filter Actions */}
             <div className="flex items-center gap-2 mt-4">
               <button
-                onClick={applyFilters}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
-              >
-                <CheckCircle className="w-4 h-4" />
-                ค้นหา
-              </button>
-              <button
                 onClick={clearFilters}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors text-sm"
               >
@@ -1107,309 +1128,313 @@ const SlipUpload: React.FC = () => {
       </div>
 
       {/* Add Slip Modal */}
-      {showSlipModal && selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                เพิ่มสลิปการโอนเงิน
-              </h3>
+      {
+        showSlipModal && selectedOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  เพิ่มสลิปการโอนเงิน
+                </h3>
 
-              <div className="space-y-4">
-                {/* Order Info */}
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="text-sm text-gray-600">
-                    รหัสคำสั่งซื้อ:{" "}
-                    <span className="font-medium text-gray-900">
-                      #{selectedOrder.id}
-                    </span>
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    ยอดเงิน:{" "}
-                    <span className="font-medium text-gray-900">
-                      ฿
-                      {selectedOrder.total_amount.toLocaleString("th-TH", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </p>
-                </div>
+                <div className="space-y-4">
+                  {/* Order Info */}
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-sm text-gray-600">
+                      รหัสคำสั่งซื้อ:{" "}
+                      <span className="font-medium text-gray-900">
+                        #{selectedOrder.id}
+                      </span>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      ยอดเงิน:{" "}
+                      <span className="font-medium text-gray-900">
+                        ฿
+                        {selectedOrder.total_amount.toLocaleString("th-TH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </p>
+                  </div>
 
-                {/* Amount */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    จำนวนเงินที่โอน *
-                  </label>
-                  <input
-                    type="number"
-                    value={slipFormData.amount}
-                    onChange={(e) =>
-                      handleSlipFormChange("amount", e.target.value)
-                    }
-                    placeholder="กรอกจำนวนเงินที่โอน"
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.amount
-                      ? "border-red-300 bg-red-50"
-                      : "border-gray-300"
-                      }`}
-                  />
-                </div>
-
-                {/* Bank Account */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    บัญชีธนาคารที่รับเงินโอน *
-                  </label>
-                  {loadingBankAccounts ? (
-                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm">
-                      กำลังโหลดข้อมูลบัญชี...
-                    </div>
-                  ) : bankAccounts.length > 0 ? (
-                    <select
-                      value={slipFormData.bank_account_id}
+                  {/* Amount */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      จำนวนเงินที่โอน *
+                    </label>
+                    <input
+                      type="number"
+                      value={slipFormData.amount}
                       onChange={(e) =>
-                        handleSlipFormChange("bank_account_id", e.target.value)
+                        handleSlipFormChange("amount", e.target.value)
                       }
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
+                      placeholder="กรอกจำนวนเงินที่โอน"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.amount
                         ? "border-red-300 bg-red-50"
                         : "border-gray-300"
                         }`}
-                    >
-                      <option value="">เลือกบัญชีธนาคาร</option>
-                      {bankAccounts.map((bank) => (
-                        <option key={bank.id} value={bank.id}>
-                          {bank.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-red-600">
-                      ไม่พบบัญชีธนาคาร
-                    </div>
-                  )}
-                </div>
+                    />
+                  </div>
 
-                {/* Transfer Date */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    วันที่โอนเงิน *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={slipFormData.transfer_date}
-                    onChange={(e) =>
-                      handleSlipFormChange("transfer_date", e.target.value)
-                    }
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
-                      ? "border-red-300 bg-red-50"
-                      : "border-gray-300"
-                      }`}
-                  />
-                </div>
-
-                {/* Slip Image Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    อัปโหลดรูปสลิปโอนเงิน *
-                    {slipImages.length === 0 && (
-                      <span className="text-red-500 text-xs ml-2">
-                        จำเป็นต้องเลือกรูปภาพ
-                      </span>
-                    )}
-                  </label>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={handleFileChange}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleChooseImageClick}
-                        disabled={uploadingImage || uploadingSlip}
-                        className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
+                  {/* Bank Account */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      บัญชีธนาคารที่รับเงินโอน *
+                    </label>
+                    {loadingBankAccounts ? (
+                      <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm">
+                        กำลังโหลดข้อมูลบัญชี...
+                      </div>
+                    ) : bankAccounts.length > 0 ? (
+                      <select
+                        value={slipFormData.bank_account_id}
+                        onChange={(e) =>
+                          handleSlipFormChange("bank_account_id", e.target.value)
+                        }
+                        className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
+                          ? "border-red-300 bg-red-50"
+                          : "border-gray-300"
+                          }`}
                       >
-                        <FileText className="w-4 h-4" />
-                        เลือกรูปภาพ (เลือกได้หลายรูป)
-                      </button>
-                      <span className="text-xs text-gray-500">
-                        เลือกแล้ว {slipImages.length} รูป
-                      </span>
-                    </div>
+                        <option value="">เลือกบัญชีธนาคาร</option>
+                        {bankAccounts.map((bank) => (
+                          <option key={bank.id} value={bank.id}>
+                            {bank.display_name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-red-600">
+                        ไม่พบบัญชีธนาคาร
+                      </div>
+                    )}
+                  </div>
 
-                    {/* Image Previews Grid */}
-                    {slipImagePreviews.length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
-                        {slipImagePreviews.map((preview, index) => (
-                          <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
-                            <img
-                              src={preview}
-                              alt={`Slip preview ${index + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeImage(index)}
-                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
-                              title="ลบรูปภาพ"
-                            >
-                              <AlertCircle className="w-3 h-3" />
-                            </button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
-                              {slipImages[index]?.name}
+                  {/* Transfer Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      วันที่โอนเงิน *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={slipFormData.transfer_date}
+                      onChange={(e) =>
+                        handleSlipFormChange("transfer_date", e.target.value)
+                      }
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
+                        }`}
+                    />
+                  </div>
+
+                  {/* Slip Image Upload */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      อัปโหลดรูปสลิปโอนเงิน *
+                      {slipImages.length === 0 && (
+                        <span className="text-red-500 text-xs ml-2">
+                          จำเป็นต้องเลือกรูปภาพ
+                        </span>
+                      )}
+                    </label>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleFileChange}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleChooseImageClick}
+                          disabled={uploadingImage || uploadingSlip}
+                          className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
+                        >
+                          <FileText className="w-4 h-4" />
+                          เลือกรูปภาพ (เลือกได้หลายรูป)
+                        </button>
+                        <span className="text-xs text-gray-500">
+                          เลือกแล้ว {slipImages.length} รูป
+                        </span>
+                      </div>
+
+                      {/* Image Previews Grid */}
+                      {slipImagePreviews.length > 0 && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
+                          {slipImagePreviews.map((preview, index) => (
+                            <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
+                              <img
+                                src={preview}
+                                alt={`Slip preview ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(index)}
+                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
+                                title="ลบรูปภาพ"
+                              >
+                                <AlertCircle className="w-3 h-3" />
+                              </button>
+                              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
+                                {slipImages[index]?.name}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Slip History Section */}
+                  <div className="mt-6">
+                    <h4 className="text-sm font-medium text-gray-900 mb-3">
+                      ประวัติการอัปโหลดสลิป
+                    </h4>
+                    {loadingSlipHistory ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : slipHistory.length > 0 ? (
+                      <div className="space-y-3 max-h-60 overflow-y-auto">
+                        {slipHistory.map((slip) => (
+                          <div
+                            key={slip.id}
+                            className="bg-gray-50 p-3 rounded-lg border border-gray-200"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                ฿
+                                {slip.amount.toLocaleString("th-TH", {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {new Date(slip.created_at).toLocaleDateString(
+                                  "th-TH",
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-600 mb-2">
+                              <div>
+                                บัญชี: {slip.bank_name} - {slip.bank_number}
+                              </div>
+                              <div>
+                                วันที่โอน:{" "}
+                                {new Date(slip.transfer_date).toLocaleString(
+                                  "th-TH",
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={(() => {
+                                  if (!slip.url) return '#';
+                                  if (slip.url.startsWith('api/')) return '/' + slip.url;
+                                  if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
+                                  return '/' + slip.url;
+                                })()}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                ดูรูปสลิป
+                              </a>
+                              <span className="text-xs text-gray-400">|</span>
+                              <img
+                                src={(() => {
+                                  if (!slip.url) return '';
+                                  if (slip.url.startsWith('api/')) return '/' + slip.url;
+                                  if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
+                                  return '/' + slip.url;
+                                })()}
+                                alt="สลิปการโอนเงิน"
+                                className="w-12 h-12 object-cover rounded border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+                                onClick={() => {
+                                  const url = slip.url;
+                                  const normalizedUrl = url.startsWith('api/') ? '/' + url : (url.startsWith('/') || url.startsWith('http://') || url.startsWith('https://') ? url : '/' + url);
+                                  window.open(normalizedUrl, "_blank");
+                                }}
+                                onError={(e) => {
+                                  console.error('Failed to load slip image:', slip.url);
+                                  e.currentTarget.style.display = "none";
+                                  e.currentTarget.nextElementSibling?.removeProperty(
+                                    "display",
+                                  );
+                                }}
+                              />
+                              <span
+                                style={{
+                                  display: "none",
+                                  color: "#ef4444",
+                                  fontSize: "0.75rem",
+                                }}
+                              >
+                                ไม่สามารถโหลดรูป
+                              </span>
                             </div>
                           </div>
                         ))}
                       </div>
+                    ) : (
+                      <div className="text-center py-4 text-sm text-gray-500">
+                        ยังไม่มีประวัติการอัปโหลดสลิป
+                      </div>
                     )}
                   </div>
-                </div>
 
-                {/* Slip History Section */}
-                <div className="mt-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">
-                    ประวัติการอัปโหลดสลิป
-                  </h4>
-                  {loadingSlipHistory ? (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : slipHistory.length > 0 ? (
-                    <div className="space-y-3 max-h-60 overflow-y-auto">
-                      {slipHistory.map((slip) => (
-                        <div
-                          key={slip.id}
-                          className="bg-gray-50 p-3 rounded-lg border border-gray-200"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-gray-900">
-                              ฿
-                              {slip.amount.toLocaleString("th-TH", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {new Date(slip.created_at).toLocaleDateString(
-                                "th-TH",
-                                {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                },
-                              )}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600 mb-2">
-                            <div>
-                              บัญชี: {slip.bank_name} - {slip.bank_number}
-                            </div>
-                            <div>
-                              วันที่โอน:{" "}
-                              {new Date(slip.transfer_date).toLocaleString(
-                                "th-TH",
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={(() => {
-                                if (!slip.url) return '#';
-                                if (slip.url.startsWith('api/')) return '/' + slip.url;
-                                if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
-                                return '/' + slip.url;
-                              })()}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:text-blue-800 underline"
-                            >
-                              ดูรูปสลิป
-                            </a>
-                            <span className="text-xs text-gray-400">|</span>
-                            <img
-                              src={(() => {
-                                if (!slip.url) return '';
-                                if (slip.url.startsWith('api/')) return '/' + slip.url;
-                                if (slip.url.startsWith('/') || slip.url.startsWith('http://') || slip.url.startsWith('https://')) return slip.url;
-                                return '/' + slip.url;
-                              })()}
-                              alt="สลิปการโอนเงิน"
-                              className="w-12 h-12 object-cover rounded border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
-                              onClick={() => {
-                                const url = slip.url;
-                                const normalizedUrl = url.startsWith('api/') ? '/' + url : (url.startsWith('/') || url.startsWith('http://') || url.startsWith('https://') ? url : '/' + url);
-                                window.open(normalizedUrl, "_blank");
-                              }}
-                              onError={(e) => {
-                                console.error('Failed to load slip image:', slip.url);
-                                e.currentTarget.style.display = "none";
-                                e.currentTarget.nextElementSibling?.removeProperty(
-                                  "display",
-                                );
-                              }}
-                            />
-                            <span
-                              style={{
-                                display: "none",
-                                color: "#ef4444",
-                                fontSize: "0.75rem",
-                              }}
-                            >
-                              ไม่สามารถโหลดรูป
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 text-sm text-gray-500">
-                      ยังไม่มีประวัติการอัปโหลดสลิป
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    onClick={() => setShowSlipModal(false)}
-                    disabled={uploadingSlip}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    onClick={handleSlipSubmit}
-                    disabled={uploadingSlip || uploadingImage}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {uploadingSlip ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />
-                        กำลังบันทึก...
-                      </>
-                    ) : (
-                      "บันทึกสลิป"
-                    )}
-                  </button>
+                  {/* Actions */}
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      onClick={() => setShowSlipModal(false)}
+                      disabled={uploadingSlip}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      onClick={handleSlipSubmit}
+                      disabled={uploadingSlip || uploadingImage}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {uploadingSlip ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2" />
+                          กำลังบันทึก...
+                        </>
+                      ) : (
+                        "บันทึกสลิป"
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {viewingOrderId && (
-        <OrderDetailsModal
-          orderId={viewingOrderId}
-          onClose={() => setViewingOrderId(null)}
-        />
-      )}
-    </div>
+      {
+        viewingOrderId && (
+          <OrderDetailsModal
+            orderId={viewingOrderId}
+            onClose={() => setViewingOrderId(null)}
+          />
+        )
+      }
+    </div >
   );
 };
 
