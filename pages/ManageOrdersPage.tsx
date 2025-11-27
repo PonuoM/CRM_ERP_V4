@@ -66,6 +66,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
   const [shippingSavingIds, setShippingSavingIds] = useState<Set<string>>(new Set());
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
 
   // Persist filters across page switches
   const filterStorageKey = 'manage_orders_filters';
@@ -843,9 +844,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   const handleExportAndProcessSelected = async () => {
     // Prefer full details for selected orders when available (with items)
+    // Prefer full details for selected orders when available (with items)
     const baseMap = new Map(displayedOrders.map(o => [o.id, o]));
     let selectedOrders = selectedIds
-      .map(id => fullOrdersById[id] || baseMap.get(id))
+      .map(id => {
+        const full = fullOrdersById[id];
+        const base = baseMap.get(id);
+        if (full) {
+          // Ensure we have the latest shippingProvider from base if full is stale (though we try to keep full updated)
+          if (!full.shippingProvider && (base as any)?.shippingProvider) {
+            return { ...full, shippingProvider: (base as any).shippingProvider };
+          }
+          return full;
+        }
+        return base;
+      })
       .filter((o): o is Order => !!o);
     if (selectedOrders.length === 0) return;
 
@@ -960,9 +973,22 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         alert(`ออเดอร์ต่อไปนี้ต้องมีสลิปและสถานะการชำระ (โอน) ต้องไม่เป็นค้างชำระก่อน Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
         return;
       }
+
+      // Validate Shipping Provider Selection
+      console.log('Validating shipping provider for selected orders:', selectedOrders.map(o => ({ id: o.id, provider: o.shippingProvider })));
+      const missingShipping = selectedOrders.find(o => !o.shippingProvider || o.shippingProvider.trim() === '');
+      if (missingShipping) {
+        console.warn('Missing shipping provider for order:', missingShipping);
+        setHighlightedOrderId(missingShipping.id);
+        alert(`กรุณาเลือกขนส่งสำหรับออเดอร์ ${missingShipping.id} ก่อนทำการ Export`);
+        return;
+      } else {
+        setHighlightedOrderId(null);
+      }
+
     } catch (e) {
       console.error('pre-export validation failed', e);
-      alert('ตรวจสอบสลิปก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
+      alert('ตรวจสอบข้อมูลก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
       return;
     }
 
@@ -1101,6 +1127,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const handleShippingProviderChange = async (orderId: string, shippingProvider: string) => {
+    console.log(`Updating shipping provider for order ${orderId} to "${shippingProvider}"`);
+
+    if (highlightedOrderId === orderId) {
+      setHighlightedOrderId(null);
+    }
+
+    // Optimistically update fullOrdersById to ensure export validation sees the change immediately
+    setFullOrdersById(prev => {
+      if (!prev[orderId]) return prev;
+      return {
+        ...prev,
+        [orderId]: {
+          ...prev[orderId],
+          shippingProvider
+        }
+      };
+    });
+
     setShippingSavingIds(prev => {
       const next = new Set(prev);
       next.add(orderId);
@@ -1111,6 +1155,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     } catch (error) {
       console.error('Failed to update shipping provider', error);
       alert('ไม่สามารถอัปเดตขนส่งได้');
+      // Revert local change if needed, but for now just alert
     } finally {
       setShippingSavingIds(prev => {
         const next = new Set(prev);
@@ -1415,6 +1460,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           shippingOptions={SHIPPING_PROVIDERS}
           shippingSavingIds={Array.from(shippingSavingIds)}
           onShippingChange={handleShippingProviderChange}
+          highlightedOrderId={highlightedOrderId}
         />
 
         {/* Pagination Controls */}
