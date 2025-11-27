@@ -1,8 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { AlertCircle, CheckCircle, FileText } from "lucide-react";
-import { uploadSlipImageFile, createOrderSlipWithPayment } from "../services/api";
+import { AlertCircle, CheckCircle, FileText, Package, User as UserIcon, MapPin, Calendar, CreditCard, Phone, Eye } from "lucide-react";
+import { uploadSlipImageFile, createOrderSlipWithPayment, apiFetch } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
+import Modal from "../components/Modal";
+import { getPaymentStatusChip } from "../components/OrderTable";
+
+const InfoCard: React.FC<{ icon: React.ElementType; title: string; children: React.ReactNode }> = ({ icon: Icon, title, children }) => (
+  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+    <h3 className="text-md font-semibold text-gray-700 mb-3 flex items-center">
+      <Icon className="w-5 h-5 mr-2 text-gray-400" />
+      {title}
+    </h3>
+    {children}
+  </div>
+);
 
 interface Order {
   id: number;
@@ -62,6 +74,188 @@ interface SlipHistory {
   updated_at: string;
 }
 
+const OrderDetailsModal: React.FC<{ orderId: number; onClose: () => void }> = ({ orderId, onClose }) => {
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrder = async () => {
+      try {
+        const r: any = await apiFetch(`orders/${orderId}`);
+        // Map response to match structure used in OrderManagementModal
+        const mappedOrder = {
+          ...r,
+          id: r.id,
+          orderDate: r.order_date,
+          deliveryDate: r.delivery_date,
+          salesChannel: r.sales_channel,
+          totalAmount: Number(r.total_amount || 0),
+          amountPaid: Number(r.amount_paid || 0),
+          paymentMethod: r.payment_method,
+          paymentStatus: r.payment_status,
+          shippingCost: Number(r.shipping_cost || 0),
+          billDiscount: Number(r.bill_discount || 0),
+          slipUrl: r.slip_url,
+          shippingAddress: {
+            recipientFirstName: r.recipient_first_name,
+            recipientLastName: r.recipient_last_name,
+            street: r.street,
+            subdistrict: r.subdistrict,
+            district: r.district,
+            province: r.province,
+            postalCode: r.postal_code,
+          },
+          items: Array.isArray(r.items) ? r.items.map((it: any) => ({
+            id: it.id,
+            productId: it.product_id,
+            productName: it.product_name,
+            quantity: Number(it.quantity || 0),
+            pricePerUnit: Number(it.price_per_unit || 0),
+            discount: Number(it.discount || 0),
+            creatorId: it.creator_id,
+          })) : [],
+        };
+        setOrder(mappedOrder);
+      } catch (error) {
+        console.error("Failed to fetch order details", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOrder();
+  }, [orderId]);
+
+  if (loading) return <Modal title="กำลังโหลด..." onClose={onClose}><div className="p-8 text-center">กำลังโหลดข้อมูล...</div></Modal>;
+  if (!order) return <Modal title="ไม่พบข้อมูล" onClose={onClose}><div className="p-8 text-center text-red-500">ไม่พบข้อมูลคำสั่งซื้อ</div></Modal>;
+
+  const formatAddress = (address: any) => {
+    const parts = [
+      address.street,
+      address.subdistrict,
+      address.district,
+      address.province,
+      address.postalCode
+    ].filter(Boolean);
+    return parts.join(" ");
+  };
+
+  const calculatedTotals = {
+    itemsSubtotal: order.items.reduce((sum: number, item: any) => sum + ((item.pricePerUnit * item.quantity) - item.discount), 0),
+    itemsDiscount: order.items.reduce((sum: number, item: any) => sum + item.discount, 0),
+    shippingCost: order.shippingCost,
+    billDiscount: order.billDiscount,
+    totalAmount: order.totalAmount
+  };
+
+  return (
+    <Modal title={`รายละเอียดออเดอร์: ${order.id}`} onClose={onClose} size="xl">
+      <div className="space-y-4 text-sm">
+        <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs text-gray-500">วันที่สั่งซื้อ</p>
+              <p className="font-medium text-gray-800">{order.orderDate ? new Date(order.orderDate).toLocaleString('th-TH') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
+              <p className="font-medium text-gray-800">{order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">ช่องทางการขาย</p>
+              <p className="font-medium text-gray-800">{order.salesChannel || '-'}</p>
+            </div>
+          </div>
+        </InfoCard>
+
+        <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="font-semibold text-gray-800 text-base">
+                {order.shippingAddress.recipientFirstName} {order.shippingAddress.recipientLastName}
+              </p>
+              {/* Note: Customer phone might not be in shippingAddress, checking root order object if available or fallback */}
+              {/* The API usually returns customer info at root or we use what we have */}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+              <p className="text-gray-700 flex items-start">
+                <MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" />
+                <span className="text-sm">{formatAddress(order.shippingAddress)}</span>
+              </p>
+            </div>
+          </div>
+        </InfoCard>
+
+        <InfoCard icon={Package} title="รายการสินค้า">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">สินค้า</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคา/หน่วย</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.items.map((item: any, index: number) => (
+                  <tr key={index} className="border-b hover:bg-gray-50">
+                    <td className="px-3 py-2 text-sm text-gray-800">{item.productName}</td>
+                    <td className="px-3 py-2 text-center text-xs text-gray-700">{item.quantity}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-700">฿{item.pricePerUnit.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-xs text-red-600">-฿{item.discount.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
+                      ฿{((item.pricePerUnit * item.quantity) - item.discount).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50">
+                <tr>
+                  <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
+                  <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.itemsDiscount.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">ส่วนลดทั้งออเดอร์</td>
+                  <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.billDiscount.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">ค่าส่ง</td>
+                  <td className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.shippingCost.toLocaleString()}</td>
+                </tr>
+                <tr className="border-t-2">
+                  <td colSpan={4} className="px-3 py-2 text-sm font-bold text-gray-800">ยอดสุทธิ</td>
+                  <td className="px-3 py-2 text-right text-base font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </InfoCard>
+
+        <InfoCard icon={CreditCard} title="การชำระเงิน">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-medium text-gray-600">วิธีชำระ: {order.paymentMethod}</span>
+            {getPaymentStatusChip(order.paymentStatus, order.paymentMethod, order.amountPaid, order.totalAmount)}
+          </div>
+          {order.slipUrl && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 mb-1">หลักฐานการชำระเงิน</p>
+              <div className="relative w-32 h-32 border rounded-md p-1">
+                <img src={order.slipUrl} alt="Slip" className="w-full h-full object-contain" />
+                <a href={order.slipUrl} target="_blank" rel="noopener noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 transition-all text-transparent hover:text-white">
+                  <Eye size={20} />
+                </a>
+              </div>
+            </div>
+          )}
+        </InfoCard>
+      </div>
+    </Modal>
+  );
+};
+
 const SlipUpload: React.FC = () => {
   const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [message, setMessage] = useState<{
@@ -105,12 +299,13 @@ const SlipUpload: React.FC = () => {
     transfer_date: "",
   });
   const [uploadingSlip, setUploadingSlip] = useState(false);
-  const [slipImage, setSlipImage] = useState<File | null>(null);
-  const [slipImagePreview, setSlipImagePreview] = useState<string | null>(null);
+  const [slipImages, setSlipImages] = useState<File[]>([]);
+  const [slipImagePreviews, setSlipImagePreviews] = useState<string[]>([]);
   const [slipHistory, setSlipHistory] = useState<SlipHistory[]>([]);
   const [loadingSlipHistory, setLoadingSlipHistory] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [viewingOrderId, setViewingOrderId] = useState<number | null>(null);
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -170,6 +365,9 @@ const SlipUpload: React.FC = () => {
     if (bankAccounts.length === 0) {
       fetchBankAccounts();
     }
+    // Reset images
+    setSlipImages([]);
+    setSlipImagePreviews([]);
   };
 
   const handleSlipFormChange = (field: keyof SlipFormData, value: string) => {
@@ -217,41 +415,46 @@ const SlipUpload: React.FC = () => {
   };
 
   const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const file = e.target.files?.[0] || null;
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const newFiles = Array.from(files);
 
-    if (file) {
-      try {
-        // Show loading state if needed, or just process immediately
-        // For better UX, we could set a temporary preview of the original while processing
-        const originalUrl = URL.createObjectURL(file);
-        setSlipImagePreview(originalUrl);
+      for (const file of newFiles) {
+        try {
+          // Process image (resize + convert to WebP)
+          const processedFile = await processImage(file);
+          const processedUrl = URL.createObjectURL(processedFile);
 
-        // Process image (resize + convert to WebP)
-        const processedFile = await processImage(file);
-        setSlipImage(processedFile);
-
-        // Update preview to processed image
-        const processedUrl = URL.createObjectURL(processedFile);
-        setSlipImagePreview(processedUrl);
-
-        // Clean up original url
-        URL.revokeObjectURL(originalUrl);
-      } catch (error) {
-        console.error("Error processing image:", error);
-        showMessage("error", "ไม่สามารถประมวลผลรูปภาพได้");
-        setSlipImage(file); // Fallback to original
+          setSlipImages(prev => [...prev, processedFile]);
+          setSlipImagePreviews(prev => [...prev, processedUrl]);
+        } catch (error) {
+          console.error("Error processing image:", error);
+          showMessage("error", `ไม่สามารถประมวลผลรูปภาพ ${file.name} ได้`);
+          // Fallback to original
+          setSlipImages(prev => [...prev, file]);
+          setSlipImagePreviews(prev => [...prev, URL.createObjectURL(file)]);
+        }
       }
-    } else {
-      setSlipImage(null);
-      setSlipImagePreview(null);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
-  const uploadSlipImage = async (orderId: string): Promise<string | null> => {
-    if (!slipImage) return null;
+  const removeImage = (index: number) => {
+    setSlipImages(prev => prev.filter((_, i) => i !== index));
+    setSlipImagePreviews(prev => {
+      // Revoke URL to avoid memory leaks
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const uploadSlipImage = async (orderId: string, file: File): Promise<string | null> => {
     try {
       setUploadingImage(true);
-      const result = await uploadSlipImageFile(orderId, slipImage);
+      const result = await uploadSlipImageFile(orderId, file);
       if (!result.success) {
         showMessage("error", result.message || "อัปโหลดรูปสลิปไม่สำเร็จ");
         return null;
@@ -271,19 +474,9 @@ const SlipUpload: React.FC = () => {
       !slipFormData.amount ||
       !slipFormData.bank_account_id ||
       !slipFormData.transfer_date ||
-      !slipImage
+      slipImages.length === 0
     ) {
       showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
-      return;
-    }
-
-    // Check if slip already exists
-    const existingSlip = slipHistory.find(
-      (slip) => slip.bank_account_id === parseInt(slipFormData.bank_account_id),
-    );
-
-    if (existingSlip) {
-      showMessage("error", "มีสลิปสำหรับบัญชีธนาคารนี้แล้ว");
       return;
     }
 
@@ -299,45 +492,45 @@ const SlipUpload: React.FC = () => {
       const user = JSON.parse(sessionUser);
       const companyId = user.company_id;
 
-      // Upload image first if provided
-      let slipUrl: string | null = null;
-      if (slipImage) {
-        slipUrl = await uploadSlipImage(slipFormData.order_id);
-        if (slipImage && !slipUrl) {
-          setUploadingSlip(false);
-          return;
+      let successCount = 0;
+
+      // Upload and create slip for each image
+      for (let i = 0; i < slipImages.length; i++) {
+        const image = slipImages[i];
+        const slipUrl = await uploadSlipImage(slipFormData.order_id, image);
+
+        if (slipUrl) {
+          // Only the first slip gets the amount, others get 0 to avoid double counting
+          const amount = i === 0 ? parseInt(slipFormData.amount) : 0;
+
+          const insertResult = await createOrderSlipWithPayment({
+            orderId: slipFormData.order_id,
+            amount: amount,
+            bankAccountId: parseInt(slipFormData.bank_account_id),
+            transferDate: slipFormData.transfer_date,
+            url: slipUrl,
+            companyId: companyId,
+          });
+
+          if (insertResult.success) {
+            successCount++;
+          }
         }
       }
 
-      // Insert the order slip record using API service
-      const insertResult = await createOrderSlipWithPayment({
-        orderId: slipFormData.order_id,
-        amount: parseInt(slipFormData.amount),
-        bankAccountId: parseInt(slipFormData.bank_account_id),
-        transferDate: slipFormData.transfer_date,
-        url: slipUrl,
-        companyId: companyId,
-      });
-
-      if (insertResult.success) {
-        showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
-        // Close modal first
+      if (successCount > 0) {
+        showMessage("success", `บันทึกข้อมูลสลิปเรียบร้อยแล้ว (${successCount}/${slipImages.length} รูป)`);
         setShowSlipModal(false);
-        // Then reset form and refresh data
         setSlipFormData((prev) => ({
           ...prev,
           bank_account_id: "",
           transfer_date: "",
         }));
-        setSlipImage(null);
-        setSlipImagePreview(null);
-        // Refresh orders list
+        setSlipImages([]);
+        setSlipImagePreviews([]);
         fetchOrders();
       } else {
-        showMessage(
-          "error",
-          insertResult.message || "ไม่สามารถบันทึกข้อมูลสลิปได้",
-        );
+        showMessage("error", "ไม่สามารถบันทึกข้อมูลสลิปได้");
       }
     } catch (error) {
       console.error("Error submitting slip:", error);
@@ -880,6 +1073,12 @@ const SlipUpload: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-sm text-center">
                         <button
+                          onClick={() => setViewingOrderId(order.id)}
+                          className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200 transition-colors mr-2"
+                        >
+                          รายละเอียด
+                        </button>
+                        <button
                           onClick={() => handleAddSlip(order)}
                           className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
                         >
@@ -1009,60 +1208,65 @@ const SlipUpload: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     อัปโหลดรูปสลิปโอนเงิน *
-                    {!slipImage && (
-                      <span className="text-red-500 text-xs">
-                        จำเป็นต้องกรอกรูปภาพ
+                    {slipImages.length === 0 && (
+                      <span className="text-red-500 text-xs ml-2">
+                        จำเป็นต้องเลือกรูปภาพ
                       </span>
                     )}
                   </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleChooseImageClick}
-                      disabled={uploadingImage || uploadingSlip}
-                      className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50"
-                    >
-                      เลือกรูปภาพ
-                    </button>
-                    {slipImage && (
-                      <span className="text-sm text-gray-700 truncate max-w-[200px]">
-                        {slipImage.name}
-                      </span>
-                    )}
-                    {slipImage && (
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
                       <button
                         type="button"
-                        onClick={() => {
-                          setSlipImage(null);
-                          setSlipImagePreview(null);
-                          if (fileInputRef.current)
-                            fileInputRef.current.value = "";
-                        }}
-                        className="px-2 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                        onClick={handleChooseImageClick}
+                        disabled={uploadingImage || uploadingSlip}
+                        className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
                       >
-                        ลบรูป
+                        <FileText className="w-4 h-4" />
+                        เลือกรูปภาพ (เลือกได้หลายรูป)
                       </button>
+                      <span className="text-xs text-gray-500">
+                        เลือกแล้ว {slipImages.length} รูป
+                      </span>
+                    </div>
+
+                    {/* Image Previews Grid */}
+                    {slipImagePreviews.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
+                        {slipImagePreviews.map((preview, index) => (
+                          <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
+                            <img
+                              src={preview}
+                              alt={`Slip preview ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(index)}
+                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
+                              title="ลบรูปภาพ"
+                            >
+                              <AlertCircle className="w-3 h-3" />
+                            </button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
+                              {slipImages[index]?.name}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {slipImagePreview && (
-                    <div className="mt-2">
-                      <img
-                        src={slipImagePreview}
-                        alt="Slip preview"
-                        className="max-h-40 rounded-md border"
-                      />
-                    </div>
-                  )}
                 </div>
 
-                {/* Actions */}
                 {/* Slip History Section */}
                 <div className="mt-6">
                   <h4 className="text-sm font-medium text-gray-900 mb-3">
@@ -1195,6 +1399,13 @@ const SlipUpload: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {viewingOrderId && (
+        <OrderDetailsModal
+          orderId={viewingOrderId}
+          onClose={() => setViewingOrderId(null)}
+        />
       )}
     </div>
   );
