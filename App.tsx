@@ -197,7 +197,7 @@ import PromotionsPage from "./pages/PromotionsPage";
 import OrderAllocationPage from "./pages/OrderAllocationPage";
 import SlipUpload from "./pages/SlipUpload";
 import SlipAll from "./pages/SlipAll";
-import SlipDetail from "./pages/SlipDetail";
+
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
@@ -205,7 +205,7 @@ import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
 
 const SLIP_ALL_LABEL = String.raw`ทั้งหมด,สลิปทั้งหมด,สลิปทั้งหมด,'สลิปทั้งหมด,>สลิปทั้งหมด,-สลิปทั้งหมด,สลิปทั้งหมด1%สลิปทั้งหมด,O.,สลิปทั้งหมด,สลิปทั้งหมด,\\\\"\\`;
-const SLIP_DETAIL_LABEL = String.raw`รายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด1?สลิปรายละเอียด,-สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,\\"สลิปรายละเอียด,สลิปรายละเอียด,สลิปรายละเอียด,'สลิปรายละเอียด,>`;
+
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
@@ -5701,9 +5701,7 @@ const App: React.FC = () => {
           case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "Slip Details":
-          case SLIP_DETAIL_LABEL:
-            return <SlipDetail />;
+
           default:
             return (
               <AdminDashboard
@@ -5785,9 +5783,7 @@ const App: React.FC = () => {
           case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "Slip Details":
-          case SLIP_DETAIL_LABEL:
-            return <SlipDetail />;
+
           default:
             return (
               <AdminDashboard
@@ -5917,9 +5913,7 @@ const App: React.FC = () => {
           case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "Slip Details":
-          case SLIP_DETAIL_LABEL:
-            return <SlipDetail />;
+
 
           default:
             return (
@@ -6051,9 +6045,7 @@ const App: React.FC = () => {
           case "All Slips":
           case SLIP_ALL_LABEL:
             return <SlipAll />;
-          case "Slip Details":
-          case SLIP_DETAIL_LABEL:
-            return <SlipDetail />;
+
           case "COD Management":
           case "COD Record":
             return (

@@ -48,7 +48,7 @@ const PROMO_MGMT = "Promotions";
 const PAYMENT_SLIP_MGMT = "Slip Uploads";
 const PAYMENT_SLIP_UPLOAD = "Slip Upload";
 const PAYMENT_SLIP_ALL = "All Slips";
-const PAYMENT_SLIP_DETAILS = "Slip Details";
+
 
 const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -125,7 +125,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Slip Upload": "Upload",
     Upload: "Upload",
     "All Slips": "สลิปทั้งหมด",
-    "Slip Details": "รายละเอียดสลิป",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -188,9 +187,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     ...(canView("payment_slip.all")
       ? ([{ icon: FileText, label: PAYMENT_SLIP_ALL }] as NavItem[])
       : []),
-    ...(canView("payment_slip.details")
-      ? ([{ icon: FileText, label: PAYMENT_SLIP_DETAILS }] as NavItem[])
-      : []),
+
   ];
   const paymentSlipGroup: NavItem = {
     icon: FileUp,
@@ -448,7 +445,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         });
       }
     }
-  } catch {}
+  } catch { }
 
   const renderNavItem = (item: NavItem) => {
     const isGroup = Array.isArray(item.children);
@@ -471,9 +468,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               // Don't set active page to this main menu - only highlight it visually
               // setActivePage(item.label);
             }}
-            className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${
-              isCollapsed ? "px-3" : "px-4"
-            } ${isActive ? "bg-[#2E7D32] text-white shadow" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
+            className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${isCollapsed ? "px-3" : "px-4"
+              } ${isActive ? "bg-[#2E7D32] text-white shadow" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
             title={isCollapsed ? t(item.label) : ""}
           >
             <item.icon
@@ -490,20 +486,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           {!isCollapsed && (
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isOpen ? "max-h-96 opacity-100 mt-1" : "max-h-0 opacity-0"
-              }`}
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? "max-h-96 opacity-100 mt-1" : "max-h-0 opacity-0"
+                }`}
             >
               <div className="ml-2 space-y-1">
                 {item.children!.map((child) => (
                   <button
                     key={child.label}
                     onClick={() => setActivePage(child.label)}
-                    className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start transition-colors ${
-                      activePage === child.label
-                        ? "bg-green-50 text-green-700"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                    } ${isCollapsed ? "px-3" : "pl-10 pr-3"}`}
+                    className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start transition-colors ${activePage === child.label
+                      ? "bg-green-50 text-green-700"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                      } ${isCollapsed ? "px-3" : "pl-10 pr-3"}`}
                     title={isCollapsed ? t(child.label) : ""}
                   >
                     <child.icon
