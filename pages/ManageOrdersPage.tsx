@@ -792,14 +792,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'สีและรูปแบบ': '',
             'จำนวน': item.quantity,
             'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
-            'บริษัทขนส่ง': '',
+            'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
-            'เวลาส่งสินค้า': new Date(order.deliveryDate).toLocaleDateString('th-TH'),
-            'สถานะ': order.orderStatus,
-            'พนักงานขาย': seller ? `${seller.firstName} ${seller.lastName}` : '',
+            'เวลาส่งสินค้า': '',
+            'สถานะ': order.orderStatus === 'Pending' ? 'ชำระแล้วรอตรวจสอบ' : order.orderStatus,
+            'พนักงานขาย': '',
             'หมายเหตุออฟไลน์': '',
-            'รูปแบบคำสั่งซื้อ': 'ออนไลน์',
-            'รูปแบบการชำระ': order.paymentMethod,
+            'รูปแบบคำสั่งซื้อ': '',
+            'รูปแบบการชำระ': '',
           };
 
           orderRows.push(headers.map(header => rowData[header]));
