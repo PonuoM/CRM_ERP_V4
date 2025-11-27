@@ -354,7 +354,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                           value={order.shippingProvider || ''}
                           onChange={(e) => onShippingChange(order.id, e.target.value)}
                           disabled={isSavingShipping}
-                          className="w-full px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 shadow-sm transition"
+                          className="w-full min-w-[150px] px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 shadow-sm transition"
                         >
                           <option value="">เลือกขนส่ง</option>
                           {shippingOptions.map((opt) => (

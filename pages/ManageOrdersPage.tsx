@@ -975,10 +975,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }
 
       // Validate Shipping Provider Selection
-      console.log('Validating shipping provider for selected orders:', selectedOrders.map(o => ({ id: o.id, provider: o.shippingProvider })));
       const missingShipping = selectedOrders.find(o => !o.shippingProvider || o.shippingProvider.trim() === '');
       if (missingShipping) {
-        console.warn('Missing shipping provider for order:', missingShipping);
         setHighlightedOrderId(missingShipping.id);
         alert(`กรุณาเลือกขนส่งสำหรับออเดอร์ ${missingShipping.id} ก่อนทำการ Export`);
         return;
@@ -1127,8 +1125,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const handleShippingProviderChange = async (orderId: string, shippingProvider: string) => {
-    console.log(`Updating shipping provider for order ${orderId} to "${shippingProvider}"`);
-
     if (highlightedOrderId === orderId) {
       setHighlightedOrderId(null);
     }
@@ -1155,7 +1151,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     } catch (error) {
       console.error('Failed to update shipping provider', error);
       alert('ไม่สามารถอัปเดตขนส่งได้');
-      // Revert local change if needed, but for now just alert
     } finally {
       setShippingSavingIds(prev => {
         const next = new Set(prev);
