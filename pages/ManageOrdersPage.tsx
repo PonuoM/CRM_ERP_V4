@@ -1181,6 +1181,31 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     { label: 'ทั้งหมด', value: 'all' },
   ];
 
+  const handleBulkShippingChange = async (provider: string) => {
+    if (!provider) return;
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`คุณต้องการเปลี่ยนขนส่งของออเดอร์ ${selectedIds.length} รายการเป็น "${provider}" ใช่หรือไม่?`)) return;
+
+    // Optimistic update
+    setFullOrdersById(prev => {
+      const next = { ...prev };
+      selectedIds.forEach(id => {
+        if (next[id]) {
+          next[id] = { ...next[id], shippingProvider: provider };
+        }
+      });
+      return next;
+    });
+
+    try {
+      await Promise.all(selectedIds.map(id => onUpdateShippingProvider(id, provider)));
+      alert('อัปเดตขนส่งเรียบร้อยแล้ว');
+    } catch (error) {
+      console.error('Failed to bulk update shipping provider', error);
+      alert('เกิดข้อผิดพลาดในการอัปเดตขนส่ง');
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -1188,7 +1213,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
           <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
-        {activeTab !== 'pending' && (
+        {activeTab !== 'pending' && activeTab !== 'verified' && (
           <div className="flex items-center space-x-2">
             <button
               onClick={handleExportAndProcessSelected}
@@ -1226,6 +1251,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         )}
         {activeTab === 'verified' && (
           <div className="flex items-center space-x-2">
+            <select
+              disabled={selectedIds.length === 0}
+              onChange={(e) => {
+                handleBulkShippingChange(e.target.value);
+                e.target.value = ''; // Reset selection
+              }}
+              defaultValue=""
+              className="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="" disabled>เลือกขนส่ง ({selectedIds.length})</option>
+              {SHIPPING_PROVIDERS.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
             <button
               onClick={handleExportAndProcessSelected}
               disabled={selectedIds.length === 0}
