@@ -14,11 +14,29 @@ type Field = {
   nativeArgs?: string;
   isId: boolean;
   isAutoIncrement: boolean;
+  isUnique: boolean;
+};
+
+type Index = {
+  columns: string[];
+  name?: string;
+  type: "INDEX" | "UNIQUE";
+};
+
+type ForeignKey = {
+  columns: string[];
+  referencedTable: string;
+  referencedColumns: string[];
+  name?: string;
+  onDelete?: string;
+  onUpdate?: string;
 };
 
 type Model = {
   name: string;
   fields: Field[];
+  indexes: Index[];
+  foreignKeys: ForeignKey[];
 };
 
 const SCALAR_TYPES = new Set([
@@ -41,10 +59,30 @@ function parseModels(schema: string): Model[] {
     const [, name, body] = match;
     const lines = body.split("\n");
     const fields: Field[] = [];
+    const indexes: Index[] = [];
+    const foreignKeys: ForeignKey[] = [];
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
-      if (!line || line.startsWith("//") || line.startsWith("@@")) continue;
+      if (!line || line.startsWith("//")) continue;
+
+      // Handle Block Attributes (@@index, @@unique)
+      if (line.startsWith("@@")) {
+        const indexMatch = line.match(/@@(index|unique)\(\[([^\]]+)\](.*)\)/);
+        if (indexMatch) {
+          const [, type, colsStr, args] = indexMatch;
+          const columns = colsStr.split(",").map((c) => c.trim());
+          const mapMatch = args.match(/map:\s*"([^"]+)"/);
+          const indexName = mapMatch ? mapMatch[1] : undefined;
+
+          indexes.push({
+            columns,
+            name: indexName,
+            type: type === "unique" ? "UNIQUE" : "INDEX",
+          });
+        }
+        continue;
+      }
 
       const parts = line.split(/\s+/);
       if (parts.length < 2) continue;
@@ -60,11 +98,39 @@ function parseModels(schema: string): Model[] {
       // Handle optional marker
       prismaType = prismaType.replace("?", "");
 
-      // Skip pure relation fields (those that only define @relation and no actual column)
-      if (attributes.includes("@relation(")) continue;
+      // Check for @relation (Foreign Key)
+      if (attributes.includes("@relation(")) {
+        // Extract relation details
+        const relationMatch = line.match(
+          /@relation\((.*)\)/
+        );
+        if (relationMatch) {
+          const args = relationMatch[1];
+          const fieldsMatch = args.match(/fields:\s*\[([^\]]+)\]/);
+          const referencesMatch = args.match(/references:\s*\[([^\]]+)\]/);
+          const mapMatch = args.match(/map:\s*"([^"]+)"/);
+          const onDeleteMatch = args.match(/onDelete:\s*(\w+)/);
+          const onUpdateMatch = args.match(/onUpdate:\s*(\w+)/);
+
+          if (fieldsMatch && referencesMatch) {
+            foreignKeys.push({
+              columns: fieldsMatch[1].split(",").map((c) => c.trim()),
+              referencedTable: prismaType, // The type of the field is the referenced model
+              referencedColumns: referencesMatch[1].split(",").map((c) => c.trim()),
+              name: mapMatch ? mapMatch[1] : undefined,
+              onDelete: onDeleteMatch ? onDeleteMatch[1] : undefined,
+              onUpdate: onUpdateMatch ? onUpdateMatch[1] : undefined,
+            });
+          }
+        }
+        // Continue because relation fields are not actual columns in SQL
+        // (The columns are defined separately, e.g. userId Int)
+        continue;
+      }
 
       const isId = attributes.includes("@id");
       const isAutoIncrement = attributes.includes("autoincrement()");
+      const isUnique = attributes.includes("@unique");
 
       const nativeMatch =
         attributes.match(/@db\.(\w+)(\(([^)]*)\))?/) || undefined;
@@ -78,11 +144,12 @@ function parseModels(schema: string): Model[] {
         nativeArgs,
         isId,
         isAutoIncrement,
+        isUnique,
       });
     }
 
     if (fields.length) {
-      models.push({ name, fields });
+      models.push({ name, fields, indexes, foreignKeys });
     }
   }
 
@@ -136,7 +203,24 @@ function mapColumnType(field: Field): string {
     case "Float":
       return "FLOAT";
     default:
-      return "TEXT";
+      // Default to VARCHAR(255) for Enums and other unknown types to avoid
+      // "BLOB/TEXT column used in key specification without a key length" error
+      return "VARCHAR(255)";
+  }
+}
+
+function mapReferentialAction(action?: string): string {
+  switch (action) {
+    case "Cascade":
+      return "CASCADE";
+    case "SetNull":
+      return "SET NULL";
+    case "NoAction":
+      return "NO ACTION";
+    case "Restrict":
+      return "RESTRICT";
+    default:
+      return "NO ACTION"; // Default for MySQL/Prisma usually
   }
 }
 
@@ -163,12 +247,16 @@ function generateSql(models: Model[]): SqlOutput {
       const isPk = pkField && pkField.name === field.name;
       const nullability = isPk ? "NOT NULL" : "NULL";
       const autoInc =
-        isPk && field.isAutoIncrement && (field.prismaType === "Int" || field.prismaType === "BigInt")
+        isPk &&
+          field.isAutoIncrement &&
+          (field.prismaType === "Int" || field.prismaType === "BigInt")
           ? "AUTO_INCREMENT"
           : "";
 
       columnDefs.push(
-        `  \`${field.name}\` ${colType} ${autoInc} ${nullability}`.trim().replace(/\s+/g, " "),
+        `  \`${field.name}\` ${colType} ${autoInc} ${nullability}`
+          .trim()
+          .replace(/\s+/g, " ")
       );
     }
 
@@ -184,9 +272,7 @@ function generateSql(models: Model[]): SqlOutput {
 
     ddlStatements.push(createTable);
 
-    // Generate ALTER TABLE ADD COLUMN for non-PK columns,
-    // wrapped in a dynamic check so it only runs if the column
-    // does not already exist (works even without IF NOT EXISTS).
+    // Generate ALTER TABLE ADD COLUMN for non-PK columns
     for (const field of model.fields) {
       if (pkField && field.name === pkField.name) continue;
       const colType = mapColumnType(field);
@@ -204,6 +290,129 @@ function generateSql(models: Model[]): SqlOutput {
         "DEALLOCATE PREPARE stmt;",
       ].join("\n");
       ddlStatements.push(alterWithCheck);
+
+      // Special handling for Enums (which we map to VARCHAR(255))
+      // If the column exists but is TEXT (from previous default), we need to modify it to VARCHAR(255)
+      // so that indexes can be created on it.
+      const isEnum = !SCALAR_TYPES.has(field.prismaType) && !field.nativeType;
+      if (isEnum) {
+        const modifyDdl = `ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${field.name}\` VARCHAR(255) NULL`;
+        const modifyWithCheck = [
+          "SET @sql := IF((",
+          "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS",
+          `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND COLUMN_NAME = '${field.name}' AND DATA_TYPE = 'text'`,
+          ") > 0,",
+          `  '${modifyDdl.replace(/'/g, "''")}',`,
+          "  'SELECT 1'",
+          ");",
+          "PREPARE stmt FROM @sql;",
+          "EXECUTE stmt;",
+          "DEALLOCATE PREPARE stmt;",
+        ].join("\n");
+        ddlStatements.push(modifyWithCheck);
+      }
+    }
+
+    // Generate Indexes (@@index)
+    for (const index of model.indexes) {
+      if (index.type === "INDEX") {
+        const indexName =
+          index.name || `idx_${tableName}_${index.columns.join("_")}`;
+        const cols = index.columns.map((c) => `\`${c}\``).join(", ");
+        const ddl = `CREATE INDEX \`${indexName}\` ON \`${tableName}\`(${cols})`;
+
+        const createIndexWithCheck = [
+          "SET @sql := IF((",
+          "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS",
+          `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND INDEX_NAME = '${indexName}'`,
+          ") = 0,",
+          `  '${ddl.replace(/'/g, "''")}',`,
+          "  'SELECT 1'",
+          ");",
+          "PREPARE stmt FROM @sql;",
+          "EXECUTE stmt;",
+          "DEALLOCATE PREPARE stmt;",
+        ].join("\n");
+        ddlStatements.push(createIndexWithCheck);
+      }
+    }
+
+    // Generate Unique Constraints (@@unique and @unique)
+    // 1. Block level @@unique
+    for (const index of model.indexes) {
+      if (index.type === "UNIQUE") {
+        const indexName =
+          index.name || `uniq_${tableName}_${index.columns.join("_")}`;
+        const cols = index.columns.map((c) => `\`${c}\``).join(", ");
+        const ddl = `CREATE UNIQUE INDEX \`${indexName}\` ON \`${tableName}\`(${cols})`;
+
+        const createUniqueWithCheck = [
+          "SET @sql := IF((",
+          "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS",
+          `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND INDEX_NAME = '${indexName}'`,
+          ") = 0,",
+          `  '${ddl.replace(/'/g, "''")}',`,
+          "  'SELECT 1'",
+          ");",
+          "PREPARE stmt FROM @sql;",
+          "EXECUTE stmt;",
+          "DEALLOCATE PREPARE stmt;",
+        ].join("\n");
+        ddlStatements.push(createUniqueWithCheck);
+      }
+    }
+
+    // 2. Field level @unique
+    for (const field of model.fields) {
+      if (field.isUnique) {
+        // Prisma default naming for single field unique is usually just the field name or unique_table_field
+        // We'll use a consistent naming convention here if not specified (Prisma doesn't allow map on @unique field attribute easily in schema without block)
+        // Actually @unique on field DOES NOT support map directly in the attribute syntax usually shown, but let's assume standard naming.
+        // We'll use `uniq_table_field` to be safe.
+        const indexName = `uniq_${tableName}_${field.name}`;
+        const ddl = `CREATE UNIQUE INDEX \`${indexName}\` ON \`${tableName}\`(\`${field.name}\`)`;
+
+        const createUniqueWithCheck = [
+          "SET @sql := IF((",
+          "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS",
+          `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND INDEX_NAME = '${indexName}'`,
+          ") = 0,",
+          `  '${ddl.replace(/'/g, "''")}',`,
+          "  'SELECT 1'",
+          ");",
+          "PREPARE stmt FROM @sql;",
+          "EXECUTE stmt;",
+          "DEALLOCATE PREPARE stmt;",
+        ].join("\n");
+        ddlStatements.push(createUniqueWithCheck);
+      }
+    }
+
+    // Generate Foreign Keys
+    for (const fk of model.foreignKeys) {
+      const fkName =
+        fk.name ||
+        `fk_${tableName}_${fk.columns.join("_")}_${fk.referencedTable}`;
+      const cols = fk.columns.map((c) => `\`${c}\``).join(", ");
+      const refCols = fk.referencedColumns.map((c) => `\`${c}\``).join(", ");
+      const onDelete = fk.onDelete ? `ON DELETE ${mapReferentialAction(fk.onDelete)}` : "";
+      const onUpdate = fk.onUpdate ? `ON UPDATE ${mapReferentialAction(fk.onUpdate)}` : "";
+
+      const ddl = `ALTER TABLE \`${tableName}\` ADD CONSTRAINT \`${fkName}\` FOREIGN KEY (${cols}) REFERENCES \`${fk.referencedTable}\`(${refCols}) ${onDelete} ${onUpdate}`;
+
+      const createFkWithCheck = [
+        "SET @sql := IF((",
+        "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+        `  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND CONSTRAINT_NAME = '${fkName}' AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+        ") = 0,",
+        `  '${ddl.replace(/'/g, "''")}',`,
+        "  'SELECT 1'",
+        ");",
+        "PREPARE stmt FROM @sql;",
+        "EXECUTE stmt;",
+        "DEALLOCATE PREPARE stmt;",
+      ].join("\n");
+      ddlStatements.push(createFkWithCheck);
     }
 
     ddlStatements.push(""); // blank line between tables
