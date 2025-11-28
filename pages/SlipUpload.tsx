@@ -105,19 +105,41 @@ const OrderDetailsModal: React.FC<{ orderId: number; onClose: () => void }> = ({
             province: r.province,
             postalCode: r.postal_code,
           },
-          items: Array.isArray(r.items) ? r.items.map((it: any) => ({
-            id: it.id,
-            productId: it.product_id,
-            productName: it.product_name,
-            quantity: Number(it.quantity || 0),
-            // If parent_item_id exists OR is_freebie is true, set price and discount to 0
-            pricePerUnit: (it.parent_item_id || it.is_freebie) ? 0 : Number(it.price_per_unit || 0),
-            discount: (it.parent_item_id || it.is_freebie) ? 0 : Number(it.discount || 0),
-            creatorId: it.creator_id,
-            parentItemId: it.parent_item_id,
-            isFreebie: it.is_freebie,
-          })) : [],
+          items: [], // Will be set below
         };
+
+        const rawItems = Array.isArray(r.items) ? r.items.map((it: any) => ({
+          id: it.id,
+          productId: it.product_id,
+          productName: it.product_name,
+          quantity: Number(it.quantity || 0),
+          // If parent_item_id exists OR is_freebie is true, set price and discount to 0
+          pricePerUnit: (it.parent_item_id || it.is_freebie) ? 0 : Number(it.price_per_unit || 0),
+          discount: (it.parent_item_id || it.is_freebie) ? 0 : Number(it.discount || 0),
+          creatorId: it.creator_id,
+          parentItemId: it.parent_item_id,
+          isFreebie: it.is_freebie,
+        })) : [];
+
+        // Sort items: Parents first, then their children
+        const sortedItems: any[] = [];
+        const parentItems = rawItems.filter((i: any) => !i.parentItemId);
+        const childItems = rawItems.filter((i: any) => i.parentItemId);
+
+        parentItems.forEach((parent: any) => {
+          sortedItems.push(parent);
+          // Find children for this parent
+          const children = childItems.filter((child: any) => child.parentItemId === parent.id);
+          sortedItems.push(...children);
+        });
+
+        // Add any orphans (items with parentItemId but parent not found in list)
+        const processedIds = new Set(sortedItems.map(i => i.id));
+        const orphans = rawItems.filter((i: any) => !processedIds.has(i.id));
+        sortedItems.push(...orphans);
+
+        mappedOrder.items = sortedItems;
+
         setOrder(mappedOrder);
       } catch (error) {
         console.error("Failed to fetch order details", error);
