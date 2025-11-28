@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { AlertCircle, CheckCircle, FileText, Package, User as UserIcon, MapPin, Calendar, CreditCard, Phone, Eye } from "lucide-react";
+import { AlertCircle, CheckCircle, FileText, Package, User as UserIcon, MapPin, Calendar, CreditCard, Phone, Eye, CornerDownRight } from "lucide-react";
 import { uploadSlipImageFile, createOrderSlipWithPayment, apiFetch } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
@@ -226,7 +226,14 @@ const OrderDetailsModal: React.FC<{ orderId: number; onClose: () => void }> = ({
               <tbody>
                 {order.items.map((item: any, index: number) => (
                   <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2 text-sm text-gray-800">{item.productName}</td>
+                    <td className="px-3 py-2 text-sm text-gray-800">
+                      <div className="flex items-center">
+                        {item.parentItemId && (
+                          <CornerDownRight className="w-4 h-4 text-gray-400 mr-2 ml-2" />
+                        )}
+                        {item.productName}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-center text-xs text-gray-700">{item.quantity}</td>
                     <td className="px-3 py-2 text-right text-xs text-gray-700">฿{item.pricePerUnit.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right text-xs text-red-600">-฿{item.discount.toLocaleString()}</td>
