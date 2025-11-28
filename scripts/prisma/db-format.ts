@@ -452,6 +452,60 @@ function generateSql(models: Model[]): SqlOutput {
   };
 }
 
+function sortModelsByDependency(models: Model[]): Model[] {
+  const modelMap = new Map<string, Model>();
+  const dependencies = new Map<string, Set<string>>();
+  const modelNames = new Set<string>();
+
+  // Initialize maps
+  for (const model of models) {
+    modelMap.set(model.name, model);
+    modelNames.add(model.name);
+    dependencies.set(model.name, new Set());
+  }
+
+  // Build dependency graph
+  for (const model of models) {
+    for (const fk of model.foreignKeys) {
+      if (modelNames.has(fk.referencedTable) && fk.referencedTable !== model.name) {
+        dependencies.get(model.name)?.add(fk.referencedTable);
+      }
+    }
+  }
+
+  // Topological Sort (Kahn's Algorithm-ish / DFS)
+  const visited = new Set<string>();
+  const sorted: Model[] = [];
+  const visiting = new Set<string>(); // To detect cycles
+
+  function visit(modelName: string) {
+    if (visited.has(modelName)) return;
+    if (visiting.has(modelName)) {
+      console.warn(`Circular dependency detected involving ${modelName}. Breaking cycle.`);
+      return;
+    }
+
+    visiting.add(modelName);
+
+    const deps = dependencies.get(modelName);
+    if (deps) {
+      for (const dep of deps) {
+        visit(dep);
+      }
+    }
+
+    visiting.delete(modelName);
+    visited.add(modelName);
+    sorted.push(modelMap.get(modelName)!);
+  }
+
+  for (const model of models) {
+    visit(model.name);
+  }
+
+  return sorted;
+}
+
 async function main() {
   const schemaPath = path.resolve(__dirname, "../../prisma/schema.prisma");
   const outputPath = path.resolve(__dirname, "../../prisma/schema.sql");
@@ -464,7 +518,10 @@ async function main() {
     throw new Error("No models found in schema.prisma");
   }
 
-  const { ddl, checks } = generateSql(models);
+  // Sort models by dependency (Topological Sort)
+  const sortedModels = sortModelsByDependency(models);
+
+  const { ddl, checks } = generateSql(sortedModels);
   await fs.writeFile(outputPath, ddl, "utf8");
 
   const checkPath = path.resolve(__dirname, "../../prisma/schema-check.sql");
