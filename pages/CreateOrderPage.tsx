@@ -28,6 +28,7 @@ import {
   listOrderSlips,
 } from "../services/api";
 import { formatThaiDateTime } from "../utils/time";
+import resolveApiBasePath from "../utils/apiBasePath";
 
 const emptyAddress: Address = {
   recipientFirstName: "",
@@ -1397,7 +1398,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     try {
       // Load geographies
       const geoResponse = await fetch(
-        "/api/Address_DB/get_address_data.php?endpoint=geographies",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=geographies`,
       );
       if (geoResponse.ok) {
         const geoData = await geoResponse.json();
@@ -1406,7 +1407,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       // Load all provinces
       const provResponse = await fetch(
-        "/api/Address_DB/get_address_data.php?endpoint=provinces",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
       );
       if (provResponse.ok) {
         const provData = await provResponse.json();
@@ -1438,7 +1439,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   useEffect(() => {
     if (selectedProvince) {
       fetch(
-        `/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
       )
         .then((response) => response.json())
         .then((data) => {
@@ -1457,7 +1458,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   useEffect(() => {
     if (selectedDistrict) {
       fetch(
-        `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
       )
         .then((response) => response.json())
         .then((data) => {
@@ -1644,7 +1645,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       console.log("Loading addresses for customer ID:", customerIdParam);
       // Load customer addresses from the database
       fetch(
-        `/api/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
       )
         .then((response) => response.json())
         .then((data) => {
@@ -1812,7 +1813,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             districts[0].province_id !== province.id
           ) {
             fetch(
-              `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
             )
               .then((response) => response.json())
               .then((data) => {
@@ -1828,7 +1829,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       // Load sub-districts for this district
                       fetch(
-                        `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
                       )
                         .then((response) => response.json())
                         .then((data) => {
@@ -1969,7 +1970,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     try {
       const response = await fetch(
-        "/api/Address_DB/get_address_data.php?endpoint=delete_customer_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=delete_customer_address`,
         {
           method: "POST",
           headers: {
@@ -2039,7 +2040,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       };
 
       const response = await fetch(
-        "/api/Address_DB/get_address_data.php?endpoint=set_primary_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=set_primary_address`,
         {
           method: "POST",
           headers: {
@@ -2490,7 +2491,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         if (provinces.length === 0) {
           console.log("⏳ Provinces not loaded, loading now...");
           provincesPromise = fetch(
-            `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
           )
             .then((res) => res.json())
             .then((provinceData) => {
@@ -2508,7 +2509,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         // Search for postal code
         const searchPromise = fetch(
-          `/api/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
+          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
         ).then((res) => res.json());
 
         // Wait for both to complete
@@ -2552,7 +2553,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   // Load districts for this province
                   fetch(
-                    `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                   )
                     .then((res) => res.json())
                     .then((districtData) => {
@@ -2569,7 +2570,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Load subdistricts for this district
                           return fetch(
-                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
                           ).then((res) => res.json());
                         }
                       }
@@ -2611,7 +2612,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   );
                   setAddressLoading(true);
                   fetch(
-                    `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
                   )
                     .then((res) => res.json())
                     .then((provinceData) => {
@@ -2629,7 +2630,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Continue with loading districts
                           return fetch(
-                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                           ).then((res) => res.json());
                         }
                       }
@@ -2650,7 +2651,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           // Load subdistricts
                           return fetch(
-                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
                           ).then((res) => res.json());
                         }
                       }
@@ -3126,7 +3127,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         };
 
         const response = await fetch(
-          "/api/Address_DB/update_customer_address.php",
+          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
           {
             method: "POST",
             headers: {
@@ -3196,7 +3197,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         };
 
         const response = await fetch(
-          "/api/Address_DB/update_customer_address.php",
+          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
           {
             method: "POST",
             headers: {
@@ -3252,7 +3253,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         (payload as any).newCustomerAddress,
       );
       fetch(
-        "/api/Address_DB/get_address_data.php?endpoint=save_customer_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=save_customer_address`,
         {
           method: "POST",
           headers: {
@@ -3759,7 +3760,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   };
 
   const formatCurrency = (value: number) =>
-    `฿${Number(value || 0).toLocaleString("th-TH")}`;
+    `฿${Number(value || 0).toLocaleString("th-TH")
+    } `;
 
   const renderUpsellView = () => {
     const TH = {
@@ -3939,9 +3941,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             Number(selectedUpsellOrder.creatorId),
                           );
                           return creator
-                            ? `${creator.firstName} ${creator.lastName}`
+                            ? `${creator.firstName} ${creator.lastName} `
                             : selectedUpsellOrder.creatorId
-                              ? `ID ${selectedUpsellOrder.creatorId}`
+                              ? `ID ${selectedUpsellOrder.creatorId} `
                               : TH.creatorUnknown;
                         })()
                       }
@@ -3978,7 +3980,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               {(item as any).sku || (item as any).productSku || "-"}
                             </td>
                             <td className="px-4 py-2">
-                              {item.productName || `Product ID: ${item.productId}`}
+                              {item.productName || `Product ID: ${item.productId} `}
                             </td>
                             <td className="px-4 py-2 text-right">{item.quantity}</td>
                             <td className="px-4 py-2 text-right">
@@ -3999,7 +4001,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 const itemCreatorId = (item as any).creatorId || (item as any).creator_id;
                                 const creatorId = itemCreatorId ? Number(itemCreatorId) : Number(selectedUpsellOrder.creatorId);
                                 const creator = upsellUsersById.get(creatorId);
-                                return creator ? `${creator.firstName} ${creator.lastName}` : "-";
+                                return creator ? `${creator.firstName} ${creator.lastName} ` : "-";
                               })()}
                             </td>
                           </tr>
@@ -4084,10 +4086,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setUpsellSelectorTab("products")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${upsellSelectorTab === "products"
-                          ? "text-blue-600 border-blue-600"
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                          }`}
+                        className={`inline - block py - 2 px - 4 border - b - 2 rounded - t - lg ${upsellSelectorTab === "products"
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          } `}
                       >
                         สินค้าปกติ
                       </button>
@@ -4095,10 +4097,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setUpsellSelectorTab("promotions")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${upsellSelectorTab === "promotions"
-                          ? "text-blue-600 border-blue-600"
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                          }`}
+                        className={`inline - block py - 2 px - 4 border - b - 2 rounded - t - lg ${upsellSelectorTab === "promotions"
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          } `}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
                       </button>
@@ -4514,7 +4516,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <ul className="space-y-2 text-sm">
                       {upsellSelectorTab === "products" && (
                         <li
-                          className={`p-2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor-pointer`}
+                          className={`p - 2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor - pointer`}
                           onClick={() => {
                             setLeftFilter(null);
                             setUpsellSelectorSearchTerm("");
@@ -4526,7 +4528,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       {upsellSelectorTab === "promotions" && (
                         <>
                           <li
-                            className={`p-2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor-pointer`}
+                            className={`p - 2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor - pointer`}
                             onClick={() => {
                               setLeftFilter(-1);
                               setUpsellSelectorSearchTerm("");
@@ -4537,7 +4539,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           {promotionsSafe.map((p) => (
                             <li
                               key={p.id}
-                              className={`p-2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor-pointer`}
+                              className={`p - 2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor - pointer`}
                               onClick={() => {
                                 setLeftFilter(p.id);
                                 setUpsellSelectorSearchTerm("");
@@ -4554,7 +4556,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <div className="mb-3">
                       <input
                         type="text"
-                        placeholder={`ค้นหา ${upsellSelectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"}`}
+                        placeholder={`ค้นหา ${upsellSelectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"} `}
                         value={upsellSelectorSearchTerm}
                         onChange={(e) =>
                           setUpsellSelectorSearchTerm(e.target.value)
@@ -4579,7 +4581,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               .filter(
                                 (pr) =>
                                   !upsellSelectorSearchTerm ||
-                                  `${pr.sku} ${pr.name}`
+                                  `${pr.sku} ${pr.name} `
                                     .toLowerCase()
                                     .includes(
                                       upsellSelectorSearchTerm.toLowerCase(),
@@ -4762,12 +4764,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 c.id ||
                                 c.customerId ||
                                 c.customerRefId ||
-                                `${c.phone}-${c.firstName}-${c.lastName}`
+                                `${c.phone} -${c.firstName} -${c.lastName} `
                               }
                               onClick={() => handleSelectCustomer(c)}
                               className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
                             >
-                              {`${c.firstName} ${c.lastName}`} - {c.phone}
+                              {`${c.firstName} ${c.lastName} `} - {c.phone}
                             </li>
                           ))}
                         </ul>
@@ -5167,7 +5169,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             selectedCustomer?.address?.recipientLastName) && (
                               <div className="text-xs text-gray-500">
                                 ชื่อผู้รับ:{" "}
-                                {`${selectedCustomer.address.recipientFirstName || ""} ${selectedCustomer.address.recipientLastName || ""}`.trim()}
+                                {`${selectedCustomer.address.recipientFirstName || ""} ${selectedCustomer.address.recipientLastName || ""} `.trim()}
                               </div>
                             )}
                           {selectedCustomer?.address && (
@@ -5213,7 +5215,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 address.recipient_last_name) && (
                                   <div className="text-xs text-gray-500 mt-1">
                                     ชื่อผู้รับ:{" "}
-                                    {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""}`.trim()}
+                                    {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""} `.trim()}
                                   </div>
                                 )}
                             </div>
@@ -5717,7 +5719,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       Promise.resolve(provinces);
                                     if (provinces.length === 0) {
                                       provincesPromise = fetch(
-                                        `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
                                       )
                                         .then((res) => res.json())
                                         .then((data) => {
@@ -5747,7 +5749,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                           // Load districts for this province
                                           return fetch(
-                                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                                           ).then((res) => res.json());
                                         }
                                         setAddressLoading(false);
@@ -5770,7 +5772,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                             // Load subdistricts for this district
                                             return fetch(
-                                              `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                                              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
                                             ).then((res) => res.json());
                                           }
                                         }
@@ -5889,9 +5891,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           const maxDate = nextMonth.toISOString().split("T")[0];
                           if (selectedDate > maxDate) {
                             const maxDateObj = new Date(maxDate);
-                            const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                            const maxDateStr = `${maxDateObj.getDate()} /${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()} `;
                             alert(
-                              `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                              `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป(สูงสุด ${maxDateStr})`,
                             );
                             // ตั้งค่าเป็นวันที่สูงสุดที่อนุญาต
                             updateOrderData("deliveryDate", maxDate);
@@ -5913,7 +5915,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         const maxDate = nextMonth.toISOString().split("T")[0];
                         if (orderData.deliveryDate > maxDate) {
                           const maxDateObj = new Date(maxDate);
-                          const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                          const maxDateStr = `${maxDateObj.getDate()} /${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()} `;
                           return (
                             <p className="text-red-600 text-xs mt-1">
                               วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
@@ -5974,10 +5976,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab("products")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "products"
-                          ? "text-blue-600 border-blue-600"
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                          }`}
+                        className={`inline - block py - 2 px - 4 border - b - 2 rounded - t - lg ${selectorTab === "products"
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          } `}
                       >
                         สินค้าปกติ
                       </button>
@@ -5985,10 +5987,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab("promotions")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "promotions"
-                          ? "text-blue-600 border-blue-600"
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                          }`}
+                        className={`inline - block py - 2 px - 4 border - b - 2 rounded - t - lg ${selectorTab === "promotions"
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          } `}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
                       </button>
@@ -6332,7 +6334,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             <ul className="space-y-2 text-sm">
                               {selectorTab === "products" && (
                                 <li
-                                  className={`p-2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor-pointer`}
+                                  className={`p - 2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor - pointer`}
                                   onClick={() => {
                                     setLeftFilter(null);
                                     setSelectorSearchTerm("");
@@ -6344,7 +6346,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               {selectorTab === "promotions" && (
                                 <>
                                   <li
-                                    className={`p-2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor-pointer`}
+                                    className={`p - 2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor - pointer`}
                                     onClick={() => {
                                       setLeftFilter(-1);
                                       setSelectorSearchTerm("");
@@ -6355,7 +6357,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   {promotionsSafe.map((p) => (
                                     <li
                                       key={p.id}
-                                      className={`p-2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor-pointer`}
+                                      className={`p - 2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor - pointer`}
                                       onClick={() => {
                                         setLeftFilter(p.id);
                                         setSelectorSearchTerm("");
@@ -6372,7 +6374,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             <div className="mb-3">
                               <input
                                 type="text"
-                                placeholder={`ค้นหา ${selectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"}`}
+                                placeholder={`ค้นหา ${selectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"} `}
                                 value={selectorSearchTerm}
                                 onChange={(e) =>
                                   setSelectorSearchTerm(e.target.value)
@@ -6397,7 +6399,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                       .filter(
                                         (pr) =>
                                           !selectorSearchTerm ||
-                                          `${pr.sku} ${pr.name}`
+                                          `${pr.sku} ${pr.name} `
                                             .toLowerCase()
                                             .includes(
                                               selectorSearchTerm.toLowerCase(),
@@ -6451,7 +6453,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                             String(pm.id) === String(leftFilter)
                                           );
                                         if (!selectorSearchTerm) return true;
-                                        return `${pm.name}`
+                                        return `${pm.name} `
                                           .toLowerCase()
                                           .includes(
                                             selectorSearchTerm.toLowerCase(),
@@ -6473,7 +6475,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                                   "";
                                                 const priceText = it.is_freebie
                                                   ? "ฟรี"
-                                                  : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)}`;
+                                                  : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)} `;
                                                 return `${it.quantity} x ${prodLabel} (${priceText})`;
                                               })
                                               .join(", ")}
@@ -6485,7 +6487,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                           </td>
                                           <td className="p-2 align-top">
                                             <span
-                                              className={`px-2 py-1 text-xs rounded-full ${pm.active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                                              className={`px - 2 py - 1 text - xs rounded - full ${pm.active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"} `}
                                             >
                                               {pm.active
                                                 ? "Active"
@@ -6497,7 +6499,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                               onClick={() =>
                                                 addPromotionByIdFixed(pm.id)
                                               }
-                                              className={`px-3 py-1 rounded text-white ${pm.active ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"}`}
+                                              className={`px - 3 py - 1 rounded text - white ${pm.active ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"} `}
                                               disabled={!pm.active}
                                             >
                                               เลือก
@@ -6747,7 +6749,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             const maxBoxes = parentItems.length || 1;
                             if (newValue > maxBoxes) {
                               alert(
-                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
+                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า(สูงสุด ${maxBoxes} กล่อง)`,
                               );
                               return;
                             }
