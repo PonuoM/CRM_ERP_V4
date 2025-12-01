@@ -37,6 +37,8 @@ type Model = {
   fields: Field[];
   indexes: Index[];
   foreignKeys: ForeignKey[];
+  // If true, model is marked @@ignore in Prisma and should be excluded from checks/DDL
+  ignored: boolean;
 };
 
 const SCALAR_TYPES = new Set([
@@ -61,10 +63,17 @@ function parseModels(schema: string): Model[] {
     const fields: Field[] = [];
     const indexes: Index[] = [];
     const foreignKeys: ForeignKey[] = [];
+    let ignored = false;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line || line.startsWith("//")) continue;
+
+      // Skip ignored models from Prisma (@@ignore)
+      if (line.startsWith("@@ignore")) {
+        ignored = true;
+        continue;
+      }
 
       // Handle Block Attributes (@@index, @@unique)
       if (line.startsWith("@@")) {
@@ -149,7 +158,7 @@ function parseModels(schema: string): Model[] {
     }
 
     if (fields.length) {
-      models.push({ name, fields, indexes, foreignKeys });
+      models.push({ name, fields, indexes, foreignKeys, ignored });
     }
   }
 
@@ -236,6 +245,9 @@ function generateSql(models: Model[]): SqlOutput {
   const tableColumns: string[] = [];
 
   for (const model of models) {
+    // Skip models that Prisma marks as @@ignore (not handled by Prisma Client)
+    if (model.ignored) continue;
+
     const tableName = model.name;
     tableNames.push(tableName);
     const pkField = model.fields.find((f) => f.isId);
@@ -441,6 +453,8 @@ function generateSql(models: Model[]): SqlOutput {
       "SELECT TABLE_NAME, COLUMN_NAME",
       "FROM INFORMATION_SCHEMA.COLUMNS",
       "WHERE TABLE_SCHEMA = @target_db",
+      // Only consider columns for tables that are part of the Prisma schema
+      `  AND TABLE_NAME IN (${tableList})`,
       `  AND CONCAT(TABLE_NAME, '.', COLUMN_NAME) NOT IN (${columnList});`,
       "",
     );
