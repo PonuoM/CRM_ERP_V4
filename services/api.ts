@@ -1099,3 +1099,26 @@ export async function addUpsellItems(orderId: string, creatorId: number, items: 
     body: JSON.stringify({ orderId, creatorId, items }),
   });
 }
+
+export async function updateOrderSlip(payload: {
+  id: number;
+  amount?: number;
+  bankAccountId?: number;
+  transferDate?: string;
+  url?: string;
+  companyId: number;
+  updatedBy?: number;
+}) {
+  return apiFetch("Slip_DB/update_order_slip.php", {
+    method: "POST",
+    body: JSON.stringify({
+      id: payload.id,
+      amount: payload.amount,
+      bank_account_id: payload.bankAccountId,
+      transfer_date: payload.transferDate,
+      url: payload.url,
+      company_id: payload.companyId,
+      updated_by: payload.updatedBy,
+    }),
+  });
+}

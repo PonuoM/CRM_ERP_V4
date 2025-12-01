@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { AlertCircle, CheckCircle, FileText, Package, User as UserIcon, MapPin, Calendar, CreditCard, Phone, Eye, CornerDownRight } from "lucide-react";
-import { uploadSlipImageFile, createOrderSlipWithPayment, apiFetch } from "../services/api";
+import { AlertCircle, CheckCircle, FileText, Package, User as UserIcon, MapPin, Calendar, CreditCard, Phone, Eye, CornerDownRight, Edit2, X } from "lucide-react";
+import { uploadSlipImageFile, createOrderSlipWithPayment, apiFetch, updateOrderSlip } from "../services/api";
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
 import Modal from "../components/Modal";
@@ -56,9 +56,14 @@ interface BankAccount {
 
 interface SlipFormData {
   order_id: string;
-  amount: string;
   bank_account_id: string;
   transfer_date: string;
+}
+
+interface SlipItem {
+  file: File;
+  preview: string;
+  amount: string;
 }
 
 interface SlipHistory {
@@ -333,18 +338,27 @@ const SlipUpload: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [slipFormData, setSlipFormData] = useState<SlipFormData>({
     order_id: "",
-    amount: "",
     bank_account_id: "",
     transfer_date: "",
   });
   const [uploadingSlip, setUploadingSlip] = useState(false);
-  const [slipImages, setSlipImages] = useState<File[]>([]);
-  const [slipImagePreviews, setSlipImagePreviews] = useState<string[]>([]);
+  const [slipItems, setSlipItems] = useState<SlipItem[]>([]);
   const [slipHistory, setSlipHistory] = useState<SlipHistory[]>([]);
   const [loadingSlipHistory, setLoadingSlipHistory] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null);
+
+  // Edit Slip State
+  const [editingSlip, setEditingSlip] = useState<SlipHistory | null>(null);
+  const [editFormData, setEditFormData] = useState<{
+    amount: string;
+    bank_account_id: string;
+    transfer_date: string;
+    newFile: File | null;
+    newPreview: string | null;
+  } | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -395,7 +409,6 @@ const SlipUpload: React.FC = () => {
     setSelectedOrder(order);
     setSlipFormData({
       order_id: order.id.toString(),
-      amount: order.total_amount.toString(),
       bank_account_id: "",
       transfer_date: "",
     });
@@ -405,8 +418,7 @@ const SlipUpload: React.FC = () => {
       fetchBankAccounts();
     }
     // Reset images
-    setSlipImages([]);
-    setSlipImagePreviews([]);
+    setSlipItems([]);
   };
 
   const handleSlipFormChange = (field: keyof SlipFormData, value: string) => {
@@ -457,6 +469,7 @@ const SlipUpload: React.FC = () => {
     const files = e.target.files;
     if (files && files.length > 0) {
       const newFiles = Array.from(files) as File[];
+      const newSlipItems: SlipItem[] = [];
 
       for (const file of newFiles) {
         try {
@@ -464,16 +477,32 @@ const SlipUpload: React.FC = () => {
           const processedFile = await processImage(file);
           const processedUrl = URL.createObjectURL(processedFile);
 
-          setSlipImages(prev => [...prev, processedFile]);
-          setSlipImagePreviews(prev => [...prev, processedUrl]);
+          // Determine default amount
+          // If it's the very first item being added (and list was empty), suggest remaining amount
+          // Otherwise 0
+          let defaultAmount = "0";
+          if (slipItems.length === 0 && newSlipItems.length === 0 && selectedOrder) {
+            const remaining = selectedOrder.total_amount - selectedOrder.slip_total;
+            defaultAmount = remaining > 0 ? remaining.toString() : "0";
+          }
+
+          newSlipItems.push({
+            file: processedFile,
+            preview: processedUrl,
+            amount: defaultAmount
+          });
         } catch (error) {
           console.error("Error processing image:", error);
           showMessage("error", `ไม่สามารถประมวลผลรูปภาพ ${file.name} ได้`);
           // Fallback to original
-          setSlipImages(prev => [...prev, file]);
-          setSlipImagePreviews(prev => [...prev, URL.createObjectURL(file)]);
+          newSlipItems.push({
+            file: file,
+            preview: URL.createObjectURL(file),
+            amount: "0"
+          });
         }
       }
+      setSlipItems(prev => [...prev, ...newSlipItems]);
     }
     // Reset input
     if (fileInputRef.current) {
@@ -482,11 +511,18 @@ const SlipUpload: React.FC = () => {
   };
 
   const removeImage = (index: number) => {
-    setSlipImages(prev => prev.filter((_, i) => i !== index));
-    setSlipImagePreviews(prev => {
-      // Revoke URL to avoid memory leaks
-      URL.revokeObjectURL(prev[index]);
+    setSlipItems(prev => {
+      const itemToRemove = prev[index];
+      URL.revokeObjectURL(itemToRemove.preview);
       return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleAmountChange = (index: number, value: string) => {
+    setSlipItems(prev => {
+      const newItems = [...prev];
+      newItems[index] = { ...newItems[index], amount: value };
+      return newItems;
     });
   };
 
@@ -510,12 +546,18 @@ const SlipUpload: React.FC = () => {
 
   const handleSlipSubmit = async () => {
     if (
-      !slipFormData.amount ||
       !slipFormData.bank_account_id ||
       !slipFormData.transfer_date ||
-      slipImages.length === 0
+      slipItems.length === 0
     ) {
       showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    // Validate amounts
+    const hasInvalidAmount = slipItems.some(item => !item.amount || isNaN(parseFloat(item.amount)) || parseFloat(item.amount) < 0);
+    if (hasInvalidAmount) {
+      showMessage("error", "กรุณาระบุจำนวนเงินให้ถูกต้อง");
       return;
     }
 
@@ -534,17 +576,14 @@ const SlipUpload: React.FC = () => {
       let successCount = 0;
 
       // Upload and create slip for each image
-      for (let i = 0; i < slipImages.length; i++) {
-        const image = slipImages[i];
-        const slipUrl = await uploadSlipImage(slipFormData.order_id, image);
+      for (let i = 0; i < slipItems.length; i++) {
+        const item = slipItems[i];
+        const slipUrl = await uploadSlipImage(slipFormData.order_id, item.file);
 
         if (slipUrl) {
-          // Only the first slip gets the amount, others get 0 to avoid double counting
-          const amount = i === 0 ? parseInt(slipFormData.amount) : 0;
-
           const insertResult = await createOrderSlipWithPayment({
             orderId: slipFormData.order_id,
-            amount: amount,
+            amount: parseFloat(item.amount),
             bankAccountId: parseInt(slipFormData.bank_account_id),
             transferDate: slipFormData.transfer_date,
             url: slipUrl,
@@ -560,15 +599,14 @@ const SlipUpload: React.FC = () => {
       }
 
       if (successCount > 0) {
-        showMessage("success", `บันทึกข้อมูลสลิปเรียบร้อยแล้ว (${successCount}/${slipImages.length} รูป)`);
+        showMessage("success", `บันทึกข้อมูลสลิปเรียบร้อยแล้ว (${successCount}/${slipItems.length} รูป)`);
         setShowSlipModal(false);
         setSlipFormData((prev) => ({
           ...prev,
           bank_account_id: "",
           transfer_date: "",
         }));
-        setSlipImages([]);
-        setSlipImagePreviews([]);
+        setSlipItems([]);
         fetchOrders();
       } else {
         showMessage("error", "ไม่สามารถบันทึกข้อมูลสลิปได้");
@@ -576,6 +614,93 @@ const SlipUpload: React.FC = () => {
     } catch (error) {
       console.error("Error submitting slip:", error);
       showMessage("error", "เกิดข้อผิดพลาดในการบันทึกข้อมูลสลิป");
+    } finally {
+      setUploadingSlip(false);
+    }
+  };
+
+  const handleEditClick = (slip: SlipHistory) => {
+    setEditingSlip(slip);
+    setEditFormData({
+      amount: slip.amount.toString(),
+      bank_account_id: slip.bank_account_id.toString(),
+      transfer_date: slip.transfer_date,
+      newFile: null,
+      newPreview: null,
+    });
+  };
+
+  const handleEditFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      try {
+        const processedFile = await processImage(file);
+        const processedUrl = URL.createObjectURL(processedFile);
+        setEditFormData(prev => prev ? { ...prev, newFile: processedFile, newPreview: processedUrl } : null);
+      } catch (error) {
+        console.error("Error processing image:", error);
+        showMessage("error", `ไม่สามารถประมวลผลรูปภาพได้`);
+      }
+    }
+    if (editFileInputRef.current) {
+      editFileInputRef.current.value = "";
+    }
+  };
+
+  const handleUpdateSlip = async () => {
+    if (!editingSlip || !editFormData) return;
+
+    if (!editFormData.amount || !editFormData.bank_account_id || !editFormData.transfer_date) {
+      showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    setUploadingSlip(true);
+    try {
+      const sessionUser = localStorage.getItem("sessionUser");
+      if (!sessionUser) {
+        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        setUploadingSlip(false);
+        return;
+      }
+
+      const user = JSON.parse(sessionUser);
+      const companyId = user.company_id;
+
+      let newUrl = undefined;
+      if (editFormData.newFile) {
+        const uploadedUrl = await uploadSlipImage(editingSlip.order_id, editFormData.newFile);
+        if (uploadedUrl) {
+          newUrl = uploadedUrl;
+        } else {
+          setUploadingSlip(false);
+          return; // Upload failed
+        }
+      }
+
+      const result = await updateOrderSlip({
+        id: editingSlip.id,
+        amount: parseFloat(editFormData.amount),
+        bankAccountId: parseInt(editFormData.bank_account_id),
+        transferDate: editFormData.transfer_date,
+        url: newUrl,
+        companyId: companyId,
+        updatedBy: user.id,
+      });
+
+      if (result.success) {
+        showMessage("success", "แก้ไขข้อมูลสลิปเรียบร้อยแล้ว");
+        setEditingSlip(null);
+        setEditFormData(null);
+        fetchSlipHistory(editingSlip.order_id);
+        fetchOrders(); // Refresh orders to update totals if amount changed
+      } else {
+        showMessage("error", result.message || "ไม่สามารถแก้ไขข้อมูลสลิปได้");
+      }
+    } catch (error) {
+      console.error("Error updating slip:", error);
+      showMessage("error", "เกิดข้อผิดพลาดในการแก้ไขข้อมูลสลิป");
     } finally {
       setUploadingSlip(false);
     }
@@ -1189,24 +1314,7 @@ const SlipUpload: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Amount */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      จำนวนเงินที่โอน *
-                    </label>
-                    <input
-                      type="number"
-                      value={slipFormData.amount}
-                      onChange={(e) =>
-                        handleSlipFormChange("amount", e.target.value)
-                      }
-                      placeholder="กรอกจำนวนเงินที่โอน"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.amount
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                        }`}
-                    />
-                  </div>
+
 
                   {/* Bank Account */}
                   <div>
@@ -1264,7 +1372,7 @@ const SlipUpload: React.FC = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       อัปโหลดรูปสลิปโอนเงิน *
-                      {slipImages.length === 0 && (
+                      {slipItems.length === 0 && (
                         <span className="text-red-500 text-xs ml-2">
                           จำเป็นต้องเลือกรูปภาพ
                         </span>
@@ -1291,30 +1399,48 @@ const SlipUpload: React.FC = () => {
                           เลือกรูปภาพ (เลือกได้หลายรูป)
                         </button>
                         <span className="text-xs text-gray-500">
-                          เลือกแล้ว {slipImages.length} รูป
+                          เลือกแล้ว {slipItems.length} รูป
                         </span>
                       </div>
 
                       {/* Image Previews Grid */}
-                      {slipImagePreviews.length > 0 && (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
-                          {slipImagePreviews.map((preview, index) => (
-                            <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
-                              <img
-                                src={preview}
-                                alt={`Slip preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeImage(index)}
-                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
-                                title="ลบรูปภาพ"
-                              >
-                                <AlertCircle className="w-3 h-3" />
-                              </button>
-                              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
-                                {slipImages[index]?.name}
+                      {slipItems.length > 0 && (
+                        <div className="grid grid-cols-1 gap-4 mt-2">
+                          {slipItems.map((item, index) => (
+                            <div key={index} className="flex gap-3 p-3 border rounded-lg bg-gray-50">
+                              <div className="relative w-20 h-20 flex-shrink-0">
+                                <img
+                                  src={item.preview}
+                                  alt={`Slip preview ${index + 1}`}
+                                  className="w-full h-full object-cover rounded-md border border-gray-200"
+                                />
+                              </div>
+                              <div className="flex-1 flex flex-col justify-between">
+                                <div className="flex justify-between items-start">
+                                  <div className="text-xs text-gray-500 truncate max-w-[150px]">
+                                    {item.file.name}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(index)}
+                                    className="text-red-500 hover:text-red-700 p-1"
+                                    title="ลบรูปภาพ"
+                                  >
+                                    <AlertCircle className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    จำนวนเงิน
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={item.amount}
+                                    onChange={(e) => handleAmountChange(index, e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1371,6 +1497,14 @@ const SlipUpload: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleEditClick(slip)}
+                                className="text-xs text-orange-600 hover:text-orange-800 flex items-center gap-1"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                แก้ไข
+                              </button>
+                              <span className="text-xs text-gray-400">|</span>
                               <a
                                 href={(() => {
                                   if (!slip.url) return '#';
@@ -1466,6 +1600,113 @@ const SlipUpload: React.FC = () => {
           />
         )
       }
+
+      {/* Edit Slip Modal */}
+      {editingSlip && editFormData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-xl max-w-sm w-full">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">แก้ไขสลิป</h3>
+              <button onClick={() => setEditingSlip(null)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน</label>
+                <input
+                  type="number"
+                  value={editFormData.amount}
+                  onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Bank Account */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">บัญชีธนาคาร</label>
+                <select
+                  value={editFormData.bank_account_id}
+                  onChange={(e) => setEditFormData({ ...editFormData, bank_account_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">เลือกบัญชี</option>
+                  {bankAccounts.map((bank) => (
+                    <option key={bank.id} value={bank.id}>{bank.display_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Transfer Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่โอน</label>
+                <input
+                  type="datetime-local"
+                  value={editFormData.transfer_date}
+                  onChange={(e) => setEditFormData({ ...editFormData, transfer_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">รูปสลิป</label>
+                <div className="flex items-center gap-3">
+                  <div className="relative w-20 h-20 border rounded-lg overflow-hidden bg-gray-50">
+                    <img
+                      src={editFormData.newPreview || (() => {
+                        const url = editingSlip.url;
+                        if (!url) return '';
+                        if (url.startsWith('api/')) return '/' + url;
+                        if (url.startsWith('/') || url.startsWith('http')) return url;
+                        return '/' + url;
+                      })()}
+                      alt="Slip preview"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      ref={editFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleEditFileChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="px-3 py-1 text-sm bg-gray-100 border border-gray-300 rounded hover:bg-gray-200"
+                    >
+                      เปลี่ยนรูป
+                    </button>
+                    {editFormData.newFile && (
+                      <p className="text-xs text-green-600 mt-1">เลือกรูปใหม่แล้ว</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end gap-2">
+              <button
+                onClick={() => setEditingSlip(null)}
+                disabled={uploadingSlip}
+                className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-200 rounded-md"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleUpdateSlip}
+                disabled={uploadingSlip}
+                className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+              >
+                {uploadingSlip ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
