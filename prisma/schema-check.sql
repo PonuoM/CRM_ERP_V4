@@ -13,6 +13,8 @@ WHERE TABLE_SCHEMA = @target_db
 
 -- 2) Columns that exist in the target database but are NOT defined in the Prisma schema
 -- Columns that exist in the current database but are NOT defined in the Prisma schema
+SET @target_db := DATABASE();
+
 SELECT TABLE_NAME, COLUMN_NAME
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = @target_db

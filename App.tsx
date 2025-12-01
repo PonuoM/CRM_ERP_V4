@@ -203,6 +203,7 @@ import CODManagementPage from "./pages/CODManagementPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
+import resolveApiBasePath from "./utils/apiBasePath";
 
 const SLIP_ALL_LABEL = String.raw`ทั้งหมด,สลิปทั้งหมด,สลิปทั้งหมด,'สลิปทั้งหมด,>สลิปทั้งหมด,-สลิปทั้งหมด,สลิปทั้งหมด1%สลิปทั้งหมด,O.,สลิปทั้งหมด,สลิปทั้งหมด,\\\\"\\`;
 
@@ -1888,8 +1889,9 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
+      const apiBase = resolveApiBasePath();
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_warehouse_stocks.php?company_id=${currentUser.companyId}`,
+        `${apiBase}/get_warehouse_stocks.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
 
@@ -1906,8 +1908,9 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
+      const apiBase = resolveApiBasePath();
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_stock_movements.php?company_id=${currentUser.companyId}`,
+        `${apiBase}/get_stock_movements.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
 
@@ -1924,8 +1927,9 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
+      const apiBase = resolveApiBasePath();
       const response = await fetch(
-        `http://localhost/CRM_ERP_V4/api/get_product_lots.php?company_id=${currentUser.companyId}`,
+        `${apiBase}/get_product_lots.php?company_id=${currentUser.companyId}`,
       );
       const result = await response.json();
 
