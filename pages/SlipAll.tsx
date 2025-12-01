@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface PaymentSlip {
   id: string;
@@ -48,6 +49,7 @@ interface OrderSlipGroup {
 }
 
 const SlipAll: React.FC = () => {
+  const apiBase = resolveApiBasePath();
   const toAbsoluteApiUrl = (u: string | undefined | null) => {
     if (!u) return u as any;
     const s = String(u);
@@ -102,7 +104,7 @@ const SlipAll: React.FC = () => {
       }
 
       const response = await fetch(
-        `/api/Slip_DB/list_company_slips.php?${params.toString()}`,
+        `${apiBase}/Slip_DB/list_company_slips.php?${params.toString()}`,
       );
       if (!response.ok) {
         throw new Error(`โหลดข้อมูลล้มเหลว (${response.status})`);
@@ -254,7 +256,9 @@ const SlipAll: React.FC = () => {
         if (sessionUser) {
           const parsed = JSON.parse(sessionUser);
           if (parsed.company_id) {
-            const res = await fetch(`/api/Slip_DB/get_payment_methods.php?company_id=${parsed.company_id}`);
+            const res = await fetch(
+              `${apiBase}/Slip_DB/get_payment_methods.php?company_id=${parsed.company_id}`,
+            );
             const data = await res.json();
             if (data.success && Array.isArray(data.data)) {
               setPaymentMethods(data.data);
