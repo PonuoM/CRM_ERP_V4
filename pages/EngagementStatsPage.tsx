@@ -5,6 +5,7 @@ import { Users as UsersIcon, Phone, ShoppingCart, Activity, ChevronDown, X, Sear
 import StatCard from '@/components/StatCard_EngagementPage';
 import DateRangePicker, { DateRange } from '@/components/DateRangePicker';
 import PageIconFront from '@/components/PageIconFront';
+import resolveApiBasePath from '@/utils/apiBasePath';
 
 interface EngagementStatsPageProps {
   orders?: Order[];
@@ -30,6 +31,7 @@ function fmtDate(d: Date) {
 }
 
 const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], customers = [], calls = [], pages = [], users = [] }) => {
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [range, setRange] = useState<DateRange>(() => {
     const end = new Date();
     end.setSeconds(59,0);
@@ -145,7 +147,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   useEffect(() => {
     const fetchPages = async () => {
       try {
-        const response = await fetch('api/index.php/pages');
+        const response = await fetch(`${apiBase.replace(/\/$/, '')}/index.php/pages`);
         if (response.ok) {
           const data = await response.json();
           setAllPages(Array.isArray(data) ? data : []);
@@ -162,7 +164,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     // Check page_store_db setting on page load
     const checkDbSetting = async () => {
       try {
-        const envResponse = await fetch('api/Page_DB/env_manager.php');
+        const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
         if (envResponse.ok) {
           const envData = await envResponse.json();
           const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
@@ -181,7 +183,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   useEffect(() => {
     const fetchEnvVariables = async () => {
       try {
-        const response = await fetch('api/Page_DB/env_manager.php');
+        const response = await fetch(`${apiBase}/Page_DB/env_manager.php`);
         if (response.ok) {
           const data = await response.json();
           setEnvVariables(Array.isArray(data) ? data : []);
@@ -218,7 +220,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   // Fetch upload batches from database
   const fetchUploadBatches = async () => {
     try {
-      const response = await fetch('api/Page_DB/get_date_ranges.php?source=page_engagement');
+      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php?source=page_engagement`);
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.dateRanges) {
@@ -247,7 +249,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     setIsLoading(true);
     try {
-      const response = await fetch('api/Page_DB/env_manager.php', {
+      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -262,7 +264,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         const result = await response.json();
         if (result.success) {
           // Refresh env variables
-          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
           if (fetchResponse.ok) {
             const data = await fetchResponse.json();
             setEnvVariables(Array.isArray(data) ? data : []);
@@ -295,7 +297,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     setIsLoading(true);
     try {
-      const response = await fetch(`api/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
+      const response = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
         method: 'DELETE'
       });
 
@@ -303,7 +305,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         const result = await response.json();
         if (result.success) {
           // Refresh env variables
-          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
           if (fetchResponse.ok) {
             const data = await fetchResponse.json();
             setEnvVariables(Array.isArray(data) ? data : []);
@@ -327,7 +329,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   const fetchExistingDateRanges = async () => {
     try {
       // Use only page_engagement data for the EngagementStatsPage
-      const response = await fetch('api/Page_DB/get_date_ranges.php?source=page_engagement');
+      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php?source=page_engagement`);
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -547,7 +549,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
     setIsSearching(true);
     try {
       // First, get the access token from env variables
-      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php`, { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -879,7 +881,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     try {
       // Get access token
-      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -1059,7 +1061,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     try {
       // First, get the access token from env variables
-      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php`, { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -1166,7 +1168,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       
       // First, ensure tables exist
       try {
-        const setupResponse = await fetch('api/Page_DB/setup_engagement_tables.php', {
+        const setupResponse = await fetch(`${apiBase}/Page_DB/setup_engagement_tables.php`, {
           method: 'GET'
         });
         
@@ -1181,7 +1183,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       }
       
       // Save data to database
-      const saveResponse = await fetch('api/Page_DB/page_engagement_upload.php', {
+      const saveResponse = await fetch(`${apiBase}/Page_DB/page_engagement_upload.php`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1263,7 +1265,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     try {
       // First, get the access token from env variables
-      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php`, { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }

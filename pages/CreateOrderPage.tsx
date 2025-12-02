@@ -5046,7 +5046,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           return fetch(
 
-                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
 
                             `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                           ).then((res) => res.json());

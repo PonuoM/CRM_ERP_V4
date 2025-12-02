@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   UserCheck,
@@ -21,6 +21,7 @@ import {
   UserPancakeMapping,
 } from "../services/api";
 import PageIconFront from "@/components/PageIconFront";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface AdminPageUserFromDB {
   id: number;
@@ -69,6 +70,7 @@ interface PageWithUsers {
 const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   currentUser,
 }) => {
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [activeTab, setActiveTab] = useState<"mappings" | "search">("mappings");
   const [internalUsers, setInternalUsers] = useState<AdminPageUserFromDB[]>([]);
   const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
@@ -113,7 +115,9 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
     try {
-      const response = await fetch("api/get_admin_page_users.php");
+      const response = await fetch(
+        `${apiBase.replace(/\/$/, "")}/get_admin_page_users.php`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -134,7 +138,9 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadPageUsers = async () => {
     setLoadingPageUsers(true);
     try {
-      const response = await fetch("api/get_page_users.php");
+      const response = await fetch(
+        `${apiBase.replace(/\/$/, "")}/get_page_users.php`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -155,15 +161,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadPagesWithUsers = async () => {
     setLoadingPagesWithUsers(true);
     try {
-      const response = await fetch("api/get_pages_with_users.php", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `${apiBase.replace(/\/$/, "")}/get_pages_with_users.php`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            companyId: currentUser?.companyId || 1,
+          }),
         },
-        body: JSON.stringify({
-          companyId: currentUser?.companyId || 1,
-        }),
-      });
+      );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -205,16 +214,19 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
     setLoading(true);
     try {
       // Update the page_user record with the internal user ID
-      const response = await fetch("api/update_page_user_connection.php", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `${apiBase.replace(/\/$/, "")}/update_page_user_connection.php`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pageUserId: selectedPageUser.id,
+            internalUserId: selectedInternalUser.id,
+          }),
         },
-        body: JSON.stringify({
-          pageUserId: selectedPageUser.id,
-          internalUserId: selectedInternalUser.id,
-        }),
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -265,7 +277,7 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
     setLoading(true);
     try {
       // Update page_user record to set user_id to NULL
-      const response = await fetch("api/Page_DB/disconnect_page_user.php", {
+      const response = await fetch(`${apiBase}/Page_DB/disconnect_page_user.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

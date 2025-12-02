@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { User as UserIcon, Search, Calendar } from "lucide-react";
 import { User } from "@/types";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface CallDetailsPageProps {
   currentUser: User;
@@ -50,8 +51,9 @@ const CallDetailsPage: React.FC<CallDetailsPageProps> = ({ currentUser }) => {
       })();
 
       const companyQs = companyId != null ? `&companyId=${encodeURIComponent(String(companyId))}` : "";
+      const apiBase = resolveApiBasePath();
       const response = await fetch(
-        `${import.meta.env.BASE_URL}api/Onecall_DB/get_call_overview.php?month=${selectedMonth}${companyQs}`,
+        `${apiBase}/Onecall_DB/get_call_overview.php?month=${selectedMonth}${companyQs}`,
         {
           method: "GET",
           headers: {
