@@ -24,60 +24,53 @@ model ad_spend {
   spend_date DateTime @db.Date
   amount     Decimal  @default(0.00) @db.Decimal(12, 2)
   notes      String?  @db.VarChar(255)
-  pages      pages    @relation(fields: [page_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_adspend_page")
 
   @@unique([page_id, spend_date], map: "uniq_page_date")
 }
 
 model address_districts {
-  id                    Int                     @id
-  name_th               String?                 @db.VarChar(255)
-  name_en               String?                 @db.VarChar(255)
-  province_id           Int?
-  created_at            DateTime?               @db.Timestamp(0)
-  updated_at            DateTime?               @db.Timestamp(0)
-  deleted_at            DateTime?               @db.Timestamp(0)
-  address_provinces     address_provinces?      @relation(fields: [province_id], references: [id], onUpdate: NoAction, map: "address_districts_ibfk_1")
-  address_sub_districts address_sub_districts[]
+  id          Int       @id
+  name_th     String?   @db.VarChar(255)
+  name_en     String?   @db.VarChar(255)
+  province_id Int?
+  created_at  DateTime? @db.Timestamp(0)
+  updated_at  DateTime? @db.Timestamp(0)
+  deleted_at  DateTime? @db.Timestamp(0)
 
   @@index([province_id], map: "province_id")
 }
 
 model address_geographies {
-  id                Int                 @id
-  name              String?             @db.VarChar(255)
-  created_at        DateTime?           @db.Timestamp(0)
-  updated_at        DateTime?           @db.Timestamp(0)
-  deleted_at        DateTime?           @db.Timestamp(0)
-  address_provinces address_provinces[]
+  id         Int       @id
+  name       String?   @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  deleted_at DateTime? @db.Timestamp(0)
 }
 
 model address_provinces {
-  id                  Int                  @id
-  name_th             String?              @db.VarChar(255)
-  name_en             String?              @db.VarChar(255)
-  geography_id        Int?
-  created_at          DateTime?            @db.Timestamp(0)
-  updated_at          DateTime?            @db.Timestamp(0)
-  deleted_at          DateTime?            @db.Timestamp(0)
-  address_districts   address_districts[]
-  address_geographies address_geographies? @relation(fields: [geography_id], references: [id], onUpdate: NoAction, map: "address_provinces_ibfk_1")
+  id           Int       @id
+  name_th      String?   @db.VarChar(255)
+  name_en      String?   @db.VarChar(255)
+  geography_id Int?
+  created_at   DateTime? @db.Timestamp(0)
+  updated_at   DateTime? @db.Timestamp(0)
+  deleted_at   DateTime? @db.Timestamp(0)
 
   @@index([geography_id], map: "geography_id")
 }
 
 model address_sub_districts {
-  id                Int                @id
-  zip_code          String?            @db.VarChar(10)
-  name_th           String?            @db.VarChar(255)
-  name_en           String?            @db.VarChar(255)
-  district_id       Int?
-  lat               Decimal?           @db.Decimal(10, 8)
-  long              Decimal?           @db.Decimal(11, 8)
-  created_at        DateTime?          @db.Timestamp(0)
-  updated_at        DateTime?          @db.Timestamp(0)
-  deleted_at        DateTime?          @db.Timestamp(0)
-  address_districts address_districts? @relation(fields: [district_id], references: [id], onUpdate: NoAction, map: "address_sub_districts_ibfk_1")
+  id          Int       @id
+  zip_code    String?   @db.VarChar(10)
+  name_th     String?   @db.VarChar(255)
+  name_en     String?   @db.VarChar(255)
+  district_id Int?
+  lat         Decimal?  @db.Decimal(10, 8)
+  long        Decimal?  @db.Decimal(11, 8)
+  created_at  DateTime? @db.Timestamp(0)
+  updated_at  DateTime? @db.Timestamp(0)
+  deleted_at  DateTime? @db.Timestamp(0)
 
   @@index([district_id], map: "district_id")
   @@index([zip_code], map: "zip_code")
@@ -97,17 +90,16 @@ model appointments {
 }
 
 model bank_account {
-  id          Int           @id @default(autoincrement())
-  company_id  Int
-  bank        String        @db.VarChar(100)
-  bank_number String        @db.VarChar(50)
-  is_active   Boolean?      @default(true)
-  created_at  DateTime      @default(now()) @db.DateTime(0)
-  updated_at  DateTime      @default(now()) @db.DateTime(0)
-  deleted_at  DateTime?     @db.DateTime(0)
-  companies   companies     @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_bank_account_company")
-  order_slips order_slips[]
-  orders      orders[]
+  id                          Int                           @id @default(autoincrement())
+  company_id                  Int
+  bank                        String                        @db.VarChar(100)
+  bank_number                 String                        @db.VarChar(50)
+  is_active                   Boolean?                      @default(true)
+  created_at                  DateTime                      @default(now()) @db.DateTime(0)
+  updated_at                  DateTime                      @default(now()) @db.DateTime(0)
+  deleted_at                  DateTime?                     @db.DateTime(0)
+  order_slips                 order_slips[]
+  statement_reconcile_batches statement_reconcile_batches[]
 
   @@index([company_id], map: "idx_company_id")
   @@index([is_active], map: "idx_is_active")
@@ -126,47 +118,71 @@ model call_history {
   duration    Int?
 }
 
+model cod_documents {
+  id                       Int             @id @default(autoincrement())
+  document_number          String          @db.VarChar(64)
+  document_datetime        DateTime        @db.DateTime(0)
+  bank_account_id          Int?
+  matched_statement_log_id Int?
+  company_id               Int
+  total_input_amount       Decimal         @default(0.00) @db.Decimal(12, 2)
+  total_order_amount       Decimal         @default(0.00) @db.Decimal(12, 2)
+  status                   String          @default("pending") @db.VarChar(32)
+  notes                    String?         @db.Text
+  created_by               Int?
+  verified_by              Int?
+  verified_at              DateTime?       @db.DateTime(0)
+  created_at               DateTime        @default(now()) @db.DateTime(0)
+  updated_at               DateTime        @default(now()) @db.DateTime(0)
+  statement_logs           statement_logs? @relation(fields: [matched_statement_log_id], references: [id], onUpdate: NoAction, map: "fk_cod_documents_statement")
+  users                    users?          @relation(fields: [verified_by], references: [id], onUpdate: NoAction, map: "fk_cod_documents_verified_by")
+  cod_records              cod_records[]
+
+  @@unique([company_id, document_number], map: "uniq_cod_document_company_number")
+  @@index([bank_account_id], map: "fk_cod_documents_bank")
+  @@index([created_by], map: "fk_cod_documents_creator")
+  @@index([verified_by], map: "fk_cod_documents_verified_by")
+  @@index([company_id], map: "idx_cod_documents_company")
+  @@index([document_datetime], map: "idx_cod_documents_datetime")
+  @@index([matched_statement_log_id], map: "idx_cod_documents_statement")
+  @@index([status], map: "idx_cod_documents_status")
+}
+
 model cod_records {
-  id                  Int                 @id @default(autoincrement())
-  tracking_number     String              @db.VarChar(128)
-  delivery_start_date DateTime?           @db.Date
-  delivery_end_date   DateTime?           @db.Date
-  cod_amount          Decimal             @default(0.00) @db.Decimal(12, 2)
-  received_amount     Decimal?            @default(0.00) @db.Decimal(12, 2)
-  difference          Decimal?            @default(0.00) @db.Decimal(12, 2)
-  status              cod_records_status? @default(pending)
+  id                  Int            @id @default(autoincrement())
+  document_id         Int?
+  tracking_number     String         @db.VarChar(128)
+  order_id            String?        @db.VarChar(32)
+  delivery_start_date DateTime?      @db.Date
+  delivery_end_date   DateTime?      @db.Date
+  cod_amount          Decimal        @default(0.00) @db.Decimal(12, 2)
+  order_amount        Decimal?       @default(0.00) @db.Decimal(12, 2)
+  received_amount     Decimal?       @default(0.00) @db.Decimal(12, 2)
+  difference          Decimal?       @default(0.00) @db.Decimal(12, 2)
+  status              String         @default("pending") @db.VarChar(32)
   company_id          Int
   created_by          Int?
-  created_at          DateTime            @default(now()) @db.DateTime(0)
-  updated_at          DateTime?           @db.DateTime(0)
-  companies           companies           @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cod_records_company")
-  users               users?              @relation(fields: [created_by], references: [id], onUpdate: NoAction, map: "fk_cod_records_creator")
+  created_at          DateTime       @default(now()) @db.DateTime(0)
+  updated_at          DateTime?      @db.DateTime(0)
+  cod_documents       cod_documents? @relation(fields: [document_id], references: [id], onUpdate: NoAction, map: "fk_cod_records_document")
 
   @@index([created_by], map: "fk_cod_records_creator")
+  @@index([document_id], map: "idx_cod_records_document")
+  @@index([order_id], map: "idx_cod_records_order")
   @@index([company_id], map: "idx_company")
   @@index([status], map: "idx_status")
   @@index([tracking_number], map: "idx_tracking")
 }
 
 model companies {
-  id           Int            @id @default(autoincrement())
-  name         String         @db.VarChar(255)
-  address      String?        @db.Text
-  phone        String?        @db.VarChar(64)
-  email        String?        @db.VarChar(255)
-  tax_id       String?        @db.VarChar(32)
-  created_at   DateTime?      @default(now()) @db.DateTime(0)
-  updated_at   DateTime?      @default(now()) @db.DateTime(0)
-  bank_account bank_account[]
-  cod_records  cod_records[]
-  customers    customers[]
-  orders       orders[]
-  pages        pages[]
-  platforms    platforms[]
-  products     products[]
-  promotions   promotions[]
-  users        users[]
-  warehouses   warehouses[]
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  address    String?   @db.Text
+  phone      String?   @db.VarChar(64)
+  email      String?   @db.VarChar(255)
+  tax_id     String?   @db.VarChar(32)
+  created_at DateTime? @default(now()) @db.DateTime(0)
+  updated_at DateTime? @default(now()) @db.DateTime(0)
 }
 
 model customer_address {
@@ -190,7 +206,6 @@ model customer_assignment_history {
   customer_id Int?
   user_id     Int
   assigned_at DateTime @default(now()) @db.DateTime(0)
-  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cah_user")
 
   @@index([user_id], map: "fk_cah_user")
 }
@@ -228,7 +243,6 @@ model customer_logs {
 model customer_tags {
   customer_id String? @db.VarChar(64)
   tag_id      Int
-  tags        tags    @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_customer_tags_tag")
 
   @@index([tag_id], map: "fk_customer_tags_tag")
   @@ignore
@@ -276,9 +290,6 @@ model customers {
   is_new_customer           Boolean?                     @default(false)
   is_repeat_customer        Boolean?                     @default(false)
   bucket_type               String?                      @db.VarChar(16)
-  users                     users?                       @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_assigned_to")
-  companies                 companies                    @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_customers_company")
-  orders                    orders[]
 
   @@index([assigned_to], map: "idx_customers_assigned_to")
   @@index([is_blocked], map: "idx_customers_blocked")
@@ -325,8 +336,6 @@ model marketing_ads_log {
   clicks      Int?
   created_at  DateTime? @default(now()) @db.Timestamp(0)
   updated_at  DateTime? @default(now()) @db.Timestamp(0)
-  pages       pages     @relation(fields: [page_id], references: [id], onDelete: Cascade, map: "fk_marketing_ads_log_page_id")
-  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_ads_log_user_id")
 
   @@unique([page_id, user_id, date], map: "unique_page_user_date")
   @@index([created_at], map: "idx_created_at")
@@ -341,8 +350,6 @@ model marketing_user_page {
   user_id    Int
   created_at DateTime? @default(now()) @db.Timestamp(0)
   updated_at DateTime? @default(now()) @db.Timestamp(0)
-  pages      pages     @relation(fields: [page_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_page_page_id")
-  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_page_user_id")
 
   @@unique([page_id, user_id], map: "unique_page_user")
   @@index([page_id], map: "idx_page_id")
@@ -350,13 +357,11 @@ model marketing_user_page {
 }
 
 model notification_read_status {
-  id              Int           @id @default(autoincrement())
-  notification_id String        @db.VarChar(50)
+  id              Int       @id @default(autoincrement())
+  notification_id String    @db.VarChar(50)
   user_id         Int
-  read_at         DateTime?     @default(now()) @db.DateTime(0)
-  created_at      DateTime?     @default(now()) @db.DateTime(0)
-  notifications   notifications @relation(fields: [notification_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_read_status_ibfk_1")
-  users           users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_read_status_ibfk_2")
+  read_at         DateTime? @default(now()) @db.DateTime(0)
+  created_at      DateTime? @default(now()) @db.DateTime(0)
 
   @@unique([notification_id, user_id], map: "unique_notification_user_read")
   @@index([read_at], map: "idx_read_at")
@@ -368,7 +373,6 @@ model notification_roles {
   notification_id String                  @db.VarChar(50)
   role            notification_roles_role
   created_at      DateTime?               @default(now()) @db.DateTime(0)
-  notifications   notifications           @relation(fields: [notification_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_roles_ibfk_1")
 
   @@unique([notification_id, role], map: "unique_notification_role")
   @@index([role], map: "idx_role")
@@ -384,7 +388,6 @@ model notification_settings {
   business_hours_only Boolean?  @default(false)
   created_at          DateTime? @default(now()) @db.DateTime(0)
   updated_at          DateTime? @default(now()) @db.DateTime(0)
-  users               users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_settings_ibfk_1")
 
   @@unique([user_id, notification_type], map: "unique_user_notification_type")
   @@index([notification_type], map: "idx_notification_type")
@@ -392,41 +395,36 @@ model notification_settings {
 }
 
 model notification_users {
-  id              Int           @id @default(autoincrement())
-  notification_id String        @db.VarChar(50)
+  id              Int       @id @default(autoincrement())
+  notification_id String    @db.VarChar(50)
   user_id         Int
-  created_at      DateTime?     @default(now()) @db.DateTime(0)
-  notifications   notifications @relation(fields: [notification_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_users_ibfk_1")
-  users           users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_users_ibfk_2")
+  created_at      DateTime? @default(now()) @db.DateTime(0)
 
   @@unique([notification_id, user_id], map: "unique_notification_user")
   @@index([user_id], map: "idx_user_id")
 }
 
 model notifications {
-  id                       String                     @id @db.VarChar(50)
-  type                     notifications_type
-  category                 notifications_category
-  title                    String                     @db.VarChar(255)
-  message                  String                     @db.Text
-  timestamp                DateTime                   @default(now()) @db.DateTime(0)
-  is_read                  Boolean?                   @default(false)
-  priority                 notifications_priority?    @default(medium)
-  related_id               String?                    @db.VarChar(50)
-  page_id                  Int?
-  page_name                String?                    @db.VarChar(255)
-  platform                 String?                    @db.VarChar(50)
-  previous_value           Decimal?                   @db.Decimal(10, 2)
-  current_value            Decimal?                   @db.Decimal(10, 2)
-  percentage_change        Decimal?                   @db.Decimal(5, 2)
-  action_url               String?                    @db.VarChar(255)
-  action_text              String?                    @db.VarChar(100)
-  metadata                 Json?
-  created_at               DateTime?                  @default(now()) @db.DateTime(0)
-  updated_at               DateTime?                  @default(now()) @db.DateTime(0)
-  notification_read_status notification_read_status[]
-  notification_roles       notification_roles[]
-  notification_users       notification_users[]
+  id                String                  @id @db.VarChar(50)
+  type              notifications_type
+  category          notifications_category
+  title             String                  @db.VarChar(255)
+  message           String                  @db.Text
+  timestamp         DateTime                @default(now()) @db.DateTime(0)
+  is_read           Boolean?                @default(false)
+  priority          notifications_priority? @default(medium)
+  related_id        String?                 @db.VarChar(50)
+  page_id           Int?
+  page_name         String?                 @db.VarChar(255)
+  platform          String?                 @db.VarChar(50)
+  previous_value    Decimal?                @db.Decimal(10, 2)
+  current_value     Decimal?                @db.Decimal(10, 2)
+  percentage_change Decimal?                @db.Decimal(5, 2)
+  action_url        String?                 @db.VarChar(255)
+  action_text       String?                 @db.VarChar(100)
+  metadata          Json?
+  created_at        DateTime?               @default(now()) @db.DateTime(0)
+  updated_at        DateTime?               @default(now()) @db.DateTime(0)
 
   @@index([category], map: "idx_category")
   @@index([is_read], map: "idx_is_read")
@@ -438,27 +436,25 @@ model notifications {
 }
 
 model onecall_batch {
-  id            Int           @id @default(autoincrement())
-  startdate     DateTime      @db.Date
-  enddate       DateTime      @db.Date
+  id            Int       @id @default(autoincrement())
+  startdate     DateTime  @db.Date
+  enddate       DateTime  @db.Date
   amount_record Int
-  created_at    DateTime?     @default(now()) @db.Timestamp(0)
-  onecall_log   onecall_log[]
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
 }
 
 model onecall_log {
-  id             Int           @id @default(autoincrement())
-  timestamp      DateTime      @db.Timestamp(0)
+  id             Int      @id @default(autoincrement())
+  timestamp      DateTime @db.Timestamp(0)
   duration       Int
-  localParty     String        @db.VarChar(255)
-  remoteParty    String        @db.VarChar(255)
-  direction      String        @db.VarChar(10)
-  phone_telesale String        @db.VarChar(255)
+  localParty     String   @db.VarChar(255)
+  remoteParty    String   @db.VarChar(255)
+  direction      String   @db.VarChar(10)
+  phone_telesale String   @db.VarChar(255)
   batch_id       Int
-  onecall_batch  onecall_batch @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "onecall_log_ibfk_1")
 
-  @@index([batch_id], map: "batch_id")
   @@index([phone_telesale, timestamp], map: "idx_onecall_phone_ts")
+  @@index([batch_id], map: "onecall_log_ibfk_1")
 }
 
 model order_box_collection_logs {
@@ -480,7 +476,6 @@ model order_box_collection_logs {
   new_status            order_box_collection_logs_new_status?
   notes                 String?                                       @db.Text
   created_at            DateTime                                      @default(now()) @db.DateTime(0)
-  order_boxes           order_boxes                                   @relation(fields: [order_box_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ob_logs_box")
 
   @@index([order_box_id], map: "idx_ob_logs_box")
   @@index([change_type], map: "idx_ob_logs_change_type")
@@ -489,22 +484,20 @@ model order_box_collection_logs {
 }
 
 model order_boxes {
-  id                        Int                         @id @default(autoincrement())
-  order_id                  String                      @db.VarChar(32)
-  sub_order_id              String                      @unique(map: "uniq_sub_order_id") @default("") @db.VarChar(64)
-  box_number                Int
-  payment_method            order_boxes_payment_method?
-  status                    order_boxes_status          @default(PENDING)
-  cod_amount                Decimal                     @default(0.00) @db.Decimal(12, 2)
-  collection_amount         Decimal                     @default(0.00) @db.Decimal(12, 2)
-  collected_amount          Decimal                     @default(0.00) @db.Decimal(12, 2)
-  waived_amount             Decimal                     @default(0.00) @db.Decimal(12, 2)
-  created_at                DateTime                    @default(now()) @db.DateTime(0)
-  updated_at                DateTime                    @default(now()) @db.DateTime(0)
-  shipped_at                DateTime?                   @db.DateTime(0)
-  delivered_at              DateTime?                   @db.DateTime(0)
-  order_box_collection_logs order_box_collection_logs[]
-  orders                    orders                      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_boxes_order")
+  id                Int                         @id @default(autoincrement())
+  order_id          String                      @db.VarChar(32)
+  sub_order_id      String                      @unique(map: "uniq_sub_order_id") @default("") @db.VarChar(64)
+  box_number        Int
+  payment_method    order_boxes_payment_method?
+  status            order_boxes_status          @default(PENDING)
+  cod_amount        Decimal                     @default(0.00) @db.Decimal(12, 2)
+  collection_amount Decimal                     @default(0.00) @db.Decimal(12, 2)
+  collected_amount  Decimal                     @default(0.00) @db.Decimal(12, 2)
+  waived_amount     Decimal                     @default(0.00) @db.Decimal(12, 2)
+  created_at        DateTime                    @default(now()) @db.DateTime(0)
+  updated_at        DateTime                    @default(now()) @db.DateTime(0)
+  shipped_at        DateTime?                   @db.DateTime(0)
+  delivered_at      DateTime?                   @db.DateTime(0)
 
   @@unique([order_id, box_number], map: "uniq_order_box_per_order")
   @@index([status], map: "idx_order_boxes_status")
@@ -527,11 +520,6 @@ model order_item_allocations {
   created_by         Int?
   created_at         DateTime                      @default(now()) @db.DateTime(0)
   updated_at         DateTime                      @default(now()) @db.DateTime(0)
-  order_items        order_items?                  @relation(fields: [order_item_id], references: [id], onUpdate: NoAction, map: "fk_allocations_item")
-  orders             orders                        @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_allocations_order")
-  products           products                      @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "fk_allocations_product")
-  promotions         promotions?                   @relation(fields: [promotion_id], references: [id], onUpdate: NoAction, map: "fk_allocations_promotion")
-  warehouses         warehouses?                   @relation(fields: [warehouse_id], references: [id], onUpdate: NoAction, map: "fk_allocations_warehouse")
 
   @@index([promotion_id], map: "fk_allocations_promotion")
   @@index([created_by], map: "idx_allocations_created_by")
@@ -544,28 +532,21 @@ model order_item_allocations {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_items {
-  id                     Int                      @id @default(autoincrement())
-  order_id               String                   @db.VarChar(32)
-  parent_order_id        String                   @db.VarChar(32)
-  creator_id             Int
-  product_id             Int?
-  product_name           String?                  @db.VarChar(255)
-  quantity               Int
-  price_per_unit         Decimal                  @db.Decimal(12, 2)
-  discount               Decimal                  @default(0.00) @db.Decimal(12, 2)
-  net_total              Decimal                  @default(0.00) @db.Decimal(12, 2)
-  is_freebie             Boolean                  @default(false)
-  box_number             Int?
-  promotion_id           Int?
-  parent_item_id         Int?
-  is_promotion_parent    Boolean                  @default(false)
-  order_item_allocations order_item_allocations[]
-  users                  users                    @relation(fields: [creator_id], references: [id], map: "fk_order_items_creator")
-  order_items            order_items?             @relation("order_itemsToorder_items", fields: [parent_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_items_parent")
-  other_order_items      order_items[]            @relation("order_itemsToorder_items")
-  orders                 orders                   @relation(fields: [parent_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_items_parent_order")
-  products               products?                @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_order_items_product")
-  promotions             promotions?              @relation(fields: [promotion_id], references: [id], onUpdate: NoAction, map: "fk_order_items_promotion")
+  id                  Int     @id @default(autoincrement())
+  order_id            String  @db.VarChar(32)
+  parent_order_id     String  @db.VarChar(32)
+  creator_id          Int
+  product_id          Int?
+  product_name        String? @db.VarChar(255)
+  quantity            Int
+  price_per_unit      Decimal @db.Decimal(12, 2)
+  discount            Decimal @default(0.00) @db.Decimal(12, 2)
+  net_total           Decimal @default(0.00) @db.Decimal(12, 2)
+  is_freebie          Boolean @default(false)
+  box_number          Int?
+  promotion_id        Int?
+  parent_item_id      Int?
+  is_promotion_parent Boolean @default(false)
 
   @@index([order_id], map: "fk_order_items_order")
   @@index([creator_id], map: "idx_order_items_creator")
@@ -589,15 +570,16 @@ model order_sequences {
 
 model order_slips {
   id              Int           @id @default(autoincrement())
-  amount          Int?
+  amount          Decimal?      @db.Decimal(12, 2)
   bank_account_id Int?
   transfer_date   DateTime?     @db.DateTime(0)
   order_id        String        @db.VarChar(32)
   url             String        @db.VarChar(1024)
+  upload_by       Int?
+  upload_by_name  String?       @db.VarChar(255)
   created_at      DateTime      @default(now()) @db.DateTime(0)
   updated_at      DateTime      @default(now()) @db.DateTime(0)
   bank_account    bank_account? @relation(fields: [bank_account_id], references: [id], onUpdate: NoAction, map: "fk_order_slips_bank_account_id")
-  orders          orders        @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_slips_order")
 
   @@index([bank_account_id], map: "idx_order_slips_bank_account_id")
   @@index([order_id], map: "idx_order_slips_order")
@@ -609,7 +591,6 @@ model order_tracking_numbers {
   parent_order_id String @db.VarChar(32)
   box_number      Int?
   tracking_number String @db.VarChar(128)
-  orders          orders @relation(fields: [parent_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_order_tracking_parent_order")
 
   @@index([order_id], map: "fk_order_tracking_order")
   @@index([parent_order_id], map: "idx_order_tracking_parent_order")
@@ -617,48 +598,37 @@ model order_tracking_numbers {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model orders {
-  id                     String                   @id @db.VarChar(32)
-  customer_id            Int?
-  company_id             Int
-  creator_id             Int
-  order_date             DateTime                 @db.DateTime(0)
-  delivery_date          DateTime?                @db.DateTime(0)
-  street                 String?                  @db.VarChar(255)
-  subdistrict            String?                  @db.VarChar(128)
-  district               String?                  @db.VarChar(128)
-  province               String?                  @db.VarChar(128)
-  postal_code            String?                  @db.VarChar(16)
-  recipient_first_name   String?                  @db.VarChar(128)
-  recipient_last_name    String?                  @db.VarChar(128)
-  shipping_provider      String?                  @db.VarChar(128)
-  shipping_cost          Decimal                  @default(0.00) @db.Decimal(12, 2)
-  bill_discount          Decimal                  @default(0.00) @db.Decimal(12, 2)
-  total_amount           Decimal                  @default(0.00) @db.Decimal(12, 2)
-  payment_method         orders_payment_method?
-  payment_status         orders_payment_status?
-  slip_url               String?                  @db.VarChar(1024)
-  amount_paid            Decimal?                 @db.Decimal(12, 2)
-  cod_amount             Decimal?                 @db.Decimal(12, 2)
-  order_status           orders_order_status?
-  notes                  String?                  @db.Text
-  ocr_payment_date       DateTime?                @db.DateTime(0)
-  sales_channel          String?                  @db.VarChar(128)
-  sales_channel_page_id  Int?
-  bank_account_id        Int?
-  transfer_date          DateTime?                @db.DateTime(0)
-  warehouse_id           Int?
-  order_boxes            order_boxes[]
-  order_item_allocations order_item_allocations[]
-  order_items            order_items[]
-  order_slips            order_slips[]
-  order_tracking_numbers order_tracking_numbers[]
-  bank_account           bank_account?            @relation(fields: [bank_account_id], references: [id], onUpdate: NoAction, map: "fk_orders_bank_account")
-  companies              companies                @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_company")
-  users                  users                    @relation(fields: [creator_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_creator")
-  customers              customers?               @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade, map: "fk_orders_customer")
-  pages                  pages?                   @relation(fields: [sales_channel_page_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_page")
-  warehouses             warehouses?              @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_warehouse")
-  stock_reservations     stock_reservations[]
+  id                       String                     @id @db.VarChar(32)
+  customer_id              Int?
+  company_id               Int
+  creator_id               Int
+  order_date               DateTime                   @db.DateTime(0)
+  delivery_date            DateTime?                  @db.DateTime(0)
+  street                   String?                    @db.VarChar(255)
+  subdistrict              String?                    @db.VarChar(128)
+  district                 String?                    @db.VarChar(128)
+  province                 String?                    @db.VarChar(128)
+  postal_code              String?                    @db.VarChar(16)
+  recipient_first_name     String?                    @db.VarChar(128)
+  recipient_last_name      String?                    @db.VarChar(128)
+  shipping_provider        String?                    @db.VarChar(128)
+  shipping_cost            Decimal                    @default(0.00) @db.Decimal(12, 2)
+  bill_discount            Decimal                    @default(0.00) @db.Decimal(12, 2)
+  total_amount             Decimal                    @default(0.00) @db.Decimal(12, 2)
+  payment_method           orders_payment_method?
+  payment_status           orders_payment_status?
+  slip_url                 String?                    @db.VarChar(1024)
+  amount_paid              Decimal?                   @db.Decimal(12, 2)
+  cod_amount               Decimal?                   @db.Decimal(12, 2)
+  order_status             orders_order_status?
+  notes                    String?                    @db.Text
+  ocr_payment_date         DateTime?                  @db.DateTime(0)
+  sales_channel            String?                    @db.VarChar(128)
+  sales_channel_page_id    Int?
+  bank_account_id          Int?
+  transfer_date            DateTime?                  @db.DateTime(0)
+  warehouse_id             Int?
+  statement_reconcile_logs statement_reconcile_logs[]
 
   @@index([customer_id], map: "fk_orders_customer")
   @@index([sales_channel_page_id], map: "fk_orders_page")
@@ -675,31 +645,29 @@ model orders {
 }
 
 model page_engagement_batch {
-  id                  Int                          @id @default(autoincrement())
-  date_range          String                       @db.VarChar(100)
-  created_at          DateTime                     @default(now()) @db.Timestamp(0)
-  status              page_engagement_batch_status @default(pending)
-  records_count       Int?
-  user_id             Int?
-  page_engagement_log page_engagement_log[]
+  id            Int                          @id @default(autoincrement())
+  date_range    String                       @db.VarChar(100)
+  created_at    DateTime                     @default(now()) @db.Timestamp(0)
+  status        page_engagement_batch_status @default(pending)
+  records_count Int?
+  user_id       Int?
 
   @@index([created_at], map: "idx_created_at")
   @@index([status], map: "idx_status")
 }
 
 model page_engagement_log {
-  id                            Int                   @id @default(autoincrement())
+  id                            Int      @id @default(autoincrement())
   batch_id                      Int
-  page_id                       String                @db.VarChar(50)
-  date                          DateTime              @db.Date
-  inbox                         Int?                  @default(0)
-  comment                       Int?                  @default(0)
-  total                         Int?                  @default(0)
-  new_customer_replied          Int?                  @default(0)
-  customer_engagement_new_inbox Int?                  @default(0)
-  order_count                   Int?                  @default(0)
-  old_order_count               Int?                  @default(0)
-  page_engagement_batch         page_engagement_batch @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_page_engagement_log_batch")
+  page_id                       String   @db.VarChar(50)
+  date                          DateTime @db.Date
+  inbox                         Int?     @default(0)
+  comment                       Int?     @default(0)
+  total                         Int?     @default(0)
+  new_customer_replied          Int?     @default(0)
+  customer_engagement_new_inbox Int?     @default(0)
+  order_count                   Int?     @default(0)
+  old_order_count               Int?     @default(0)
 
   @@index([batch_id], map: "idx_batch_id")
   @@index([date], map: "idx_date")
@@ -727,10 +695,9 @@ model page_list_user {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_batch {
-  id             Int              @id @default(autoincrement())
-  date_range     String           @db.VarChar(255)
-  created_at     DateTime?        @default(now()) @db.Timestamp(0)
-  page_stats_log page_stats_log[]
+  id         Int       @id @default(autoincrement())
+  date_range String    @db.VarChar(255)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
 
   @@index([created_at], map: "idx_created_at")
   @@index([date_range], map: "idx_date_range")
@@ -738,23 +705,22 @@ model page_stats_batch {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_log {
-  id                       Int              @id @default(autoincrement())
+  id                       Int    @id @default(autoincrement())
   batch_id                 Int
-  page_id                  String           @db.VarChar(255)
-  time_column              String           @db.VarChar(255)
-  new_customers            Int              @default(0)
-  total_phones             Int              @default(0)
-  new_phones               Int              @default(0)
-  total_comments           Int              @default(0)
-  total_chats              Int              @default(0)
-  total_page_comments      Int              @default(0)
-  total_page_chats         Int              @default(0)
-  new_chats                Int              @default(0)
-  chats_from_old_customers Int              @default(0)
-  web_logged_in            Int              @default(0)
-  web_guest                Int              @default(0)
-  orders_count             Int              @default(0)
-  page_stats_batch         page_stats_batch @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "page_stats_log_ibfk_1")
+  page_id                  String @db.VarChar(255)
+  time_column              String @db.VarChar(255)
+  new_customers            Int    @default(0)
+  total_phones             Int    @default(0)
+  new_phones               Int    @default(0)
+  total_comments           Int    @default(0)
+  total_chats              Int    @default(0)
+  total_page_comments      Int    @default(0)
+  total_page_chats         Int    @default(0)
+  new_chats                Int    @default(0)
+  chats_from_old_customers Int    @default(0)
+  web_logged_in            Int    @default(0)
+  web_guest                Int    @default(0)
+  orders_count             Int    @default(0)
 
   @@unique([batch_id, page_id, time_column], map: "unique_batch_page_time")
   @@index([batch_id], map: "idx_batch_id")
@@ -781,23 +747,18 @@ model page_user {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model pages {
-  id                  Int                   @id @default(autoincrement())
-  page_id             String?               @db.VarChar(255)
-  name                String                @db.VarChar(255)
-  platform            String                @default("Facebook") @db.VarChar(64)
-  page_type           String?               @db.VarChar(50)
-  url                 String?               @db.VarChar(1024)
-  company_id          Int
-  active              Boolean               @default(true)
-  still_in_list       Boolean               @default(true)
-  user_count          Int                   @default(0)
-  created_at          DateTime?             @default(now()) @db.Timestamp(0)
-  updated_at          DateTime?             @default(now()) @db.Timestamp(0)
-  ad_spend            ad_spend[]
-  marketing_ads_log   marketing_ads_log[]
-  marketing_user_page marketing_user_page[]
-  orders              orders[]
-  companies           companies             @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pages_company")
+  id            Int       @id @default(autoincrement())
+  page_id       String?   @db.VarChar(255)
+  name          String    @db.VarChar(255)
+  platform      String    @default("Facebook") @db.VarChar(64)
+  page_type     String?   @db.VarChar(50)
+  url           String?   @db.VarChar(1024)
+  company_id    Int
+  active        Boolean   @default(true)
+  still_in_list Boolean   @default(true)
+  user_count    Int       @default(0)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  updated_at    DateTime? @default(now()) @db.Timestamp(0)
 
   @@index([page_id], map: "idx_page_id")
   @@index([page_type], map: "idx_page_type")
@@ -818,7 +779,6 @@ model platforms {
   show_pages_from String?   @db.VarChar(64)
   created_at      DateTime? @default(now()) @db.Timestamp(0)
   updated_at      DateTime? @default(now()) @db.Timestamp(0)
-  companies       companies @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_platforms_company")
 
   @@unique([company_id, name], map: "uk_platforms_company_name")
   @@index([active], map: "idx_platforms_active")
@@ -843,67 +803,51 @@ model product_lots {
   notes              String?              @db.Text
   created_at         DateTime?            @default(now()) @db.DateTime(0)
   updated_at         DateTime?            @default(now()) @db.DateTime(0)
-  products           products             @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "product_lots_ibfk_1")
-  warehouses         warehouses           @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "product_lots_ibfk_2")
 
   @@index([expiry_date], map: "idx_lot_expiry")
   @@index([status], map: "idx_lot_status")
-  @@index([product_id], map: "product_id")
-  @@index([warehouse_id], map: "warehouse_id")
+  @@index([product_id], map: "product_lots_ibfk_1")
+  @@index([warehouse_id], map: "product_lots_ibfk_2")
 }
 
 model products {
-  id                     Int                      @id @default(autoincrement())
-  sku                    String                   @unique(map: "sku") @db.VarChar(64)
-  name                   String                   @db.VarChar(255)
-  description            String?                  @db.Text
-  category               String                   @db.VarChar(128)
-  unit                   String                   @db.VarChar(32)
-  cost                   Decimal                  @default(0.00) @db.Decimal(12, 2)
-  price                  Decimal                  @default(0.00) @db.Decimal(12, 2)
-  stock                  Int                      @default(0)
-  company_id             Int
-  shop                   String?                  @db.VarChar(128)
-  status                 products_status          @default(Active)
-  order_item_allocations order_item_allocations[]
-  order_items            order_items[]
-  product_lots           product_lots[]
-  companies              companies                @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_products_company")
-  promotion_items        promotion_items[]
-  stock_movements        stock_movements[]
-  stock_reservations     stock_reservations[]
-  warehouse_stocks       warehouse_stocks[]
+  id          Int             @id @default(autoincrement())
+  sku         String          @unique(map: "sku") @db.VarChar(64)
+  name        String          @db.VarChar(255)
+  description String?         @db.Text
+  category    String          @db.VarChar(128)
+  unit        String          @db.VarChar(32)
+  cost        Decimal         @default(0.00) @db.Decimal(12, 2)
+  price       Decimal         @default(0.00) @db.Decimal(12, 2)
+  stock       Int             @default(0)
+  company_id  Int
+  shop        String?         @db.VarChar(128)
+  status      products_status @default(Active)
 
   @@index([company_id], map: "idx_products_company")
 }
 
 model promotion_items {
-  id             Int        @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   promotion_id   Int
   product_id     Int
-  quantity       Int        @default(1)
-  is_freebie     Boolean    @default(false)
-  price_override Decimal?   @db.Decimal(12, 2)
-  products       products   @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pitems_product")
-  promotions     promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pitems_promotion")
+  quantity       Int      @default(1)
+  is_freebie     Boolean  @default(false)
+  price_override Decimal? @db.Decimal(12, 2)
 
   @@index([product_id], map: "fk_pitems_product")
   @@index([promotion_id], map: "fk_pitems_promotion")
 }
 
 model promotions {
-  id                     Int                      @id @default(autoincrement())
-  sku                    String?                  @db.VarChar(64)
-  name                   String                   @db.VarChar(255)
-  description            String?                  @db.Text
-  company_id             Int
-  active                 Boolean                  @default(true)
-  start_date             DateTime?                @db.DateTime(0)
-  end_date               DateTime?                @db.DateTime(0)
-  order_item_allocations order_item_allocations[]
-  order_items            order_items[]
-  promotion_items        promotion_items[]
-  companies              companies                @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_promotions_company")
+  id          Int       @id @default(autoincrement())
+  sku         String?   @db.VarChar(64)
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  company_id  Int
+  active      Boolean   @default(true)
+  start_date  DateTime? @db.DateTime(0)
+  end_date    DateTime? @db.DateTime(0)
 
   @@index([active], map: "idx_promotions_active")
   @@index([company_id], map: "idx_promotions_company")
@@ -916,33 +860,67 @@ model role_permissions {
 }
 
 model statement_batchs {
-  id             Int              @id @default(autoincrement())
-  company_id     Int
-  user_id        Int?
-  row_count      Int
-  transfer_min   DateTime         @db.DateTime(0)
-  transfer_max   DateTime         @db.DateTime(0)
-  created_at     DateTime         @default(now()) @db.DateTime(0)
-  statement_logs statement_logs[]
+  id           Int      @id @default(autoincrement())
+  company_id   Int
+  user_id      Int?
+  row_count    Int
+  transfer_min DateTime @db.DateTime(0)
+  transfer_max DateTime @db.DateTime(0)
+  created_at   DateTime @default(now()) @db.DateTime(0)
 
   @@index([company_id, created_at], map: "idx_statement_batchs_company_created")
 }
 
 model statement_logs {
-  id               Int              @id @default(autoincrement())
-  batch_id         Int
-  transfer_at      DateTime         @db.DateTime(0)
-  amount           Decimal          @db.Decimal(12, 2)
-  bank_account_id  Int?
-  bank_display_name String?         @db.VarChar(150)
-  channel          String?          @db.VarChar(64)
-  description      String?          @db.Text
-  created_at       DateTime         @default(now()) @db.DateTime(0)
-  bank_account     bank_account?    @relation(fields: [bank_account_id], references: [id], onUpdate: NoAction, map: "fk_statement_logs_bank_account")
-  statement_batchs statement_batchs @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       Int                       @id @default(autoincrement())
+  batch_id                 Int
+  transfer_at              DateTime                  @db.DateTime(0)
+  amount                   Decimal                   @db.Decimal(12, 2)
+  bank_account_id          Int?
+  bank_display_name        String?                   @db.VarChar(150)
+  channel                  String?                   @db.VarChar(64)
+  description              String?                   @db.Text
+  created_at               DateTime                  @default(now()) @db.DateTime(0)
+  cod_documents            cod_documents[]
+  statement_reconcile_logs statement_reconcile_logs?
 
-  @@index([batch_id, transfer_at], map: "idx_statement_logs_batch_transfer")
   @@index([bank_account_id, transfer_at], map: "idx_statement_logs_bank_date")
+  @@index([batch_id, transfer_at], map: "idx_statement_logs_batch_transfer")
+}
+
+model statement_reconcile_batches {
+  id                       Int                        @id @default(autoincrement())
+  document_no              String                     @unique(map: "uniq_statement_reconcile_document") @db.VarChar(120)
+  bank_account_id          Int?
+  bank_display_name        String?                    @db.VarChar(150)
+  company_id               Int
+  start_date               DateTime?                  @db.DateTime(0)
+  end_date                 DateTime?                  @db.DateTime(0)
+  created_by               Int
+  created_at               DateTime                   @default(now()) @db.DateTime(0)
+  notes                    String?                    @db.Text
+  bank_account             bank_account?              @relation(fields: [bank_account_id], references: [id], onUpdate: NoAction, map: "fk_statement_reconcile_bank")
+  statement_reconcile_logs statement_reconcile_logs[]
+
+  @@index([bank_account_id], map: "idx_statement_reconcile_bank")
+  @@index([company_id, created_at], map: "idx_statement_reconcile_company_created")
+}
+
+model statement_reconcile_logs {
+  id                          Int                         @id @default(autoincrement())
+  batch_id                    Int
+  statement_log_id            Int                         @unique(map: "uniq_statement_log")
+  order_id                    String                      @db.VarChar(32)
+  statement_amount            Decimal                     @db.Decimal(12, 2)
+  confirmed_amount            Decimal?                    @db.Decimal(12, 2)
+  auto_matched                Boolean                     @default(false)
+  created_at                  DateTime                    @default(now()) @db.DateTime(0)
+  statement_reconcile_batches statement_reconcile_batches @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_batch")
+  orders                      orders                      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_order")
+  statement_logs              statement_logs              @relation(fields: [statement_log_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_statement")
+
+  @@index([batch_id], map: "idx_statement_reconcile_batch")
+  @@index([order_id, statement_log_id], map: "idx_statement_reconcile_order_statement")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -959,9 +937,6 @@ model stock_movements {
   notes          String?                       @db.Text
   created_by     Int
   created_at     DateTime                      @default(now()) @db.DateTime(0)
-  products       products                      @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stock_movements_product")
-  users          users                         @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_movements_user")
-  warehouses     warehouses                    @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stock_movements_warehouse")
 
   @@index([product_id], map: "fk_stock_movements_product")
   @@index([created_by], map: "fk_stock_movements_user")
@@ -983,10 +958,6 @@ model stock_reservations {
   status       stock_reservations_status @default(ACTIVE)
   created_by   Int
   created_at   DateTime                  @default(now()) @db.DateTime(0)
-  orders       orders?                   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stock_reservations_order")
-  products     products                  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stock_reservations_product")
-  users        users                     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_reservations_user")
-  warehouses   warehouses                @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stock_reservations_warehouse")
 
   @@index([order_id], map: "fk_stock_reservations_order")
   @@index([product_id], map: "fk_stock_reservations_product")
@@ -996,11 +967,9 @@ model stock_reservations {
 }
 
 model tags {
-  id            Int             @id @default(autoincrement())
-  name          String          @db.VarChar(128)
-  type          tags_type
-  customer_tags customer_tags[] @ignore
-  user_tags     user_tags[]
+  id   Int       @id @default(autoincrement())
+  name String    @db.VarChar(128)
+  type tags_type
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -1017,7 +986,6 @@ model user_daily_attendance {
   attendance_status  user_daily_attendance_attendance_status @default(absent)
   computed_at        DateTime                                @default(now()) @db.DateTime(0)
   updated_at         DateTime                                @default(now()) @db.DateTime(0)
-  users              users                                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attendance_user")
 
   @@unique([user_id, work_date], map: "uniq_user_date")
   @@index([work_date], map: "idx_work_date")
@@ -1032,7 +1000,6 @@ model user_login_history {
   user_agent       String?   @db.Text
   logout_time      DateTime? @db.DateTime(0)
   session_duration Int?
-  users            users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_login_history_ibfk_1")
 
   @@index([login_time], map: "idx_login_time")
   @@index([user_id], map: "idx_login_user_id")
@@ -1043,7 +1010,6 @@ model user_pancake_mapping {
   id_user    Int      @unique(map: "uniq_user")
   id_panake  String   @unique(map: "uniq_panake")
   created_at DateTime @default(now()) @db.DateTime(0)
-  users      users    @relation(fields: [id_user], references: [id], onDelete: Cascade, map: "fk_upm_user")
 
   @@index([id_panake], map: "idx_panake")
   @@index([id_user], map: "idx_user")
@@ -1052,48 +1018,30 @@ model user_pancake_mapping {
 model user_tags {
   user_id Int
   tag_id  Int
-  tags    tags  @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_tags_tag")
-  users   users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_tags_user")
 
   @@id([user_id, tag_id])
   @@index([tag_id], map: "fk_user_tags_tag")
 }
 
 model users {
-  id                          Int                           @id @default(autoincrement())
-  username                    String                        @unique(map: "username") @db.VarChar(64)
-  password                    String?                       @db.VarChar(255)
-  first_name                  String                        @db.VarChar(128)
-  last_name                   String                        @db.VarChar(128)
-  email                       String?                       @db.VarChar(255)
-  phone                       String?                       @db.VarChar(64)
-  role                        String                        @db.VarChar(64)
-  company_id                  Int
-  team_id                     Int?
-  supervisor_id               Int?
-  id_oth                      String?
-  status                      users_status                  @default(active)
-  created_at                  DateTime?                     @default(now()) @db.DateTime(0)
-  updated_at                  DateTime?                     @default(now()) @db.DateTime(0)
-  last_login                  DateTime?                     @db.DateTime(0)
-  login_count                 Int                           @default(0)
-  cod_records                 cod_records[]
-  customer_assignment_history customer_assignment_history[]
-  customers                   customers[]
-  marketing_ads_log           marketing_ads_log[]
-  marketing_user_page         marketing_user_page[]
-  notification_read_status    notification_read_status[]
-  notification_settings       notification_settings[]
-  notification_users          notification_users[]
-  order_items                 order_items[]
-  orders                      orders[]
-  stock_movements             stock_movements[]
-  stock_reservations          stock_reservations[]
-  user_daily_attendance       user_daily_attendance[]
-  user_login_history          user_login_history[]
-  user_pancake_mapping        user_pancake_mapping?
-  user_tags                   user_tags[]
-  companies                   companies                     @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_company")
+  id            Int             @id @default(autoincrement())
+  username      String          @unique(map: "username") @db.VarChar(64)
+  password      String?         @db.VarChar(255)
+  first_name    String          @db.VarChar(128)
+  last_name     String          @db.VarChar(128)
+  email         String?         @db.VarChar(255)
+  phone         String?         @db.VarChar(64)
+  role          String          @db.VarChar(64)
+  company_id    Int
+  team_id       Int?
+  supervisor_id Int?
+  id_oth        String?
+  status        users_status    @default(active)
+  created_at    DateTime?       @default(now()) @db.DateTime(0)
+  updated_at    DateTime?       @default(now()) @db.DateTime(0)
+  last_login    DateTime?       @db.DateTime(0)
+  login_count   Int             @default(0)
+  cod_documents cod_documents[]
 
   @@index([company_id], map: "idx_users_company")
   @@index([company_id, role], map: "idx_users_company_role")
@@ -1107,23 +1055,21 @@ model users {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouse_stocks {
-  id                    Int        @id @default(autoincrement())
+  id                    Int       @id @default(autoincrement())
   warehouse_id          Int
   product_id            Int
-  lot_number            String?    @db.VarChar(128)
+  lot_number            String?   @db.VarChar(128)
   product_lot_id        Int?
-  quantity              Int        @default(0)
-  reserved_quantity     Int        @default(0)
+  quantity              Int       @default(0)
+  reserved_quantity     Int       @default(0)
   available_quantity    Int?
-  expiry_date           DateTime?  @db.Date
-  purchase_price        Decimal?   @db.Decimal(12, 2)
-  selling_price         Decimal?   @db.Decimal(12, 2)
-  location_in_warehouse String?    @db.VarChar(255)
-  notes                 String?    @db.Text
-  created_at            DateTime   @default(now()) @db.DateTime(0)
-  updated_at            DateTime   @default(now()) @db.DateTime(0)
-  products              products   @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_stocks_product")
-  warehouses            warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_stocks_warehouse")
+  expiry_date           DateTime? @db.Date
+  purchase_price        Decimal?  @db.Decimal(12, 2)
+  selling_price         Decimal?  @db.Decimal(12, 2)
+  location_in_warehouse String?   @db.VarChar(255)
+  notes                 String?   @db.Text
+  created_at            DateTime  @default(now()) @db.DateTime(0)
+  updated_at            DateTime  @default(now()) @db.DateTime(0)
 
   @@unique([warehouse_id, product_id, lot_number], map: "uniq_warehouse_product_lot")
   @@index([product_id], map: "fk_warehouse_stocks_product")
@@ -1134,29 +1080,22 @@ model warehouse_stocks {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouses {
-  id                     Int                      @id @default(autoincrement())
-  name                   String                   @db.VarChar(255)
-  company_id             Int
-  address                String                   @db.Text
-  province               String                   @db.VarChar(128)
-  district               String                   @db.VarChar(128)
-  subdistrict            String                   @db.VarChar(128)
-  postal_code            String?                  @db.VarChar(16)
-  phone                  String?                  @db.VarChar(64)
-  email                  String?                  @db.VarChar(255)
-  manager_name           String?                  @db.VarChar(255)
-  manager_phone          String?                  @db.VarChar(64)
-  responsible_provinces  String?                  @db.Text
-  is_active              Boolean                  @default(true)
-  created_at             DateTime                 @default(now()) @db.DateTime(0)
-  updated_at             DateTime                 @default(now()) @db.DateTime(0)
-  order_item_allocations order_item_allocations[]
-  orders                 orders[]
-  product_lots           product_lots[]
-  stock_movements        stock_movements[]
-  stock_reservations     stock_reservations[]
-  warehouse_stocks       warehouse_stocks[]
-  companies              companies                @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouses_company")
+  id                    Int      @id @default(autoincrement())
+  name                  String   @db.VarChar(255)
+  company_id            Int
+  address               String   @db.Text
+  province              String   @db.VarChar(128)
+  district              String   @db.VarChar(128)
+  subdistrict           String   @db.VarChar(128)
+  postal_code           String?  @db.VarChar(16)
+  phone                 String?  @db.VarChar(64)
+  email                 String?  @db.VarChar(255)
+  manager_name          String?  @db.VarChar(255)
+  manager_phone         String?  @db.VarChar(64)
+  responsible_provinces String?  @db.Text
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.DateTime(0)
+  updated_at            DateTime @default(now()) @db.DateTime(0)
 
   @@index([company_id], map: "fk_warehouses_company")
   @@index([is_active], map: "idx_warehouses_active")
@@ -1292,13 +1231,6 @@ enum order_boxes_status {
   DELIVERED
   RETURNED
   CANCELLED
-}
-
-enum cod_records_status {
-  pending
-  received
-  partial
-  missing
 }
 
 enum notifications_priority {
