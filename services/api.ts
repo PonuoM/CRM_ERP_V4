@@ -647,10 +647,13 @@ export async function uploadSlipImageFile(orderId: string, file: File): Promise<
   form.append("order_id", orderId);
 
   // Use direct fetch for FormData (not through apiFetch which expects JSON)
-  const res = await fetch("api/Slip_DB/upload_slip_image.php", {
-    method: "POST",
-    body: form,
-  });
+  const res = await fetch(
+    `${apiBasePath.replace(/\/$/, "")}/Slip_DB/upload_slip_image.php`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
 
   if (!res.ok) {
     throw new Error(`Upload failed: ${res.statusText}`);
@@ -672,22 +675,25 @@ export async function createOrderSlipWithPayment(data: {
   uploadByName?: string;
 }): Promise<{ success: boolean; message?: string; data?: any }> {
   // Use direct fetch for legacy PHP endpoint (not through apiFetch router)
-  const res = await fetch("api/Slip_DB/insert_order_slip.php", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const res = await fetch(
+    `${apiBasePath.replace(/\/$/, "")}/Slip_DB/insert_order_slip.php`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        order_id: data.orderId,
+        amount: data.amount,
+        bank_account_id: data.bankAccountId,
+        transfer_date: data.transferDate,
+        url: data.url,
+        company_id: data.companyId,
+        upload_by: data.uploadBy,
+        upload_by_name: data.uploadByName,
+      }),
     },
-    body: JSON.stringify({
-      order_id: data.orderId,
-      amount: data.amount,
-      bank_account_id: data.bankAccountId,
-      transfer_date: data.transferDate,
-      url: data.url,
-      company_id: data.companyId,
-      upload_by: data.uploadBy,
-      upload_by_name: data.uploadByName,
-    }),
-  });
+  );
 
   if (!res.ok) {
     throw new Error(`Request failed: ${res.statusText}`);
