@@ -3,465 +3,2907 @@ import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Ac
 import Modal from './Modal';
 import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
-import { apiFetch, createOrderSlip, deleteOrderSlip, listBankAccounts, listOrderSlips } from '../services/api';
+import { apiFetch, createOrderSlip, deleteOrderSlip, updateOrderSlip, listBankAccounts, listOrderSlips } from '../services/api';
+import { toLocalDatetimeString, fromLocalDatetimeString } from '../utils/datetime';
+
+
+
+
+
+
 
 interface OrderManagementModalProps {
+
+
+
   order: Order;
+
+
+
   customers: Customer[];
+
+
+
   activities: Activity[];
+
+
+
   onSave: (updatedOrder: Order) => void;
+
+
+
   onClose: () => void;
+
+
+
   currentUser?: User;
+
+
+
   users?: User[];
+
+
+
   onEditCustomer?: (customer: Customer) => void;
+
+
+
   products?: Product[];
+
+
+
 }
+
+
+
+
+
+
 
 const InfoCard: React.FC<{ icon: React.ElementType; title: string; children: React.ReactNode }> = ({ icon: Icon, title, children }) => (
+
+
+
   <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+
+
+
     <h3 className="text-md font-semibold text-gray-700 mb-3 flex items-center">
+
+
+
       <Icon className="w-5 h-5 mr-2 text-gray-400" />
+
+
+
       {title}
+
+
+
     </h3>
+
+
+
     {children}
+
+
+
   </div>
+
+
+
 );
 
+
+
+
+
+
+
 const activityIconMap: Record<ActivityType, React.ElementType> = {
+
+
+
   [ActivityType.OrderStatusChanged]: Repeat,
+
+
+
   [ActivityType.OrderCancelled]: XCircle,
+
+
+
   [ActivityType.TrackingAdded]: Truck,
+
+
+
   [ActivityType.PaymentVerified]: CheckCircle,
+
+
+
   [ActivityType.OrderCreated]: Package,
+
+
+
   [ActivityType.OrderNoteAdded]: Paperclip,
+
+
+
   // Add other relevant types if needed
+
+
+
   [ActivityType.Assignment]: UserIcon,
+
+
+
   [ActivityType.GradeChange]: UserIcon,
+
+
+
   [ActivityType.StatusChange]: UserIcon,
+
+
+
   [ActivityType.AppointmentSet]: UserIcon,
+
+
+
   [ActivityType.CallLogged]: Phone,
+
+
+
 };
+
+
+
+
+
+
 
 const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
+
+
+
   const Icon = activityIconMap[type] || History;
+
+
+
   return (
+
+
+
     <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
+
+
+
       <Icon className="w-4 h-4 text-gray-500" />
+
+
+
     </div>
+
+
+
   );
+
+
+
 }
 
+
+
+
+
+
+
 const getRelativeTime = (timestamp: string) => {
+
+
+
   const now = new Date();
+
+
+
   const past = new Date(timestamp);
+
+
+
   const diffInSeconds = Math.floor((now.getTime() - past.getTime()) / 1000);
+
+
+
   if (diffInSeconds < 60) return `${diffInSeconds} วินาทีที่แล้ว`;
+
+
+
   const diffInMinutes = Math.floor(diffInSeconds / 60);
+
+
+
   if (diffInMinutes < 60) return `${diffInMinutes} นาทีที่แล้ว`;
+
+
+
   const diffInHours = Math.floor(diffInMinutes / 60);
+
+
+
   if (diffInHours < 24) return `${diffInHours} ชั่วโมงที่แล้ว`;
+
+
+
   const diffInDays = Math.floor(diffInHours / 24);
+
+
+
   return `${diffInDays} วันที่แล้ว`;
+
+
+
 };
 
-const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser, users = [], onEditCustomer, products = [] }) => {
-  const [currentOrder, setCurrentOrder] = useState<Order>(order);
-  const [isEditing, setIsEditing] = useState(false);
-  const sanitizeAddressPart = (value?: string | null) => {
-    if (!value) return '';
-    const trimmed = value.trim();
-    const lower = trimmed.toLowerCase();
-    if (!trimmed || lower === 'undefined' || lower === 'null') {
-      return '';
+
+
+
+
+
+
+const formatISODate = (date: Date) => date.toISOString().slice(0, 10);
+
+
+
+const computeOrderTotal = (order: Order) => {
+
+
+
+  const itemsTotal = (order.items || []).reduce((sum, item) => {
+
+
+
+    const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
+
+
+
+    return sum + (Number.isFinite(net) ? net : 0);
+
+
+
+  }, 0);
+
+
+
+  const shipping = Number(order.shippingCost || 0);
+
+
+
+  const billDiscount = Number(order.billDiscount || 0);
+
+
+
+  return Math.max(0, itemsTotal - billDiscount + shipping);
+
+
+
+};
+
+
+
+const normalizeDateInputValue = (value?: string | null) => {
+
+
+
+  if (!value) return '';
+
+
+
+  const trimmed = String(value).trim();
+
+
+
+  if (!trimmed) return '';
+
+
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+
+
+  const direct = new Date(trimmed);
+
+
+
+  if (!Number.isNaN(direct.getTime())) {
+
+
+
+    return formatISODate(new Date(Date.UTC(direct.getFullYear(), direct.getMonth(), direct.getDate())));
+
+
+
+  }
+
+
+
+  const parts = trimmed.split(/[\\/-]/);
+
+
+
+  if (parts.length === 3) {
+
+
+
+    const [d, m, y] = parts.map((p) => Number(p));
+
+
+
+    if (!Number.isNaN(d) && !Number.isNaN(m) && !Number.isNaN(y)) {
+
+
+
+      const rebuilt = new Date(Date.UTC(y, m - 1, d));
+
+
+
+      if (!Number.isNaN(rebuilt.getTime())) return formatISODate(rebuilt);
+
+
+
     }
-    return trimmed;
+
+
+
+  }
+
+
+
+  return '';
+
+
+
+};
+
+
+
+
+
+
+
+const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser, users = [], onEditCustomer, products = [] }) => {
+
+
+
+  const [currentOrder, setCurrentOrder] = useState<Order>(order);
+
+
+
+  const [isEditing, setIsEditing] = useState(false);
+
+
+
+  const [provinces, setProvinces] = useState<any[]>([]);
+
+
+
+  const [districts, setDistricts] = useState<any[]>([]);
+
+
+
+  const [subDistricts, setSubDistricts] = useState<any[]>([]);
+
+
+
+  const [selectedProvince, setSelectedProvince] = useState<number | null>(null);
+
+
+
+  const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
+
+
+
+  const [selectedSubDistrict, setSelectedSubDistrict] = useState<number | null>(null);
+
+
+
+  const [provinceSearchTerm, setProvinceSearchTerm] = useState('');
+
+
+
+  const [districtSearchTerm, setDistrictSearchTerm] = useState('');
+
+
+
+  const [subDistrictSearchTerm, setSubDistrictSearchTerm] = useState('');
+
+
+
+  const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
+
+
+
+  const [showDistrictDropdown, setShowDistrictDropdown] = useState(false);
+
+
+
+  const [showSubDistrictDropdown, setShowSubDistrictDropdown] = useState(false);
+
+
+
+  const updateShippingAddress = (patch: Partial<Address>) => {
+
+
+
+    setCurrentOrder((prev) => ({
+
+
+
+      ...prev,
+
+
+
+      shippingAddress: {
+
+
+
+        ...prev.shippingAddress,
+
+
+
+        ...patch,
+
+
+
+      },
+
+
+
+    }));
+
+
+
   };
-  const mergeAddressPart = (incoming: any, previous?: string | null) => {
-    const incomingString =
-      typeof incoming === 'string'
-        ? incoming
-        : incoming == null
-          ? ''
-          : String(incoming);
-    const cleanedIncoming = sanitizeAddressPart(incomingString);
-    if (cleanedIncoming) return cleanedIncoming;
-    return sanitizeAddressPart(previous ?? '');
-  };
-  const canVerifySlip =
-    currentUser?.role === UserRole.Backoffice ||
-    currentUser?.role === UserRole.Admin ||
-    currentUser?.role === UserRole.SuperAdmin;
-  const initialSlips = Array.isArray((order as any).slips)
-    ? (order as any).slips.map((s: any) => ({
-      id: Number(s.id),
-      url: String(s.url),
-      uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
-      uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
-      createdAt: s.createdAt ?? s.created_at,
-    }))
-    : [];
-  const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || (initialSlips[0]?.url ?? null));
-  const [slips, setSlips] = useState<{ id: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string }[]>(initialSlips);
-  const [lightboxSlip, setLightboxSlip] = useState<{ id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string } | null>(null);
-  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
-  const resolveUploaderName = (uploadedBy?: number, uploadedByName?: string) => {
-    if (uploadedByName) return uploadedByName;
-    if (!uploadedBy) return undefined;
-    const u = users.find(user => user.id === uploadedBy);
-    return u ? `${u.firstName} ${u.lastName}` : undefined;
-  };
+
+
+
+  const filteredProvinces = useMemo(() => {
+
+
+
+    const term = provinceSearchTerm.trim().toLowerCase();
+
+
+
+    if (!term) return provinces;
+
+
+
+    return provinces.filter((p) => (p.name_th || '').toLowerCase().includes(term));
+
+
+
+  }, [provinces, provinceSearchTerm]);
+
+
+
+  const filteredDistricts = useMemo(() => {
+
+
+
+    const term = districtSearchTerm.trim().toLowerCase();
+
+
+
+    if (!term) return districts;
+
+
+
+    return districts.filter((d) => (d.name_th || '').toLowerCase().includes(term));
+
+
+
+  }, [districts, districtSearchTerm]);
+
+
+
+  const filteredSubDistricts = useMemo(() => {
+
+
+
+    const term = subDistrictSearchTerm.trim().toLowerCase();
+
+
+
+    if (!term) return subDistricts;
+
+
+
+    return subDistricts.filter(
+
+
+
+      (sd) =>
+
+
+
+        (sd.name_th || '').toLowerCase().includes(term) ||
+
+
+
+        (sd.zip_code || '').toLowerCase().includes(term),
+
+
+
+    );
+
+
+
+  }, [subDistricts, subDistrictSearchTerm]);
+
+
 
   useEffect(() => {
+
+
+
+    const addr = order.shippingAddress || {};
+
+
+
+    setProvinceSearchTerm(addr.province || '');
+
+
+
+    setDistrictSearchTerm(addr.district || '');
+
+
+
+    setSubDistrictSearchTerm(addr.subdistrict || '');
+
+
+
+    setSelectedProvince(null);
+
+
+
+    setSelectedDistrict(null);
+
+
+
+    setSelectedSubDistrict(null);
+
+
+
+  }, [order.id, order.shippingAddress]);
+
+
+
+  const sanitizeAddressPart = (value?: string | null) => {
+
+
+
+    if (!value) return '';
+
+
+
+    const trimmed = value.trim();
+
+
+
+    const lower = trimmed.toLowerCase();
+
+
+
+    if (!trimmed || lower === 'undefined' || lower === 'null') {
+
+
+
+      return '';
+
+
+
+    }
+
+
+
+    return trimmed;
+
+
+
+  };
+
+
+
+  const mergeAddressPart = (incoming: any, previous?: string | null) => {
+
+
+
+    const incomingString =
+
+
+
+      typeof incoming === 'string'
+
+
+
+        ? incoming
+
+
+
+        : incoming == null
+
+
+
+          ? ''
+
+
+
+          : String(incoming);
+
+
+
+    const cleanedIncoming = sanitizeAddressPart(incomingString);
+
+
+
+    if (cleanedIncoming) return cleanedIncoming;
+
+
+
+    return sanitizeAddressPart(previous ?? '');
+
+
+
+  };
+
+
+
+  const canVerifySlip =
+
+
+
+    currentUser?.role === UserRole.Backoffice ||
+
+
+
+    currentUser?.role === UserRole.Admin ||
+
+
+
+    currentUser?.role === UserRole.SuperAdmin;
+  
+  // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
+  const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
+
+  const initialSlips = Array.isArray((order as any).slips)
+
+
+
+    ? (order as any).slips.map((s: any) => ({
+
+
+
+      id: Number(s.id),
+
+
+
+      url: String(s.url),
+
+
+
+      uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+
+
+
+      uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+
+
+
+      createdAt: s.createdAt ?? s.created_at,
+
+
+
+      amount: typeof s.amount !== 'undefined' ? Number(s.amount) : undefined,
+
+
+
+      bankAccountId: typeof s.bank_account_id !== 'undefined' ? Number(s.bank_account_id) : (typeof s.bankAccountId !== 'undefined' ? Number(s.bankAccountId) : undefined),
+
+
+
+      transferDate: s.transfer_date ?? s.transferDate,
+
+
+
+    }))
+
+
+
+    : [];
+
+
+
+  const [slipPreview, setSlipPreview] = useState<string | null>(order.slipUrl || (initialSlips[0]?.url ?? null));
+
+
+  const [slips, setSlips] = useState<{ id: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string; amount?: number; bankAccountId?: number; transferDate?: string }[]>(initialSlips);
+
+
+  const [lightboxSlip, setLightboxSlip] = useState<{ id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string; amount?: number; bankAccountId?: number; transferDate?: string } | null>(null);
+
+
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+
+
+  const resolveUploaderName = (uploadedBy?: number, uploadedByName?: string) => {
+
+
+    if (uploadedByName) return uploadedByName;
+
+
+    if (!uploadedBy) return undefined;
+
+
+    const u = users.find(user => user.id === uploadedBy);
+
+
+    return u ? `${u.firstName} ${u.lastName}` : undefined;
+
+
+  };
+
+
+  const resolveBankName = (bankAccountId?: number) => {
+
+
+    if (!bankAccountId) return undefined;
+
+
+    const acc = bankAccounts.find(ba => Number(ba.id) === Number(bankAccountId));
+
+
+    if (!acc) return `ID: ${bankAccountId}`;
+
+
+    const bank = acc.bank ?? acc.name ?? '';
+
+
+    const number = acc.bank_number ?? acc.account_number ?? '';
+
+
+    return `${bank} ${number}`.trim() || `ID: ${bankAccountId}`;
+
+
+  };
+
+
+  const formatSlipDateTime = (value?: string) => {
+
+
+    if (!value) return undefined;
+
+
+    const dt = new Date(value);
+
+
+    if (Number.isNaN(dt.getTime())) return value;
+
+
+    return dt.toLocaleString('th-TH', {
+
+
+      year: 'numeric',
+
+
+      month: '2-digit',
+
+
+      day: '2-digit',
+
+
+      hour: '2-digit',
+
+
+      minute: '2-digit',
+
+
+    });
+
+
+  };
+
+
+  const deliveryWindow = useMemo(() => {
+
+
+
+    const now = new Date();
+
+
+
+    const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+
+
+    const maxUtc = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth() + 1, 7));
+
+
+
+    return {
+
+
+
+      min: todayUtc,
+
+
+
+      max: maxUtc,
+
+
+
+      minIso: formatISODate(todayUtc),
+
+
+
+      maxIso: formatISODate(maxUtc),
+
+
+
+    };
+
+
+
+  }, []);
+
+
+
+  const deliveryDateInputValue = useMemo(
+
+
+
+    () => normalizeDateInputValue(currentOrder.deliveryDate || order.deliveryDate),
+
+
+
+    [currentOrder.deliveryDate, order.deliveryDate],
+
+
+
+  );
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
     const nextSlips = Array.isArray((order as any).slips)
+
+
       ? (order as any).slips.map((s: any) => ({
+
+
         id: Number(s.id),
+
+
         url: String(s.url),
+
+
         uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+
+
         uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+
+
         createdAt: s.createdAt ?? s.created_at,
+
+
+        amount: typeof s.amount !== 'undefined' ? Number(s.amount) : undefined,
+
+
+        bankAccountId: typeof s.bank_account_id !== 'undefined' ? Number(s.bank_account_id) : (typeof s.bankAccountId !== 'undefined' ? Number(s.bankAccountId) : undefined),
+
+
+        transferDate: s.transfer_date ?? s.transferDate,
+
+
       }))
+
+
       : [];
-    setCurrentOrder(order);
+
+
+    const normalizedDelivery = normalizeDateInputValue(order.deliveryDate);
+
+
+
+    const hydrated = {
+
+
+
+      ...order,
+
+
+
+      deliveryDate: normalizedDelivery || order.deliveryDate,
+
+
+
+    };
+
+
+
+    const computedTotal = computeOrderTotal(hydrated as Order);
+
+
+
+    setCurrentOrder({
+
+
+
+      ...hydrated,
+
+
+
+      totalAmount: Number.isFinite(computedTotal) ? computedTotal : hydrated.totalAmount,
+
+
+
+    });
+
+
+
     setSlips(nextSlips);
+
+
+
     setSlipPreview(order.slipUrl || (nextSlips[0]?.url ?? null));
+
+
+
   }, [order]);
 
+
+
+
+
+
+
   const isModifiable = useMemo(() => {
+
+
+
     return [OrderStatus.Pending, OrderStatus.AwaitingVerification].includes(currentOrder.orderStatus);
+
+
+
   }, [currentOrder.orderStatus]);
+
+
+
+
+
+
 
   const showInputs = isModifiable && isEditing;
 
+
+
+
+
+
+
   const handleAddItem = () => {
+
+
+
     if (!currentUser) return;
+
+
+
     const newItem = {
+
+
+
       id: Date.now(), // Temporary ID
+
+
+
       productId: 0,
+
+
+
       productName: 'เลือกสินค้า',
+
+
+
       quantity: 1,
+
+
+
       pricePerUnit: 0,
+
+
+
       discount: 0,
+
+
+
       isFreebie: false,
+
+
+
       boxNumber: 1,
+
+
+
       creatorId: currentUser.id,
+
+
+
     };
+
+
+
     setCurrentOrder(prev => ({
+
+
+
       ...prev,
+
+
+
       items: [...prev.items, newItem],
+
+
+
     }));
+
+
+
   };
+
+
+
+
+
+
 
   const handleRemoveItem = (index: number) => {
+
+
+
     setCurrentOrder(prev => {
+
+
+
       const newItems = [...prev.items];
+
+
+
       newItems.splice(index, 1);
+
+
+
       return { ...prev, items: newItems };
+
+
+
     });
+
+
+
   };
+
+
+
+
+
+
 
   const handleItemChange = (index: number, field: string, value: any) => {
+
+
+
     setCurrentOrder(prev => {
+
+
+
       const newItems = [...prev.items];
+
+
+
       newItems[index] = { ...newItems[index], [field]: value };
+
+
+
       return { ...prev, items: newItems };
+
+
+
     });
+
+
+
   };
+
+
+
+
+
+
 
   const handleProductChange = (index: number, productId: number) => {
+
+
+
     const product = products.find(p => p.id === productId);
+
+
+
     if (product) {
+
+
+
       setCurrentOrder(prev => {
+
+
+
         const newItems = [...prev.items];
+
+
+
         newItems[index] = {
+
+
+
           ...newItems[index],
+
+
+
           productId: product.id,
+
+
+
           productName: product.name,
+
+
+
           pricePerUnit: product.price,
+
+
+
         };
+
+
+
         return { ...prev, items: newItems };
+
+
+
       });
+
+
+
     } else {
+
+
+
       // Handle case where product is deselected or invalid (optional)
+
+
+
       handleItemChange(index, 'productId', productId);
+
+
+
     }
+
+
+
   };
 
+
+
+
+
+
+
   // Fetch bank accounts for display
+
+
+
   useEffect(() => {
+
+
+
     if (!currentUser?.companyId) return;
+
+
+
     let cancelled = false;
+
+
+
     (async () => {
+
+
+
       try {
+
+
+
         const accounts = await listBankAccounts(currentUser.companyId, true);
+
+
+
         if (!cancelled) {
+
+
+
           setBankAccounts(accounts || []);
+
+
+
         }
+
+
+
       } catch (e) {
+
+
+
         console.error('Failed to load bank accounts', e);
+
+
+
       }
+
+
+
     })();
+
+
+
     return () => { cancelled = true; };
+
+
+
   }, [currentUser?.companyId]);
 
+
+
+
+
+
+
   // Fetch full order details if minimal data is passed in
+
+
+
   useEffect(() => {
+
+
+
     let cancelled = false;
+
+
+
     const needsItems = !order.items || order.items.length === 0;
+
+
+
     const needsBoxes =
+
+
+
       !Array.isArray((order as any).boxes) ||
+
+
+
       (order as any).boxes.length === 0 ||
+
+
+
       (Array.isArray((order as any).boxes) &&
+
+
+
         (order as any).boxes.every(
+
+
+
           (b: any) => Number(b.collectionAmount ?? b.codAmount ?? b.cod_amount ?? b.collection_amount ?? 0) === 0,
+
+
+
         ));
+
+
+
     const needsSlip = typeof order.slipUrl === 'undefined';
+
+
+
     if (!needsItems && !needsBoxes && !needsSlip) return;
+
+
+
     (async () => {
+
+
+
       try {
+
+
+
         const r: any = await apiFetch(`orders/${encodeURIComponent(order.id)}`);
+
+
+
         if (cancelled) return;
+
+
+
         const trackingDetails = Array.isArray(r.trackingDetails)
+
+
+
           ? r.trackingDetails
+
+
+
           : (Array.isArray(r.tracking_details) ? r.tracking_details : []);
+
+
+
         setCurrentOrder(prev => ({
+
+
+
           ...prev,
+
+
+
           slipUrl: r.slip_url ?? prev.slipUrl,
+
+
+
           amountPaid: typeof r.amount_paid !== 'undefined' ? Number(r.amount_paid) : prev.amountPaid,
+
+
+
           codAmount: typeof r.cod_amount !== 'undefined' ? Number(r.cod_amount) : (prev as any).codAmount,
+
+
+
           bankAccountId: typeof r.bank_account_id !== 'undefined' ? Number(r.bank_account_id) : prev.bankAccountId,
+
+
+
           transferDate: r.transfer_date ?? prev.transferDate,
+
+
+
           shippingAddress: {
+
+
+
             recipientFirstName: mergeAddressPart(r.recipient_first_name, prev.shippingAddress?.recipientFirstName),
+
+
+
             recipientLastName: mergeAddressPart(r.recipient_last_name, prev.shippingAddress?.recipientLastName),
+
+
+
             street: mergeAddressPart(r.street, prev.shippingAddress?.street),
+
+
+
             subdistrict: mergeAddressPart(r.subdistrict, prev.shippingAddress?.subdistrict),
+
+
+
             district: mergeAddressPart(r.district, prev.shippingAddress?.district),
+
+
+
             province: mergeAddressPart(r.province, prev.shippingAddress?.province),
+
+
+
             postalCode: mergeAddressPart(r.postal_code, prev.shippingAddress?.postalCode),
+
+
+
           },
+
+
+
           items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+
+
+
             id: Number(it.id ?? i + 1),
+
+
+
             productId: typeof it.product_id !== "undefined" && it.product_id !== null ? Number(it.product_id) : undefined,
+
+
+
             productName: String(it.product_name ?? ''),
+
+
+
             quantity: Number(it.quantity ?? 0),
+
+
+
             pricePerUnit: Number(it.price_per_unit ?? 0),
+
+
+
             discount: Number(it.discount ?? 0),
+
+
+
             isFreebie: !!(it.is_freebie ?? 0),
+
+
+
             boxNumber: Number(it.box_number ?? 0),
+
+
+
             creatorId: typeof it.creator_id !== "undefined" && it.creator_id !== null ? Number(it.creator_id) : undefined,
+
+
+
           })) : prev.items,
+
+
+
           boxes: Array.isArray(r.boxes)
+
+
+
             ? r.boxes.map((b: any) => {
+
+
+
               const boxNum = Number(b.box_number ?? 0);
+
+
+
               const trackingForBox = trackingDetails.find((t: any) => {
+
+
+
                 if (typeof t.box_number !== 'undefined' && t.box_number !== null) {
+
+
+
                   return Number(t.box_number) === boxNum;
+
+
+
                 }
+
+
+
                 return false;
+
+
+
               });
+
+
+
               return {
+
+
+
                 boxNumber: boxNum,
+
+
+
                 codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+
+
+
                 collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+
+
+
                 collectedAmount: Number(b.collected_amount ?? 0),
+
+
+
                 waivedAmount: Number(b.waived_amount ?? 0),
+
+
+
                 paymentMethod: b.payment_method ?? prev.paymentMethod,
+
+
+
                 status: b.status ?? undefined,
+
+
+
                 subOrderId: b.sub_order_id ?? undefined,
+
+
+
                 trackingNumber: trackingForBox ? String(trackingForBox.tracking_number ?? trackingForBox.trackingNumber ?? '') : undefined,
+
+
+
               };
+
+
+
             })
+
+
+
             : (prev as any).boxes,
+
+
+
           trackingNumbers: Array.isArray(r.trackingNumbers)
+
+
+
             ? r.trackingNumbers
+
+
+
             : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : prev.trackingNumbers),
+
+
+
         }));
+
+
+
         if (Array.isArray(r.slips)) {
+
+
+
           try {
+
+
+
             const nextSlips = r.slips.map((s: any) => ({
+
+
+
               id: Number(s.id),
+
+
+
               url: String(s.url),
+
+
+
               uploadedBy: typeof s.uploadedBy !== 'undefined' ? Number(s.uploadedBy) : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+
+
+
               uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+
+
+
               createdAt: s.createdAt ?? s.created_at,
+
+
+
+              amount: typeof s.amount !== 'undefined' ? Number(s.amount) : undefined,
+
+
+
+              bankAccountId: typeof s.bank_account_id !== 'undefined' ? Number(s.bank_account_id) : (typeof s.bankAccountId !== 'undefined' ? Number(s.bankAccountId) : undefined),
+
+
+
+              transferDate: s.transfer_date ?? s.transferDate,
+
+
+
             }));
+
             setSlips(nextSlips);
-            if (!prev.slipUrl && !slipPreview && nextSlips.length > 0) {
+
+            if (!currentOrder.slipUrl && !slipPreview && nextSlips.length > 0) {
               setSlipPreview(nextSlips[0].url);
             }
           } catch { /* ignore */ }
         }
       } catch (e) {
         console.error('Failed loading order details', e);
+
+
+
       }
+
+
+
     })();
+
+
+
     return () => { cancelled = true; };
+
+
+
   }, [order]);
 
+
+
+
+
+
+
   // Ensure slip history is available even when the minimal order payload already has a slipUrl
+
+
+
   useEffect(() => {
+
+
+
     let cancelled = false;
+
+
+
     (async () => {
+
+
+
       try {
+
+
+
         const res: any = await listOrderSlips(order.id);
+
+
+
         if (cancelled) return;
+
+
+
         const fetched = Array.isArray(res) ? res : (Array.isArray(res?.rows) ? res.rows : []);
+
+
+
         if (Array.isArray(fetched) && fetched.length > 0) {
+
+
+
           const normalized = fetched
+
+
+
             .map((s: any) => ({
+
+
+
               id: Number(s.id),
+
+
+
               url: String(s.url),
+
+
+
               uploadedBy: typeof s.uploadedBy !== 'undefined'
+
+
+
                 ? Number(s.uploadedBy)
+
+
+
                 : (typeof s.uploaded_by !== 'undefined' ? Number(s.uploaded_by) : undefined),
+
+
+
               uploadedByName: s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
+
+
+
               createdAt: s.createdAt ?? s.created_at,
+
+
+
+              amount: typeof s.amount !== 'undefined' ? Number(s.amount) : undefined,
+
+
+
+              bankAccountId: typeof s.bank_account_id !== 'undefined' ? Number(s.bank_account_id) : (typeof s.bankAccountId !== 'undefined' ? Number(s.bankAccountId) : undefined),
+
+
+
+              transferDate: s.transfer_date ?? s.transferDate,
+
+
+
             }))
+
+
+
             .filter(slip => slip.id && slip.url);
+
+
+
           if (normalized.length > 0) {
+
+
+
             setSlips(prev => {
+
+
+
               const byId: Record<number, typeof normalized[number]> = {};
+
+
+
               normalized.forEach(slip => { byId[slip.id] = slip; });
 
+
+
+
+
+
+
               const merged = prev.map(slip => {
+
+
+
                 const enriched = byId[slip.id];
+
+
+
                 if (enriched) {
+
+
+
                   return {
+
+
+
                     ...slip,
+
+
+
                     ...enriched,
+
+
+
                     uploadedBy: enriched.uploadedBy ?? slip.uploadedBy,
+
+
+
                     uploadedByName: enriched.uploadedByName ?? slip.uploadedByName,
+
+
+
                     createdAt: enriched.createdAt ?? slip.createdAt,
+
+
+
                   };
+
+
+
                 }
+
+
+
                 return slip;
+
+
+
               });
+
+
+
+
+
+
 
               // add new ones not previously in list
               normalized.forEach(slip => {
                 if (!merged.some(s => s.id === slip.id || s.url === slip.url)) {
-                  merged.unshift(slip);
+                  merged.push(slip);
                 }
               });
 
               return merged;
             });
-            setSlipPreview(prev => prev ?? normalized[0].url);
           }
         }
-      } catch (e) {
-        console.error('load order slips', e);
+      } catch (err) {
+        console.error('Error fetching order slips:', err);
       }
     })();
+
     return () => { cancelled = true; };
   }, [order.id]);
 
+
+
+
+
+
+
   const customer = useMemo(() => {
+
+
+
     return customers.find(c => {
+
+
+
       if (c.pk && typeof order.customerId === 'number') {
+
+
+
         return c.pk === order.customerId;
+
+
+
       }
+
+
+
       return String(c.id) === String(order.customerId) ||
+
+
+
         String(c.pk) === String(order.customerId);
+
+
+
     });
+
+
+
   }, [customers, order.customerId]);
 
+
+
+
+
+
+
   const orderActivities = useMemo(() => {
+
+
+
     return activities
+
+
+
       .filter(a => a.description.includes(order.id))
+
+
+
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+
+
   }, [activities, order.id]);
+
+
+
   const slipUploadInputId = useMemo(() => `slip-upload-${order.id}`, [order.id]);
 
+
+
+
+
+
+
   const handleFieldChange = (field: keyof Order, value: any) => {
+
+
+
     setCurrentOrder(prev => ({ ...prev, [field]: value }));
+
+
+
   };
 
-  const openSlipViewer = (slip: { id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string }) => {
+
+
+
+
+
+
+  const openSlipViewer = (slip: { id?: number; url: string; uploadedBy?: number; uploadedByName?: string; createdAt?: string; amount?: number; bankAccountId?: number; transferDate?: string }) => {
+
+
     setLightboxSlip(slip);
+
+
   };
+
+
+  const handleDeliveryDateChange = (raw: string) => {
+
+
+
+    const normalized = normalizeDateInputValue(raw);
+
+
+
+    if (!normalized) {
+
+
+
+      handleFieldChange('deliveryDate', '');
+
+
+
+      return;
+
+
+
+    }
+
+
+
+    const selected = new Date(`${normalized}T00:00:00Z`);
+
+
+
+    if (selected < deliveryWindow.min || selected > deliveryWindow.max) {
+
+
+
+      alert(`วันที่จัดส่งต้องไม่ต่ำกว่าวันนี้ และต้องไม่เกินวันที่ ${deliveryWindow.maxIso.split('-').reverse().join('/')}`);
+
+
+
+      return;
+
+
+
+    }
+
+
+
+    handleFieldChange('deliveryDate', normalized);
+
+
+
+  };
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    (async () => {
+
+
+
+      try {
+
+
+
+        const res = await fetch("/api/Address_DB/get_address_data.php?endpoint=provinces");
+
+
+
+        if (!res.ok) return;
+
+
+
+        const data = await res.json();
+
+
+
+        if (data?.success) setProvinces(data.data || []);
+
+
+
+      } catch (e) {
+
+
+
+        console.error("load provinces failed", e);
+
+
+
+      }
+
+
+
+    })();
+
+
+
+  }, []);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    if (selectedProvince) {
+
+
+
+      (async () => {
+
+
+
+        try {
+
+
+
+          const res = await fetch(`/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`);
+
+
+
+          if (!res.ok) return;
+
+
+
+          const data = await res.json();
+
+
+
+          if (data?.success) setDistricts(data.data || []);
+
+
+
+        } catch (e) {
+
+
+
+          console.error("load districts failed", e);
+
+
+
+        }
+
+
+
+      })();
+
+
+
+    } else {
+
+
+
+      setDistricts([]);
+
+
+
+      setSelectedDistrict(null);
+
+
+
+      setSubDistricts([]);
+
+
+
+      setSelectedSubDistrict(null);
+
+
+
+    }
+
+
+
+  }, [selectedProvince]);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    if (selectedDistrict) {
+
+
+
+      (async () => {
+
+
+
+        try {
+
+
+
+          const res = await fetch(`/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`);
+
+
+
+          if (!res.ok) return;
+
+
+
+          const data = await res.json();
+
+
+
+          if (data?.success) setSubDistricts(data.data || []);
+
+
+
+        } catch (e) {
+
+
+
+          console.error("load subdistricts failed", e);
+
+
+
+        }
+
+
+
+      })();
+
+
+
+    } else {
+
+
+
+      setSubDistricts([]);
+
+
+
+      setSelectedSubDistrict(null);
+
+
+
+    }
+
+
+
+  }, [selectedDistrict]);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    // Hydrate selection from existing address once provinces are loaded
+
+
+
+    if (!provinces.length) return;
+
+
+
+    const address = currentOrder.shippingAddress || {};
+
+
+
+    if (!selectedProvince && address.province) {
+
+
+
+      const matchProv = provinces.find((p) => (p.name_th || '').trim() === (address.province || '').trim());
+
+
+
+      if (matchProv) {
+
+
+
+        setSelectedProvince(matchProv.id);
+
+
+
+        setProvinceSearchTerm(matchProv.name_th);
+
+
+
+      }
+
+
+
+    }
+
+
+
+  }, [provinces, currentOrder.shippingAddress, selectedProvince]);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    // Hydrate district when options loaded
+
+
+
+    if (!districts.length) return;
+
+
+
+    const address = currentOrder.shippingAddress || {};
+
+
+
+    if (!selectedDistrict && address.district) {
+
+
+
+      const match = districts.find((d) => (d.name_th || '').trim() === (address.district || '').trim());
+
+
+
+      if (match) {
+
+
+
+        setSelectedDistrict(match.id);
+
+
+
+        setDistrictSearchTerm(match.name_th);
+
+
+
+      }
+
+
+
+    }
+
+
+
+  }, [districts, currentOrder.shippingAddress, selectedDistrict]);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    // Hydrate subdistrict when options loaded
+
+
+
+    if (!subDistricts.length) return;
+
+
+
+    const address = currentOrder.shippingAddress || {};
+
+
+
+    if (!selectedSubDistrict && address.subdistrict) {
+
+
+
+      const match = subDistricts.find((sd) => (sd.name_th || '').trim() === (address.subdistrict || '').trim());
+
+
+
+      if (match) {
+
+
+
+        setSelectedSubDistrict(match.id);
+
+
+
+        setSubDistrictSearchTerm(match.name_th);
+
+
+
+        setCurrentOrder((prev) => ({
+
+
+
+          ...prev,
+
+
+
+          shippingAddress: {
+
+
+
+            ...prev.shippingAddress,
+
+
+
+            subdistrict: match.name_th || '',
+
+
+
+            postalCode: match.zip_code || prev.shippingAddress?.postalCode || '',
+
+
+
+          },
+
+
+
+        }));
+
+
+
+      }
+
+
+
+    }
+
+
+
+  }, [subDistricts, currentOrder.shippingAddress, selectedSubDistrict]);
+
+
+
+
+
+
+
+  useEffect(() => {
+
+
+
+    if (!currentOrder.items || currentOrder.items.length === 0) return;
+
+
+
+    const computedTotal = computeOrderTotal(currentOrder);
+
+
+
+    if (Number.isFinite(computedTotal) && Math.abs(computedTotal - (currentOrder.totalAmount ?? 0)) > 0.009) {
+
+
+
+      setCurrentOrder(prev => ({ ...prev, totalAmount: computedTotal }));
+
+
+
+    }
+
+
+
+  }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount]);
+
+
+
+
+
+
+
+  const handleSelectProvince = (province: any) => {
+
+
+
+    setSelectedProvince(province.id);
+
+
+
+    setProvinceSearchTerm(province.name_th);
+
+
+
+    setSelectedDistrict(null);
+
+
+
+    setDistrictSearchTerm('');
+
+
+
+    setSelectedSubDistrict(null);
+
+
+
+    setSubDistrictSearchTerm('');
+
+
+
+    updateShippingAddress({
+
+
+
+      province: province.name_th || '',
+
+
+
+      district: '',
+
+
+
+      subdistrict: '',
+
+
+
+      postalCode: '',
+
+
+
+    });
+
+
+
+  };
+
+
+
+
+
+
+
+  const handleSelectDistrict = (district: any) => {
+
+
+
+    setSelectedDistrict(district.id);
+
+
+
+    setDistrictSearchTerm(district.name_th);
+
+
+
+    setSelectedSubDistrict(null);
+
+
+
+    setSubDistrictSearchTerm('');
+
+
+
+    updateShippingAddress({
+
+
+
+      district: district.name_th || '',
+
+
+
+      subdistrict: '',
+
+
+
+      postalCode: '',
+
+
+
+    });
+
+
+
+  };
+
+
+
+
+
+
+
+  const handleSelectSubDistrict = (sub: any) => {
+
+
+
+    setSelectedSubDistrict(sub.id);
+
+
+
+    setSubDistrictSearchTerm(sub.name_th);
+
+
+
+    const parentDistrict = districts.find((d) => d.id === sub.district_id);
+
+
+
+    const parentProvince = provinces.find((p) => p.id === parentDistrict?.province_id);
+
+
+
+    updateShippingAddress({
+
+
+
+      subdistrict: sub.name_th || '',
+
+
+
+      district: parentDistrict?.name_th || currentOrder.shippingAddress?.district || '',
+
+
+
+      province: parentProvince?.name_th || currentOrder.shippingAddress?.province || '',
+
+
+
+      postalCode: sub.zip_code || currentOrder.shippingAddress?.postalCode || '',
+
+
+
+    });
+
+
+
+  };
+
+
+
+
+
+
 
   const handleSlipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+
+
+
     const inputEl = e.currentTarget as HTMLInputElement | null;
+
+
+
     const files = inputEl?.files ? Array.from(inputEl.files) : [];
+
+
+
     if (!files || files.length === 0) return;
+
+
+
     for (const file of files) {
+
+
+
       await new Promise<void>((resolve) => {
+
+
+
         const reader = new FileReader();
+
+
+
         reader.onloadend = async () => {
+
+
+
           const dataUrl = reader.result as string;
+
+
+
           try {
+
+
+
             const res = await createOrderSlip(currentOrder.id, dataUrl, {
+
+
               uploadedBy: currentUser?.id,
+
+
               uploadedByName: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined,
+
+
+              bankAccountId: currentOrder.bankAccountId ? Number(currentOrder.bankAccountId) : undefined,
+
+
+              transferDate: new Date().toISOString(),
+
+
+              amount: Number(calculatedTotals.totalAmount || currentOrder.amountPaid || 0),
+
+
             });
+
+
             if (res && res.id && res.url) {
+
+
               const uploaded = {
+
+
                 id: Number(res.id),
+
+
                 url: String(res.url),
+
+
+                amount: typeof (res as any).amount !== 'undefined' ? Number((res as any).amount) : Number(calculatedTotals.totalAmount || currentOrder.amountPaid || 0),
+
+
+                bankAccountId: typeof (res as any).bank_account_id !== 'undefined'
+
+
+                  ? Number((res as any).bank_account_id)
+
+
+                  : (typeof (res as any).bankAccountId !== 'undefined' ? Number((res as any).bankAccountId) : (currentOrder.bankAccountId ? Number(currentOrder.bankAccountId) : undefined)),
+
+
+                transferDate: (res as any).transfer_date ?? (res as any).transferDate ?? new Date().toISOString(),
+
+
                 uploadedBy: typeof res.uploadedBy !== 'undefined'
+
+
                   ? Number(res.uploadedBy)
+
+
                   : (typeof res.uploaded_by !== 'undefined'
+
+
                     ? Number(res.uploaded_by)
+
+
                     : (typeof res.upload_by !== 'undefined' ? Number(res.upload_by) : currentUser?.id)),
+
+
                 uploadedByName: res.uploadedByName ?? res.uploaded_by_name ?? res.upload_by_name ?? (currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined),
+
+
+
                 createdAt: res.createdAt ?? res.created_at ?? new Date().toISOString(),
+
+
+
               };
+
+
+
               setSlips(prev => [uploaded, ...prev]);
+
+
+
               setSlipPreview(prev => prev ?? uploaded.url);
+
+
+
             }
+
+
+
           } catch (err) { console.error('upload slip', err); }
+
+
+
           resolve();
+
+
+
         };
+
+
+
         reader.readAsDataURL(file);
+
+
+
       });
+
+
+
     }
+
+
+
     if (inputEl) inputEl.value = '';
+
+
+
     handleFieldChange('paymentStatus', PaymentStatus.PendingVerification);
+
+
+
   };
 
+
+
+
+
+
+
   const removeSlip = () => {
+
+
+
     setSlipPreview(null);
+
+
+
     handleFieldChange('slipUrl', undefined);
+
+
+
     handleFieldChange('paymentStatus', PaymentStatus.Unpaid);
+
+
+
   };
+
+
+
   const handleDeleteSlip = async (slipId?: number, slipUrl?: string) => {
+
+
+
     const confirmDelete = window.confirm('ต้องการลบสลิปนี้หรือไม่?');
+
+
+
     if (!confirmDelete) return;
+
+
+
     if (!slipId) {
+
+
+
       removeSlip();
+
+
+
       setLightboxSlip(null);
+
+
+
       return;
+
+
+
     }
+
+
+
     try {
+
+
+
       await deleteOrderSlip(slipId);
+
+
+
       setSlips(prev => {
+
+
+
         const next = prev.filter(s => s.id !== slipId);
+
+
+
         const nextPreview = next[0]?.url ?? null;
+
+
+
         setSlipPreview(prevPreview => {
+
+
+
           if (!prevPreview) return nextPreview;
+
+
+
           if (slipUrl && prevPreview === slipUrl) return nextPreview;
+
+
+
           return prevPreview;
+
+
+
         });
+
+
+
         return next;
+
+
+
       });
+
+
+
     } catch (e) { console.error('delete slip', e); }
+
+
+
     setLightboxSlip(null);
+
+
+
   };
+
+
+
 
   const hasTransferSlip = Boolean(slipPreview || currentOrder.slipUrl || slips.length > 0);
 
-  const handleAcceptSlip = () => {
+  const handleAcceptSlip = async () => {
     const totalAmount = Number(calculatedTotals.totalAmount || 0);
-    const basePaidAmount =
-      currentOrder.amountPaid && currentOrder.amountPaid > 0
-        ? currentOrder.amountPaid
-        : 0;
-    const paidAmount = totalAmount > 0
-      ? Math.max(basePaidAmount, totalAmount)
-      : basePaidAmount;
+
+    // Calculate sum only from checked slips
+    const checkedSlips = slips.filter((s: any) => s.checked);
+    const slipSum = checkedSlips.reduce((sum, s) => sum + (Number((s as any).amount) || 0), 0);
+
+    if (checkedSlips.length === 0) {
+      alert("กรุณาเลือกสลิปที่ต้องการยืนยันอย่างน้อย 1 รายการ");
+      return;
+    }
+
+    const slipsWithMeta = checkedSlips.filter((s: any) => s.amount || s.bankAccountId || s.transferDate);
+    const missingMeta = slipsWithMeta.some((s: any) => !s.amount || !s.bankAccountId || !s.transferDate);
+
+    if (missingMeta) {
+      alert("ข้อมูลสลิปไม่ครบถ้วน (จำนวนเงิน, ธนาคาร, หรือวันที่โอน)");
+      return;
+    }
+
+    const basePaidAmount = currentOrder.amountPaid && currentOrder.amountPaid > 0
+      ? currentOrder.amountPaid
+      : 0;
+
+    const paidAmount = slipSum > 0
+      ? Math.max(basePaidAmount, slipSum)
+      : Math.max(basePaidAmount, totalAmount);
+
     if (paidAmount <= 0) {
-      alert("กรุณาระบุจำนวนเงินที่ได้รับก่อนยืนยันสลิป");
+      alert("ยอดชำระต้องมากกว่า 0");
+      return;
+    }
+
+    // **NEW: Update slip details in database**
+    try {
+      for (const slip of checkedSlips) {
+        if (slip.id && (slip.amount || slip.bankAccountId || slip.transferDate)) {
+          await updateOrderSlip(slip.id, {
+            amount: slip.amount ? Number(slip.amount) : undefined,
+            bankAccountId: slip.bankAccountId ? Number(slip.bankAccountId) : undefined,
+            transferDate: slip.transferDate ? fromLocalDatetimeString(slip.transferDate) : undefined,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update slip details:", error);
+      alert("เกิดข้อผิดพลาดในการบันทึกข้อมูลสลิป");
       return;
     }
 
@@ -483,530 +2925,2324 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       paymentStatus: newPaymentStatus,
       verificationInfo: verificationInfo,
     };
+
     setCurrentOrder(updated);
     onSave(updated);
   };
 
 
+
+
+
+
   const handleAmountPaidChange = (amount: number) => {
+
+
+
     const newAmount = Math.max(0, amount);
+
+
+
     let newPaymentStatus = currentOrder.paymentStatus;
+
+
+
     if (newAmount === 0) {
+
+
+
       newPaymentStatus = PaymentStatus.Unpaid;
+
+
+
     } else if (newAmount < calculatedTotals.totalAmount) {
+
+
+
       newPaymentStatus = PaymentStatus.PendingVerification; // partial
+
+
+
     } else {
+
+
+
       newPaymentStatus = PaymentStatus.Verified; // paid or overpaid (Verified)
+
+
+
     }
+
+
+
     setCurrentOrder(prev => ({
+
+
+
       ...prev,
+
+
+
       amountPaid: newAmount,
+
+
+
       paymentStatus: newPaymentStatus,
+
+
+
       codAmount: prev.paymentMethod === PaymentMethod.COD ? newAmount : prev.codAmount,
+
+
+
     }));
+
+
+
   };
 
+
+
+
+
+
+
   const handleBoxFieldChange = (boxNumber: number, field: 'collectionAmount' | 'collectedAmount' | 'waivedAmount', value: number) => {
+
+
+
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+
+
+
     setCurrentOrder(prev => {
+
+
+
       const boxes = (prev.boxes || []).map(box => {
+
+
+
         if (box.boxNumber === boxNumber) {
+
+
+
           return { ...box, [field]: safe };
+
+
+
         }
+
+
+
         return box;
+
+
+
       });
+
+
+
       const codTotal = prev.paymentMethod === PaymentMethod.COD
+
+
+
         ? boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0)
+
+
+
         : prev.codAmount;
+
+
+
       return { ...prev, boxes, codAmount: codTotal };
+
+
+
     });
+
+
+
   };
+
+
+
+
+
+
 
   // Removed manual confirm button: payment status derives from amountPaid
 
+
+
+
+
+
+
   const handleSave = () => {
+
+
+
     const updatedOrder = { ...currentOrder, totalAmount: calculatedTotals.totalAmount };
+
+
+
     setCurrentOrder(updatedOrder);
+
+
+
     onSave(updatedOrder);
+
+
+
   };
 
+
+
+
+
+
+
   const formatAddress = (address?: Address | null) => {
+
+
+
     const sanitize = (value?: string | null) => {
+
+
+
       if (!value) return '';
+
+
+
       const trimmed = value.trim();
+
+
+
       const lower = trimmed.toLowerCase();
+
+
+
       if (!trimmed || lower === 'undefined' || lower === 'null') {
+
+
+
         return '';
+
+
+
       }
+
+
+
       return trimmed;
+
+
+
     };
+
+
+
+
+
+
 
     const recipientFirst = sanitize(address?.recipientFirstName);
+
+
+
     const recipientLast = sanitize(address?.recipientLastName);
+
+
+
     const street = sanitize(address?.street);
+
+
+
     const subdistrict = sanitize(address?.subdistrict);
+
+
+
     const district = sanitize(address?.district);
+
+
+
     const province = sanitize(address?.province);
+
+
+
     const postalCode = sanitize(address?.postalCode);
 
+
+
+
+
+
+
     const parts: string[] = [];
+
+
+
     if (recipientFirst || recipientLast)
+
+
+
       parts.push(
+
+
+
         `Recipient: ${[recipientFirst, recipientLast].filter(Boolean).join(" ").trim()}`,
+
+
+
       );
+
+
+
     if (street) parts.push(street);
+
+
+
     if (subdistrict) parts.push(subdistrict);
+
+
+
     if (district) parts.push(district);
+
+
+
     if (province) parts.push(province);
+
+
+
     if (postalCode) parts.push(postalCode);
 
+
+
+
+
+
+
     return parts.length > 0 ? parts.join(", ") : "-";
+
+
+
   }
 
+
+
+
+
+
+
   // Totals derived from items minus discounts plus shipping
+
+
+
   const calculatedTotals = useMemo(() => {
+
+
+
     const itemsSubtotal = currentOrder.items.reduce((sum, item) => {
+
+
+
       const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
+
+
+
       return sum + itemTotal;
+
+
+
     }, 0);
+
+
+
     const itemsDiscount = currentOrder.items.reduce((sum, item) => sum + item.discount, 0);
+
+
+
     const shippingCost = currentOrder.shippingCost || 0;
+
+
+
     const billDiscount = currentOrder.billDiscount || 0;
+
+
+
     const totalAmount = itemsSubtotal - billDiscount + shippingCost;
 
+
+
+
+
+
+
     return {
+
+
+
       itemsSubtotal,
+
+
+
       itemsDiscount,
+
+
+
       billDiscount,
+
+
+
       shippingCost,
+
+
+
       totalAmount
+
+
+
     };
+
+
+
   }, [currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount]);
 
+
+
+
+
+
+
   const remainingBalance = useMemo(() => {
+
+
+
     const paid = currentOrder.amountPaid || 0;
+
+
+
     return calculatedTotals.totalAmount - paid; // negative means overpaid
+
+
+
   }, [calculatedTotals.totalAmount, currentOrder.amountPaid]);
 
+
+
+
+
+
+
   const derivedAmountStatus = useMemo(() => {
+
+
+
     const diff = remainingBalance;
+
+
+
     const paid = currentOrder.amountPaid || 0;
+
+
+
     if (!paid || paid === 0) return 'Unpaid';
+
+
+
     if (diff > 0) return 'Partial';
+
+
+
     if (diff === 0) return 'Paid';
+
+
+
     return 'Overpaid';
+
+
+
   }, [remainingBalance, currentOrder.amountPaid]);
 
+
+
+
+
+
+
   return (
+
+
+
     <Modal title={`จัดการออเดอร์: ${order.id}`} onClose={onClose} size="xl">
+
+
+
       <div className="space-y-4 text-sm">
+
+
+
         {isModifiable && (
+
+
+
           <div className="flex justify-end mb-2">
+
+
+
             {!isEditing ? (
+
+
+
               <button
+
+
+
                 onClick={() => setIsEditing(true)}
+
+
+
                 className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+
+
+
               >
+
+
+
                 <Edit2 size={14} className="mr-1.5" />
+
+
+
                 แก้ไขออเดอร์
+
+
+
               </button>
+
+
+
             ) : (
+
+
+
               <div className="flex items-center space-x-2">
+
+
+
                 <button
+
+
+
                   onClick={() => {
+
+
+
                     setIsEditing(false);
+
+
+
                     setCurrentOrder(order); // Reset changes
+
+
+
                   }}
+
+
+
                   className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
+
+
+
                 >
+
+
+
                   <X size={14} className="mr-1.5" />
+
+
+
                   ยกเลิกการแก้ไข
+
+
+
                 </button>
+
+
+
                 <button
+
+
+
                   onClick={() => {
+
+
+
                     // Save logic is handled by the main save button, but we can also trigger it here if needed.
+
+
+
                     // For now, let's just exit edit mode if the user saves via the main button.
+
+
+
                     // Or we can make this button save and exit edit mode.
+
+
+
                     onSave(currentOrder);
+
+
+
                     setIsEditing(false);
+
+
+
                   }}
+
+
+
                   className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+
+
+
                 >
+
+
+
                   <Save size={14} className="mr-1.5" />
+
+
+
                   บันทึกการแก้ไข
+
+
+
                 </button>
+
+
+
               </div>
+
+
+
             )}
+
+
+
           </div>
+
+
+
         )}
 
+
+
+
+
+
+
         <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
+
+
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+
+
             <div>
+
+
+
               <p className="text-xs text-gray-500">วันที่สั่งซื้อ</p>
+
+
+
               <p className="font-medium text-gray-800">{currentOrder.orderDate ? new Date(currentOrder.orderDate).toLocaleString('th-TH') : '-'}</p>
+
+
+
             </div>
+
+
+
             <div>
+
+
+
               <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
+
+
+
               {showInputs ? (
+
+
+
                 <input
+
+
+
                   type="date"
-                  value={currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toISOString().split('T')[0] : ''}
-                  onChange={(e) => handleFieldChange('deliveryDate', e.target.value)}
+
+
+
+                  value={deliveryDateInputValue}
+
+
+
+                  min={deliveryWindow.minIso}
+
+
+
+                  max={deliveryWindow.maxIso}
+
+
+
+                  onChange={(e) => handleDeliveryDateChange(e.target.value)}
+
+
+
                   className="w-full p-1 text-sm border rounded"
+
+
+
                 />
+
+
+
               ) : (
+
+
+
                 <p className="font-medium text-gray-800">{currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
+
+
+
               )}
+
+
+
             </div>
+
+
+
             <div>
+
+
+
               <p className="text-xs text-gray-500">ช่องทางการขาย</p>
+
+
+
               <p className="font-medium text-gray-800">{currentOrder.salesChannel || '-'}</p>
+
+
+
             </div>
+
+
+
           </div>
+
+
+
         </InfoCard>
+
+
+
         <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+
+
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+
+
             <div>
+
+
+
               <div className="flex items-center justify-between">
+
+
+
                 <p className="font-semibold text-gray-800 text-base">{customer ? `${customer.firstName} ${customer.lastName}` : 'ไม่พบข้อมูล'}</p>
+
+
+
                 {showInputs && customer && onEditCustomer && (
+
+
+
                   <button
+
+
+
                     onClick={() => onEditCustomer(customer)}
+
+
+
                     className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
+
+
+
                   >
+
+
+
                     แก้ไขลูกค้า
+
+
+
                   </button>
+
+
+
                 )}
+
+
+
               </div>
+
+
+
               <p className="text-gray-600 flex items-center mt-2"><Phone size={14} className="mr-2" />{customer?.phone || '-'}</p>
+
+
+
             </div>
+
+
+
             <div>
+
+
+
               <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+
+
+
               {showInputs ? (
+
+
+
                 <div className="space-y-2">
-                  <input
-                    placeholder="ชื่อผู้รับ"
-                    value={currentOrder.shippingAddress?.recipientFirstName || ''}
-                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, recipientFirstName: e.target.value } }))}
-                    className="w-full p-1 text-xs border rounded mb-1"
-                  />
-                  <input
-                    placeholder="นามสกุลผู้รับ"
-                    value={currentOrder.shippingAddress?.recipientLastName || ''}
-                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, recipientLastName: e.target.value } }))}
-                    className="w-full p-1 text-xs border rounded mb-1"
-                  />
-                  <input
-                    placeholder="ที่อยู่"
-                    value={currentOrder.shippingAddress?.street || ''}
-                    onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, street: e.target.value } }))}
-                    className="w-full p-1 text-xs border rounded"
-                  />
-                  <div className="grid grid-cols-2 gap-1">
+
+
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+
+
+
                     <input
-                      placeholder="แขวง/ตำบล"
-                      value={currentOrder.shippingAddress?.subdistrict || ''}
-                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, subdistrict: e.target.value } }))}
-                      className="w-full p-1 text-xs border rounded"
+
+
+
+                      placeholder="ชื่อผู้รับ"
+
+
+
+                      value={currentOrder.shippingAddress?.recipientFirstName || ''}
+
+
+
+                      onChange={(e) => updateShippingAddress({ recipientFirstName: e.target.value })}
+
+
+
+                      className="w-full p-2 text-sm border rounded"
+
+
+
                     />
+
+
+
                     <input
-                      placeholder="เขต/อำเภอ"
-                      value={currentOrder.shippingAddress?.district || ''}
-                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, district: e.target.value } }))}
-                      className="w-full p-1 text-xs border rounded"
+
+
+
+                      placeholder="นามสกุลผู้รับ"
+
+
+
+                      value={currentOrder.shippingAddress?.recipientLastName || ''}
+
+
+
+                      onChange={(e) => updateShippingAddress({ recipientLastName: e.target.value })}
+
+
+
+                      className="w-full p-2 text-sm border rounded"
+
+
+
                     />
-                    <input
-                      placeholder="จังหวัด"
-                      value={currentOrder.shippingAddress?.province || ''}
-                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, province: e.target.value } }))}
-                      className="w-full p-1 text-xs border rounded"
-                    />
-                    <input
-                      placeholder="รหัสไปรษณีย์"
-                      value={currentOrder.shippingAddress?.postalCode || ''}
-                      onChange={(e) => setCurrentOrder(prev => ({ ...prev, shippingAddress: { ...prev.shippingAddress, postalCode: e.target.value } }))}
-                      className="w-full p-1 text-xs border rounded"
-                    />
+
+
+
                   </div>
+
+
+
+                  <input
+
+
+
+                    placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
+
+
+
+                    value={currentOrder.shippingAddress?.street || ''}
+
+
+
+                    onChange={(e) => updateShippingAddress({ street: e.target.value })}
+
+
+
+                    className="w-full p-2 text-sm border rounded"
+
+
+
+                  />
+
+
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+
+
+
+                    <div className="relative">
+
+
+
+                      <input
+
+
+
+                        placeholder="จังหวัด"
+
+
+
+                        value={provinceSearchTerm || currentOrder.shippingAddress?.province || ''}
+
+
+
+                        onChange={(e) => {
+
+
+
+                          const val = e.target.value;
+
+
+
+                          setProvinceSearchTerm(val);
+
+
+
+                          setShowProvinceDropdown(true);
+
+
+
+                          if (!val) {
+
+
+
+                            setSelectedProvince(null);
+
+
+
+                            setSelectedDistrict(null);
+
+
+
+                            setSelectedSubDistrict(null);
+
+
+
+                            updateShippingAddress({ province: '', district: '', subdistrict: '', postalCode: '' });
+
+
+
+                          }
+
+
+
+                        }}
+
+
+
+                        onFocus={() => setShowProvinceDropdown(true)}
+
+
+
+                        className="w-full p-2 text-sm border rounded"
+
+
+
+                      />
+
+
+
+                      {showProvinceDropdown && (
+
+
+
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
+
+
+
+                          {filteredProvinces.map((province: any) => (
+
+
+
+                            <button
+
+
+
+                              type="button"
+
+
+
+                              key={province.id}
+
+
+
+                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                              onMouseDown={(e) => e.preventDefault()}
+
+
+
+                              onClick={() => {
+
+
+
+                                handleSelectProvince(province);
+
+
+
+                                setShowProvinceDropdown(false);
+
+
+
+                              }}
+
+
+
+                            >
+
+
+
+                              {province.name_th}
+
+
+
+                            </button>
+
+
+
+                          ))}
+
+
+
+                          {filteredProvinces.length === 0 && (
+
+
+
+                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบจังหวัด</div>
+
+
+
+                          )}
+
+
+
+                        </div>
+
+
+
+                      )}
+
+
+
+                    </div>
+
+
+
+                    <div className="relative">
+
+
+
+                      <input
+
+
+
+                        placeholder="อำเภอ/เขต"
+
+
+
+                        value={districtSearchTerm || currentOrder.shippingAddress?.district || ''}
+
+
+
+                        onChange={(e) => {
+
+
+
+                          const val = e.target.value;
+
+
+
+                          setDistrictSearchTerm(val);
+
+
+
+                          setShowDistrictDropdown(true);
+
+
+
+                          if (!val) {
+
+
+
+                            setSelectedDistrict(null);
+
+
+
+                            setSelectedSubDistrict(null);
+
+
+
+                            updateShippingAddress({ district: '', subdistrict: '', postalCode: '' });
+
+
+
+                          }
+
+
+
+                        }}
+
+
+
+                        onFocus={() => setShowDistrictDropdown(true)}
+
+
+
+                        disabled={!selectedProvince}
+
+
+
+                        className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+
+
+
+                      />
+
+
+
+                      {showDistrictDropdown && selectedProvince && (
+
+
+
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
+
+
+
+                          {filteredDistricts.map((district: any) => (
+
+
+
+                            <button
+
+
+
+                              type="button"
+
+
+
+                              key={district.id}
+
+
+
+                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                              onMouseDown={(e) => e.preventDefault()}
+
+
+
+                              onClick={() => {
+
+
+
+                                handleSelectDistrict(district);
+
+
+
+                                setShowDistrictDropdown(false);
+
+
+
+                              }}
+
+
+
+                            >
+
+
+
+                              {district.name_th}
+
+
+
+                            </button>
+
+
+
+                          ))}
+
+
+
+                          {filteredDistricts.length === 0 && (
+
+
+
+                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบอำเภอ/เขต</div>
+
+
+
+                          )}
+
+
+
+                        </div>
+
+
+
+                      )}
+
+
+
+                    </div>
+
+
+
+                  </div>
+
+
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+
+
+
+                    <div className="relative">
+
+
+
+                      <input
+
+
+
+                        placeholder="ตำบล/แขวง"
+
+
+
+                        value={subDistrictSearchTerm || currentOrder.shippingAddress?.subdistrict || ''}
+
+
+
+                        onChange={(e) => {
+
+
+
+                          const val = e.target.value;
+
+
+
+                          setSubDistrictSearchTerm(val);
+
+
+
+                          setShowSubDistrictDropdown(true);
+
+
+
+                          if (!val) {
+
+
+
+                            setSelectedSubDistrict(null);
+
+
+
+                            updateShippingAddress({ subdistrict: '', postalCode: '' });
+
+
+
+                          }
+
+
+
+                        }}
+
+
+
+                        onFocus={() => setShowSubDistrictDropdown(true)}
+
+
+
+                        disabled={!selectedDistrict}
+
+
+
+                        className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+
+
+
+                      />
+
+
+
+                      {showSubDistrictDropdown && selectedDistrict && (
+
+
+
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
+
+
+
+                          {filteredSubDistricts.map((sub: any) => (
+
+
+
+                            <button
+
+
+
+                              type="button"
+
+
+
+                              key={sub.id}
+
+
+
+                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                              onMouseDown={(e) => e.preventDefault()}
+
+
+
+                              onClick={() => {
+
+
+
+                                handleSelectSubDistrict(sub);
+
+
+
+                                setShowSubDistrictDropdown(false);
+
+
+
+                              }}
+
+
+
+                            >
+
+
+
+                              {sub.name_th} ({sub.zip_code})
+
+
+
+                            </button>
+
+
+
+                          ))}
+
+
+
+                          {filteredSubDistricts.length === 0 && (
+
+
+
+                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบตำบล/แขวง</div>
+
+
+
+                          )}
+
+
+
+                        </div>
+
+
+
+                      )}
+
+
+
+                    </div>
+
+
+
+                    <input
+
+
+
+                      placeholder="รหัสไปรษณีย์"
+
+
+
+                      value={currentOrder.shippingAddress?.postalCode || ''}
+
+
+
+                      readOnly
+
+
+
+                      className="w-full p-2 text-sm border rounded bg-gray-50"
+
+
+
+                    />
+
+
+
+                  </div>
+
+
+
                 </div>
+
+
+
               ) : (
+
+
+
                 <p className="text-gray-700 flex items-start"><MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" /><span className="text-sm">{formatAddress(currentOrder.shippingAddress)}</span></p>
+
+
+
               )}
+
+
+
             </div>
+
+
+
           </div>
+
+
+
         </InfoCard>
+
+
+
+
+
+
 
         <InfoCard icon={Package} title="รายการสินค้า">
+
+
+
           <div className="overflow-x-auto">
+
+
+
             <table className="w-full text-sm border-collapse">
+
+
+
               <thead>
+
+
+
                 <tr className="bg-gray-50 border-b">
+
+
+
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">รหัส</th>
+
+
+
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อสินค้า</th>
+
+
+
                   <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
+
+
+
                   <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
+
+
+
                   <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
+
+
+
                   <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
+
+
+
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
+
+
+
                   {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จัดการ</th>}
+
+
+
                 </tr>
+
+
+
               </thead>
+
+
+
               <tbody>
+
+
+
                 {currentOrder.items.map((item, index) => {
+
+
+
                   const itemCreator = item.creatorId ? users.find(u => {
+
+
+
                     const userId = typeof u.id === 'number' ? u.id : Number(u.id);
+
+
+
                     const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
+
+
+
                     return userId === creatorId;
+
+
+
                   }) : null;
+
+
+
                   const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
 
+
+
+
+
+
+
                   // Check if current user is the creator of this item
+
+
+
                   const isCreator = currentUser && item.creatorId === currentUser.id;
+
+
+
                   const canEditItem = showInputs && isCreator;
 
+
+
+
+
+
+
                   return (
+
+
+
                     <tr key={item.id} className="border-b hover:bg-gray-50">
+
+
+
                       <td className="px-3 py-2 text-xs text-gray-600 font-mono">{item.productId ? String(item.productId) : '-'}</td>
+
+
+
                       <td className="px-3 py-2 text-sm text-gray-800">
+
+
+
                         {canEditItem ? (
+
+
+
                           <select
+
+
+
                             value={item.productId || ''}
+
+
+
                             onChange={(e) => handleProductChange(index, Number(e.target.value))}
+
+
+
                             className="w-full border rounded px-1 py-1"
+
+
+
                           >
+
+
+
                             <option value="">เลือกสินค้า</option>
+
+
+
                             {products.map(p => (
+
+
+
                               <option key={p.id} value={p.id}>{p.name}</option>
+
+
+
                             ))}
+
+
+
                           </select>
+
+
+
                         ) : item.productName}
+
+
+
                       </td>
+
+
+
                       <td className="px-3 py-2 text-center text-xs text-gray-700">
+
+
+
                         {canEditItem ? (
+
+
+
                           <input
+
+
+
                             type="number"
+
+
+
                             value={item.quantity}
+
+
+
                             onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+
+
+
                             className="w-16 border rounded px-1 text-center"
+
+
+
                           />
+
+
+
                         ) : item.quantity}
+
+
+
                       </td>
+
+
+
                       <td className="px-3 py-2 text-right text-xs text-gray-700">
+
+
+
                         {canEditItem ? (
+
+
+
                           <input
+
+
+
                             type="number"
+
+
+
                             value={item.pricePerUnit}
+
+
+
                             onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
+
+
+
                             className="w-20 border rounded px-1 text-right"
+
+
+
                           />
+
+
+
                         ) : `฿${item.pricePerUnit.toLocaleString()}`}
+
+
+
                       </td>
+
+
+
                       <td className="px-3 py-2 text-right text-xs text-red-600">
+
+
+
                         {canEditItem ? (
+
+
+
                           <input
+
+
+
                             type="number"
+
+
+
                             value={item.discount}
+
+
+
                             onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
+
+
+
                             className="w-20 border rounded px-1 text-right text-red-600"
+
+
+
                           />
+
+
+
                         ) : `-฿${item.discount.toLocaleString()}`}
+
+
+
                       </td>
+
+
+
                       <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{itemTotal.toLocaleString()}</td>
+
+
+
                       <td className="px-3 py-2 text-xs text-gray-600">
+
+
+
                         {itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName}` : '-'}
+
+
+
                       </td>
+
+
+
                       {showInputs && (
+
+
+
                         <td className="px-3 py-2 text-center">
+
+
+
                           {canEditItem && (
+
+
+
                             <button
+
+
+
                               onClick={() => handleRemoveItem(index)}
+
+
+
                               className="text-red-500 hover:text-red-700"
+
+
+
                             >
+
+
+
                               <Trash2 size={14} />
+
+
+
                             </button>
+
+
+
                           )}
+
+
+
                         </td>
+
+
+
                       )}
+
+
+
                     </tr>
+
+
+
                   );
+
+
+
                 })}
+
+
+
               </tbody>
+
+
+
               <tfoot className="bg-gray-50">
+
+
+
                 {showInputs && (
+
+
+
                   <tr>
+
+
+
                     <td colSpan={8} className="px-3 py-2 text-center">
+
+
+
                       <button
+
+
+
                         onClick={handleAddItem}
+
+
+
                         className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
+
+
+
                       >
+
+
+
                         + เพิ่มสินค้า
+
+
+
                       </button>
+
+
+
                     </td>
+
+
+
                   </tr>
+
+
+
                 )}
+
+
+
                 <tr>
+
+
+
                   <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
+
+
+
                   <td colSpan={1} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+
+
+
                   <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.itemsDiscount.toLocaleString()}</td>
+
+
+
                   <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+
+
+
                   <td colSpan={showInputs ? 2 : 1}></td>
+
+
+
                 </tr>
+
+
+
                 <tr>
+
+
+
                   <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ส่วนลดทั้งออเดอร์</td>
+
+
+
                   <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.billDiscount.toLocaleString()}</td>
+
+
+
                 </tr>
+
+
+
                 <tr>
+
+
+
                   <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ค่าส่ง</td>
+
+
+
                   <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.shippingCost.toLocaleString()}</td>
+
+
+
                 </tr>
+
+
+
                 <tr className="border-t-2">
+
+
+
                   <td colSpan={5} className="px-3 py-2 text-sm font-bold text-gray-800">ยอดสุทธิ</td>
+
+
+
                   <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-base font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</td>
+
+
+
                 </tr>
+
+
+
               </tfoot>
+
+
+
             </table>
+
+
+
           </div>
+
+
+
         </InfoCard>
 
+
+
+
+
+
+
         {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+
+
+
           currentOrder.paymentMethod === PaymentMethod.PayAfter ||
+
+
+
           currentOrder.paymentMethod === PaymentMethod.COD) && (
+
+
+
             <InfoCard icon={CreditCard} title="การชำระเงิน">
+
+
+
               <div className="flex items-center justify-between mb-3">
+
+
+
                 <span className="font-medium text-gray-600">วิธีชำระ: {currentOrder.paymentMethod}</span>
+
+
+
                 {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod, currentOrder.amountPaid, calculatedTotals.totalAmount)}
+
+
+
               </div>
+
+
+
               <div className="flex items-center justify-between mb-2 text-xs">
+
+
+
                 <span className="text-gray-500">สถานะการชำระ</span>
+
+
+
                 <span className={`px-2 py-0.5 rounded-full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'}`}>{derivedAmountStatus === 'Paid' ? 'ชำระแล้ว' : derivedAmountStatus === 'Unpaid' ? 'ยังไม่ชำระ' : derivedAmountStatus === 'Partial' ? 'ชำระบางส่วน' : 'ชำระเกิน'}</span>
+
+
+
               </div>
+
+
+
               {(currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.COD) && (
+
+
+
                 <div className="space-y-2">
+
+
+
                   <div>
+
+
+
                     <label className="block text-xs font-medium text-gray-500 mb-1">จำนวนเงินที่ได้รับ</label>
+
+
+
                     <input
+
+
+
                       type="number"
+
+
+
                       inputMode="decimal"
+
+
+
                       value={currentOrder.amountPaid ?? ''}
+
+
+
                       onFocus={(e) => e.currentTarget.select()}
+
+
+
                       onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+
+
+
                       className="w-full p-2 border rounded-md"
+
+
+
                     />
+
+
+
                   </div>
+
+
+
                   <div className="flex justify-between font-semibold">
+
+
+
                     <span className="text-gray-600">คงเหลือ</span>
+
+
+
                     <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? `-${remainingBalance.toLocaleString()}` : `+${Math.abs(remainingBalance).toLocaleString()}`)}</span>
+
+
+
                   </div>
+
+
+
                 </div>
               )}
 
               {currentOrder.paymentMethod === PaymentMethod.Transfer && (
                 <>
-                  <div className="space-y-2">
+                  <div className="space-y-4 mt-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">รายการสลิปโอนเงิน</label>
+
                       {slips.length > 0 ? (
-                        <div className="flex flex-wrap gap-3 mb-2">
-                          {slips.map(slip => {
-                            const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
-                            return (
-                              <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
-                                <img
-                                  onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-                                  src={slip.url}
-                                  alt="Slip preview"
-                                  className="w-full h-full object-contain cursor-pointer"
-                                />
-                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-                                  <button
-                                    onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-                                    className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
-                                  >
-                                    <Eye size={16} className="mr-1" /> ดู
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (slipPreview || currentOrder.slipUrl) ? (
-                        <div className="group relative w-32 h-32 border rounded-md p-1">
-                          <img
-                            onClick={() => openSlipViewer({ url: slipPreview || (currentOrder.slipUrl as string) })}
-                            src={slipPreview || (currentOrder.slipUrl as string)}
-                            alt="Slip preview"
-                            className="w-full h-full object-contain cursor-pointer"
-                          />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-                            <button
-                              onClick={() => openSlipViewer({ url: slipPreview || (currentOrder.slipUrl as string) })}
-                              className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
-                            >
-                              <Eye size={16} className="mr-1" /> ดู
-                            </button>
-                          </div>
+                        <div className="overflow-x-auto border rounded-lg">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  ลำดับ
+                                </th>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  ธนาคาร
+                                </th>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  วัน-เวลา
+                                </th>
+                                <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  จำนวนเงิน
+                                </th>
+                                <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  รูปภาพ
+                                </th>
+                                {canVerifySlip && (
+                                  <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    ตรวจสอบ
+                                  </th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {slips.map((slip, index) => {
+                                const bankLabel = resolveBankName(slip.bankAccountId);
+                                const transferLabel = formatSlipDateTime(slip.transferDate);
+                                const isChecked = (slip as any).checked ?? false;
+
+                                return (
+                                  <tr key={slip.id} className={isChecked ? "bg-green-50" : ""}>
+                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                      {index + 1}
+                                    </td>
+                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                                      {canVerifySlip && !isOrderCompleted ? (
+                                        <select
+                                          value={slip.bankAccountId || ""}
+                                          onChange={(e) => {
+                                            const nextBankId = e.target.value === "" ? undefined : Number(e.target.value);
+                                            setSlips((prev) =>
+                                              prev.map((s) =>
+                                                s.id === slip.id ? { ...s, bankAccountId: nextBankId } : s
+                                              )
+                                            );
+                                          }}
+                                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                          <option value="">เลือกธนาคาร</option>
+                                          {bankAccounts.map(ba => (
+                                            <option key={ba.id} value={ba.id}>
+                                              {ba.bank} {ba.bank_number}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <span>{bankLabel || "-"}</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                      {canVerifySlip && !isOrderCompleted ? (
+                                        <input
+                                          type="datetime-local"
+                                          value={toLocalDatetimeString(slip.transferDate)}
+                                          onChange={(e) => {
+                                            const nextDate = e.target.value ? fromLocalDatetimeString(e.target.value) : undefined;
+                                            setSlips((prev) =>
+                                              prev.map((s) =>
+                                                s.id === slip.id ? { ...s, transferDate: nextDate } : s
+                                              )
+                                            );
+                                          }}
+                                          className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                      ) : (
+                                        <span>{transferLabel || "-"}</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                      {canVerifySlip && !isOrderCompleted ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={typeof slip.amount === "number" && !Number.isNaN(slip.amount) ? slip.amount : ""}
+                                          onChange={(e) => {
+                                            const nextAmount = e.target.value === "" ? undefined : Number(e.target.value);
+                                            setSlips((prev) =>
+                                              prev.map((s) =>
+                                                s.id === slip.id ? { ...s, amount: nextAmount } : s
+                                              )
+                                            );
+                                          }}
+                                          className="w-24 text-right border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                        />
+                                      ) : (
+                                        <span className="text-gray-900 font-medium">
+                                          {typeof slip.amount === "number"
+                                            ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                            : "-"}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 whitespace-nowrap text-center">
+                                      <button
+                                        onClick={() => openSlipViewer({ ...slip, uploadedByName: resolveUploaderName(slip.uploadedBy, slip.uploadedByName) })}
+                                        className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                                      >
+                                        <Eye size={16} />
+                                      </button>
+                                    </td>
+                                    {canVerifySlip && (
+                                      <td className="px-3 py-2 whitespace-nowrap text-center">
+                                        {slip.amount && slip.bankAccountId && slip.transferDate ? (
+                                          // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
+                                          <div className="flex items-center justify-center">
+                                            <CheckCircle className="w-5 h-5 text-green-600" />
+                                          </div>
+                                        ) : isOrderCompleted ? (
+                                          // Order เสร็จสิ้นแล้ว - แสดงติ๊กถูก (ไม่สามารถแก้ไขได้)
+                                          <div className="flex items-center justify-center">
+                                            <CheckCircle className="w-5 h-5 text-gray-400" />
+                                          </div>
+                                        ) : (
+                                          // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={(e) => {
+                                              const checked = e.target.checked;
+                                              setSlips((prev) =>
+                                                prev.map((s) =>
+                                                  s.id === slip.id ? { ...s, checked } : s
+                                                )
+                                              );
+                                            }}
+                                            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded cursor-pointer"
+                                          />
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                              {/* Summary Row */}
+                              <tr className="bg-gray-50 font-medium">
+                                <td colSpan={3} className="px-3 py-2 text-right text-sm text-gray-700">
+                                  รวมยอดที่เลือก:
+                                </td>
+                                <td className="px-3 py-2 text-right text-sm text-blue-700">
+                                  {slips
+                                    .filter((s: any) => s.checked)
+                                    .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+                                    .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td colSpan={canVerifySlip ? 2 : 1}></td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-400">ยังไม่มีหลักฐานการชำระเงิน</p>
+                        <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                          <p className="text-gray-500 text-sm">ยังไม่มีหลักฐานการชำระเงิน</p>
+                        </div>
                       )}
-                      <div className="flex items-center space-x-2 mt-2">
-                        <label htmlFor={slipUploadInputId} className="cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center">
-                          <Image size={16} className="mr-2" />
-                          อัปโหลดสลิปเพิ่มเติม
-                        </label>
-                        <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+
+                      <div className="mt-3 flex justify-end">
+                        <div className="flex items-center space-x-2">
+                          <label htmlFor={slipUploadInputId} className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            <Image size={16} className="mr-2" />
+                            อัปโหลดสลิปเพิ่มเติม
+                          </label>
+                          <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+                        </div>
                       </div>
                     </div>
-                    {/* แสดงข้อมูลธนาคารและเวลาโอน */}
-                    {(currentOrder.bankAccountId || currentOrder.transferDate) && (
-                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                        <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
-                        <div className="text-xs text-blue-700 space-y-1">
-                          {currentOrder.bankAccountId && (() => {
-                            const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+
+                    {/* Validation Summary */}
+                    {canVerifySlip && slips.length > 0 && (
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-600">ยอดออเดอร์ทั้งหมด:</span>
+                          <span className="text-sm font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-600">ยอดสลิปที่ตรวจสอบแล้ว:</span>
+                          <span className="text-sm font-bold text-green-600">
+                            ฿{slips
+                              .filter((s: any) => s.checked)
+                              .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+                              .toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="border-t border-gray-200 my-2 pt-2 flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-900">ส่วนต่าง:</span>
+                          {(() => {
+                            const checkedTotal = slips
+                              .filter((s: any) => s.checked)
+                              .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+                            const diff = checkedTotal - calculatedTotals.totalAmount;
                             return (
-                              <p>
-                                ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number}` : `ID: ${currentOrder.bankAccountId}`}
-                              </p>
+                              <span className={`text-sm font-bold ${diff < 0 ? 'text-red-600' : diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                                {diff > 0 ? '+' : ''}{diff.toLocaleString()}
+                              </span>
                             );
                           })()}
-                          {currentOrder.transferDate && (
-                            <p>
-                              เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </p>
-                          )}
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* แสดงข้อมูลการตรวจสอบสลิป */}
-                  {currentOrder.verificationInfo && (
-                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-                      <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
-                      <div className="text-xs text-green-700 space-y-1">
-                        <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
-                        <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
-                      </div>
-                    </div>
-                  )}
                   {canVerifySlip &&
                     (currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
                     hasTransferSlip &&
-                    currentOrder.paymentStatus !== PaymentStatus.Paid && (
-                      <div className="flex justify-end">
+                    currentOrder.paymentStatus !== PaymentStatus.Paid &&
+                    !isOrderCompleted && (
+                      <div className="flex justify-end mt-4">
                         <button
                           onClick={handleAcceptSlip}
-                          className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                          disabled={!slips.some((s: any) => s.checked)}
+                          className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                            ${slips.some((s: any) => s.checked)
+                              ? 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500'
+                              : 'bg-gray-400 cursor-not-allowed'}`}
                         >
-                          ยืนยันสลิป
+                          <CheckCircle size={16} className="mr-2" />
+                          ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})
                         </button>
                       </div>
                     )}
@@ -1018,417 +5254,1754 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                   <div className="space-y-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
+
+
+
                       <input
+
+
+
                         type="number"
+
+
+
                         inputMode="decimal"
+
+
+
                         value={currentOrder.amountPaid ?? ''}
+
+
+
                         onFocus={(e) => e.currentTarget.select()}
+
+
+
                         onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+
+
+
                         className="w-full p-2 border rounded-md"
+
+
+
                         disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
+
+
+
                       />
+
+
+
                     </div>
+
+
+
                     <div className="flex justify-between font-semibold">
+
+
+
                       <span className="text-red-600">ยอดค้างชำระ</span>
+
+
+
                       <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+
+
+
                     </div>
+
+
+
                   </div>
+
+
+
+
+
+
 
                   {/* ส่วนอัปโหลดสลิปสำหรับ PayAfter */}
+
+
+
                   <div className="space-y-2 mt-4">
+
+
+
                     <div>
+
+
+
                       <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
+
+
+
                       {slips.length > 0 ? (
+
+
+
                         <div className="flex flex-wrap gap-3 mb-2">
+
+
+
                           {slips.map(slip => {
+
                             const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+
+                            const bankLabel = resolveBankName(slip.bankAccountId);
+
+                            const transferLabel = formatSlipDateTime(slip.transferDate);
+
+                            const amountLabel =
+
+                              typeof slip.amount === "number"
+
+                                ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+                                : undefined;
+
                             return (
-                              <div key={slip.id} className="relative w-32 h-32 border rounded-md p-1 group">
-                                <img
-                                  onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-                                  src={slip.url}
-                                  alt="Slip preview"
-                                  className="w-full h-full object-contain cursor-pointer"
-                                />
-                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-                                  <button
+
+                              <div key={slip.id} className="relative w-40 border rounded-md p-2 group bg-white shadow-sm">
+
+                                <div className="h-32 w-full relative">
+
+                                  <img
+
                                     onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-                                    className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
-                                  >
-                                    <Eye size={16} className="mr-1" /> ดู
-                                  </button>
+
+
+
+                                    src={slip.url}
+
+
+
+                                    alt="Slip preview"
+
+
+
+                                    className="w-full h-full object-contain cursor-pointer"
+
+
+
+                                  />
+
+
+
+                                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+
+
+
+                                    <button
+
+
+
+                                      onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+
+
+
+                                      className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+
+
+
+                                    >
+
+
+
+                                      <Eye size={16} className="mr-1" /> ดู
+
+
+
+                                    </button>
+
+                                  </div>
+
                                 </div>
+
+                                <div className="mt-1 text-[11px] text-gray-700 leading-tight space-y-0.5">
+                                  {amountLabel && <div>฿{amountLabel}</div>}
+                                  {bankLabel && <div>{bankLabel}</div>}
+                                  {transferLabel && <div>{transferLabel}</div>}
+                                </div>
+                                {canVerifySlip && (
+                                  <div className="mt-2 text-[11px] space-y-1">
+                                    <label className="block text-gray-600">จำนวนเงินสลิป (ยืนยัน)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={
+                                        typeof slip.amount === "number" && !Number.isNaN(slip.amount)
+                                          ? slip.amount
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        const nextAmount =
+                                          e.target.value === "" ? undefined : Number(e.target.value);
+                                        setSlips((prev) =>
+                                          prev.map((s) =>
+                                            s.id === slip.id ? { ...s, amount: nextAmount } : s,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-full border rounded px-2 py-1"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             );
+
+
+
                           })}
+
+
+
                         </div>
+
+
+
                       ) : (
+
+
+
                         <p className="text-xs text-gray-400 mb-2">ยังไม่มีหลักฐานการชำระเงิน</p>
+
+
+
                       )}
+
+
+
                       <div className="flex items-center space-x-2">
+
+
+
                         <label
+
+
+
                           htmlFor={`${slipUploadInputId}-payafter`}
+
+
+
                           className={`cursor-pointer w-full text-center py-2 px-4 bg-white border border-gray-300 rounded-lg text-gray-600 flex items-center justify-center ${currentOrder.paymentStatus === PaymentStatus.Paid
+
+
+
                             ? 'opacity-50 cursor-not-allowed'
+
+
+
                             : 'hover:bg-gray-50'
+
+
+
                             }`}
+
+
+
                         >
+
+
+
                           <Image size={16} className="mr-2" />
+
+
+
                           อัปโหลดสลิป
+
+
+
                         </label>
+
+
+
                         <input
+
+
+
                           id={`${slipUploadInputId}-payafter`}
+
+
+
                           type="file"
+
+
+
                           accept="image/*"
+
+
+
                           multiple
+
+
+
                           onChange={handleSlipUpload}
+
+
+
                           disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
+
+
+
                           className="hidden"
+
+
+
                         />
+
+
+
                       </div>
+
+
+
                     </div>
+
+
+
+
+
+
 
                     {/* แสดงข้อมูลธนาคารและเวลาโอน (ถ้ามี) */}
+
+
+
                     {(currentOrder.bankAccountId || currentOrder.transferDate) && (
+
+
+
                       <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+
+
+
                         <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
+
+
+
                         <div className="text-xs text-blue-700 space-y-1">
+
+
+
                           {currentOrder.bankAccountId && (() => {
+
+
+
                             const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+
+
+
                             return (
+
+
+
                               <p>
+
+
+
                                 ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number}` : `ID: ${currentOrder.bankAccountId}`}
+
+
+
                               </p>
+
+
+
                             );
+
+
+
                           })()}
+
+
+
                           {currentOrder.transferDate && (
+
+
+
                             <p>
+
+
+
                               เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
+
+
+
                                 year: 'numeric',
+
+
+
                                 month: '2-digit',
+
+
+
                                 day: '2-digit',
+
+
+
                                 hour: '2-digit',
+
+
+
                                 minute: '2-digit',
+
+
+
                               })}
+
+
+
                             </p>
+
+
+
                           )}
+
+
+
                         </div>
+
+
+
                       </div>
+
+
+
                     )}
+
+
+
+
+
+
 
                     {/* แสดงข้อมูลการตรวจสอบสลิป (ถ้ามี) */}
+
+
+
                     {currentOrder.verificationInfo && (
+
+
+
                       <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+
+
+
                         <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
+
+
+
                         <div className="text-xs text-green-700 space-y-1">
+
+
+
                           <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
+
+
+
                           <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
+
+
+
                         </div>
+
+
+
                       </div>
+
+
+
                     )}
+
+
+
+
+
+
 
                     {/* ปุ่มยืนยันสลิปสำหรับ Backoffice/Admin */}
+
+
+
                     {canVerifySlip && slips.length > 0 && currentOrder.paymentStatus !== PaymentStatus.Paid && (
+
+
+
                       <div className="flex justify-end">
+
+
+
                         <button
+
+
+
                           onClick={handleAcceptSlip}
+
+
+
                           className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+
+
+
                         >
+
+
+
                           ยืนยันสลิป
+
+
+
                         </button>
+
+
+
                       </div>
+
+
+
                     )}
+
+
+
                   </div>
+
+
+
                 </>
+
+
+
               )}
+
+
+
+
+
+
 
               {false && currentOrder.paymentMethod === PaymentMethod.COD && currentOrder.boxes && currentOrder.boxes.length > 0 && (
+
+
+
                 <div className="space-y-2 border-t mt-3 pt-3">
+
+
+
                   <h4 className="text-xs font-medium text-gray-500 mb-1">รายละเอียดการเก็บเงินปลายทาง</h4>
+
+
+
                   <div className="p-3 bg-gray-50 rounded-md space-y-1">
+
+
+
                     {order.boxes.map(box => (
+
+
+
                       <div key={box.boxNumber} className="flex justify-between items-center text-xs">
+
+
+
                         <span className="text-gray-600">กล่องที่ {box.boxNumber}</span>
+
+
+
                         <span className="font-semibold text-gray-800">฿{box.codAmount.toLocaleString()}</span>
+
+
+
                       </div>
+
+
+
                     ))}
+
+
+
                     <div className="flex justify-between items-center text-xs font-bold border-t pt-1 mt-1">
+
+
+
                       <span className="text-gray-800">รวม ({order.boxes.length} กล่อง)</span>
+
+
+
                       <span className="text-gray-800">฿{order.boxes.reduce((sum, b) => sum + b.codAmount, 0).toLocaleString()}</span>
+
+
+
                     </div>
+
+
+
                   </div>
+
+
+
                 </div>
+
+
+
               )}
 
+
+
+
+
+
+
               {/* แสดงสลิปที่อัปโหลดสำหรับ payment methods อื่นๆ (ที่ไม่ใช่ Transfer หรือ PayAfter) */}
+
+
+
               {slips.length > 0 &&
+
+
+
                 currentOrder.paymentMethod !== PaymentMethod.Transfer &&
+
+
+
                 currentOrder.paymentMethod !== PaymentMethod.PayAfter && (
+
+
+
                   <div className="mt-2">
+
+
+
                     <h4 className="text-xs font-medium text-gray-500 mb-1">สลิปที่อัปโหลด</h4>
+
+
+
                     <div className="flex flex-wrap gap-3">
+
+
+
                       {slips.map(slip => {
+
+
+
                         const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+
+
+
                         return (
+
+
+
                           <div key={slip.id} className="relative w-24 h-24 border rounded-md overflow-hidden group">
+
+
+
                             <img
+
+
+
                               onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+
+
+
                               src={slip.url}
+
+
+
                               alt="Slip"
+
+
+
                               className="w-full h-full object-cover cursor-pointer"
+
+
+
                             />
+
+
+
                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+
+
+
                               <button
+
+
+
                                 onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+
+
+
                                 className="p-1.5 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+
+
+
                               >
+
+
+
                                 <Eye size={14} className="mr-1" /> ดู
+
+
+
                               </button>
+
+
+
                             </div>
+
+
+
                           </div>
+
+
+
                         );
+
+
+
                       })}
+
+
+
                     </div>
+
+
+
                   </div>
+
+
+
                 )}
 
+
+
+
+
+
+
             </InfoCard>
+
+
+
           )}
+
+
+
         {currentOrder.paymentMethod === PaymentMethod.COD && currentOrder.boxes && currentOrder.boxes.length > 0 && (
+
+
+
           <div className="border rounded-xl p-4 shadow-sm mb-4">
+
+
+
             <h3 className="text-sm font-semibold text-gray-800 mb-3">ยอด COD ต่อกล่อง</h3>
+
+
+
             <div className="overflow-x-auto">
+
+
+
               <table className="min-w-full text-xs text-gray-700">
+
+
+
                 <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
+
+
+
                   <tr>
+
+
+
                     <th className="px-3 py-2 text-left font-semibold">กล่อง / Tracking</th>
+
+
+
                     <th className="px-3 py-2 text-right font-semibold">ยอดเก็บเงิน</th>
+
+
+
                     <th className="px-3 py-2 text-right font-semibold">เก็บแล้ว</th>
+
+
+
                     <th className="px-3 py-2 text-right font-semibold">ยกเลิก/ยก</th>
+
+
+
                     <th className="px-3 py-2 text-right font-semibold">คงเหลือ</th>
+
+
+
                   </tr>
+
+
+
                 </thead>
+
+
+
                 <tbody className="divide-y divide-gray-100">
+
+
+
                   {currentOrder.boxes.map((box, idx) => {
+
+
+
                     const collection = box.collectionAmount ?? box.codAmount ?? 0;
+
+
+
                     const paidRaw = box.collectedAmount ?? 0;
+
+
+
                     const waived = box.waivedAmount ?? 0;
+
+
+
                     const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
+
+
+
                     let paid = paidRaw;
+
+
+
                     if (!hasAnyCollected && (currentOrder.amountPaid ?? 0) > 0) {
+
+
+
                       const totalCollection = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
+
+
+
                       const weight = totalCollection > 0 ? collection / totalCollection : (1 / Math.max(1, currentOrder.boxes.length));
+
+
+
                       paid = Math.min(collection, (currentOrder.amountPaid ?? 0) * weight);
+
+
+
                     }
+
+
+
                     const remaining = Math.max(0, collection - paid - waived);
+
+
+
                     const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
+
+
                     return (
+
+
+
                       <tr key={box.boxNumber} className={rowBg}>
+
+
+
                         <td className="px-3 py-2 font-medium text-gray-800">
+
+
+
                           <div className="flex flex-col leading-tight">
+
+
+
                             <span>กล่อง {box.boxNumber}</span>
+
+
+
                             {box.trackingNumber ? (
+
+
+
                               <span className="text-[11px] text-gray-500">Tracking: {box.trackingNumber}</span>
+
+
+
                             ) : null}
+
+
+
                           </div>
+
+
+
                         </td>
+
+
+
                         <td className="px-3 py-2 text-right">
+
+
+
                           {showInputs ? (
+
+
+
                             <input
+
+
+
                               type="number"
+
+
+
                               min={0}
+
+
+
                               step="0.01"
+
+
+
                               value={collection}
+
+
+
                               onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectionAmount', Number(e.target.value))}
+
+
+
                               className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
                             />
+
+
+
                           ) : (
+
+
+
                             <span>฿{collection.toLocaleString()}</span>
+
+
+
                           )}
+
+
+
                         </td>
+
+
+
                         <td className="px-3 py-2 text-right">
+
+
+
                           {showInputs ? (
+
+
+
                             <input
+
+
+
                               type="number"
+
+
+
                               min={0}
+
+
+
                               step="0.01"
+
+
+
                               value={paid}
+
+
+
                               onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectedAmount', Number(e.target.value))}
+
+
+
                               className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
                             />
+
+
+
                           ) : (
+
+
+
                             <span>฿{paid.toLocaleString()}</span>
+
+
+
                           )}
+
+
+
                         </td>
+
+
+
                         <td className="px-3 py-2 text-right text-red-600">
+
+
+
                           {showInputs ? (
+
+
+
                             <input
+
+
+
                               type="number"
+
+
+
                               min={0}
+
+
+
                               step="0.01"
+
+
+
                               value={waived}
+
+
+
                               onChange={(e) => handleBoxFieldChange(box.boxNumber, 'waivedAmount', Number(e.target.value))}
+
+
+
                               className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
                             />
+
+
+
                           ) : (
+
+
+
                             <span>-฿{waived.toLocaleString()}</span>
+
+
+
                           )}
+
+
+
                         </td>
+
+
+
                         <td className="px-3 py-2 text-right font-semibold text-gray-900">฿{remaining.toLocaleString()}</td>
+
+
+
                       </tr>
+
+
+
                     );
+
+
+
                   })}
+
+
+
                 </tbody>
+
+
+
                 <tfoot className="bg-gray-50">
+
+
+
                   <tr>
+
+
+
                     <td className="px-3 py-2 text-sm font-semibold text-gray-800">รวม ({currentOrder.boxes.length} กล่อง)</td>
+
+
+
                     <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+
+
+
                       ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0).toLocaleString()}
+
+
+
                     </td>
+
+
+
                     <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+
+
+
                       ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0).toLocaleString()}
+
+
+
                     </td>
+
+
+
                     <td className="px-3 py-2 text-right text-sm font-semibold text-red-600">
+
+
+
                       -฿{currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0).toLocaleString()}
+
+
+
                     </td>
+
+
+
                     <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
+
+
+
                       ฿{currentOrder.boxes.reduce((sum, b) => {
+
+
+
                         const collection = b.collectionAmount ?? b.codAmount ?? 0;
+
+
+
                         const paid = b.collectedAmount ?? 0;
+
+
+
                         const waived = b.waivedAmount ?? 0;
+
+
+
                         return sum + Math.max(0, collection - paid - waived);
+
+
+
                       }, 0).toLocaleString()}
+
+
+
                     </td>
+
+
+
                   </tr>
+
+
+
                 </tfoot>
+
+
+
               </table>
+
+
+
             </div>
+
+
+
           </div>
+
+
+
         )}
 
+
+
+
+
+
+
         <InfoCard icon={Truck} title="การจัดส่ง">
+
+
+
           <div className="grid grid-cols-2 gap-4">
+
+
+
             <div>
+
+
+
               <label className="block text-xs font-medium text-gray-500 mb-1">สถานะออเดอร์</label>
+
+
+
               <select
+
+
+
                 value={currentOrder.orderStatus}
+
+
+
                 onChange={(e) => handleFieldChange('orderStatus', e.target.value as OrderStatus)}
+
+
+
                 className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+
+
+
               >
+
+
+
                 {Object.values(OrderStatus)
+
+
+
                   .filter(status => {
+
+
+
                     if (showInputs) {
+
+
+
                       // If modifiable, only allow keeping current status or cancelling
+
+
+
                       return status === currentOrder.orderStatus || status === OrderStatus.Cancelled;
+
+
+
                     }
+
+
+
                     return true;
+
+
+
                   })
+
+
+
                   .map(status => (
+
+
+
                     <option key={status} value={status}>{ORDER_STATUS_LABELS[status] ?? status}</option>
+
+
+
                   ))}
+
+
+
               </select>
+
+
+
             </div>
+
+
+
             <div>
+
+
+
               <label className="block text-xs font-medium text-gray-500 mb-1">เลข Tracking (คั่นด้วย ,)</label>
+
+
+
               <input
+
+
+
                 type="text"
+
+
+
                 value={currentOrder.trackingNumbers.join(', ')}
+
+
+
                 onChange={(e) => {
+
+
+
                   const parts = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
+
+
+
                   const deduped = Array.from(new Set(parts));
+
+
+
                   handleFieldChange('trackingNumbers', deduped);
+
+
+
                 }}
+
+
+
                 className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+
+
+
                 placeholder="TH123, TH456"
+
+
+
               />
+
+
+
             </div>
+
+
+
           </div>
+
+
+
         </InfoCard>
+
+
+
+
+
+
 
         <InfoCard icon={History} title="ประวัติออเดอร์">
+
+
+
           <div className="space-y-4 max-h-40 overflow-y-auto pr-2">
+
+
+
             {orderActivities.length > 0 ? orderActivities.map(activity => (
+
+
+
               <div key={activity.id} className="flex">
+
+
+
                 <div className="flex-shrink-0 w-8 text-center pt-0.5">
+
+
+
                   <ActivityIcon type={activity.type} />
+
+
+
                 </div>
+
+
+
                 <div className="ml-2">
+
+
+
                   <p className="text-xs text-gray-700">{activity.description}</p>
+
+
+
                   <p className="text-xs text-gray-400 mt-0.5">{activity.actorName} • {getRelativeTime(activity.timestamp)}</p>
+
+
+
                 </div>
+
+
+
               </div>
+
+
+
             )) : (
+
+
+
               <p className="text-xs text-gray-400 text-center py-4">ไม่มีประวัติการเปลี่ยนแปลง</p>
+
+
+
             )}
+
+
+
           </div>
+
+
+
         </InfoCard>
 
+
+
+
+
+
+
         <div className="flex justify-end space-x-3 pt-4 border-t">
+
+
+
           <button
+
+
+
             onClick={onClose}
+
+
+
             className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+
+
+
           >
+
+
+
             ยกเลิก
+
+
+
           </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
-          >
-            บันทึกการเปลี่ยนแปลง
-          </button>
+
+
+
+          {!isOrderCompleted && (
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
+            >
+              บันทึกการเปลี่ยนแปลง
+            </button>
+          )}
+
+
+
         </div>
+
+
+
       </div >
+
+
+
       {lightboxSlip && (
+
+
+
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+
+
+
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-4 md:p-6 relative">
+
+
+
             <div className="flex items-center justify-between mb-4">
+
+
+
               <h3 className="text-lg font-semibold text-gray-800">สลิปการชำระเงิน</h3>
+
+
+
               <button onClick={() => setLightboxSlip(null)} className="text-gray-500 hover:text-gray-700">
+
+
+
                 <X size={20} />
+
+
+
               </button>
+
+
+
             </div>
+
+
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+
+
               <div className="flex items-center justify-center bg-gray-50 rounded-md p-2 border">
+
+
+
                 <img src={lightboxSlip.url} alt="Slip" className="max-h-[70vh] object-contain rounded" />
+
+
+
               </div>
+
+
+
               <div className="space-y-2 text-sm text-gray-700">
+
+
+
                 <div className="flex items-center justify-between border-b pb-2">
+
+
+
                   <span className="text-gray-500">ผู้อัพโหลด</span>
+
+
+
                   <span className="font-medium">{resolveUploaderName(lightboxSlip.uploadedBy, lightboxSlip.uploadedByName) ?? 'ไม่ทราบ'}</span>
+
+
+
                 </div>
+
+
+
                 <div className="flex items-center justify-between border-b pb-2">
+
+
+
                   <span className="text-gray-500">เวลาอัพโหลด</span>
+
+
+
                   <span className="font-medium">
+
+
+
                     {lightboxSlip.createdAt
+
+
+
                       ? new Date(lightboxSlip.createdAt).toLocaleString('th-TH')
+
+
+
                       : '-'}
+
+
+
                   </span>
+
+
+
                 </div>
+
+
+
+                <div className="flex items-center justify-between border-b pb-2">
+
+
+
+                  <span className="text-gray-500">จำนวนเงิน</span>
+
+
+
+                  <span className="font-medium">
+
+
+
+                    {typeof lightboxSlip.amount === 'number'
+
+
+
+                      ? `฿${lightboxSlip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+
+
+                      : '-'}
+
+
+
+                  </span>
+
+
+
+                </div>
+
+
+
+                <div className="flex items-center justify-between border-b pb-2">
+
+
+
+                  <span className="text-gray-500">ธนาคาร</span>
+
+
+
+                  <span className="font-medium">{resolveBankName(lightboxSlip.bankAccountId) ?? '-'}</span>
+
+
+
+                </div>
+
+
+
+                <div className="flex items-center justify-between">
+
+
+
+                  <span className="text-gray-500">วัน-เวลา</span>
+
+
+
+                  <span className="font-medium">{formatSlipDateTime(lightboxSlip.transferDate) ?? '-'}</span>
+
+
+
+                </div>
+
+
+
               </div>
+
+
+
             </div>
+
+
+
             <div className="flex justify-end space-x-2 mt-4">
+
+
+
               <button
+
+
+
                 onClick={() => setLightboxSlip(null)}
+
+
+
                 className="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
+
+
+
               >
+
+
+
                 ปิด
+
+
+
               </button>
+
+
+
               <button
+
+
+
                 onClick={() => handleDeleteSlip(lightboxSlip.id, lightboxSlip.url)}
+
+
+
                 className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+
+
+
                 disabled={!lightboxSlip.id && !slipPreview}
+
+
+
               >
+
+
+
                 ลบ
+
+
+
               </button>
+
+
+
             </div>
+
+
+
           </div>
+
+
+
         </div>
+
+
+
       )}
+
+
+
     </Modal >
+
+
+
   );
+
+
+
 };
 
+
+
+
+
+
+
 export default OrderManagementModal;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -341,6 +341,10 @@ const SlipUpload: React.FC = () => {
     bank_account_id: "",
     transfer_date: "",
   });
+  const [slipEntry, setSlipEntry] = useState<SlipEntry>({
+    file: null,
+    preview: null,
+  });
   const [uploadingSlip, setUploadingSlip] = useState(false);
   const [slipItems, setSlipItems] = useState<SlipItem[]>([]);
   const [slipHistory, setSlipHistory] = useState<SlipHistory[]>([]);
@@ -504,7 +508,6 @@ const SlipUpload: React.FC = () => {
       }
       setSlipItems(prev => [...prev, ...newSlipItems]);
     }
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -565,7 +568,7 @@ const SlipUpload: React.FC = () => {
     try {
       const sessionUser = localStorage.getItem("sessionUser");
       if (!sessionUser) {
-        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        showMessage("error", "ไม่พบ session ผู้ใช้ กรุณาล็อกอินใหม่");
         setUploadingSlip(false);
         return;
       }
@@ -603,17 +606,18 @@ const SlipUpload: React.FC = () => {
         setShowSlipModal(false);
         setSlipFormData((prev) => ({
           ...prev,
+          amount: "",
           bank_account_id: "",
           transfer_date: "",
         }));
         setSlipItems([]);
         fetchOrders();
       } else {
-        showMessage("error", "ไม่สามารถบันทึกข้อมูลสลิปได้");
+        showMessage("error", "??????????????????????");
       }
     } catch (error) {
       console.error("Error submitting slip:", error);
-      showMessage("error", "เกิดข้อผิดพลาดในการบันทึกข้อมูลสลิป");
+      showMessage("error", "????????????????????????????");
     } finally {
       setUploadingSlip(false);
     }
