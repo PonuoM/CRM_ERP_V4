@@ -53,8 +53,33 @@ const SlipAll: React.FC = () => {
   const toAbsoluteApiUrl = (u: string | undefined | null) => {
     if (!u) return u as any;
     const s = String(u);
-    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("//")) return s;
-    return s.startsWith("/") ? s : "/" + s;
+    // Already absolute URL
+    if (
+      s.startsWith("http://") ||
+      s.startsWith("https://") ||
+      s.startsWith("//")
+    ) {
+      return s;
+    }
+
+    // Normalize base (e.g. '/mini_erp/api')
+    const base = apiBase.replace(/\/$/, "");
+
+    // If value starts with 'api/' or '/api/', ensure it is rooted under apiBase
+    if (s.startsWith("api/") || s.startsWith("/api/")) {
+      const trimmed = s.replace(/^\/?api/, ""); // remove leading 'api' or '/api'
+      const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+      return `${base}${path}`;
+    }
+
+    // If value points to uploads without explicit '/api', prefix with apiBase
+    if (s.startsWith("uploads/") || s.startsWith("/uploads/")) {
+      const path = s.startsWith("/") ? s : `/${s}`;
+      return `${base}${path}`;
+    }
+
+    // Fallback: treat as already rooted path relative to current origin
+    return s.startsWith("/") ? s : `/${s}`;
   };
   const [slips, setSlips] = useState<PaymentSlip[]>([]);
   const [orderGroups, setOrderGroups] = useState<OrderSlipGroup[]>([]);
