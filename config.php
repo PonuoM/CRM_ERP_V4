@@ -32,7 +32,11 @@ function db_connect(): PDO
       PDO::ATTR_TIMEOUT => 3,
     ];
     try {
-      return new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
+      // Force connection collation to match database (avoids 1267 mix errors)
+      $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+      $pdo->exec("SET CHARACTER SET utf8mb4");
+      return $pdo;
     } catch (Throwable $e) {
       $lastError = $e;
       // If it's a connection refused/2002 error, try next host; otherwise break

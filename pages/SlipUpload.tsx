@@ -61,6 +61,11 @@ interface SlipFormData {
   transfer_date: string;
 }
 
+interface SlipEntry {
+  file: File | null;
+  preview: string | null;
+}
+
 interface SlipHistory {
   id: number;
   order_id: string;
@@ -298,9 +303,11 @@ const SlipUpload: React.FC = () => {
     bank_account_id: "",
     transfer_date: "",
   });
+  const [slipEntry, setSlipEntry] = useState<SlipEntry>({
+    file: null,
+    preview: null,
+  });
   const [uploadingSlip, setUploadingSlip] = useState(false);
-  const [slipImages, setSlipImages] = useState<File[]>([]);
-  const [slipImagePreviews, setSlipImagePreviews] = useState<string[]>([]);
   const [slipHistory, setSlipHistory] = useState<SlipHistory[]>([]);
   const [loadingSlipHistory, setLoadingSlipHistory] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -365,9 +372,7 @@ const SlipUpload: React.FC = () => {
     if (bankAccounts.length === 0) {
       fetchBankAccounts();
     }
-    // Reset images
-    setSlipImages([]);
-    setSlipImagePreviews([]);
+    setSlipEntry({ file: null, preview: null });
   };
 
   const handleSlipFormChange = (field: keyof SlipFormData, value: string) => {
@@ -417,38 +422,20 @@ const SlipUpload: React.FC = () => {
   const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const newFiles = Array.from(files);
-
-      for (const file of newFiles) {
-        try {
-          // Process image (resize + convert to WebP)
-          const processedFile = await processImage(file);
-          const processedUrl = URL.createObjectURL(processedFile);
-
-          setSlipImages(prev => [...prev, processedFile]);
-          setSlipImagePreviews(prev => [...prev, processedUrl]);
-        } catch (error) {
-          console.error("Error processing image:", error);
-          showMessage("error", `ไม่สามารถประมวลผลรูปภาพ ${file.name} ได้`);
-          // Fallback to original
-          setSlipImages(prev => [...prev, file]);
-          setSlipImagePreviews(prev => [...prev, URL.createObjectURL(file)]);
-        }
+      const file = files[0];
+      try {
+        const processedFile = await processImage(file);
+        const processedUrl = URL.createObjectURL(processedFile);
+        setSlipEntry({ file: processedFile, preview: processedUrl });
+      } catch (error) {
+        console.error("Error processing image:", error);
+        showMessage("error", `ไม่สามารถประมวลผลไฟล์ ${file.name} ได้`);
+        setSlipEntry({ file, preview: URL.createObjectURL(file) });
       }
     }
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
-
-  const removeImage = (index: number) => {
-    setSlipImages(prev => prev.filter((_, i) => i !== index));
-    setSlipImagePreviews(prev => {
-      // Revoke URL to avoid memory leaks
-      URL.revokeObjectURL(prev[index]);
-      return prev.filter((_, i) => i !== index);
-    });
   };
 
   const uploadSlipImage = async (orderId: string, file: File): Promise<string | null> => {
@@ -474,9 +461,9 @@ const SlipUpload: React.FC = () => {
       !slipFormData.amount ||
       !slipFormData.bank_account_id ||
       !slipFormData.transfer_date ||
-      slipImages.length === 0
+      !slipEntry.file
     ) {
-      showMessage("error", "กรุณากรอกข้อมูลให้ครบถ้วน");
+      showMessage("error", "กรุณากรอกข้อมูลและแนบสลิปให้ครบ");
       return;
     }
 
@@ -484,7 +471,7 @@ const SlipUpload: React.FC = () => {
     try {
       const sessionUser = localStorage.getItem("sessionUser");
       if (!sessionUser) {
-        showMessage("error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
+        showMessage("error", "ไม่พบ session ผู้ใช้ กรุณาล็อกอินใหม่");
         setUploadingSlip(false);
         return;
       }
@@ -492,33 +479,12 @@ const SlipUpload: React.FC = () => {
       const user = JSON.parse(sessionUser);
       const companyId = user.company_id;
 
-      let successCount = 0;
-
-      // Upload and create slip for each image
-      for (let i = 0; i < slipImages.length; i++) {
-        const image = slipImages[i];
-        const slipUrl = await uploadSlipImage(slipFormData.order_id, image);
-
-        if (slipUrl) {
-          // Only the first slip gets the amount, others get 0 to avoid double counting
-          const amount = i === 0 ? parseInt(slipFormData.amount) : 0;
-
-          const insertResult = await createOrderSlipWithPayment({
-            orderId: slipFormData.order_id,
-            amount: amount,
-            bankAccountId: parseInt(slipFormData.bank_account_id),
-            transferDate: slipFormData.transfer_date,
-            url: slipUrl,
-            companyId: companyId,
-          });
-
-          if (insertResult.success) {
-            successCount++;
-          }
-        }
+      const slipUrl = await uploadSlipImage(slipFormData.order_id, slipEntry.file);
+      if (!slipUrl) {
+        setUploadingSlip(false);
+        return;
       }
 
-      // Insert the order slip record using API service
       const insertResult = await createOrderSlipWithPayment({
         orderId: slipFormData.order_id,
         amount: parseInt(slipFormData.amount),
@@ -527,31 +493,37 @@ const SlipUpload: React.FC = () => {
         url: slipUrl,
         companyId: companyId,
         uploadBy: user.id,
-        uploadByName: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.full_name || undefined,
+        uploadByName:
+          user.first_name && user.last_name
+            ? `${user.first_name} ${user.last_name}`
+            : user.full_name || undefined,
       });
 
       if (insertResult.success) {
-        showMessage("success", "บันทึกข้อมูลสลิปเรียบร้อยแล้ว");
-        // Close modal first
+        showMessage("success", "???????????????????????");
         setShowSlipModal(false);
         setSlipFormData((prev) => ({
           ...prev,
+          amount: "",
           bank_account_id: "",
           transfer_date: "",
         }));
-        setSlipImages([]);
-        setSlipImagePreviews([]);
+        if (slipEntry.preview) {
+          URL.revokeObjectURL(slipEntry.preview);
+        }
+        setSlipEntry({ file: null, preview: null });
         fetchOrders();
       } else {
-        showMessage("error", "ไม่สามารถบันทึกข้อมูลสลิปได้");
+        showMessage("error", "??????????????????????");
       }
     } catch (error) {
       console.error("Error submitting slip:", error);
-      showMessage("error", "เกิดข้อผิดพลาดในการบันทึกข้อมูลสลิป");
+      showMessage("error", "????????????????????????????");
     } finally {
       setUploadingSlip(false);
     }
   };
+
 
   const fetchOrders = async () => {
     setLoadingOrders(true);
@@ -1220,10 +1192,10 @@ const SlipUpload: React.FC = () => {
                 {/* Slip Image Upload */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    อัปโหลดรูปสลิปโอนเงิน *
-                    {slipImages.length === 0 && (
+                    ????????????? *
+                    {!slipEntry.file && (
                       <span className="text-red-500 text-xs ml-2">
-                        จำเป็นต้องเลือกรูปภาพ
+                        ????????????
                       </span>
                     )}
                   </label>
@@ -1234,7 +1206,6 @@ const SlipUpload: React.FC = () => {
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
-                        multiple
                         className="hidden"
                         onChange={handleFileChange}
                       />
@@ -1245,41 +1216,40 @@ const SlipUpload: React.FC = () => {
                         className="px-3 py-2 text-sm bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
                       >
                         <FileText className="w-4 h-4" />
-                        เลือกรูปภาพ (เลือกได้หลายรูป)
+                        ????????? (??????? 1 ???)
                       </button>
                       <span className="text-xs text-gray-500">
-                        เลือกแล้ว {slipImages.length} รูป
+                        {slipEntry.file ? "????????? 1 ???" : "???????????????"}
                       </span>
                     </div>
 
-                    {/* Image Previews Grid */}
-                    {slipImagePreviews.length > 0 && (
+                    {slipEntry.preview && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
-                        {slipImagePreviews.map((preview, index) => (
-                          <div key={index} className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
-                            <img
-                              src={preview}
-                              alt={`Slip preview ${index + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeImage(index)}
-                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
-                              title="ลบรูปภาพ"
-                            >
-                              <AlertCircle className="w-3 h-3" />
-                            </button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
-                              {slipImages[index]?.name}
-                            </div>
+                        <div className="relative group border rounded-lg overflow-hidden bg-gray-50 aspect-square">
+                          <img
+                            src={slipEntry.preview}
+                            alt="Slip preview"
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (slipEntry.preview) URL.revokeObjectURL(slipEntry.preview);
+                              setSlipEntry({ file: null, preview: null });
+                            }}
+                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:bg-red-600 transition-opacity"
+                            title="??"
+                          >
+                            <AlertCircle className="w-3 h-3" />
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-[10px] px-2 py-1 truncate">
+                            {slipEntry.file?.name}
                           </div>
-                        ))}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-
                 {/* Slip History Section */}
                 <div className="mt-6">
                   <h4 className="text-sm font-medium text-gray-900 mb-3">

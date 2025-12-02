@@ -2045,7 +2045,20 @@ const App: React.FC = () => {
           amountPaid: (updatedOrder as any).amountPaid ?? null,
           codAmount: (updatedOrder as any).codAmount ?? null,
           notes: updatedOrder.notes ?? null,
+          delivery_date: updatedOrder.deliveryDate ?? null,
+          total_amount: updatedOrder.totalAmount ?? null,
         };
+        if (updatedOrder.shippingAddress) {
+          payload.recipient_first_name =
+            updatedOrder.shippingAddress.recipientFirstName ?? "";
+          payload.recipient_last_name =
+            updatedOrder.shippingAddress.recipientLastName ?? "";
+          payload.street = updatedOrder.shippingAddress.street ?? "";
+          payload.subdistrict = updatedOrder.shippingAddress.subdistrict ?? "";
+          payload.district = updatedOrder.shippingAddress.district ?? "";
+          payload.province = updatedOrder.shippingAddress.province ?? "";
+          payload.postal_code = updatedOrder.shippingAddress.postalCode ?? "";
+        }
         if (updatedOrder.boxes && updatedOrder.boxes.length > 0) {
           payload.boxes = updatedOrder.boxes.map((b) => ({
             boxNumber: b.boxNumber,
@@ -2384,9 +2397,28 @@ const App: React.FC = () => {
       transferDate,
     } = payload;
     const slipUploadsArray = Array.isArray(slipUploads)
-      ? slipUploads.filter(
-        (content) => typeof content === "string" && content.trim() !== "",
-      )
+      ? slipUploads
+        .map((entry: any) => {
+          if (typeof entry === "string") {
+            return {
+              dataUrl: entry,
+              bankAccountId: undefined,
+              transferDate: undefined,
+              amount: undefined,
+            };
+          }
+          return {
+            dataUrl: entry?.dataUrl,
+            bankAccountId: entry?.bankAccountId,
+            transferDate: entry?.transferDate,
+            amount: entry?.amount,
+          };
+        })
+        .filter(
+          (content) =>
+            typeof content.dataUrl === "string" &&
+            content.dataUrl.trim() !== "",
+        )
       : [];
     let uploadedSlips: OrderSlip[] = [];
     let customerIdForOrder = newOrderData.customerId;
@@ -2601,7 +2633,7 @@ const App: React.FC = () => {
 
       // If single slip and no multi-slip support in API yet, use slipUrl for the first one
       if (slipUploadsArray.length === 1) {
-        (orderPayload as any).slipUrl = slipUploadsArray[0];
+        (orderPayload as any).slipUrl = slipUploadsArray[0].dataUrl;
       }
 
       const res = await apiCreateOrder(orderPayload);
@@ -2613,9 +2645,13 @@ const App: React.FC = () => {
         if (slipUploadsArray.length > 0) {
           for (const slipContent of slipUploadsArray) {
             try {
-              await createOrderSlip(createdOrderId, slipContent, {
-                bankAccountId,
-                transferDate,
+              await createOrderSlip(createdOrderId, slipContent.dataUrl, {
+                bankAccountId:
+                  slipContent.bankAccountId !== undefined
+                    ? slipContent.bankAccountId
+                    : bankAccountId,
+                transferDate: slipContent.transferDate ?? transferDate,
+                amount: slipContent.amount,
                 uploadedBy: currentUser.id,
                 uploadedByName: `${currentUser.firstName} ${currentUser.lastName}`,
               });

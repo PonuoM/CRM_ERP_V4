@@ -1595,7 +1595,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                     
                     // Fetch slips from main orders and sub orders
-                    $slipSql = "SELECT id, order_id, url, created_at 
+                    $slipSql = "SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name 
                                 FROM order_slips 
                                 WHERE order_id IN ($placeholders)
                                 ORDER BY created_at DESC";
@@ -1711,6 +1711,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     return;
                 }
                 
+
                 // Check if bank_account_id and transfer_date columns exist
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
@@ -1905,8 +1906,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         json_response(['error' => 'DUPLICATE_ORDER', 'message' => 'Order ID already exists: ' . $mainOrderId], 400);
                         return;
                     }
-                    throw $e;
-                }
+                        }
 
                 // Insert order_boxes for per-box COD/collection tracking
                 $boxIns = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,?)');
@@ -2139,6 +2139,15 @@ function handle_orders(PDO $pdo, ?string $id): void {
             $notes         = array_key_exists('notes', $in) ? $in['notes'] : null; if ($notes === '') $notes = null;
             $salesChannel  = array_key_exists('salesChannel', $in) ? $in['salesChannel'] : null; if ($salesChannel === '') $salesChannel = null;
             $shippingProvider = array_key_exists('shippingProvider', $in) ? trim((string)$in['shippingProvider']) : (array_key_exists('shipping_provider', $in) ? trim((string)$in['shipping_provider']) : null); if ($shippingProvider === '') $shippingProvider = null;
+            $totalAmount  = array_key_exists('total_amount', $in) ? $in['total_amount'] : (array_key_exists('totalAmount', $in) ? $in['totalAmount'] : null); if ($totalAmount === '') $totalAmount = null;
+            $deliveryDate  = array_key_exists('deliveryDate', $in) ? $in['deliveryDate'] : (array_key_exists('delivery_date', $in) ? $in['delivery_date'] : null); if ($deliveryDate === '') $deliveryDate = null;
+            $street        = array_key_exists('street', $in) ? $in['street'] : null; if ($street === '') $street = null;
+            $subdistrict   = array_key_exists('subdistrict', $in) ? $in['subdistrict'] : (array_key_exists('sub_district', $in) ? $in['sub_district'] : null); if ($subdistrict === '') $subdistrict = null;
+            $district      = array_key_exists('district', $in) ? $in['district'] : null; if ($district === '') $district = null;
+            $province      = array_key_exists('province', $in) ? $in['province'] : null; if ($province === '') $province = null;
+            $postalCode    = array_key_exists('postal_code', $in) ? $in['postal_code'] : (array_key_exists('postalCode', $in) ? $in['postalCode'] : null); if ($postalCode === '') $postalCode = null;
+            $recipientFirstName = array_key_exists('recipient_first_name', $in) ? $in['recipient_first_name'] : (array_key_exists('recipientFirstName', $in) ? $in['recipientFirstName'] : null); if ($recipientFirstName === '') $recipientFirstName = null;
+            $recipientLastName  = array_key_exists('recipient_last_name', $in) ? $in['recipient_last_name'] : (array_key_exists('recipientLastName', $in) ? $in['recipientLastName'] : null); if ($recipientLastName === '') $recipientLastName = null;
 
             $slipUrl = array_key_exists('slipUrl', $in) ? $in['slipUrl'] : null; if ($slipUrl === '') $slipUrl = null;
             // If slipUrl is a data URL image, persist to file and store path
@@ -2182,8 +2191,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
 
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel)';
-                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel];
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount)';
+                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount];
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
                     $params[] = $shippingProvider;
@@ -2948,10 +2957,17 @@ function ensure_order_slips_table(PDO $pdo): void {
     
     if (!in_array('amount', $columns)) {
         try {
-            $pdo->exec('ALTER TABLE order_slips ADD COLUMN amount INT NULL AFTER order_id');
+            $pdo->exec('ALTER TABLE order_slips ADD COLUMN amount DECIMAL(12,2) NULL AFTER order_id');
             $columns[] = 'amount';
         } catch (Exception $e) {
             // Column may already exist, ignore
+        }
+    } else {
+        // Ensure amount can store decimals for partial payments
+        try {
+            $pdo->exec('ALTER TABLE order_slips MODIFY amount DECIMAL(12,2) NULL');
+        } catch (Exception $e) {
+            // ignore if cannot alter (permission or already correct)
         }
     }
     if (!in_array('bank_account_id', $columns)) {
@@ -3032,21 +3048,73 @@ function ensure_cod_schema(PDO $pdo): void {
                 document_number VARCHAR(64) NOT NULL,
                 document_datetime DATETIME NOT NULL,
                 bank_account_id INT NULL,
+                matched_statement_log_id INT NULL,
                 company_id INT NOT NULL,
                 total_input_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
                 total_order_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
                 notes TEXT NULL,
                 created_by INT NULL,
+                verified_by INT NULL,
+                verified_at DATETIME NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_cod_document_company_number (company_id, document_number),
                 KEY idx_cod_documents_company (company_id),
                 KEY idx_cod_documents_datetime (document_datetime),
+                KEY idx_cod_documents_status (status),
+                KEY idx_cod_documents_statement (matched_statement_log_id),
                 CONSTRAINT fk_cod_documents_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
                 CONSTRAINT fk_cod_documents_bank FOREIGN KEY (bank_account_id) REFERENCES bank_account(id) ON DELETE SET NULL,
-                CONSTRAINT fk_cod_documents_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+                CONSTRAINT fk_cod_documents_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+                CONSTRAINT fk_cod_documents_statement FOREIGN KEY (matched_statement_log_id) REFERENCES statement_logs(id) ON DELETE SET NULL,
+                CONSTRAINT fk_cod_documents_verified_by FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // Ensure additional COD document columns exist for verification
+    $docColumns = [];
+    try {
+        $docColumnRows = $pdo->query("SELECT column_name, column_type, data_type FROM information_schema.columns 
+                                      WHERE table_schema = '$dbName' AND table_name = 'cod_documents'")
+            ->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($docColumnRows as $col) {
+            $docColumns[strtolower($col['column_name'])] = $col;
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    if (!isset($docColumns['matched_statement_log_id'])) {
+        try { $pdo->exec("ALTER TABLE cod_documents ADD COLUMN matched_statement_log_id INT NULL AFTER bank_account_id"); } catch (Throwable $e) { /* ignore */ }
+    }
+    if (!isset($docColumns['status'])) {
+        try { $pdo->exec("ALTER TABLE cod_documents ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'pending' AFTER total_order_amount"); } catch (Throwable $e) { /* ignore */ }
+    }
+    if (!isset($docColumns['verified_by'])) {
+        try { $pdo->exec("ALTER TABLE cod_documents ADD COLUMN verified_by INT NULL AFTER created_by"); } catch (Throwable $e) { /* ignore */ }
+    }
+    if (!isset($docColumns['verified_at'])) {
+        try { $pdo->exec("ALTER TABLE cod_documents ADD COLUMN verified_at DATETIME NULL AFTER verified_by"); } catch (Throwable $e) { /* ignore */ }
+    }
+    try {
+        $idx = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics 
+                            WHERE table_schema = '$dbName' AND table_name = 'cod_documents' AND index_name = 'idx_cod_documents_status'")->fetchColumn();
+        if ((int)$idx === 0) {
+            $pdo->exec("ALTER TABLE cod_documents ADD INDEX idx_cod_documents_status (status)");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+    try {
+        $idx = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics 
+                            WHERE table_schema = '$dbName' AND table_name = 'cod_documents' AND index_name = 'idx_cod_documents_statement'")->fetchColumn();
+        if ((int)$idx === 0) {
+            $pdo->exec("ALTER TABLE cod_documents ADD INDEX idx_cod_documents_statement (matched_statement_log_id)");
+        }
+    } catch (Throwable $e) { /* ignore */ }
+    try {
+        $pdo->exec("ALTER TABLE cod_documents ADD CONSTRAINT fk_cod_documents_statement FOREIGN KEY (matched_statement_log_id) REFERENCES statement_logs(id) ON DELETE SET NULL");
+    } catch (Throwable $e) { /* ignore */ }
+    try {
+        $pdo->exec("ALTER TABLE cod_documents ADD CONSTRAINT fk_cod_documents_verified_by FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL");
     } catch (Throwable $e) { /* ignore */ }
 
     // 2) Ensure cod_records columns exist
@@ -3117,7 +3185,7 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
         case 'GET':
             $orderId = $_GET['orderId'] ?? null;
             if (!$orderId) { json_response(['error' => 'ORDER_ID_REQUIRED'], 400); }
-            $st = $pdo->prepare('SELECT id, url, created_at, upload_by, upload_by_name FROM order_slips WHERE order_id=? ORDER BY id DESC');
+            $st = $pdo->prepare('SELECT id, url, created_at, upload_by, upload_by_name, amount, bank_account_id, transfer_date FROM order_slips WHERE order_id=? ORDER BY id DESC');
             $st->execute([$orderId]);
             json_response($st->fetchAll());
             break;
@@ -3127,7 +3195,7 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
             $content = $in['contentBase64'] ?? '';
             $bankAccountId = isset($in['bankAccountId']) ? (int)$in['bankAccountId'] : null;
             $transferDate = $in['transferDate'] ?? null;
-            $amount = isset($in['amount']) ? (int)$in['amount'] : null;
+            $amount = isset($in['amount']) && $in['amount'] !== '' ? (float)$in['amount'] : null;
             $uploadedBy = $in['uploadedBy'] ?? $in['uploadBy'] ?? $in['upload_by'] ?? null;
             $uploadedByName = $in['uploadedByName'] ?? $in['uploadByName'] ?? $in['upload_by_name'] ?? null;
             
@@ -3212,7 +3280,55 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
                 'url' => $url,
                 'uploaded_by' => $uploadedBy,
                 'uploaded_by_name' => $uploadedByName,
+                'amount' => $amount,
+                'bank_account_id' => $bankAccountId,
+                'transfer_date' => $transferDate,
+                'created_at' => date('Y-m-d H:i:s'),
             ]);
+            break;
+        case 'PATCH':
+            if (!$id) { json_response(['error' => 'ID_REQUIRED'], 400); }
+            $in = json_input();
+            
+            // Check if slip exists
+            $checkStmt = $pdo->prepare('SELECT id FROM order_slips WHERE id=?');
+            $checkStmt->execute([$id]);
+            if (!$checkStmt->fetch()) {
+                json_response(['error' => 'NOT_FOUND'], 404);
+            }
+            
+            // Build UPDATE query dynamically based on provided fields
+            $set = [];
+            $params = [];
+            
+            // Check which columns exist in the table
+            $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
+            $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                            WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'order_slips'")->fetchAll(PDO::FETCH_COLUMN);
+            
+            if (isset($in['amount']) && in_array('amount', $existingColumns)) {
+                $set[] = 'amount = ?';
+                $params[] = $in['amount'] !== null && $in['amount'] !== '' ? (float)$in['amount'] : null;
+            }
+            if (isset($in['bankAccountId']) && in_array('bank_account_id', $existingColumns)) {
+                $set[] = 'bank_account_id = ?';
+                $params[] = $in['bankAccountId'] !== null && $in['bankAccountId'] !== '' ? (int)$in['bankAccountId'] : null;
+            }
+            if (isset($in['transferDate']) && in_array('transfer_date', $existingColumns)) {
+                $set[] = 'transfer_date = ?';
+                $params[] = $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
+            }
+            
+            if (empty($set)) {
+                json_response(['ok' => true]); // Nothing to update
+            }
+            
+            $params[] = $id; // Add ID for WHERE clause
+            $sql = 'UPDATE order_slips SET ' . implode(', ', $set) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            
+            json_response(['ok' => true]);
             break;
         case 'DELETE':
             if (!$id) { json_response(['error' => 'ID_REQUIRED'], 400); }
@@ -3527,7 +3643,7 @@ function get_order(PDO $pdo, string $id): ?array {
     
     // Include slips from main order and all sub orders
     try {
-        $sl = $pdo->prepare("SELECT id, order_id, url, created_at FROM order_slips WHERE order_id IN ($placeholders) ORDER BY id DESC");
+        $sl = $pdo->prepare("SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name FROM order_slips WHERE order_id IN ($placeholders) ORDER BY id DESC");
         $sl->execute($allOrderIds);
         $o['slips'] = $sl->fetchAll();
     } catch (Throwable $e) { /* ignore if table not present */ }
@@ -3758,6 +3874,84 @@ function handle_cod_documents(PDO $pdo, ?string $id): void {
                 }
                 json_response(['error' => 'CREATE_FAILED', 'message' => $e->getMessage()], $code);
             }
+            break;
+        case 'PATCH':
+            if (!$id) {
+                json_response(['error' => 'ID_REQUIRED'], 400);
+            }
+            $in = json_input();
+            $docStmt = $pdo->prepare('SELECT * FROM cod_documents WHERE id = ?');
+            $docStmt->execute([$id]);
+            $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$doc) {
+                json_response(['error' => 'NOT_FOUND'], 404);
+            }
+
+            $updates = [];
+            $params = [];
+            $statementProvided = false;
+            $statementId = $in['matched_statement_log_id'] ?? $in['statement_log_id'] ?? $in['statementLogId'] ?? null;
+            if ($statementId !== null) {
+                $statementProvided = true;
+                if ($statementId !== '') {
+                    $statementId = (int)$statementId;
+                    $stmtInfo = $pdo->prepare("
+                        SELECT sl.id, sb.company_id
+                        FROM statement_logs sl
+                        INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
+                        WHERE sl.id = ?
+                    ");
+                    $stmtInfo->execute([$statementId]);
+                    $stmtRow = $stmtInfo->fetch(PDO::FETCH_ASSOC);
+                    if (!$stmtRow) {
+                        json_response(['error' => 'STATEMENT_NOT_FOUND'], 404);
+                    }
+                    if ((int)$stmtRow['company_id'] !== (int)$doc['company_id']) {
+                        json_response(['error' => 'STATEMENT_COMPANY_MISMATCH'], 400);
+                    }
+                } else {
+                    $statementId = null;
+                }
+                $updates[] = 'matched_statement_log_id = ?';
+                $params[] = $statementId;
+            }
+
+            $statusProvided = array_key_exists('status', $in);
+            if ($statusProvided) {
+                $updates[] = 'status = ?';
+                $params[] = (string)$in['status'];
+            } elseif ($statementProvided) {
+                $updates[] = 'status = ?';
+                $params[] = $statementId ? 'verified' : 'pending';
+            }
+
+            if (array_key_exists('verified_by', $in) || array_key_exists('verifiedBy', $in) || array_key_exists('user_id', $in)) {
+                $verifier = $in['verified_by'] ?? $in['verifiedBy'] ?? $in['user_id'] ?? null;
+                $updates[] = 'verified_by = ?';
+                $params[] = $verifier ? (int)$verifier : null;
+            }
+
+            $verifiedAtProvided = array_key_exists('verified_at', $in) || array_key_exists('verifiedAt', $in);
+            if ($verifiedAtProvided) {
+                $raw = $in['verified_at'] ?? $in['verifiedAt'];
+                $verifiedAt = $raw ? date('Y-m-d H:i:s', strtotime((string)$raw)) : null;
+                $updates[] = 'verified_at = ?';
+                $params[] = $verifiedAt;
+            } elseif ($statementProvided && $statementId) {
+                $updates[] = 'verified_at = ?';
+                $params[] = date('Y-m-d H:i:s');
+            }
+
+            if (empty($updates)) {
+                json_response(['ok' => true]);
+            }
+
+            $updates[] = 'updated_at = NOW()';
+            $params[] = $id;
+            $sql = 'UPDATE cod_documents SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            json_response(['ok' => true]);
             break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -5595,6 +5789,47 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 $creatorId = $in['creatorId'] ?? null;
                 $items = $in['items'] ?? [];
                 
+                $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // For each order, fetch items with creator_id
+                foreach ($orders as &$order) {
+                    $orderId = $order['id'];
+                    $itemStmt = $pdo->prepare("
+                        SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity,
+                               oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number,
+                               oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                               oi.creator_id, oi.parent_order_id,
+                               p.sku as product_sku
+                        FROM order_items oi
+                        LEFT JOIN products p ON oi.product_id = p.id
+                        WHERE oi.parent_order_id = ?
+                        ORDER BY oi.id
+                    ");
+                    $itemStmt->execute([$orderId]);
+                    $order['items'] = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($order['items'] as &$orderItem) {
+                        if (!isset($orderItem['net_total']) || $orderItem['net_total'] === null) {
+                            $orderItem['net_total'] = calculate_order_item_net_total($orderItem);
+                        }
+                    }
+                    unset($orderItem);
+                }
+                
+                json_response($orders);
+            } else {
+                json_response(['error' => 'INVALID_ENDPOINT'], 404);
+            }
+            break;
+            
+        case 'POST':
+            if ($id === 'items') {
+                // Add new items to existing order (upsell)
+                $in = json_input();
+                
+                $orderId = $in['orderId'] ?? null;
+                $creatorId = $in['creatorId'] ?? null;
+                $items = $in['items'] ?? [];
+                
                 if (!$orderId || !$creatorId || empty($items)) {
                     json_response(['error' => 'MISSING_REQUIRED_FIELDS', 'message' => 'orderId, creatorId, and items are required'], 400);
                     return;
@@ -5602,7 +5837,7 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 
                 // Validate order exists and is eligible for upsell
                 $orderCheck = $pdo->prepare("
-                    SELECT id, customer_id, order_status, order_date, creator_id
+                    SELECT id, customer_id, order_status, order_date, creator_id, total_amount, payment_method, cod_amount
                     FROM orders
                     WHERE id = ?
                 ");
@@ -5655,7 +5890,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 $pdo->beginTransaction();
                 try {
                     $insertedItems = [];
-                    $newTotalAmount = (float)$order['total_amount'];
+                    // Initialize with existing total amount
+                    $newTotalAmount = isset($order['total_amount']) ? (float)$order['total_amount'] : 0.0;
                     
                     // Get max box_number for this order
                     $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
@@ -5740,8 +5976,18 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     }
                     
                     // Update order total_amount
-                    $updateOrderStmt = $pdo->prepare("UPDATE orders SET total_amount = ? WHERE id = ?");
-                    $updateOrderStmt->execute([$newTotalAmount, $orderId]);
+                    $updateFields = ["total_amount = ?"];
+                    $updateParams = [$newTotalAmount];
+
+                    // If payment method is COD, also update cod_amount
+                    if (($order['payment_method'] ?? '') === 'COD') {
+                        $updateFields[] = "cod_amount = ?";
+                        $updateParams[] = $newTotalAmount;
+                    }
+                    
+                    $updateParams[] = $orderId;
+                    $updateOrderStmt = $pdo->prepare("UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?");
+                    $updateOrderStmt->execute($updateParams);
                     
                     // Create activity log for successful upsell
                     $activityStmt = $pdo->prepare('INSERT INTO activities (customer_id, timestamp, type, description, actor_name) VALUES (?, NOW(), ?, ?, ?)');

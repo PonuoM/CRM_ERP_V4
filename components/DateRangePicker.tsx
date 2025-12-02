@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar } from 'lucide-react';
+import { toLocalDatetimeString, fromLocalDatetimeString, formatThaiDateTime } from '../utils/datetime';
 
 export interface DateRange {
   start: string; // ISO
@@ -11,17 +12,10 @@ interface DateRangePickerProps {
   onApply: (range: DateRange) => void;
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const toLocalInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-const fmtDisplay = (iso: string) => {
-  const d = new Date(iso);
-  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
-
 const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => {
   const [open, setOpen] = useState(false);
-  const [start, setStart] = useState<string>(toLocalInput(new Date(value.start)));
-  const [end, setEnd] = useState<string>(toLocalInput(new Date(value.end)));
+  const [start, setStart] = useState<string>(toLocalDatetimeString(value.start));
+  const [end, setEnd] = useState<string>(toLocalDatetimeString(value.end));
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,20 +25,23 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
   }, [open]);
 
   useEffect(() => {
-    setStart(toLocalInput(new Date(value.start)));
-    setEnd(toLocalInput(new Date(value.end)));
+    setStart(toLocalDatetimeString(value.start));
+    setEnd(toLocalDatetimeString(value.end));
   }, [value.start, value.end]);
 
-  const display = useMemo(() => `${fmtDisplay(value.start)}  —  ${fmtDisplay(value.end)}`, [value]);
+  const display = useMemo(() => `${formatThaiDateTime(value.start)}  —  ${formatThaiDateTime(value.end)}`, [value]);
 
   const applyPreset = (days: number) => {
-    const e = new Date();
-    e.setSeconds(59, 0);
-    const s = new Date(e);
-    s.setDate(s.getDate() - (days - 1));
-    s.setHours(0,0,0,0);
-    setStart(toLocalInput(s));
-    setEnd(toLocalInput(e));
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    startDate.setHours(0, 0, 0, 0);
+
+    setStart(toLocalDatetimeString(startDate.toISOString()));
+    setEnd(toLocalDatetimeString(endDate.toISOString()));
   };
 
   return (
@@ -77,9 +74,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
           <div className="flex justify-end mt-3">
             <button
               onClick={() => {
-                const s = new Date(start);
-                const e = new Date(end);
-                onApply({ start: s.toISOString(), end: e.toISOString() });
+                // Convert local datetime-local values to ISO strings while preserving local time
+                const startISO = fromLocalDatetimeString(start);
+                const endISO = fromLocalDatetimeString(end);
+                onApply({ start: startISO, end: endISO });
                 setOpen(false);
               }}
               className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"

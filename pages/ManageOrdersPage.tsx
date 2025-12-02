@@ -304,6 +304,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const tomorrow = new Date(today);
           tomorrow.setDate(today.getDate() + 1);
           return deliveryDate.getTime() === tomorrow.getTime();
+        case 'missed':
+          return deliveryDate < today;
         case 'next7days':
           const sevenDaysLater = new Date(today);
           sevenDaysLater.setDate(today.getDate() + 7);
@@ -345,6 +347,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const tomorrow = new Date(today);
           tomorrow.setDate(today.getDate() + 1);
           return deliveryDate.getTime() === tomorrow.getTime();
+        case 'missed':
+          return deliveryDate < today;
         case 'next7days':
           const sevenDaysLater = new Date(today);
           sevenDaysLater.setDate(today.getDate() + 7);
@@ -1175,10 +1179,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   const datePresets = [
     { label: 'วันนี้', value: 'today' },
-    { label: 'พรุ่งนี้', value: 'tomorrow', hasSpacing: true }, // เพิ่ม flag สำหรับเว้นระยะห่าง
+    { label: 'พรุ่งนี้', value: 'tomorrow', spacerAfter: 'w-8' }, // เพิ่ม flag สำหรับเว้นระยะห่าง
     { label: 'ล่วงหน้า 7 วัน', value: 'next7days' },
     { label: 'ล่วงหน้า 30 วัน', value: 'next30days' },
-    { label: 'ทั้งหมด', value: 'all' },
+    { label: 'ทั้งหมด', value: 'all', spacerAfter: 'w-10' },
+    { label: 'ตกหล่น', value: 'missed' },
   ];
 
   const handleBulkShippingChange = async (provider: string) => {
@@ -1222,30 +1227,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             >
               <Send size={16} className="mr-2" />
               {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : 'ส่งออกข้อมูล'}
-            </button>
-          </div>
-        )}
-        {activeTab === 'pending' && (
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => {
-                if (selectedIds.length === 0) return;
-                if (window.confirm(`คุณต้องการยกเลิกออเดอร์ ${selectedIds.length} รายการใช่หรือไม่?`)) {
-                  onCancelOrders(selectedIds);
-                }
-              }}
-              disabled={selectedIds.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ยกเลิกออเดอร์ ({selectedIds.length})
-            </button>
-            <button
-              onClick={handleMoveToAwaitingExport}
-              disabled={selectedIds.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ListChecks size={16} className="mr-2" />
-              ย้ายไปยังรอดึงข้อมูล ({selectedIds.length})
             </button>
           </div>
         )}
@@ -1456,7 +1437,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                   activeValue={activeDatePreset}
                   onClick={handleDatePresetClick}
                 />
-                {preset.hasSpacing && <div className="w-8" />}
+                {preset.spacerAfter && <div className={preset.spacerAfter} />}
               </React.Fragment>
             ))}
             <div className="flex items-center gap-2 ml-auto">
@@ -1495,6 +1476,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           shippingSavingIds={Array.from(shippingSavingIds)}
           onShippingChange={handleShippingProviderChange}
           highlightedOrderId={highlightedOrderId}
+          allOrders={orders}
         />
 
         {/* Pagination Controls */}
