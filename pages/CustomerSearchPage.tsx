@@ -68,7 +68,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     if (!selectedCustomer) return null;
 
     const customerOrders = orders
-      .filter((o) => o.customerId === selectedCustomer.id)
+      .filter((o) => String(o.customerId) === String(selectedCustomer.id) || String(o.customerId) === String(selectedCustomer.pk))
       .sort(
         (a, b) =>
           new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime(),
@@ -306,6 +306,8 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                       <th className="px-6 py-3 font-medium text-right">ราคา</th>
                       <th className="px-6 py-3 font-medium">พนักงานขาย</th>
                       <th className="px-6 py-3 font-medium">แผนก</th>
+                      <th className="px-6 py-3 font-medium">ช่องทางการขาย</th>
+                      <th className="px-6 py-3 font-medium">สถานะออเดอร์</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -348,13 +350,19 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                           <td className="px-6 py-4 text-gray-800">
                             {creator?.role || "N/A"}
                           </td>
+                          <td className="px-6 py-4 text-gray-800">
+                            {order.salesChannel || "-"}
+                          </td>
+                          <td className="px-6 py-4 text-gray-800">
+                            {order.orderStatus || "-"}
+                          </td>
                         </tr>
                       ));
                     })}
                     {customerDetails.orders.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={8}
                           className="text-center p-8 text-gray-500"
                         >
                           ไม่มีประวัติการสั่งซื้อ

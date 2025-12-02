@@ -669,7 +669,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
     currentUser?.role === UserRole.SuperAdmin;
-  
+
   // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
   const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
 
@@ -2894,10 +2894,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
     try {
       for (const slip of checkedSlips) {
         if (slip.id && (slip.amount || slip.bankAccountId || slip.transferDate)) {
-          await updateOrderSlip(slip.id, {
+          await updateOrderSlip({
+            id: slip.id,
             amount: slip.amount ? Number(slip.amount) : undefined,
             bankAccountId: slip.bankAccountId ? Number(slip.bankAccountId) : undefined,
             transferDate: slip.transferDate ? fromLocalDatetimeString(slip.transferDate) : undefined,
+            url: slip.url,
+            companyId: currentOrder.companyId || 1,
+            updatedBy: currentUser?.id,
           });
         }
       }

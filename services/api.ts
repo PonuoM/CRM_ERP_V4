@@ -640,20 +640,6 @@ export async function deleteOrderSlip(id: number) {
   });
 }
 
-export async function updateOrderSlip(
-  id: number,
-  payload: {
-    amount?: number;
-    bankAccountId?: number;
-    transferDate?: string;
-  }
-) {
-  return apiFetch(`order_slips/${encodeURIComponent(String(id))}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
-}
-
 // Upload slip image using FormData (for file upload)
 export async function uploadSlipImageFile(orderId: string, file: File): Promise<{ success: boolean; url?: string; message?: string }> {
   const form = new FormData();
