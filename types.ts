@@ -466,6 +466,9 @@ export interface Page {
   url?: string;
   companyId: number;
   active: boolean;
+  // Optional page type from pages.page_type (e.g., business, personal)
+  page_type?: string;
+  pageType?: string;
 }
 
 export interface AdSpend {
