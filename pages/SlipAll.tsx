@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Image,
   RefreshCw,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 
 interface PaymentSlip {
@@ -31,6 +33,18 @@ interface PaymentSlip {
   transferDate?: string;
   fileExists?: boolean;
   originalUrl?: string;
+  paymentMethod?: string;
+}
+
+interface OrderSlipGroup {
+  orderId: string;
+  customerName?: string;
+  amount?: number;
+  orderTotal?: number;
+  slips: PaymentSlip[];
+  latestUpload: string;
+  status: "pending" | "verified" | "rejected";
+  paymentMethod?: string;
 }
 
 const SlipAll: React.FC = () => {
@@ -41,6 +55,7 @@ const SlipAll: React.FC = () => {
     return s.startsWith("/") ? s : "/" + s;
   };
   const [slips, setSlips] = useState<PaymentSlip[]>([]);
+  const [orderGroups, setOrderGroups] = useState<OrderSlipGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -49,9 +64,12 @@ const SlipAll: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<
     "all" | "today" | "week" | "month"
   >("all");
-  const [selectedSlip, setSelectedSlip] = useState<PaymentSlip | null>(null);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<OrderSlipGroup | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const loadSlips = useCallback(async () => {
     setLoading(true);
@@ -96,56 +114,122 @@ const SlipAll: React.FC = () => {
 
       const normalized: PaymentSlip[] = Array.isArray(data.data)
         ? data.data.map((item: any) => {
-            const apiUrl =
-              typeof item.url === "string" && item.url.length > 0
-                ? item.url
-                : undefined;
-            const fallbackName = item.file_name
-              ? String(item.file_name)
-              : apiUrl
-                ? apiUrl.split("/").pop() || `slip_${item.id}`
-                : `slip_${item.id}`;
-            const statusValue =
-              item.status === "verified" || item.status === "rejected"
-                ? item.status
-                : "pending";
-            const fileExists = Boolean(
-              item.file_exists ?? item.fileExists ?? apiUrl,
-            );
-            return {
-              id: String(item.id),
-              name: fallbackName,
-              url: fileExists ? apiUrl : undefined,
-              uploadedAt:
-                item.uploaded_at || item.created_at || new Date().toISOString(),
-              status: statusValue,
-              uploadedBy: item.uploaded_by || undefined,
-              customerName: item.customer_name || undefined,
-              customerPhone: item.customer_phone || undefined,
-              amount:
-                typeof item.amount === "number"
-                  ? item.amount
-                  : item.amount
-                    ? Number(item.amount)
-                    : undefined,
-              orderTotal:
-                typeof item.order_total === "number"
-                  ? item.order_total
-                  : item.order_total
-                    ? Number(item.order_total)
-                    : undefined,
-              notes: item.notes || undefined,
-              orderId: item.order_id ? String(item.order_id) : undefined,
-              bankName: item.bank_name || undefined,
-              bankNumber: item.bank_number || undefined,
-              transferDate: item.transfer_date || undefined,
-              fileExists,
-              originalUrl: item.original_url || apiUrl,
-            };
-          })
+          const apiUrl =
+            typeof item.url === "string" && item.url.length > 0
+              ? item.url
+              : undefined;
+          const fallbackName = item.file_name
+            ? String(item.file_name)
+            : apiUrl
+              ? apiUrl.split("/").pop() || `slip_${item.id}`
+              : `slip_${item.id}`;
+          const statusValue =
+            item.status === "verified" || item.status === "rejected"
+              ? item.status
+              : "pending";
+          const fileExists = Boolean(
+            item.file_exists ?? item.fileExists ?? apiUrl,
+          );
+          return {
+            id: String(item.id),
+            name: fallbackName,
+            url: fileExists ? apiUrl : undefined,
+            uploadedAt:
+              item.uploaded_at || item.created_at || new Date().toISOString(),
+            status: statusValue,
+            uploadedBy: item.uploaded_by || undefined,
+            customerName: item.customer_name || undefined,
+            customerPhone: item.customer_phone || undefined,
+            amount:
+              typeof item.amount === "number"
+                ? item.amount
+                : item.amount
+                  ? Number(item.amount)
+                  : undefined,
+            orderTotal:
+              typeof item.order_total === "number"
+                ? item.order_total
+                : item.order_total
+                  ? Number(item.order_total)
+                  : undefined,
+            notes: item.notes || undefined,
+            orderId: item.order_id ? String(item.order_id) : undefined,
+            bankName: item.bank_name || undefined,
+            bankNumber: item.bank_number || undefined,
+            transferDate: item.transfer_date || undefined,
+            fileExists,
+            originalUrl: item.original_url || apiUrl,
+            paymentMethod: item.payment_method || undefined,
+          };
+        })
         : [];
 
       setSlips(normalized);
+
+      // Group slips by orderId
+      const groups: { [key: string]: OrderSlipGroup } = {};
+      const unlinkedSlips: PaymentSlip[] = [];
+
+      normalized.forEach(slip => {
+        if (slip.orderId) {
+          if (!groups[slip.orderId]) {
+            groups[slip.orderId] = {
+              orderId: slip.orderId,
+              customerName: slip.customerName,
+              amount: slip.amount || slip.orderTotal, // Use slip amount or order total
+              orderTotal: slip.orderTotal,
+              slips: [],
+              latestUpload: slip.uploadedAt,
+              status: slip.status,
+              paymentMethod: slip.paymentMethod,
+            };
+          }
+          groups[slip.orderId].slips.push(slip);
+
+          // Update group info if needed (e.g., latest upload time)
+          if (new Date(slip.uploadedAt) > new Date(groups[slip.orderId].latestUpload)) {
+            groups[slip.orderId].latestUpload = slip.uploadedAt;
+          }
+
+          // Update status logic: if any is pending, group is pending. If all verified, verified.
+          // This is a simple aggregation, adjust as per business rules.
+          if (groups[slip.orderId].status !== 'pending' && slip.status === 'pending') {
+            groups[slip.orderId].status = 'pending';
+          }
+        } else {
+          unlinkedSlips.push(slip);
+        }
+      });
+
+      // Convert groups map to array and sort by latest upload
+      const groupArray = Object.values(groups).sort((a, b) =>
+        new Date(b.latestUpload).getTime() - new Date(a.latestUpload).getTime()
+      );
+
+      // For unlinked slips, we can treat them as individual groups or handle separately.
+      // For now, let's add them as individual groups with a unique ID or just display them.
+      // To keep it simple and consistent with the request "show orders with slips", 
+      // we might focus on grouped orders. But to not lose data, let's add unlinked ones too.
+      unlinkedSlips.forEach(slip => {
+        groupArray.push({
+          orderId: `unlinked-${slip.id}`,
+          customerName: slip.customerName || 'ไม่ระบุลูกค้า',
+          amount: slip.amount,
+          orderTotal: slip.orderTotal,
+          slips: [slip],
+          latestUpload: slip.uploadedAt,
+          status: slip.status,
+          paymentMethod: slip.paymentMethod,
+        });
+      });
+
+      // Re-sort to include unlinked slips in the timeline
+      groupArray.sort((a, b) =>
+        new Date(b.latestUpload).getTime() - new Date(a.latestUpload).getTime()
+      );
+
+      setOrderGroups(groupArray);
+
     } catch (err) {
       console.error("Failed to load slips:", err);
       setError(
@@ -154,6 +238,7 @@ const SlipAll: React.FC = () => {
           : "เกิดข้อผิดพลาดระหว่างโหลดข้อมูลสลิป",
       );
       setSlips([]);
+      setOrderGroups([]);
     } finally {
       setLoading(false);
     }
@@ -161,19 +246,38 @@ const SlipAll: React.FC = () => {
 
   useEffect(() => {
     loadSlips();
+
+    // Fetch payment methods
+    const fetchPaymentMethods = async () => {
+      try {
+        const sessionUser = localStorage.getItem("sessionUser");
+        if (sessionUser) {
+          const parsed = JSON.parse(sessionUser);
+          if (parsed.company_id) {
+            const res = await fetch(`/api/Slip_DB/get_payment_methods.php?company_id=${parsed.company_id}`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.data)) {
+              setPaymentMethods(data.data);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch payment methods:", err);
+      }
+    };
+    fetchPaymentMethods();
   }, [loadSlips]);
 
-  const filteredSlips = slips.filter((slip) => {
+  const filteredGroups = orderGroups.filter((group) => {
     const matchesSearch =
-      slip.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      slip.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      slip.uploadedBy?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      slip.orderId?.toLowerCase().includes(searchTerm.toLowerCase());
+      group.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      group.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      group.slips.some(s => s.uploadedBy?.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus =
-      statusFilter === "all" || slip.status === statusFilter;
+      statusFilter === "all" || group.status === statusFilter;
 
-    const slipDate = new Date(slip.uploadedAt);
+    const slipDate = new Date(group.latestUpload);
     const now = new Date();
     let matchesDate = true;
 
@@ -187,7 +291,10 @@ const SlipAll: React.FC = () => {
       matchesDate = slipDate >= monthAgo;
     }
 
-    return matchesSearch && matchesStatus && matchesDate;
+    const matchesPaymentMethod =
+      paymentMethodFilter === "all" || group.paymentMethod === paymentMethodFilter;
+
+    return matchesSearch && matchesStatus && matchesDate && matchesPaymentMethod;
   });
 
   const getStatusIcon = (status: PaymentSlip["status"]) => {
@@ -233,16 +340,29 @@ const SlipAll: React.FC = () => {
     });
   };
 
-  const handlePreview = (slip: PaymentSlip) => {
-    setSelectedSlip(slip);
+  const handlePreview = (group: OrderSlipGroup) => {
+    setSelectedGroup(group);
+    setCurrentImageIndex(0);
     setShowPreview(true);
+  };
+
+  const handleNextImage = () => {
+    if (selectedGroup && currentImageIndex < selectedGroup.slips.length - 1) {
+      setCurrentImageIndex(prev => prev + 1);
+    }
+  };
+
+  const handlePrevImage = () => {
+    if (selectedGroup && currentImageIndex > 0) {
+      setCurrentImageIndex(prev => prev - 1);
+    }
   };
 
   const handleExport = () => {
     // Simulate export functionality
     const csvContent = [
       [
-        "ID",
+        "Order ID",
         "ชื่อไฟล์",
         "สถานะ",
         "ลูกค้า",
@@ -250,15 +370,15 @@ const SlipAll: React.FC = () => {
         "วันที่อัปโหลด",
         "ผู้อัปโหลด",
       ],
-      ...filteredSlips.map((slip) => [
-        slip.id,
+      ...filteredGroups.flatMap(group => group.slips.map((slip) => [
+        slip.orderId || "-",
         slip.name,
         getStatusText(slip.status),
         slip.customerName || "",
         slip.amount || "",
         formatDate(slip.uploadedAt),
         slip.uploadedBy || "",
-      ]),
+      ])),
     ]
       .map((row) => row.join(","))
       .join("\n");
@@ -306,7 +426,7 @@ const SlipAll: React.FC = () => {
             </button>
             <button
               onClick={handleExport}
-              disabled={filteredSlips.length === 0}
+              disabled={filteredGroups.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               <Download className="w-4 h-4" />
@@ -367,10 +487,25 @@ const SlipAll: React.FC = () => {
               <option value="month">30 วันล่าสุด</option>
             </select>
           </div>
+
+          {/* Payment Method Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <select
+              value={paymentMethodFilter}
+              onChange={(e) => setPaymentMethodFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">ทุกช่องทางชำระ</option>
+              {paymentMethods.map(method => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 text-sm text-gray-600">
-          พบ {filteredSlips.length} รายการ (จากทั้งหมด {slips.length} รายการ)
+          พบ {filteredGroups.length} รายการ (จากทั้งหมด {orderGroups.length} รายการ)
         </div>
       </div>
 
@@ -381,7 +516,7 @@ const SlipAll: React.FC = () => {
             <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-2" />
             <span className="text-gray-600">กำลังโหลดข้อมูล...</span>
           </div>
-        ) : filteredSlips.length === 0 ? (
+        ) : filteredGroups.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">ไม่พบข้อมูลสลิป</p>
@@ -395,22 +530,25 @@ const SlipAll: React.FC = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ข้อมูลสลิป
+                    รายการคำสั่งซื้อ
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ลูกค้า
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ช่องทางชำระ
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     จำนวนเงิน
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    จำนวนรูป
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     สถานะ
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ผู้อัปโหลด
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    วันที่
+                    วันที่อัปโหลดล่าสุด
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     การจัดการ
@@ -418,15 +556,15 @@ const SlipAll: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredSlips.map((slip) => (
-                  <tr key={slip.id} className="hover:bg-gray-50">
+                {filteredGroups.map((group) => (
+                  <tr key={group.orderId} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
-                          {slip.url ? (
+                        <div className="w-10 h-10 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50 relative">
+                          {group.slips[0]?.url ? (
                             <img
-                              src={toAbsoluteApiUrl(slip.url)}
-                              alt={slip.name}
+                              src={toAbsoluteApiUrl(group.slips[0].url)}
+                              alt="Slip preview"
                               className="w-full h-full object-cover"
                             />
                           ) : (
@@ -434,14 +572,19 @@ const SlipAll: React.FC = () => {
                               ไม่มีไฟล์
                             </span>
                           )}
+                          {group.slips.length > 1 && (
+                            <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center text-white text-xs font-bold">
+                              +{group.slips.length - 1}
+                            </div>
+                          )}
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {slip.name}
+                            {group.orderId.startsWith('unlinked') ? 'ไม่มี Order ID' : `#${group.orderId}`}
                           </div>
-                          {slip.orderId && (
+                          {group.slips.length > 1 && (
                             <div className="text-xs text-gray-500">
-                              {slip.orderId}
+                              {group.slips.length} รูปภาพ
                             </div>
                           )}
                         </div>
@@ -449,41 +592,46 @@ const SlipAll: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
-                        {slip.customerName || "-"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {slip.amount 
-                          ? `฿${slip.amount.toLocaleString()}` 
-                          : slip.orderTotal 
-                            ? `฿${slip.orderTotal.toLocaleString()}` 
-                            : "-"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(slip.status)}
-                        <span
-                          className={`text-sm px-2 py-1 rounded-full ${getStatusColor(slip.status)}`}
-                        >
-                          {getStatusText(slip.status)}
-                        </span>
+                        {group.customerName || "-"}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
-                        {slip.uploadedBy || "-"}
+                        {group.paymentMethod || "-"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {group.amount
+                          ? `฿${group.amount.toLocaleString()}`
+                          : group.orderTotal
+                            ? `฿${group.orderTotal.toLocaleString()}`
+                            : "-"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900">
+                        {group.slips.length}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(group.status)}
+                        <span
+                          className={`text-sm px-2 py-1 rounded-full ${getStatusColor(group.status)}`}
+                        >
+                          {getStatusText(group.status)}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-600">
-                        {formatDate(slip.uploadedAt)}
+                        {formatDate(group.latestUpload)}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => handlePreview(slip)}
+                        onClick={() => handlePreview(group)}
                         className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                       >
                         ดูรายละเอียด
@@ -498,13 +646,13 @@ const SlipAll: React.FC = () => {
       </div>
 
       {/* Preview Modal */}
-      {showPreview && selectedSlip && (
+      {showPreview && selectedGroup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">
-                  รายละเอียดสลิป
+                  รายละเอียดสลิป - {selectedGroup.orderId.startsWith('unlinked') ? 'ไม่มี Order ID' : `#${selectedGroup.orderId}`}
                 </h2>
                 <button
                   onClick={() => setShowPreview(false)}
@@ -516,116 +664,178 @@ const SlipAll: React.FC = () => {
             </div>
 
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Image */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    รูปภาพสลิป
-                  </h3>
-                  {selectedSlip.url ? (
-                    <img
-                      src={toAbsoluteApiUrl(selectedSlip.url)}
-                      alt={selectedSlip.name}
-                      className="w-full border border-gray-200 rounded-lg"
-                    />
-                  ) : (
-                    <div className="w-full border border-dashed border-gray-300 rounded-lg bg-gray-50 py-12 flex flex-col items-center justify-center text-gray-500">
-                      <Image className="w-10 h-10 mb-3 text-gray-400" />
-                      <p className="font-medium">ไม่พบไฟล์สลิป</p>
-                      {selectedSlip.originalUrl && (
-                        <p className="text-xs text-gray-400 mt-2 break-all px-6 text-center">
-                          ตำแหน่งเดิม: {selectedSlip.originalUrl}
-                        </p>
-                      )}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Image Gallery */}
+                <div className="lg:col-span-2">
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden aspect-[4/3] flex items-center justify-center mb-4">
+                    {selectedGroup.slips[currentImageIndex]?.url ? (
+                      <img
+                        src={toAbsoluteApiUrl(selectedGroup.slips[currentImageIndex].url)}
+                        alt={`Slip ${currentImageIndex + 1}`}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-gray-400">
+                        <Image className="w-12 h-12 mb-2" />
+                        <span>ไม่พบรูปภาพ</span>
+                      </div>
+                    )}
+
+                    {/* Navigation Buttons */}
+                    {selectedGroup.slips.length > 1 && (
+                      <>
+                        <button
+                          onClick={handlePrevImage}
+                          disabled={currentImageIndex === 0}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronLeft className="w-6 h-6" />
+                        </button>
+                        <button
+                          onClick={handleNextImage}
+                          disabled={currentImageIndex === selectedGroup.slips.length - 1}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                          <ChevronRight className="w-6 h-6" />
+                        </button>
+                      </>
+                    )}
+
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm">
+                      {currentImageIndex + 1} / {selectedGroup.slips.length}
+                    </div>
+                  </div>
+
+                  {/* Thumbnails */}
+                  {selectedGroup.slips.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                      {selectedGroup.slips.map((slip, index) => (
+                        <button
+                          key={slip.id}
+                          onClick={() => setCurrentImageIndex(index)}
+                          className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${currentImageIndex === index ? "border-blue-500 ring-2 ring-blue-200" : "border-transparent opacity-70 hover:opacity-100"
+                            }`}
+                        >
+                          {slip.url ? (
+                            <img
+                              src={toAbsoluteApiUrl(slip.url)}
+                              alt={`Thumbnail ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                              <Image className="w-6 h-6 text-gray-400" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* Details */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    ข้อมูลรายละเอียด
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        ชื่อไฟล์
-                      </label>
-                      <p className="text-gray-900">{selectedSlip.name}</p>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        หมายเลขออเดอร์
-                      </label>
-                      <p className="text-gray-900">
-                        {selectedSlip.orderId || "-"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        ชื่อลูกค้า
-                      </label>
-                      <p className="text-gray-900">
-                        {selectedSlip.customerName || "-"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        จำนวนเงิน
-                      </label>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {selectedSlip.amount
-                          ? `฿${selectedSlip.amount.toLocaleString()}`
-                          : selectedSlip.orderTotal
-                            ? `฿${selectedSlip.orderTotal.toLocaleString()}`
-                            : "-"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        สถานะ
-                      </label>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusIcon(selectedSlip.status)}
-                        <span
-                          className={`text-sm px-2 py-1 rounded-full ${getStatusColor(selectedSlip.status)}`}
-                        >
-                          {getStatusText(selectedSlip.status)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {selectedSlip.notes && (
+                {/* Details Side Panel */}
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      ข้อมูลสลิปปัจจุบัน
+                    </h3>
+                    <div className="space-y-4">
                       <div>
                         <label className="text-sm font-medium text-gray-500">
-                          หมายเหตุ
+                          ชื่อไฟล์
                         </label>
-                        <p className="text-gray-900 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                          {selectedSlip.notes}
+                        <p className="text-gray-900 break-all">
+                          {selectedGroup.slips[currentImageIndex]?.name}
                         </p>
                       </div>
-                    )}
 
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        ผู้อัปโหลด
-                      </label>
-                      <p className="text-gray-900">
-                        {selectedSlip.uploadedBy || "-"}
-                      </p>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          จำนวนเงิน
+                        </label>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {selectedGroup.slips[currentImageIndex]?.amount
+                            ? `฿${selectedGroup.slips[currentImageIndex].amount?.toLocaleString()}`
+                            : "-"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          วันที่โอน
+                        </label>
+                        <p className="text-gray-900">
+                          {selectedGroup.slips[currentImageIndex]?.transferDate
+                            ? formatDate(selectedGroup.slips[currentImageIndex].transferDate!)
+                            : "-"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          ธนาคาร
+                        </label>
+                        <p className="text-gray-900">
+                          {selectedGroup.slips[currentImageIndex]?.bankName || "-"}
+                          {selectedGroup.slips[currentImageIndex]?.bankNumber && ` (${selectedGroup.slips[currentImageIndex].bankNumber})`}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          สถานะ
+                        </label>
+                        <div className="flex items-center gap-2 mt-1">
+                          {getStatusIcon(selectedGroup.slips[currentImageIndex]?.status)}
+                          <span
+                            className={`text-sm px-2 py-1 rounded-full ${getStatusColor(selectedGroup.slips[currentImageIndex]?.status)}`}
+                          >
+                            {getStatusText(selectedGroup.slips[currentImageIndex]?.status)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          ผู้อัปโหลด
+                        </label>
+                        <p className="text-gray-900">
+                          {selectedGroup.slips[currentImageIndex]?.uploadedBy || "-"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          วันที่อัปโหลด
+                        </label>
+                        <p className="text-gray-900">
+                          {formatDate(selectedGroup.slips[currentImageIndex]?.uploadedAt)}
+                        </p>
+                      </div>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">
-                        วันที่อัปโหลด
-                      </label>
-                      <p className="text-gray-900">
-                        {formatDate(selectedSlip.uploadedAt)}
-                      </p>
+                  <div className="pt-6 border-t border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      ข้อมูลคำสั่งซื้อ
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          ชื่อลูกค้า
+                        </label>
+                        <p className="text-gray-900">
+                          {selectedGroup.customerName || "-"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">
+                          ยอดรวมคำสั่งซื้อ
+                        </label>
+                        <p className="text-gray-900 font-medium">
+                          {selectedGroup.orderTotal ? `฿${selectedGroup.orderTotal.toLocaleString()}` : "-"}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
