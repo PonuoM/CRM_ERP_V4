@@ -252,6 +252,7 @@ export interface Customer {
   lastSaleDate?: string; // วันที่ขายล่าสุด
   isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
+  isBlocked?: boolean; // ระงับการใช้งานหรือไม่
 }
 
 export interface SalesImportRow {

@@ -179,10 +179,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         if (o.orderStatus !== OrderStatus.Pending) {
           return false;
         }
-        if (o.paymentMethod !== PaymentMethod.Transfer) {
+        if (o.paymentMethod !== PaymentMethod.PayAfter && o.paymentMethod !== PaymentMethod.COD) {
           return false;
         }
-        // โอนที่ยังไม่ผ่านการตรวจสอบสลิป
+        // ??????????????????????????????
         return (
           o.paymentStatus === PaymentStatus.Unpaid ||
           o.paymentStatus === PaymentStatus.PendingVerification
@@ -191,21 +191,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     [orders],
   );
 
-  // กำลังจัดเตรียม: หลัง export/ดึงข้อมูลแล้ว (Preparing, Picking)
+  // ??????????????: ???? export/????????????? (Preparing, Picking)
   const preparingOrders = useMemo(() =>
     orders.filter(o =>
       (o.orderStatus === OrderStatus.Preparing || o.orderStatus === OrderStatus.Picking) &&
-      (!o.trackingNumbers || o.trackingNumbers.length === 0) // ยังไม่มี tracking
+      (!o.trackingNumbers || o.trackingNumbers.length === 0) // ???????? tracking
     ), [orders]
   );
 
-  // รอตรวจสอบจากบัญชี: PreApproved (COD หลังใส่ยอด, PayAfter หลัง upload รูป, Transfer หลัง tracking 1 วัน)
+  // ?????????????????: PreApproved (COD ??????????, PayAfter ???? upload ???, Transfer ???? tracking 1 ???)
   const awaitingAccountCheckOrders = useMemo(
     () => orders.filter((o) => qualifiesForAccountReview(o)),
     [orders],
   );
 
-  // เสร็จสิ้น: Approved หรือ Paid
+  // ?????????: Approved ???? Paid
   const completedOrders = useMemo(() =>
     orders.filter(o =>
       o.paymentStatus === PaymentStatus.Approved ||
@@ -220,7 +220,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         if (o.orderStatus !== OrderStatus.Pending) {
           return false;
         }
-        // รอดึงข้อมูล: รวม COD, รับสินค้าก่อน และโอนที่ตรวจสอบสลิปผ่านแล้ว
+        // ???????????: ??? COD, ????????????? ????????????????????????????
         if (o.paymentMethod === PaymentMethod.COD) {
           return true;
         }
@@ -238,19 +238,19 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     [orders],
   );
 
-  // กำลังจัดส่ง: ออเดอร์ที่มี tracking number แล้ว (COD และ PayAfter auto เปลี่ยน, Transfer ต้องมี tracking)
+  // ???????????: ???????????? tracking number ???? (COD ??? PayAfter auto ???????, Transfer ?????? tracking)
   const shippingOrders = useMemo(
     () =>
       orders.filter((o) => {
-        // ต้องมี tracking number
+        // ?????? tracking number
         if (!o.trackingNumbers || o.trackingNumbers.length === 0) {
           return false;
         }
-        // ต้องยังไม่ PreApproved (ถ้า PreApproved จะไป tab รอตรวจสอบจากบัญชี)
+        // ?????????? PreApproved (??? PreApproved ???? tab ?????????????????)
         if (o.paymentStatus === PaymentStatus.PreApproved) {
           return false;
         }
-        // ต้องยังไม่ Approved/Paid (ถ้า Approved/Paid จะไป tab เสร็จสิ้น)
+        // ?????????? Approved/Paid (??? Approved/Paid ???? tab ?????????)
         if (o.paymentStatus === PaymentStatus.Approved || o.paymentStatus === PaymentStatus.Paid) {
           return false;
         }
@@ -274,14 +274,17 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     } else if (activeTab === 'shipping') {
       sourceOrders = shippingOrders;
     } else if (activeTab === 'awaiting_account') {
-      sourceOrders = awaitingAccountCheckOrders;
+      sourceOrders = awaitingAccountCheckOrders.filter((o) => {
+        const pm = String(o.paymentMethod || '').toLowerCase();
+        return pm === 'payafter' || pm === 'cod' || pm === 'cash_on_delivery' || pm === 'cash';
+      });
     } else if (activeTab === 'completed') {
       sourceOrders = completedOrders;
     } else {
       sourceOrders = [];
     }
 
-    // กรองตามวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" เท่านั้น
+    // ???????????????????????? tab "???????????" ????????
     if (activeTab !== 'verified') {
       return sourceOrders;
     }
@@ -327,7 +330,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     });
   }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
 
-  // Filter orders by delivery date for "รอดึงข้อมูล" tab only (for display count in date filter section)
+  // Filter orders by delivery date for "???????????" tab only (for display count in date filter section)
   const filteredAwaitingExportOrders = useMemo(() => {
     if (activeDatePreset === 'all') {
       return awaitingExportOrders;
@@ -659,15 +662,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   const generateAndDownloadCsv = async (selectedOrders: Order[]) => {
     const headers = [
-      'หมายเลขออเดอร์ออนไลน์', 'ชื่อร้านค้า', 'เวลาที่สั่งซื้อ', 'บัญชีร้านค้า',
-      'หมายเลขใบชำระเงิน', 'COD', 'ช่องทางชำระเงิน', 'เวลาชำระเงิน',
-      'หมายเหตุใบสั่งซื้อ', 'ข้อความจากร้านค้า', 'ค่าขนส่ง', 'จำนวนเงินที่ต้องชำระ',
-      'ผู้รับสินค้า', 'นามสกุลผู้รับสินค้า', 'หมายเลขโทรศัพท์', 'หมายเลขมือถือ',
-      'สถานที่', 'ภูมิภาค', 'อำเภอ', 'จังหวัด', 'รหัสไปรษณีย์', 'ประเทศ',
-      'รับสินค้าที่ร้านหรือไม่', 'รหัสสินค้าบนแพลตฟอร์ม', 'รหัสสินค้าในระบบ',
-      'ชื่อสินค้า', 'สีและรูปแบบ', 'จำนวน', 'ราคาสินค้าต่อหน่วย',
-      'บริษัทขนส่ง', 'หมายเลขขนส่ง', 'เวลาส่งสินค้า', 'สถานะ',
-      'พนักงานขาย', 'หมายเหตุออฟไลน์', 'รูปแบบคำสั่งซื้อ', 'รูปแบบการชำระ'
+      '?????????????????????', '???????????', '???????????????', '????????????',
+      '?????????????????', 'COD', '???????????????', '????????????',
+      '??????????????????', '?????????????????', '????????', '????????????????????',
+      '????????????', '???????????????????', '???????????????', '?????????????',
+      '???????', '???????', '?????', '???????', '????????????', '??????',
+      '???????????????????????', '?????????????????????', '????????????????',
+      '??????????', '???????????', '?????', '??????????????????',
+      '???????????', '????????????', '?????????????', '?????',
+      '??????????', '???????????????', '????????????????', '?????????????'
     ];
 
     const escapeCsvCell = (cellData: any): string => {
@@ -706,7 +709,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           postalCode: '',
         };
 
-      // Group items by orderId (หมายเลขออเดอร์ออนไลน์)
+      // Group items by orderId (?????????????????????)
       const itemsByOrderId = new Map<string, typeof order.items>();
       order.items.forEach(item => {
         const onlineOrderId = (item as any).orderId ?? (item as any).order_id ?? order.id;
@@ -716,7 +719,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         itemsByOrderId.get(onlineOrderId)!.push(item);
       });
 
-      // สร้างแถวสำหรับแต่ละ orderId
+      // ??????????????????? orderId
       const orderRows: any[] = [];
       itemsByOrderId.forEach((items, onlineOrderId) => {
           // Exclude promotion parent items (is_promotion_parent = 1 in DB)
@@ -743,11 +746,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                     : 0)
                 : "";
 
-          // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
+          // ?????????? orderId ?? suffix -1, -2, -3 ???????
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
           const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
 
-          // สร้างชื่อผู้รับพร้อมนามสกุลและ (กล่องที่ X) ถ้ามี boxNumber
+          // ?????????????????????????????? (???????? X) ????? boxNumber
           let recipientName = '';
           if (index === 0) {
             const firstName = customer?.firstName ?? '';
@@ -755,37 +758,37 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             const fullName = `${firstName} ${lastName}`.trim();
 
             if (fullName && boxNumber !== null) {
-              recipientName = `${fullName} (กล่องที่ ${boxNumber})`;
+              recipientName = `${fullName} (???????? ${boxNumber})`;
             } else {
               recipientName = fullName;
             }
           }
 
-          // กำหนดค่า COD ตามเงื่อนไข
+          // ???????? COD ???????????
           let codValue: string | number = '';
           if (index === 0) {
-            // แถวแรกของ orderId
+            // ????????? orderId
             if (orderIdTotalAmount === 0 || !orderIdTotalAmount) {
-              codValue = 'ไม่';
+              codValue = '???';
             } else if (order.paymentMethod === PaymentMethod.COD) {
-              codValue = 'ใช่';
+              codValue = '???';
             } else {
-              codValue = 'ไม่';
+              codValue = '???';
             }
           }
-          // ถ้าไม่ใช่แถวแรก (index > 0) ให้เป็นค่าว่าง
+          // ??????????????? (index > 0) ??????????????
 
-          // ค้นหาข้อมูล shop จาก products โดยใช้ productId
+          // ??????????? shop ??? products ?????? productId
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           const shopName = product?.shop ?? 'N/A';
 
           const rowData: { [key: string]: string | number | undefined } = {
-            // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
-            'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
-            'ชื่อร้านค้า': shopName,
-            'เวลาที่สั่งซื้อ': '', // ว่างเปล่า
-            'บัญชีร้านค้า': '', // ว่างเปล่า
-            'หมายเลขใบชำระเงิน': '',
+            // ???????????????????????????????????????????? orderId
+            '?????????????????????': index === 0 ? onlineOrderId : '',
+            '???????????': shopName,
+            '???????????????': '', // ?????????
+            '????????????': '', // ?????????
+            '?????????????????': '',
             'COD': codValue,
             'ช่องทางชำระเงิน': '',
             'เวลาชำระเงิน': '',
@@ -990,7 +993,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         return false;
       });
       if (blocked.length > 0) {
-        alert(`ออเดอร์ต่อไปนี้ต้องมีสลิปและสถานะการชำระ (โอน) ต้องไม่เป็นค้างชำระก่อน Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
+        alert(`???????????????????????????????????????? (???) ??????????????????????? Export:\n${blocked.map(b => `- ${b.id}`).join('\n')}`);
         return;
       }
 
@@ -998,7 +1001,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       const missingShipping = selectedOrders.find(o => !o.shippingProvider || o.shippingProvider.trim() === '');
       if (missingShipping) {
         setHighlightedOrderId(missingShipping.id);
-        alert(`กรุณาเลือกขนส่งสำหรับออเดอร์ ${missingShipping.id} ก่อนทำการ Export`);
+        alert(`???????????????????????????? ${missingShipping.id} ????????? Export`);
         return;
       } else {
         setHighlightedOrderId(null);
@@ -1006,11 +1009,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     } catch (e) {
       console.error('pre-export validation failed', e);
-      alert('ตรวจสอบข้อมูลก่อน Export ไม่สำเร็จ กรุณาลองใหม่');
+      alert('????????????????? Export ????????? ????????????');
       return;
     }
 
-    if (window.confirm(`คุณต้องการส่งออกและส่งออเดอร์ ${selectedOrders.length} รายการให้คลังสินค้าใช่หรือไม่? สถานะจะถูกเปลี่ยนเป็น "กำลังจัดสินค้า"`)) {
+    if (window.confirm(`????????????????????????????? ${selectedOrders.length} ?????????????????????????????? ????????????????????? "??????????????"`)) {
       try {
         // First, trigger the file download.
         generateAndDownloadCsv(selectedOrders);
@@ -1024,7 +1027,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       } catch (error) {
         console.error('An error occurred during the export process:', error);
-        alert('เกิดข้อผิดพลาดในการสร้างไฟล์ CSV กรุณาตรวจสอบ Console log และลองใหม่อีกครั้ง');
+        alert('???????????????????????????? CSV ???????????? Console log ??????????????????');
       }
     }
   };
@@ -1032,9 +1035,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const handleMoveToAwaitingExport = async () => {
     if (selectedIds.length === 0) return;
 
-    if (window.confirm(`คุณต้องการย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" ใช่หรือไม่?`)) {
+    if (window.confirm(`????????????????????? ${selectedIds.length} ??????????? "???????????" ???????????`)) {
       try {
-        // อัปเดตสถานะของออเดอร์ที่เลือกเป็น Verified
+        // ????????????????????????????????? Verified
         const updatedOrders = selectedIds.map(id => {
           const order = orders.find(o => o.id === id);
           if (!order) return null;
@@ -1050,17 +1053,17 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           };
         }).filter(Boolean) as Order[];
 
-        // ส่งข้อมูลที่อัปเดตกลับไปยัง parent component
+        // ??????????????????????????? parent component
         onProcessOrders(selectedIds);
 
-        // แสดงข้อความยืนยัน
-        alert(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
+        // ?????????????????
+        alert(`??????????? ${selectedIds.length} ??????????? "???????????" ?????????????`);
 
-        // ล้างการเลือก
+        // ????????????
         setSelectedIds([]);
       } catch (error) {
         console.error('Failed to move orders to awaiting export:', error);
-        alert('เกิดข้อผิดพลาดในการย้ายออเดอร์ กรุณาลองใหม่');
+        alert('?????????????????????????????? ????????????');
       }
     }
   };
@@ -1085,7 +1088,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   // Payment status filtering is now done via advanced filters only (no payTab sync needed)
 
-  // Compute ตัวกรองขั้นสูง badge count (exclude implied payTab status)
+  // Compute ?????????????? badge count (exclude implied payTab status)
   const advancedCount = useMemo(() => {
     const baseFields = [
       afOrderId,
@@ -1170,7 +1173,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       await onUpdateShippingProvider(orderId, shippingProvider);
     } catch (error) {
       console.error('Failed to update shipping provider', error);
-      alert('ไม่สามารถอัปเดตขนส่งได้');
+      alert('???????????????????????');
     } finally {
       setShippingSavingIds(prev => {
         const next = new Set(prev);
@@ -1194,18 +1197,18 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   }, [showAdvanced]);
 
   const datePresets = [
-    { label: 'วันนี้', value: 'today' },
-    { label: 'พรุ่งนี้', value: 'tomorrow', spacerAfter: 'w-8' }, // เพิ่ม flag สำหรับเว้นระยะห่าง
-    { label: 'ล่วงหน้า 7 วัน', value: 'next7days' },
-    { label: 'ล่วงหน้า 30 วัน', value: 'next30days' },
-    { label: 'ทั้งหมด', value: 'all', spacerAfter: 'w-10' },
-    { label: 'ตกหล่น', value: 'missed' },
+    { label: '??????', value: 'today' },
+    { label: '????????', value: 'tomorrow', spacerAfter: 'w-8' }, // ????? flag ??????????????????
+    { label: '???????? 7 ???', value: 'next7days' },
+    { label: '???????? 30 ???', value: 'next30days' },
+    { label: '???????', value: 'all', spacerAfter: 'w-10' },
+    { label: '??????', value: 'missed' },
   ];
 
   const handleBulkShippingChange = async (provider: string) => {
     if (!provider) return;
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`คุณต้องการเปลี่ยนขนส่งของออเดอร์ ${selectedIds.length} รายการเป็น "${provider}" ใช่หรือไม่?`)) return;
+    if (!window.confirm(`???????????????????????????????? ${selectedIds.length} ?????????? "${provider}" ???????????`)) return;
 
     // Optimistic update
     setFullOrdersById(prev => {
@@ -1220,10 +1223,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     try {
       await Promise.all(selectedIds.map(id => onUpdateShippingProvider(id, provider)));
-      alert('อัปเดตขนส่งเรียบร้อยแล้ว');
+      alert('????????????????????????');
     } catch (error) {
       console.error('Failed to bulk update shipping provider', error);
-      alert('เกิดข้อผิดพลาดในการอัปเดตขนส่ง');
+      alert('??????????????????????????????');
     }
   };
 
@@ -1231,8 +1234,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
-          <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
+          <h2 className="text-2xl font-bold text-gray-800">?????????????</h2>
+          <p className="text-gray-600">{`??????? ${finalDisplayedOrders.length} ??????`}</p>
         </div>
         {activeTab !== 'pending' && activeTab !== 'verified' && (
           <div className="flex items-center space-x-2">
@@ -1242,7 +1245,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={16} className="mr-2" />
-              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : 'ส่งออกข้อมูล'}
+              {activeTab === 'verified' ? '??????????????????' : '????????????'}
             </button>
           </div>
         )}
@@ -1257,7 +1260,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               defaultValue=""
               className="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="" disabled>เลือกขนส่ง ({selectedIds.length})</option>
+              <option value="" disabled>?????????? ({selectedIds.length})</option>
               {SHIPPING_PROVIDERS.map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
@@ -1268,93 +1271,93 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={16} className="mr-2" />
-              ส่งออกข้อมูลไปคลัง ({selectedIds.length})
+              ?????????????????? ({selectedIds.length})
             </button>
           </div>
         )}
       </div>
 
-      {/* ตัวกรองขั้นสูง toggle and panel */}
+      {/* ?????????????? toggle and panel */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
-            ตัวกรองขั้นสูง
+            ??????????????
             {advancedCount > 0 ? (
               <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-[10px]">{advancedCount}</span>
             ) : null}
           </button>
           <button onClick={applyAdvancedFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100">
-            ค้นหา
+            ?????
           </button>
           {(advancedCount > 0 || activeDatePreset !== 'all' || (dateRange.start || dateRange.end)) && (
             <button onClick={clearFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600">
-              ล้างตัวกรอง
+              ???????????
             </button>
           )}
         </div>
         {showAdvanced && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
-              <input value={fCustomerName} onChange={e => setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="ชื่อหรือนามสกุล" />
+              <label className="block text-xs text-gray-500 mb-1">??????????</label>
+              <input value={fCustomerName} onChange={e => setFCustomerName(e.target.value)} className="w-full p-2 border rounded" placeholder="???????????????" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">เบอร์โทร</label>
-              <input value={fCustomerPhone} onChange={e => setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น 0812345678" />
+              <label className="block text-xs text-gray-500 mb-1">????????</label>
+              <input value={fCustomerPhone} onChange={e => setFCustomerPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="???? 0812345678" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">เลขออเดอร์</label>
+              <label className="block text-xs text-gray-500 mb-1">??????????</label>
               <input value={fOrderId} onChange={e => setFOrderId(e.target.value)} className="w-full p-2 border rounded" placeholder="ORD-..." />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ค้นหา Tracking</label>
+              <label className="block text-xs text-gray-500 mb-1">????? Tracking</label>
               <input value={fTracking} onChange={e => setFTracking(e.target.value)} className="w-full p-2 border rounded" placeholder="TH..." />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">วิธีการชำระ</label>
+              <label className="block text-xs text-gray-500 mb-1">???????????</label>
               <select value={fPaymentMethod} onChange={e => setFPaymentMethod((e.target.value as any) || '')} className="w-full p-2 border rounded">
-                <option value="">ทั้งหมด</option>
-                <option value={PaymentMethod.Transfer}>โอนเงิน</option>
-                <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
-                <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
+                <option value="">???????</option>
+                <option value={PaymentMethod.Transfer}>???????</option>
+                <option value={PaymentMethod.COD}>??????????????? (COD)</option>
+                <option value={PaymentMethod.PayAfter}>?????????????</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">สถานะการชำระ</label>
+              <label className="block text-xs text-gray-500 mb-1">????????????</label>
               <select value={fPaymentStatus} onChange={e => setFPaymentStatus((e.target.value as any) || '')} className="w-full p-2 border rounded">
-                <option value="">ทั้งหมด</option>
-                <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
-                <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
-                <option value={PaymentStatus.Verified}>ยืนยันแล้ว</option>
+                <option value="">???????</option>
+                <option value={PaymentStatus.Unpaid}>??????????</option>
+                <option value={PaymentStatus.PendingVerification}>?????????</option>
+                <option value={PaymentStatus.Verified}>??????????</option>
                 <option value={PaymentStatus.PreApproved}>Pre Approved</option>
                 <option value={PaymentStatus.Approved}>Approved</option>
-                <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
+                <option value={PaymentStatus.Paid}>????????</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ร้านค้า</label>
+              <label className="block text-xs text-gray-500 mb-1">???????</label>
               <select value={fShop} onChange={e => setFShop(e.target.value)} className="w-full p-2 border rounded">
-                <option value="">ทั้งหมด</option>
+                <option value="">???????</option>
                 {shopOptions.map((shop) => (
                   <option key={shop} value={shop}>{shop}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (จาก)</label>
+              <label className="block text-xs text-gray-500 mb-1">????????????????? (???)</label>
               <input type="date" value={fOrderDate.start} onChange={e => setFOrderDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ช่วงวันที่ออเดอร์ (ถึง)</label>
+              <label className="block text-xs text-gray-500 mb-1">????????????????? (???)</label>
               <input type="date" value={fOrderDate.end} onChange={e => setFOrderDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (จาก)</label>
+              <label className="block text-xs text-gray-500 mb-1">????????? (???)</label>
               <input type="date" value={fDeliveryDate.start} onChange={e => setFDeliveryDate(v => ({ ...v, start: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">วันที่ส่ง (ถึง)</label>
+              <label className="block text-xs text-gray-500 mb-1">????????? (???)</label>
               <input type="date" value={fDeliveryDate.end} onChange={e => setFDeliveryDate(v => ({ ...v, end: e.target.value }))} className="w-full p-2 border rounded" />
             </div>
           </div>
@@ -1370,7 +1373,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <ListChecks size={16} />
-          <span>รอตรวจสอบสลิป</span>
+          <span>?????????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
             }`}>{pendingOrders.length}</span>
         </button>
@@ -1382,7 +1385,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <ListChecks size={16} />
-          <span>รอดึงข้อมูล</span>
+          <span>???????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
             }`}>{awaitingExportOrders.length}</span>
         </button>
@@ -1394,7 +1397,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <Package size={16} />
-          <span>กำลังจัดเตรียม</span>
+          <span>??????????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
             }`}>{preparingOrders.length}</span>
         </button>
@@ -1406,7 +1409,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <Send size={16} />
-          <span>กำลังจัดส่ง</span>
+          <span>???????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
             }`}>{shippingOrders.length}</span>
         </button>
@@ -1418,7 +1421,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <Clock size={16} />
-          <span>รอตรวจสอบจากบัญชี</span>
+          <span>?????????????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
             }`}>{awaitingAccountCheckOrders.length}</span>
         </button>
@@ -1430,20 +1433,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }`}
         >
           <CheckCircle2 size={16} />
-          <span>เสร็จสิ้น</span>
+          <span>?????????</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
             }`}>{completedOrders.length}</span>
         </button>
       </div>
 
-      {/* แสดงตัวกรองวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" */}
+      {/* ???????????????????????????? tab "???????????" */}
       {activeTab === 'verified' && (
         <div className="bg-white p-4 rounded-lg shadow mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center mr-4">
               <Calendar size={16} className="text-gray-500 mr-2" />
-              <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
-              <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} รายการ)</span>
+              <span className="text-sm font-medium text-gray-700">?????????:</span>
+              <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} ??????)</span>
             </div>
             {datePresets.map((preset, index) => (
               <React.Fragment key={preset.value}>
@@ -1464,7 +1467,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 onChange={handleDateRangeChange}
                 className="p-1 border border-gray-300 rounded-md text-sm"
               />
-              <span className="text-gray-500 text-sm">ถึง</span>
+              <span className="text-gray-500 text-sm">???</span>
               <input
                 type="date"
                 name="end"
@@ -1500,14 +1503,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
             {/* Left side - Display range */}
             <div className="text-sm text-gray-700">
-              แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+              ???? {displayStart} - {displayEnd} ??? {totalItems} ??????
             </div>
 
             {/* Right side - Pagination controls */}
             <div className="flex items-center space-x-2">
               {/* Items per page selector */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">แสดง:</span>
+                <span className="text-sm text-gray-700">????:</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
@@ -1566,3 +1569,4 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 };
 
 export default ManageOrdersPage;
+

@@ -1123,7 +1123,6 @@ export async function updateOrderSlip(payload: {
   bankAccountId?: number;
   transferDate?: string;
   url?: string;
-  companyId: number;
   updatedBy?: number;
 }) {
   const legacyBase =
@@ -1134,13 +1133,11 @@ export async function updateOrderSlip(payload: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      id: payload.id,
       amount: payload.amount,
-      bank_account_id: payload.bankAccountId,
-      transfer_date: payload.transferDate,
+      bankAccountId: payload.bankAccountId,
+      transferDate: payload.transferDate,
       url: payload.url,
-      company_id: payload.companyId,
-      updated_by: payload.updatedBy,
+      updatedBy: payload.updatedBy,
     }),
   });
 
