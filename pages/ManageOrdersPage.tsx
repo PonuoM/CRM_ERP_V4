@@ -1,4 +1,4 @@
-﻿
+
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
@@ -726,13 +726,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
 
           exportItems.forEach((item, index) => {
-          const codAmount = order.paymentMethod === PaymentMethod.COD
-            ? (order.boxes?.reduce((sum, box) => sum + (box.collectionAmount ?? box.codAmount), 0) || order.totalAmount)
-            : 0;
-          const itemCodAmount = (item as any).isFreebie ? 0 : codAmount;
+            const codAmount = order.paymentMethod === PaymentMethod.COD
+              ? (order.boxes?.reduce((sum, box) => sum + (box.codAmount ?? 0), 0) || 0)
+              : 0;
 
           // คำนวณ totalAmount สำหรับ orderId นี้
-          const orderIdTotalAmount = items.reduce((sum, it) => sum + (it.netTotal ?? 0), 0);
+            // จำนวนเงินที่ต้องชำระ: ใช้จาก order_boxes.cod_amount ของกล่องที่ sub_order_id ตรงกับ order_items.order_id
+            const boxForThisOrder = (order.boxes || []).find(
+              (b: any) =>
+                String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
+            );
+            const orderIdTotalAmount =
+              boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
+                ? boxForThisOrder.codAmount
+                : 0;
 
           // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
