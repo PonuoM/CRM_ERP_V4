@@ -51,7 +51,11 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
   const fetchPlatforms = async (companyId?: number) => {
     setLoading(true);
     try {
-      const data = await listPlatforms(companyId || undefined, false);
+      const data = await listPlatforms(
+        companyId || undefined,
+        false,
+        currentUser.role,
+      );
       setPlatforms(
         Array.isArray(data)
           ? data.map((p: any) => ({

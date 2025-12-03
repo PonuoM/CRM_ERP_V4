@@ -253,10 +253,15 @@ export async function deletePromotion(id: number) {
   });
 }
 
-export async function listPlatforms(companyId?: number, activeOnly?: boolean) {
+export async function listPlatforms(
+  companyId?: number,
+  activeOnly?: boolean,
+  userRole?: string,
+) {
   const qs = new URLSearchParams();
   if (companyId) qs.set("companyId", String(companyId));
   if (activeOnly) qs.set("active", "true");
+  if (userRole) qs.set("userRole", userRole);
   return apiFetch(`platforms${qs.toString() ? `?${qs}` : ""}`);
 }
 

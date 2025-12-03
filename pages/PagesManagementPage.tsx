@@ -412,7 +412,11 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   useEffect(() => {
     const loadPlatforms = async () => {
       try {
-        const plats = await listPlatforms(currentUser?.companyId, true);
+        const plats = await listPlatforms(
+          currentUser?.companyId,
+          true,
+          currentUser?.role,
+        );
         setPlatforms(
           Array.isArray(plats)
             ? plats.map((p: any) => ({

@@ -394,13 +394,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      try {
-        const [pg, plats, promo, userPages] = await Promise.all([
-          listActivePages(currentUser.companyId),
-          listPlatforms(currentUser.companyId, true),
-          listPromotions(),
-          loadPagesWithUserAccess(),
-        ]);
+        try {
+          const [pg, plats, promo, userPages] = await Promise.all([
+            listActivePages(currentUser.companyId),
+            listPlatforms(currentUser.companyId, true, currentUser.role),
+            listPromotions(),
+            loadPagesWithUserAccess(),
+          ]);
         if (cancelled) return;
         setPages(
           Array.isArray(pg?.data)

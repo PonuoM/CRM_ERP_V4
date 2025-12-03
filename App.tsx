@@ -713,7 +713,7 @@ const App: React.FC = () => {
           listProducts(sessionUser?.company_id),
           listPromotions(sessionUser?.company_id),
           listPages(sessionUser?.company_id),
-          listPlatforms(sessionUser?.company_id, true),
+          listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory(),
           listAppointments(),
           listCustomerTags(),

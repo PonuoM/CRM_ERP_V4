@@ -2758,6 +2758,12 @@ function handle_platforms(PDO $pdo, ?string $id): void {
             $in = json_input();
             $companyId = $in['companyId'] ?? null;
         }
+
+        // Optional role-based visibility filter (Super Admin sees all)
+        $userRole = isset($_GET['userRole']) ? trim((string)$_GET['userRole']) : null;
+        if ($userRole === '') {
+            $userRole = null;
+        }
         
         switch (method()) {
             case 'GET':
@@ -2783,6 +2789,11 @@ function handle_platforms(PDO $pdo, ?string $id): void {
                     }
                     if ($activeOnly) {
                         $conditions[] = 'active = 1';
+                    }
+                    // If not Super Admin, restrict to platforms where role_show JSON contains this role
+                    if ($userRole && $userRole !== 'Super Admin') {
+                        $conditions[] = '(JSON_VALID(role_show) AND JSON_CONTAINS(role_show, JSON_QUOTE(?), \'$\'))';
+                        $params[] = $userRole;
                     }
                     if ($conditions) {
                         $sql .= ' WHERE ' . implode(' AND ', $conditions);
