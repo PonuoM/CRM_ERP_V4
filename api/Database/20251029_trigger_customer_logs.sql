@@ -15,7 +15,7 @@ BEGIN
         changed_fields,
         created_by
     ) VALUES (
-        NEW.id,
+        NEW.customer_id,
         NEW.bucket_type,
         NEW.lifecycle_status,
         NEW.assigned_to,
@@ -60,7 +60,7 @@ BEGIN
             changed_fields,
             created_by
         ) VALUES (
-            NEW.id,
+            NEW.customer_id,
             NEW.bucket_type,
             NEW.lifecycle_status,
             NEW.assigned_to,
@@ -101,7 +101,7 @@ BEGIN
         changed_fields,
         created_by
     ) VALUES (
-        OLD.id,
+        OLD.customer_id,
         OLD.bucket_type,
         OLD.lifecycle_status,
         OLD.assigned_to,
