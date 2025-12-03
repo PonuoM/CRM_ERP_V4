@@ -5,6 +5,7 @@ import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip,
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
 import { apiFetch, createOrderSlip, deleteOrderSlip, updateOrderSlip, listBankAccounts, listOrderSlips } from '../services/api';
 import { toLocalDatetimeString, fromLocalDatetimeString } from '../utils/datetime';
+import resolveApiBasePath from '../utils/apiBasePath';
 
 
 
@@ -1998,7 +1999,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-        const res = await fetch("/api/Address_DB/get_address_data.php?endpoint=provinces");
+        const res = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`);
 
 
 
@@ -2054,7 +2055,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-          const res = await fetch(`/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`);
+          const res = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`);
 
 
 
@@ -2134,7 +2135,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-          const res = await fetch(`/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`);
+          const res = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`);
 
 
 

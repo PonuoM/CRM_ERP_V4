@@ -103,6 +103,7 @@ try {
           mal.clicks,
           p.name as page_name,
           p.platform,
+          p.page_type as page_type,
           p.page_id as external_page_id,
           u.first_name,
           u.last_name,

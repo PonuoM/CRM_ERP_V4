@@ -53,18 +53,16 @@ if (!empty($_GET["phone"])) {
   $bindParams[] = "%" . $filters["phone"] . "%";
 }
 
-if (!empty($_GET["sale_month"])) {
-  $filters["sale_month"] = (int) $_GET["sale_month"];
-  if ($filters["sale_month"] >= 1 && $filters["sale_month"] <= 12) {
-    $conditions[] = "MONTH(o.order_date) = ?";
-    $bindParams[] = $filters["sale_month"];
-  }
+if (!empty($_GET["start_date"])) {
+  $filters["start_date"] = trim($_GET["start_date"]);
+  $conditions[] = "DATE(o.order_date) >= ?";
+  $bindParams[] = $filters["start_date"];
 }
 
-if (!empty($_GET["sale_year"])) {
-  $filters["sale_year"] = (int) $_GET["sale_year"];
-  $conditions[] = "YEAR(o.order_date) = ?";
-  $bindParams[] = $filters["sale_year"];
+if (!empty($_GET["end_date"])) {
+  $filters["end_date"] = trim($_GET["end_date"]);
+  $conditions[] = "DATE(o.order_date) <= ?";
+  $bindParams[] = $filters["end_date"];
 }
 
 // Payment method selector (default Transfer for backward compatibility)
@@ -84,27 +82,37 @@ if ($paymentMethodToken === "all" || $paymentMethodToken === "") {
   // แสดงทั้ง Transfer และ PayAfter
   $showAllPaymentMethods = true;
   $selectedPaymentValues = $allowedPaymentMethods;
-} elseif ($paymentMethodToken === "payafter" || $paymentMethodToken === "pay_after" || $paymentMethodToken === "pay-after") {
+} elseif (
+  $paymentMethodToken === "payafter" ||
+  $paymentMethodToken === "pay_after" ||
+  $paymentMethodToken === "pay-after"
+) {
   $paymentMethod = "PayAfter";
-  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
-} elseif ($paymentMethodToken === "transfer" || $paymentMethodToken === "transfer_bank") {
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [
+    $paymentMethod,
+  ];
+} elseif (
+  $paymentMethodToken === "transfer" ||
+  $paymentMethodToken === "transfer_bank"
+) {
   $paymentMethod = "Transfer";
-  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [
+    $paymentMethod,
+  ];
 } else {
   $paymentMethod = in_array($paymentMethodInput, $allowedPaymentMethods, true)
     ? $paymentMethodInput
     : "Transfer";
-  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [$paymentMethod];
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [
+    $paymentMethod,
+  ];
 }
 
 $selectedPaymentValues = array_values(
   array_unique(
-    array_filter(
-      array_map("trim", $selectedPaymentValues),
-      function ($value) {
-        return $value !== "";
-      },
-    ),
+    array_filter(array_map("trim", $selectedPaymentValues), function ($value) {
+      return $value !== "";
+    }),
   ),
 );
 if (empty($selectedPaymentValues)) {
@@ -136,11 +144,12 @@ try {
 
   // Build WHERE clause - get all orders with desired payment method (support aliases)
   // We'll filter out fully paid orders using HAVING clause based on slip totals
-  $methodPlaceholder = count($selectedPaymentValues) === 1
-    ? "o.payment_method = ?"
-    : "o.payment_method IN (" .
-      implode(",", array_fill(0, count($selectedPaymentValues), "?")) .
-      ")";
+  $methodPlaceholder =
+    count($selectedPaymentValues) === 1
+      ? "o.payment_method = ?"
+      : "o.payment_method IN (" .
+        implode(",", array_fill(0, count($selectedPaymentValues), "?")) .
+        ")";
   $whereClause = "o.company_id = ? AND {$methodPlaceholder}";
   $allParams = array_merge([$company_id], $selectedPaymentValues);
 
@@ -158,13 +167,18 @@ try {
       // Supervisor: แสดงออเดอร์ของตนเองและลูกทีม
       if ($user_team_id !== null) {
         // Get team member IDs
-        $teamStmt = $conn->prepare("SELECT id FROM users WHERE team_id = ? AND role = 'Telesale'");
+        $teamStmt = $conn->prepare(
+          "SELECT id FROM users WHERE team_id = ? AND role = 'Telesale'",
+        );
         $teamStmt->execute([$user_team_id]);
         $teamMemberIds = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
         $teamMemberIds[] = $user_id; // Include supervisor's own orders
-        
+
         if (!empty($teamMemberIds)) {
-          $placeholders = implode(",", array_fill(0, count($teamMemberIds), "?"));
+          $placeholders = implode(
+            ",",
+            array_fill(0, count($teamMemberIds), "?"),
+          );
           $whereClause .= " AND o.creator_id IN ({$placeholders})";
           $allParams = array_merge($allParams, $teamMemberIds);
         } else {
@@ -190,9 +204,9 @@ try {
   // Use a more reliable check by trying to describe the table structure
   $check_amount_col = 0;
   try {
-    $check_result = $conn->query("SELECT COUNT(*) as cnt FROM information_schema.columns 
-      WHERE table_schema = DATABASE() 
-      AND table_name = 'order_slips' 
+    $check_result = $conn->query("SELECT COUNT(*) as cnt FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+      AND table_name = 'order_slips'
       AND column_name = 'amount'");
     $check_amount_col = (int) $check_result->fetchColumn();
   } catch (Exception $e) {
@@ -204,9 +218,9 @@ try {
   $customerPkColumn = "id";
   try {
     $stmt = $conn->query(
-      "SELECT COLUMN_NAME FROM information_schema.columns 
-       WHERE table_schema = DATABASE() 
-         AND table_name = 'customers' 
+      "SELECT COLUMN_NAME FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'customers'
          AND COLUMN_NAME IN ('id','customer_id')
        ORDER BY FIELD(COLUMN_NAME, 'id','customer_id')
        LIMIT 1",
@@ -219,7 +233,7 @@ try {
     $customerPkColumn = "id";
   }
   $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
-  
+
   // First query to get total count for pagination calculation
   // Must match the HAVING clause from main query
   // Filter out sub orders (orders with -1, -2, -3, etc. suffix)
@@ -233,12 +247,13 @@ try {
                    AND o.id NOT REGEXP '^.+-[0-9]+$'
                    AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
                    GROUP BY o.id, o.total_amount, o.payment_status";
-  
+
   // Only add HAVING clause if amount column exists
   if ($check_amount_col > 0) {
-    $countSql .= " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
+    $countSql .=
+      " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
   }
-  
+
   $countSql .= ") as grouped_orders";
 
   $countStmt = $conn->prepare($countSql);
@@ -261,7 +276,7 @@ try {
                 c.first_name,
                 c.last_name,
                 c.phone";
-  
+
   // Add slip_total calculation based on column existence
   if ($check_amount_col > 0) {
     $sql .= ",
@@ -277,7 +292,7 @@ try {
                 0 as slip_total,
                 'ค้างจ่าย' as payment_status_display";
   }
-  
+
   $sql .= "
             FROM orders o
             {$customerJoin}
@@ -286,13 +301,14 @@ try {
             AND o.id NOT REGEXP '^.+-[0-9]+$'
             AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
             GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, c.first_name, c.last_name, c.phone";
-  
+
   // Only add HAVING clause if amount column exists
   // Filter out orders that are fully paid based on slip totals
   if ($check_amount_col > 0) {
-    $sql .= " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
+    $sql .=
+      " HAVING COALESCE(SUM(os.amount), 0) < COALESCE(o.total_amount, 0) OR SUM(os.amount) IS NULL";
   }
-  
+
   $sql .= " ORDER BY o.order_date DESC LIMIT ? OFFSET ?";
 
   $stmt = $conn->prepare($sql);

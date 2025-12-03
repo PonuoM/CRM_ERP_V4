@@ -63,6 +63,53 @@ const isPageInactive = (page?: {
   return !page?.active;
 };
 
+const getPageTypeBadgeClasses = (rawType?: string | null): { label: string; className: string } => {
+  if (!rawType) {
+    return {
+      label: "-",
+      className: "bg-gray-100 text-gray-600 border border-gray-200",
+    };
+  }
+  const t = String(rawType).toLowerCase().trim();
+  switch (t) {
+    case "pancake":
+      return {
+        label: "Pancake",
+        className: "bg-blue-100 text-blue-700 border border-blue-200",
+      };
+    case "manual":
+      return {
+        label: "Manual",
+        className: "bg-gray-100 text-gray-700 border border-gray-200",
+      };
+    case "business":
+      return {
+        label: "Business",
+        className: "bg-purple-100 text-purple-700 border border-purple-200",
+      };
+    case "personal":
+      return {
+        label: "Personal",
+        className: "bg-green-100 text-green-700 border border-green-200",
+      };
+    case "fan":
+      return {
+        label: "Fan",
+        className: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+      };
+    case "shop":
+      return {
+        label: "Shop",
+        className: "bg-orange-100 text-orange-700 border border-orange-200",
+      };
+    default:
+      return {
+        label: rawType,
+        className: "bg-slate-100 text-slate-700 border border-slate-200",
+      };
+  }
+};
+
 const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<
     "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
@@ -364,6 +411,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                 url: r.url ?? undefined,
                 companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
                 active: Boolean(r.active),
+                page_type: r.page_type ?? r.pageType ?? undefined,
               }))
             : [],
         );
@@ -1713,10 +1761,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
                       <th className="px-3 py-2 text-left">ID</th>
+                      <th className="px-3 py-2 text-left">ประเภทเพจ</th>
                       <th className="px-3 py-2 text-left">ชื่อเพจ</th>
                       <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
                       <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                      <th className="px-3 py-2 text-left">สถานะ</th>
                       <th className="px-3 py-2 text-left">จัดการ</th>
                     </tr>
                   </thead>
@@ -1728,6 +1776,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           onClick={() => togglePageExpand(page.id)}
                         >
                           <td className="px-3 py-2">{page.id}</td>
+                          <td className="px-3 py-2">
+                            {(() => {
+                              const { label, className } = getPageTypeBadgeClasses(
+                                page.page_type ?? page.pageType ?? null,
+                              );
+                              return (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td className="px-3 py-2 font-medium">{page.name}</td>
                           <td className="px-3 py-2">{page.platform}</td>
                           <td className="px-3 py-2">
@@ -1736,17 +1798,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                 (user) => user.page_id === page.id,
                               ).length
                             }
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                page.active
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {page.active ? "Active" : "Inactive"}
-                            </span>
                           </td>
                           <td className="px-3 py-2">
                             <button

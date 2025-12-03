@@ -3,6 +3,7 @@ import { Page, User } from "@/types";
 import Modal from "@/components/Modal";
 import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 // Function to sync pages from pages.fm API to database
 const syncPagesWithDatabase = async (currentUser?: User) => {
@@ -12,8 +13,9 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
 
     if (currentUser?.companyId) {
       try {
+        const apiBase = resolveApiBasePath();
         const response = await fetch(
-          `api/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`,
+          `${apiBase}/Page_DB/env_manager.php?key=ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`,
           {
             headers: {
               "Content-Type": "application/json",
@@ -87,7 +89,7 @@ const syncPagesWithDatabase = async (currentUser?: User) => {
         console.log("Preparing to sync pages:", pagesToSync.length, "pages");
         console.log("Company ID:", currentUser.companyId || 1);
 
-        const response = await fetch("api/Page_DB/sync_pages.php", {
+        const response = await fetch(`${resolveApiBasePath()}/Page_DB/sync_pages.php`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -310,6 +312,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [status, setStatus] = useState("all");
   const [pageType, setPageType] = useState("all");
   const [items, setItems] = useState<Page[]>([]);
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
   const [showHiddenPages, setShowHiddenPages] = useState(false);
@@ -338,7 +341,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const fetchPageTypes = async () => {
     setLoadingPageTypes(true);
     try {
-      const response = await fetch("api/Page_DB/env_manager.php");
+      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`);
       if (response.ok) {
         const envVars = await response.json();
         const types: { [key: string]: string } = {};

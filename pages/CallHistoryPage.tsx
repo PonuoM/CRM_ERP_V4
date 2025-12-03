@@ -13,6 +13,7 @@ import {
   Download,
 } from "lucide-react";
 import OnecallLoginSidebar from "@/components/common/OnecallLoginSidebar";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 // Helper function to get the correct base URL for OneCall API
 const getOneCallBaseUrl = (): string => {
@@ -130,23 +131,20 @@ const getOnecallCredentialsFromDB = async () => {
     }
 
     // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
-    const baseUrl = getOneCallBaseUrl();
-    const response = await fetch(
-      `${baseUrl}api/Onecall_DB/get_credentials.php`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user: {
-            id: user.id,
-            company_id: user.company_id,
-            role: user.role,
-          },
-        }),
+    const apiBase = resolveApiBasePath();
+    const response = await fetch(`${apiBase}/Onecall_DB/get_credentials.php`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        user: {
+          id: user.id,
+          company_id: user.company_id,
+          role: user.role,
+        },
+      }),
+    });
 
     if (!response.ok) {
       const errorData = await response.json();

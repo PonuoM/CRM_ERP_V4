@@ -4,6 +4,7 @@ import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, Us
 import StatCard from '@/components/StatCard_EngagementPage';
 import MultiLineChart from '@/components/MultiLineChart';
 import PageIconFront from '@/components/PageIconFront';
+import resolveApiBasePath from '@/utils/apiBasePath';
 
 interface PageStatsPageProps {
   orders?: Order[];
@@ -46,6 +47,7 @@ function fmtDate(d: Date) {
 }
 
 const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = [], calls = [] }) => {
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [rangeDays, setRangeDays] = useState<number | string>(7);
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
   const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
@@ -125,7 +127,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           // Check if database upload is enabled
           const checkDbSetting = async () => {
             try {
-              const envResponse = await fetch('api/Page_DB/env_manager.php');
+              const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
               if (envResponse.ok) {
                 const envData = await envResponse.json();
                 const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
@@ -147,7 +149,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   useEffect(() => {
     const fetchPages = async () => {
       try {
-        const response = await fetch('api/index.php/pages');
+        const response = await fetch(`${apiBase.replace(/\/$/, '')}/index.php/pages`);
         if (response.ok) {
           const data = await response.json();
           setPages(Array.isArray(data) ? data : []);
@@ -535,7 +537,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -768,7 +770,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      const envResponse = await fetch('api/Page_DB/env_manager.php');
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
@@ -917,7 +919,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       
       try {
         // Send data to database
-        response = await fetch('api/Page_DB/page_stats_import.php', {
+        response = await fetch(`${apiBase}/Page_DB/page_stats_import.php`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1018,7 +1020,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   useEffect(() => {
     const fetchEnvVariables = async () => {
       try {
-        const response = await fetch('api/Page_DB/env_manager.php');
+        const response = await fetch(`${apiBase}/Page_DB/env_manager.php`);
         if (response.ok) {
           const data = await response.json();
           setEnvVariables(Array.isArray(data) ? data : []);
@@ -1042,7 +1044,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     setIsLoading(true);
     try {
-      const response = await fetch('api/Page_DB/env_manager.php', {
+      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1057,7 +1059,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         const result = await response.json();
         if (result.success) {
           // Refresh env variables
-          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
           if (fetchResponse.ok) {
             const data = await fetchResponse.json();
             setEnvVariables(Array.isArray(data) ? data : []);
@@ -1090,7 +1092,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     setIsLoading(true);
     try {
-      const response = await fetch(`api/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
+      const response = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
         method: 'DELETE'
       });
 
@@ -1098,7 +1100,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         const result = await response.json();
         if (result.success) {
           // Refresh env variables
-          const fetchResponse = await fetch('api/Page_DB/env_manager.php');
+          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
           if (fetchResponse.ok) {
             const data = await fetchResponse.json();
             setEnvVariables(Array.isArray(data) ? data : []);
@@ -1122,7 +1124,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Fetch existing date ranges from database
   const fetchExistingDateRanges = async () => {
     try {
-      const response = await fetch('api/Page_DB/get_date_ranges.php');
+      const response = await fetch(`${apiBase}/Page_DB/get_date_ranges.php`);
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -1152,7 +1154,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     setIsDeletingBatches(true);
     try {
-      const response = await fetch('api/Page_DB/delete_batches.php', {
+      const response = await fetch(`${apiBase}/Page_DB/delete_batches.php`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1193,7 +1195,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     setIsSearching(true);
     try {
       // First, get the access token from env variables
-      const envResponse = await fetchWithRetry('api/Page_DB/env_manager.php', { method: 'GET' });
+      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php`, { method: 'GET' });
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }

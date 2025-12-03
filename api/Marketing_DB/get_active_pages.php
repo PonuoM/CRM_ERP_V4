@@ -12,7 +12,7 @@ try {
     // Build query based on whether company_id is provided
     if ($companyId) {
         $stmt = $pdo->prepare("
-            SELECT id, name, platform, url, company_id, active, still_in_list
+            SELECT id, name, platform, url, company_id, active, still_in_list, page_type
             FROM pages
             WHERE still_in_list = 1 AND company_id = ?
             ORDER BY name ASC
@@ -20,7 +20,7 @@ try {
         $stmt->execute([$companyId]);
     } else {
         $stmt = $pdo->prepare("
-            SELECT id, name, platform, url, company_id, active, still_in_list
+            SELECT id, name, platform, url, company_id, active, still_in_list, page_type
             FROM pages
             WHERE still_in_list = 1
             ORDER BY name ASC

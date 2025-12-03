@@ -2586,7 +2586,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const geoResponse = await fetch(
 
-        "/api/Address_DB/get_address_data.php?endpoint=geographies",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=geographies`,
 
       );
 
@@ -2604,7 +2604,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const provResponse = await fetch(
 
-        "/api/Address_DB/get_address_data.php?endpoint=provinces",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
 
       );
 
@@ -2668,7 +2668,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       fetch(
 
-        `/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`,
 
       )
 
@@ -2706,7 +2706,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       fetch(
 
-        `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`,
 
       )
 
@@ -3080,7 +3080,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       fetch(
 
-        `/api/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=customer_addresses&id=${encodeURIComponent(customerIdParam)}`,
 
       )
 
@@ -3416,7 +3416,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
             fetch(
 
-              `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
 
             )
 
@@ -3448,7 +3448,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       fetch(
 
-                        `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
 
                       )
 
@@ -3730,7 +3730,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const response = await fetch(
 
-        "/api/Address_DB/get_address_data.php?endpoint=delete_customer_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=delete_customer_address`,
 
         {
 
@@ -3870,7 +3870,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const response = await fetch(
 
-        "/api/Address_DB/get_address_data.php?endpoint=set_primary_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=set_primary_address`,
 
         {
 
@@ -4393,13 +4393,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     setLoadingCustomerData(true);
 
     try {
-
       // Fetch fresh customer data from database
-
       const response = await fetch(
-
-        `/api/index.php/customers/${encodeURIComponent(customer.id)}`,
-
+        `${resolveApiBasePath().replace(/\/$/, "")}/index.php/customers/${encodeURIComponent(customer.id)}`,
       );
 
 
@@ -4772,7 +4768,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           provincesPromise = fetch(
 
-            `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
 
           )
 
@@ -4808,7 +4804,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         const searchPromise = fetch(
 
-          `/api/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
+          `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=search&search=${numericValue}`,
 
         ).then((res) => res.json());
 
@@ -4896,7 +4892,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   fetch(
 
-                    `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
 
                   )
 
@@ -4930,7 +4926,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           return fetch(
 
-                            `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
 
                           ).then((res) => res.json());
 
@@ -5014,7 +5010,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                   fetch(
 
-                    `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                    `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
 
                   )
 
@@ -5050,7 +5046,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           return fetch(
 
-                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
 
                             `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
                           ).then((res) => res.json());
@@ -6016,23 +6012,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
         const response = await fetch(
-
-          "/api/Address_DB/update_customer_address.php",
-
+          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
           {
-
             method: "POST",
-
             headers: {
-
               "Content-Type": "application/json",
-
             },
-
             body: JSON.stringify(updateData),
-
           },
-
         );
 
 
@@ -6156,23 +6143,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
         const response = await fetch(
-
-          "/api/Address_DB/update_customer_address.php",
-
+          `${resolveApiBasePath()}/Address_DB/update_customer_address.php`,
           {
-
             method: "POST",
-
             headers: {
-
               "Content-Type": "application/json",
-
             },
-
             body: JSON.stringify(updateData),
-
           },
-
         );
 
 
@@ -6269,7 +6247,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       fetch(
 
-        "/api/Address_DB/get_address_data.php?endpoint=save_customer_address",
+        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=save_customer_address`,
 
         {
 
@@ -11138,7 +11116,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                       provincesPromise = fetch(
 
-                                        `/api/Address_DB/get_address_data.php?endpoint=provinces`,
+                                        `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`,
 
                                       )
 
@@ -11198,7 +11176,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                           return fetch(
 
-                                            `/api/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
+                                            `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${province.id}`,
 
                                           ).then((res) => res.json());
 
@@ -11244,7 +11222,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                                             return fetch(
 
-                                              `/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
+                                              `${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${district.id}`,
 
                                             ).then((res) => res.json());
 

@@ -604,26 +604,27 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               province: r.province || '',
               postalCode: r.postal_code || '',
             },
-            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productName: String(it.product_name ?? ''),
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-              productId: it.product_id ? Number(it.product_id) : undefined,
-              // Preserve raw order_items IDs so CSV export can use them
-              orderId:
-                typeof it.order_id !== 'undefined' && it.order_id !== null
-                  ? String(it.order_id)
-                  : undefined,
-              parentOrderId:
-                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
-                  ? String(it.parent_order_id)
-                  : undefined,
-              netTotal: Number(it.net_total ?? 0),
-            })) : [],
+              items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+                id: Number(it.id ?? i + 1),
+                productName: String(it.product_name ?? ''),
+                quantity: Number(it.quantity ?? 0),
+                pricePerUnit: Number(it.price_per_unit ?? 0),
+                discount: Number(it.discount ?? 0),
+                isFreebie: !!(it.is_freebie ?? 0),
+                boxNumber: Number(it.box_number ?? 0),
+                productId: it.product_id ? Number(it.product_id) : undefined,
+                // Preserve raw order_items IDs so CSV export can use them
+                orderId:
+                  typeof it.order_id !== 'undefined' && it.order_id !== null
+                    ? String(it.order_id)
+                    : undefined,
+                parentOrderId:
+                  typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
+                    ? String(it.parent_order_id)
+                    : undefined,
+                netTotal: Number(it.net_total ?? 0),
+                isPromotionParent: !!(it.is_promotion_parent ?? 0),
+              })) : [],
             shippingCost: Number(r.shipping_cost ?? 0),
             billDiscount: Number(r.bill_discount ?? 0),
             totalAmount: Number(r.total_amount ?? 0),
@@ -721,7 +722,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       // ??????????????????? orderId
       const orderRows: any[] = [];
       itemsByOrderId.forEach((items, onlineOrderId) => {
-        items.forEach((item, index) => {
+          // Exclude promotion parent items (is_promotion_parent = 1 in DB)
+          const exportItems = items.filter((it: any) => !it.isPromotionParent);
+          if (exportItems.length === 0) {
+            return;
+          }
+
+          exportItems.forEach((item, index) => {
           const codAmount = order.paymentMethod === PaymentMethod.COD
             ? (order.boxes?.reduce((sum, box) => sum + (box.collectionAmount ?? box.codAmount), 0) || order.totalAmount)
             : 0;

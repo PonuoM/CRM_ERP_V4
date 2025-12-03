@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { User } from "../types";
 import {
   CheckCircle,
@@ -11,6 +11,7 @@ import {
   Download,
 } from "lucide-react";
 import Modal from "@/components/Modal";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface StatementManagementPageProps {
   user: User;
@@ -77,6 +78,7 @@ const createEmptyRow = (id: number): RowData => ({
 const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   user,
 }) => {
+  const apiBase = useMemo(() => resolveApiBasePath(), []);
   const [rows, setRows] = useState<RowData[]>(
     Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)),
   );
@@ -108,7 +110,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     setBankError(null);
     try {
       const res = await fetch(
-        `api/Bank_DB/get_bank_accounts.php?company_id=${encodeURIComponent(
+        `${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${encodeURIComponent(
           String(user.companyId),
         )}`,
       );
@@ -467,7 +469,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
 
     setIsSaving(true);
     try {
-      const res = await fetch("api/Statement_DB/save_statement.php", {
+      const res = await fetch(`${apiBase}/Statement_DB/save_statement.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -501,7 +503,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch("api/Statement_DB/list_batches.php", {
+      const res = await fetch(`${apiBase}/Statement_DB/list_batches.php`, {
         method: "GET",
       });
       const data = await res.json();
@@ -523,7 +525,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     setBatchRowsLoading(true);
     try {
       const res = await fetch(
-        `api/Statement_DB/get_batch.php?batch=${encodeURIComponent(
+        `${apiBase}/Statement_DB/get_batch.php?batch=${encodeURIComponent(
           String(batch),
         )}`,
         {
@@ -546,7 +548,7 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
   const handleDeleteBatch = async (batch: number) => {
     setDeleteLoading(true);
     try {
-      await fetch("api/Statement_DB/delete_batch.php", {
+      await fetch(`${apiBase}/Statement_DB/delete_batch.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ batch }),
