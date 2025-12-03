@@ -1115,8 +1115,13 @@ export async function updateOrderSlip(payload: {
   companyId: number;
   updatedBy?: number;
 }) {
-  return apiFetch("Slip_DB/update_order_slip.php", {
+  const legacyBase =
+    typeof window === "undefined" ? "/api" : resolveApiBasePath();
+  const url = `${legacyBase.replace(/\/$/, "")}/Slip_DB/update_order_slip.php`;
+
+  const res = await fetch(url, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       id: payload.id,
       amount: payload.amount,
@@ -1127,4 +1132,14 @@ export async function updateOrderSlip(payload: {
       updated_by: payload.updatedBy,
     }),
   });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message =
+      (data && (data.message || data.error)) ||
+      res.statusText ||
+      "Failed to update slip";
+    throw new Error(message);
+  }
+  return data;
 }
