@@ -5626,28 +5626,33 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       }
 
-    // Ensure boxNumber of promotion children follows their promotion parent
-    const normalizedItems =
-      (orderData.items || []).map((item) => {
-        if (!item.parentItemId) {
-          return item;
-        }
-        const parent = (orderData.items || []).find(
-          (p) => p.id === item.parentItemId && p.isPromotionParent,
-        );
-        if (!parent) {
-          return item;
-        }
-        // If parent has a valid boxNumber, force child to use the same box
-        const parentBox = parent.boxNumber || 1;
-        if (item.boxNumber === parentBox) {
-          return item;
-        }
-        return {
-          ...item,
-          boxNumber: parentBox,
-        };
-      });
+      // Ensure boxNumber & quantities of promotion children follow their promotion parent
+      const normalizedItems =
+        (orderData.items || []).map((item) => {
+          if (!item.parentItemId) {
+            return item;
+          }
+
+          const parent = (orderData.items || []).find(
+            (p) => p.id === item.parentItemId && p.isPromotionParent,
+          );
+          if (!parent) {
+            return item;
+          }
+
+          const parentBox = parent.boxNumber || 1;
+          const parentQty = parent.quantity || 1;
+
+          const patched: LineItem = { ...item };
+
+          // Force child boxNumber to match parent
+          patched.boxNumber = parentBox;
+
+          // Scale child quantity by parent quantity (e.g. promo x2)
+          patched.quantity = (item.quantity || 0) * parentQty;
+
+          return patched;
+        });
 
     const finalOrderData: Partial<Order> = {
         ...orderData,
