@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { User, Company, UserRole } from "../types";
 import { Plus, Edit, Trash2, Save, X } from "lucide-react";
 import Modal from "../components/Modal";
@@ -55,30 +55,30 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
       setPlatforms(
         Array.isArray(data)
           ? data.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            displayName: p.display_name,
-            description: p.description,
-            companyId: p.company_id,
-            active: Boolean(p.active),
-            sortOrder: p.sort_order || 0,
-            showPagesFrom: p.show_pages_from || null,
-            roleShow: (() => {
-              const raw = p.role_show;
-              if (!raw) return [];
-              try {
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed)
-                  ? parsed.map((v: any) => String(v))
-                  : [];
-              } catch {
-                return String(raw)
-                  .split(",")
-                  .map((v) => v.trim())
-                  .filter(Boolean);
-              }
-            })(),
-          }))
+              id: p.id,
+              name: p.name,
+              displayName: p.display_name,
+              description: p.description,
+              companyId: p.company_id,
+              active: Boolean(p.active),
+              sortOrder: p.sort_order || 0,
+              showPagesFrom: p.show_pages_from || null,
+              roleShow: (() => {
+                const raw = p.role_show;
+                if (!raw) return [];
+                try {
+                  const parsed = JSON.parse(raw);
+                  return Array.isArray(parsed)
+                    ? parsed.map((v: any) => String(v))
+                    : [];
+                } catch {
+                  return String(raw)
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean);
+                }
+              })(),
+            }))
           : [],
       );
     } catch (error) {
@@ -332,10 +332,11 @@ const PlatformsManagementPage: React.FC<PlatformsManagementPageProps> = ({
                   <td className="px-4 py-3 text-sm">
                     <button
                       onClick={() => handleToggleActive(platform)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${platform.active
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        platform.active
                           ? "bg-green-100 text-green-800"
                           : "bg-gray-100 text-gray-800"
-                        }`}
+                      }`}
                     >
                       {platform.active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                     </button>
@@ -425,7 +426,29 @@ const AddPlatformModal: React.FC<{
     showPagesFrom: null as string | null,
     roleShow: [] as string[],
   });
+
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [roleDropdownPos, setRoleDropdownPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  const toggleRoleDropdown = () => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setRoleDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+    setRoleDropdownOpen((open) => !open);
+  };
+
+  const allRolesSelected =
+    formData.roleShow.length > 0 &&
+    formData.roleShow.length === roleOptions.length;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -537,14 +560,13 @@ const AddPlatformModal: React.FC<{
           <div className="relative">
             <button
               type="button"
-              onClick={() => setRoleDropdownOpen((open) => !open)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm flex justify-between items-center flex-wrap gap-1"
+              ref={buttonRef}
+              onClick={toggleRoleDropdown}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm flex justify-between items-center flex-wrap gap-1 bg-white"
             >
               <span className="flex flex-wrap gap-1">
                 {formData.roleShow.length === 0 ? (
-                  <span className="text-gray-400">
-                    เลือก role ได้หลายค่า
-                  </span>
+                  <span className="text-gray-400">เลือก role ได้หลายค่า</span>
                 ) : (
                   formData.roleShow.map((role) => (
                     <span
@@ -558,8 +580,29 @@ const AddPlatformModal: React.FC<{
               </span>
               <span className="text-gray-400 text-xs ml-auto">▼</span>
             </button>
-            {roleDropdownOpen && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
+            {roleDropdownOpen && roleDropdownPos && (
+              <div
+                className="fixed z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-64 overflow-auto"
+                style={{
+                  top: roleDropdownPos.top,
+                  left: roleDropdownPos.left,
+                  width: roleDropdownPos.width,
+                }}
+              >
+                {/* option เลือกทั้งหมด */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      roleShow: allRolesSelected ? [] : [...roleOptions],
+                    });
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-100"
+                >
+                  {allRolesSelected ? "ยกเลิกเลือกทั้งหมด" : "เลือกทั้งหมด"}
+                </button>
+
                 {roleOptions.map((role) => {
                   const selected = formData.roleShow.includes(role);
                   return (
@@ -601,8 +644,34 @@ const AddPlatformModal: React.FC<{
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* sortOrder + active ส่วนเดิมของคุณ */}
-          {/* ... */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ลำดับการแสดงผล
+            </label>
+            <input
+              type="number"
+              value={formData.sortOrder}
+              onChange={(e) =>
+                setFormData({ ...formData, sortOrder: Number(e.target.value) })
+              }
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              min="0"
+            />
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="active"
+              checked={formData.active}
+              onChange={(e) =>
+                setFormData({ ...formData, active: e.target.checked })
+              }
+              className="mr-2"
+            />
+            <label htmlFor="active" className="text-sm text-gray-700">
+              เปิดใช้งาน
+            </label>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">
@@ -625,7 +694,6 @@ const AddPlatformModal: React.FC<{
   );
 };
 
-
 // Edit Platform Modal Component
 const EditPlatformModal: React.FC<{
   platform: Platform;
@@ -643,7 +711,29 @@ const EditPlatformModal: React.FC<{
     showPagesFrom: platform.showPagesFrom || null,
     roleShow: platform.roleShow || [],
   });
+
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [roleDropdownPos, setRoleDropdownPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  const toggleRoleDropdown = () => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setRoleDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+    setRoleDropdownOpen((open) => !open);
+  };
+
+  const allRolesSelected =
+    formData.roleShow.length > 0 &&
+    formData.roleShow.length === roleOptions.length;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -668,9 +758,7 @@ const EditPlatformModal: React.FC<{
           <input
             type="text"
             value={formData.name}
-            onChange={(e) =>
-              setFormData({ ...formData, name: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           />
@@ -739,14 +827,13 @@ const EditPlatformModal: React.FC<{
           <div className="relative">
             <button
               type="button"
-              onClick={() => setRoleDropdownOpen((open) => !open)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm flex justify-between items-center flex-wrap gap-1"
+              ref={buttonRef}
+              onClick={toggleRoleDropdown}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm flex justify-between items-center flex-wrap gap-1 bg-white"
             >
               <span className="flex flex-wrap gap-1">
                 {formData.roleShow.length === 0 ? (
-                  <span className="text-gray-400">
-                    เลือก role ได้หลายค่า
-                  </span>
+                  <span className="text-gray-400">เลือก role ได้หลายค่า</span>
                 ) : (
                   formData.roleShow.map((role) => (
                     <span
@@ -760,50 +847,101 @@ const EditPlatformModal: React.FC<{
               </span>
               <span className="text-gray-400 text-xs ml-auto">▼</span>
             </button>
-            {roleDropdownOpen && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                {roleOptions.map((role) => {
-                  const selected = formData.roleShow.includes(role);
-                  return (
-                    <button
-                      type="button"
-                      key={role}
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          roleShow: selected
-                            ? formData.roleShow.filter((r) => r !== role)
-                            : [...formData.roleShow, role],
-                        });
-                      }}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 ${
-                        selected ? "bg-blue-100 text-blue-800" : ""
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className={`inline-block w-3 h-3 border rounded-sm ${
-                            selected
-                              ? "bg-blue-600 border-blue-600"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {role}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
+
+          {roleDropdownOpen && roleDropdownPos && (
+            <div
+              className="fixed z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-64 overflow-auto"
+              style={{
+                top: roleDropdownPos.top,
+                left: roleDropdownPos.left,
+                width: roleDropdownPos.width,
+              }}
+            >
+              {/* option เลือกทั้งหมด */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    ...formData,
+                    roleShow: allRolesSelected ? [] : [...roleOptions],
+                  });
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-100"
+              >
+                {allRolesSelected ? "ยกเลิกเลือกทั้งหมด" : "เลือกทั้งหมด"}
+              </button>
+
+              {roleOptions.map((role) => {
+                const selected = formData.roleShow.includes(role);
+                return (
+                  <button
+                    type="button"
+                    key={role}
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        roleShow: selected
+                          ? formData.roleShow.filter((r) => r !== role)
+                          : [...formData.roleShow, role],
+                      });
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 ${
+                      selected ? "bg-blue-100 text-blue-800" : ""
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={`inline-block w-3 h-3 border rounded-sm ${
+                          selected
+                            ? "bg-blue-600 border-blue-600"
+                            : "border-gray-300"
+                        }`}
+                      />
+                      {role}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <p className="mt-1 text-xs text-gray-500">
             จะถูกเก็บในฐานข้อมูลเป็น JSON array เช่น ['Telesale','Admin
             Control']
           </p>
         </div>
 
-        {/* ส่วน sortOrder + active ของเดิมคุณ */}
-        {/* ... */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ลำดับการแสดงผล
+            </label>
+            <input
+              type="number"
+              value={formData.sortOrder}
+              onChange={(e) =>
+                setFormData({ ...formData, sortOrder: Number(e.target.value) })
+              }
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              min="0"
+            />
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="active"
+              checked={formData.active}
+              onChange={(e) =>
+                setFormData({ ...formData, active: e.target.checked })
+              }
+              className="mr-2"
+            />
+            <label htmlFor="active" className="text-sm text-gray-700">
+              เปิดใช้งาน
+            </label>
+          </div>
+        </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t">
           <button
@@ -824,6 +962,5 @@ const EditPlatformModal: React.FC<{
     </Modal>
   );
 };
-
 
 export default PlatformsManagementPage;
