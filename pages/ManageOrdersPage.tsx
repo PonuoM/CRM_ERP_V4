@@ -737,9 +737,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
             );
             const orderIdTotalAmount =
-              boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
-                ? boxForThisOrder.codAmount
-                : 0;
+              order.paymentMethod === PaymentMethod.COD
+                ? (boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
+                    ? boxForThisOrder.codAmount
+                    : 0)
+                : "";
 
           // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
