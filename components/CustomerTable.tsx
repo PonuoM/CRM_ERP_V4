@@ -47,6 +47,20 @@ const statusColorMap: { [key: string]: string } = {
   DailyDistribution: "bg-purple-100 text-purple-800",
 };
 
+// Helper function to get contrasting text color (black or white)
+const getContrastColor = (hexColor: string): string => {
+  // Remove # if present
+  const color = hexColor.replace('#', '');
+  // Convert to RGB
+  const r = parseInt(color.substr(0, 2), 16);
+  const g = parseInt(color.substr(2, 2), 16);
+  const b = parseInt(color.substr(4, 2), 16);
+  // Calculate brightness
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  // Return black or white based on brightness
+  return brightness > 128 ? '#000000' : '#FFFFFF';
+};
+
 const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   const {
     customers,
@@ -172,14 +186,20 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full"></span>
           </button>
         )}
-        {visibleTags.map((tag) => (
-          <span
-            key={tag.id}
-            className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${tag.type === TagType.System ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"}`}
-          >
-            {tag.name}
-          </span>
-        ))}
+        {visibleTags.map((tag) => {
+          const tagColor = tag.color || '#9333EA';
+          const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
+          const textColor = getContrastColor(bgColor);
+          return (
+            <span
+              key={tag.id}
+              className="text-xs font-medium px-2.5 py-0.5 rounded-full"
+              style={{ backgroundColor: bgColor, color: textColor }}
+            >
+              {tag.name}
+            </span>
+          );
+        })}
         {hiddenCount > 0 && (
           <div className="group relative">
             <span className="bg-gray-200 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-full cursor-pointer">

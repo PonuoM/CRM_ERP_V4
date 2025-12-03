@@ -1,13 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, User, CallHistory } from '../types';
+import { Customer, User, CallHistory, Tag, TagType } from '../types';
 import Modal from './Modal';
 import { Plus, X } from 'lucide-react';
+import TagSelectionModal from './TagSelectionModal';
+
+// Helper function to get contrasting text color (black or white)
+const getContrastColor = (hexColor: string): string => {
+  // Remove # if present
+  const color = hexColor.replace('#', '');
+  // Convert to RGB
+  const r = parseInt(color.substr(0, 2), 16);
+  const g = parseInt(color.substr(2, 2), 16);
+  const b = parseInt(color.substr(4, 2), 16);
+  // Calculate brightness
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  // Return black or white based on brightness
+  return brightness > 128 ? '#000000' : '#FFFFFF';
+};
 
 interface LogCallModalProps {
   customer: Customer;
   user: User;
+  systemTags: Tag[];
   // FIX: Change customerId type from number to string to match the Customer type.
-  onSave: (callLog: Omit<CallHistory, 'id'>, customerId: string, newFollowUpDate?: string, newTags?: string[]) => void;
+  onSave: (callLog: Omit<CallHistory, 'id'>, customerId: string, newFollowUpDate?: string, newTags?: Tag[]) => void;
+  onCreateUserTag: (tagName: string) => Promise<Tag | null>;
   onClose: () => void;
 }
 
@@ -17,7 +34,7 @@ const nonConversationResultOptions = ['ไม่รับสาย', 'สาย�
 const allCallResultOptions = [...new Set([...conversationResultOptions, ...nonConversationResultOptions])];
 
 
-const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, onSave, onClose }) => {
+const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags, onSave, onCreateUserTag, onClose }) => {
   const [status, setStatus] = useState('');
   const [callResult, setCallResult] = useState('');
   const [duration, setDuration] = useState('0');
@@ -25,9 +42,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, onSave, onC
   const [cropType, setCropType] = useState('');
   const [areaSize, setAreaSize] = useState('');
   const [notes, setNotes] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
-  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [showTagModal, setShowTagModal] = useState(false);
 
   const isResultDisabled = nonConversationResultOptions.includes(status);
 
@@ -43,16 +59,14 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, onSave, onC
   }, [status]);
 
 
-  const handleAddTag = () => {
-    if (tagInput && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
-      setIsAddingTag(false);
+  const handleAddTag = (tag: Tag) => {
+    if (!selectedTags.some(t => t.id === tag.id)) {
+      setSelectedTags([...selectedTags, tag]);
     }
   };
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
+  const handleRemoveTag = (tagToRemove: Tag) => {
+    setSelectedTags(selectedTags.filter(tag => tag.id !== tagToRemove.id));
   };
 
 
@@ -79,7 +93,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, onSave, onC
       notes: notes || undefined,
     };
 
-    onSave(newCallLog, customer.id, nextFollowUpDate, tags);
+    onSave(newCallLog, customer.id, nextFollowUpDate, selectedTags);
   };
 
   const nowForInput = new Date().toISOString().slice(0, 16);
@@ -175,46 +189,51 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, onSave, onC
         </div>
          <div>
             <label className="block text-gray-700 font-medium mb-1">เพิ่ม Tag</label>
-            {isAddingTag ? (
-                <div className="flex items-center space-x-2">
-                    <input
-                        type="text"
-                        value={tagInput}
-                        onChange={(e) => setTagInput(e.target.value)}
-                        className="flex-grow p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                        placeholder="พิมพ์ Tag แล้วกด Enter"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                        autoFocus
-                        style={{ colorScheme: 'light' }}
-                    />
-                    <button onClick={handleAddTag} className="px-4 py-2 bg-green-600 text-white rounded-md font-semibold hover:bg-green-700">เพิ่ม</button>
-                    <button onClick={() => setIsAddingTag(false)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">ยกเลิก</button>
-                </div>
-            ) : (
-                <button 
-                    onClick={() => setIsAddingTag(true)}
-                    className="w-full flex items-center justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-md text-gray-500 hover:border-green-500 hover:text-green-600 transition-colors"
-                >
-                    <Plus size={16} className="mr-2"/> เพิ่ม Tag
-                </button>
-            )}
-             <div className="mt-2 p-2 min-h-[40px] bg-gray-50 rounded-md border">
-                {tags.length > 0 ? (
+            <button 
+                onClick={() => setShowTagModal(true)}
+                className="w-full flex items-center justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-md text-gray-500 hover:border-green-500 hover:text-green-600 transition-colors"
+            >
+                <Plus size={16} className="mr-2"/> เพิ่ม Tag
+            </button>
+            <div className="mt-2 p-2 min-h-[40px] bg-gray-50 rounded-md border">
+                {selectedTags.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                        {tags.map((tag) => (
-                            <span key={tag} className="flex items-center bg-green-100 text-green-800 text-xs font-medium px-2.5 py-1 rounded-full">
-                                {tag}
-                                <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 text-green-600 hover:text-green-800">
-                                    <X size={12} />
-                                </button>
-                            </span>
-                        ))}
+                        {selectedTags.map((tag) => {
+                            const tagColor = tag.color || '#9333EA';
+                            const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
+                            const textColor = getContrastColor(bgColor);
+                            return (
+                                <span 
+                                    key={tag.id} 
+                                    className="flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+                                    style={{ backgroundColor: bgColor, color: textColor }}
+                                >
+                                    {tag.name}
+                                    <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 opacity-70 hover:opacity-100">
+                                        <X size={12} />
+                                    </button>
+                                </span>
+                            );
+                        })}
                     </div>
                 ) : (
-                    <p className="text-gray-400 text-xs italic">Tags ที่เพิ่มจะแสดงที่นี่</p>
+                    <p className="text-gray-400 text-xs italic">Tags ที่เลือกจะแสดงที่นี่</p>
                 )}
             </div>
         </div>
+        
+        {showTagModal && (
+          <TagSelectionModal
+            customer={customer}
+            user={user}
+            systemTags={systemTags}
+            selectedTags={selectedTags}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
+            onCreateUserTag={onCreateUserTag}
+            onClose={() => setShowTagModal(false)}
+          />
+        )}
       </div>
       <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
         <button

@@ -35,7 +35,9 @@ export default function LoginPage() {
       setUser(res.user);
       setStatus(`Logged in as ${res.user!.username} (${res.user!.role})`);
       // Persist session and navigate to app
-      localStorage.setItem('sessionUser', JSON.stringify(res.user));
+      const today = new Date().toISOString().slice(0, 10);
+      localStorage.setItem('sessionUser', JSON.stringify({ ...res.user, loginDate: today }));
+      localStorage.removeItem('checkinPromptSeenDate');
       setTimeout(() => {
         const url = new URL(window.location.href);
         url.searchParams.delete('login');

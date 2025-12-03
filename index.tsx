@@ -9,9 +9,28 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+const isSessionValidToday = (): boolean => {
+  const raw = localStorage.getItem('sessionUser');
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    const loginDate = parsed?.loginDate || parsed?.login_date;
+    const today = new Date().toISOString().slice(0, 10);
+    if (loginDate !== today) {
+      localStorage.removeItem('sessionUser');
+      return false;
+    }
+    return true;
+  } catch {
+    localStorage.removeItem('sessionUser');
+    return false;
+  }
+};
+
 const root = ReactDOM.createRoot(rootElement);
 const url = new URL(window.location.href);
-const showLogin = url.searchParams.has('login') || !localStorage.getItem('sessionUser');
+const showLogin =
+  url.searchParams.has('login') || !isSessionValidToday();
 root.render(
   <React.StrictMode>
     {showLogin ? <LoginPage /> : <App />}

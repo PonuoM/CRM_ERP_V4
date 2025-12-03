@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   UserRole,
   User,
@@ -59,6 +59,8 @@ import {
   listActivities,
   createActivity,
   listTags,
+  updateTag,
+  deleteTag,
   listAttendance,
   checkInAttendance,
   apiFetch,
@@ -71,6 +73,8 @@ import {
   recordFollowUp,
   getCustomerOwnershipStatus,
   recordSale,
+  redistributeCustomer,
+  retrieveCustomer,
 } from "@/ownershipApi";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import Sidebar from "./components/Sidebar";
@@ -212,6 +216,7 @@ const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(
     UserRole.Telesale,
   );
+  const lastUserIdRef = useRef<number | null>(null);
 
   const resolvePageFromParam = useCallback((value: string | null) => {
     if (!value || value.length === 0) return "Dashboard";
@@ -335,6 +340,24 @@ const App: React.FC = () => {
     string,
     { view?: boolean; use?: boolean }
   > | null>(null);
+  // Session user from LoginPage (enforce same-day session)
+  const [sessionUser, setSessionUser] = useState<any | null>(() => {
+    try {
+      const raw = localStorage.getItem("sessionUser");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const loginDate = parsed?.loginDate || parsed?.login_date;
+      const today = new Date().toISOString().slice(0, 10);
+      if (loginDate !== today) {
+        localStorage.removeItem("sessionUser");
+        return null;
+      }
+      return parsed;
+    } catch {
+      localStorage.removeItem("sessionUser");
+      return null;
+    }
+  });
   const [attendanceSession, setAttendanceSession] =
     usePersistentState<AttendanceSessionState | null>(
       "attendance.session",
@@ -347,6 +370,7 @@ const App: React.FC = () => {
     attendanceStatus?: string | null;
     effectiveSeconds?: number;
   } | null>(null);
+  const [showCheckInPrompt, setShowCheckInPrompt] = useState<boolean>(false);
   const [attendanceDuration, setAttendanceDuration] = useState<number>(0);
   const [attendanceLoading, setAttendanceLoading] = useState<boolean>(false);
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
@@ -412,15 +436,6 @@ const App: React.FC = () => {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [resolvePageFromParam, setActivePage, setHideSidebar]);
-
-  // Session user from LoginPage
-  const [sessionUser, setSessionUser] = useState<any | null>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("sessionUser") || "null");
-    } catch {
-      return null;
-    }
-  });
 
   // Always use real database - no mock data
   // API/UI enum mappings (global)
@@ -703,7 +718,7 @@ const App: React.FC = () => {
           listAppointments(),
           listCustomerTags(),
           listActivities(),
-          listTags(),
+          listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
           getRolePermissions((sessionUser?.role ?? users[0]?.role) as any),
           listWarehouses(sessionUser?.company_id),
@@ -731,11 +746,21 @@ const App: React.FC = () => {
           console.warn("Failed to log API raw responses", logErr);
         }
 
+        // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
+        const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
+          if (!customerIdInt) return '';
+          const customer = customersList.find(c => 
+            c.pk === customerIdInt || 
+            (typeof c.id === 'number' && c.id === customerIdInt)
+          );
+          return customer?.id || String(customerIdInt);
+        };
+
         setActivities(
           Array.isArray(act)
             ? act.map((a) => ({
               id: a.id,
-              customerId: a.customer_id,
+              customerId: mapActivityCustomerId(a.customer_id, customers),
               timestamp: a.timestamp,
               type: a.type,
               description: a.description,
@@ -858,7 +883,14 @@ const App: React.FC = () => {
           teamId: r.team_id ?? undefined,
           supervisorId: r.supervisor_id ?? undefined,
           status: r.status,
-          customTags: [],
+          customTags: Array.isArray(r.customTags)
+            ? r.customTags.map((t: any) => ({
+              id: Number(t.id),
+              name: t.name,
+              type: TagType.User,
+              color: t.color ?? undefined,
+            }))
+            : [],
         });
 
         const tagsByCustomer: Record<string, Tag[]> = {};
@@ -871,6 +903,7 @@ const App: React.FC = () => {
                 (row.type as "SYSTEM" | "USER") === "SYSTEM"
                   ? TagType.System
                   : TagType.User,
+              color: row.color ?? undefined,
             };
             const cid = String(row.customer_id);
             (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
@@ -1142,11 +1175,14 @@ const App: React.FC = () => {
         // Set system tags and companies from API
         setSystemTags(
           Array.isArray(tags)
-            ? tags.map((t) => ({
-              id: t.id,
-              name: t.name,
-              type: t.type === "SYSTEM" ? TagType.System : TagType.User,
-            }))
+            ? tags
+              .filter((t) => t.type === "SYSTEM")
+              .map((t) => ({
+                id: t.id,
+                name: t.name,
+                type: TagType.System,
+                color: t.color ?? undefined,
+              }))
             : [],
         );
 
@@ -1361,6 +1397,26 @@ const App: React.FC = () => {
     }
     return users.length > 0 ? users[0] : null;
   }, [sessionUser, users]);
+
+  useEffect(() => {
+    const loginDate = sessionUser?.loginDate || sessionUser?.login_date;
+    if (!sessionUser || !loginDate || !currentUser?.id) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (loginDate !== today) return;
+    const seenDate = localStorage.getItem("checkinPromptSeenDate");
+    if (seenDate !== today) {
+      setShowCheckInPrompt(true);
+    }
+  }, [sessionUser?.id, sessionUser?.loginDate, currentUser?.id]);
+
+  // Reset landing page to Home when user changes (prevents showing previous role's page)
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (lastUserIdRef.current !== currentUser.id) {
+      lastUserIdRef.current = currentUser.id;
+      setActivePage("Home");
+    }
+  }, [currentUser?.id, setActivePage]);
 
   // Track if users have been loaded at least once
   const [usersLoaded, setUsersLoaded] = useState(false);
@@ -1594,6 +1650,19 @@ const App: React.FC = () => {
       setAttendanceLoading(false);
     }
   }, [currentUser?.id, setAttendanceSession]);
+
+  const handleCheckInPromptConfirm = async () => {
+    const today = getTodayIsoString();
+    localStorage.setItem("checkinPromptSeenDate", today);
+    setShowCheckInPrompt(false);
+    await handleCheckIn();
+  };
+
+  const handleCheckInPromptSkip = () => {
+    const today = getTodayIsoString();
+    localStorage.setItem("checkinPromptSeenDate", today);
+    setShowCheckInPrompt(false);
+  };
 
   const attendanceStartIso = useMemo(
     () => attendanceInfo?.firstLogin ?? attendanceSession?.loginTime ?? null,
@@ -1961,6 +2030,21 @@ const App: React.FC = () => {
     if (activePage !== "CreateOrder") setCreateOrderInitialData(null);
   }, [activePage]);
 
+  // Helper function เพื่อแปลง customerId (string หรือ INT) เป็น customer_id (INT) สำหรับบันทึก activities
+  const getCustomerIdForActivity = (customerId: string | number): number | null => {
+    if (typeof customerId === 'number') {
+      return customerId;
+    }
+    // หา customer จาก customers array
+    const customer = customers.find(c => 
+      c.id === customerId || 
+      String(c.id) === String(customerId) ||
+      c.pk === customerId ||
+      String(c.pk) === String(customerId)
+    );
+    return customer?.pk || (typeof customer?.id === 'number' ? customer.id : null);
+  };
+
   const handleUpdateOrder = async (updatedOrder: Order) => {
     const originalOrder = orders.find((o) => o.id === updatedOrder.id);
     if (!originalOrder) return;
@@ -2002,11 +2086,12 @@ const App: React.FC = () => {
     }
 
     const activitiesToAdd: Activity[] = [];
+    const customerIdForActivity = getCustomerIdForActivity(updatedOrder.customerId);
 
-    if (originalOrder.orderStatus !== updatedOrder.orderStatus) {
+    if (originalOrder.orderStatus !== updatedOrder.orderStatus && customerIdForActivity) {
       activitiesToAdd.push({
         id: Date.now() + Math.random(),
-        customerId: updatedOrder.customerId,
+        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
         timestamp: new Date().toISOString(),
         type: ActivityType.OrderStatusChanged,
         description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
@@ -2016,11 +2101,12 @@ const App: React.FC = () => {
 
     if (
       originalOrder.paymentStatus !== updatedOrder.paymentStatus &&
-      updatedOrder.paymentStatus === PaymentStatus.Paid
+      updatedOrder.paymentStatus === PaymentStatus.Paid &&
+      customerIdForActivity
     ) {
       activitiesToAdd.push({
         id: Date.now() + Math.random(),
-        customerId: updatedOrder.customerId,
+        customerId: String(customerIdForActivity),
         timestamp: new Date().toISOString(),
         type: ActivityType.PaymentVerified,
         description: `ยืนยันการชำระเงินสำเร็จสำหรับคำสั่งซื้อ ${updatedOrder.id}`,
@@ -2028,10 +2114,10 @@ const App: React.FC = () => {
       });
     }
 
-    if (newTracking.length > 0) {
+    if (newTracking.length > 0 && customerIdForActivity) {
       activitiesToAdd.push({
         id: Date.now() + Math.random(),
-        customerId: updatedOrder.customerId,
+        customerId: String(customerIdForActivity),
         timestamp: new Date().toISOString(),
         type: ActivityType.TrackingAdded,
         description: `เพิ่ม Tracking [${newTracking.join(", ")}] สำหรับคำสั่งซื้อ ${updatedOrder.id}`,
@@ -2039,8 +2125,21 @@ const App: React.FC = () => {
       });
     }
 
-    if (activitiesToAdd.length > 0) {
+    if (activitiesToAdd.length > 0 && customerIdForActivity) {
       setActivities((prev) => [...activitiesToAdd, ...prev]);
+      
+      // บันทึก activities ลง database
+      if (true) {
+        activitiesToAdd.forEach((activity) => {
+          createActivity({
+            customerId: customerIdForActivity, // ส่ง INT ไป API
+            timestamp: activity.timestamp,
+            type: activity.type,
+            description: activity.description,
+            actorName: activity.actorName,
+          }).catch((e) => console.error("Failed to create activity", e));
+        });
+      }
     }
     if (true) {
       try {
@@ -2126,28 +2225,31 @@ const App: React.FC = () => {
     ) {
       const orderToCancel = orders.find((o) => o.id === orderId);
       if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
-        const newActivity: Activity = {
-          id: Date.now() + Math.random(),
-          customerId: orderToCancel.customerId,
-          timestamp: new Date().toISOString(),
-          type: ActivityType.OrderCancelled,
-          description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
-          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-        };
-        if (true) {
-          try {
-            await createActivity({
-              customerId: newActivity.customerId,
-              timestamp: newActivity.timestamp,
-              type: newActivity.type,
-              description: newActivity.description,
-              actorName: newActivity.actorName,
-            });
-          } catch (e) {
-            console.error("Failed to create activity", e);
+        const customerIdForActivity = getCustomerIdForActivity(orderToCancel.customerId);
+        if (customerIdForActivity) {
+          const newActivity: Activity = {
+            id: Date.now() + Math.random(),
+            customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+            timestamp: new Date().toISOString(),
+            type: ActivityType.OrderCancelled,
+            description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
+            actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+          };
+          if (true) {
+            try {
+              await createActivity({
+                customerId: customerIdForActivity, // ส่ง INT ไป API
+                timestamp: newActivity.timestamp,
+                type: newActivity.type,
+                description: newActivity.description,
+                actorName: newActivity.actorName,
+              });
+            } catch (e) {
+              console.error("Failed to create activity", e);
+            }
           }
+          setActivities((prev) => [newActivity, ...prev]);
         }
-        setActivities((prev) => [newActivity, ...prev]);
         if (true) {
           try {
             await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
@@ -2175,14 +2277,17 @@ const App: React.FC = () => {
     validIds.forEach((orderId) => {
       const orderToCancel = orders.find((o) => o.id === orderId);
       if (!orderToCancel) return;
-      activitiesToAdd.push({
-        id: Date.now() + Math.random(),
-        customerId: orderToCancel.customerId,
-        timestamp: new Date().toISOString(),
-        type: ActivityType.OrderCancelled,
-        description: `ยกเลิกออเดอร์ ${orderId}`,
-        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-      });
+      const customerIdForActivity = getCustomerIdForActivity(orderToCancel.customerId);
+      if (customerIdForActivity) {
+        activitiesToAdd.push({
+          id: Date.now() + Math.random(),
+          customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+          timestamp: new Date().toISOString(),
+          type: ActivityType.OrderCancelled,
+          description: `ยกเลิกออเดอร์ ${orderId}`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        });
+      }
     });
 
     setActivities((prev) => [...activitiesToAdd, ...prev]);
@@ -2195,7 +2300,17 @@ const App: React.FC = () => {
     for (const activity of activitiesToAdd) {
       if (true) {
         try {
-          await createActivity(activity);
+          // หา customerIdForActivity จาก activity.customerId
+          const customerIdForActivity = getCustomerIdForActivity(activity.customerId);
+          if (customerIdForActivity) {
+            await createActivity({
+              customerId: customerIdForActivity, // ส่ง INT ไป API
+              timestamp: activity.timestamp,
+              type: activity.type,
+              description: activity.description,
+              actorName: activity.actorName,
+            });
+          }
         } catch (e) {
           console.error("Failed to create activity", e);
         }
@@ -2216,14 +2331,17 @@ const App: React.FC = () => {
     setOrders((prevOrders) => {
       const updated = prevOrders.map((o) => {
         if (orderIds.includes(o.id) && o.orderStatus === OrderStatus.Pending) {
-          activitiesToAdd.push({
-            id: Date.now() + Math.random(),
-            customerId: o.customerId,
-            timestamp: new Date().toISOString(),
-            type: ActivityType.OrderStatusChanged,
-            description: `อัปเดตคำสั่งซื้อ ${o.id} เปลี่ยนจาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
-            actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-          });
+          const customerIdForActivity = getCustomerIdForActivity(o.customerId);
+          if (customerIdForActivity) {
+            activitiesToAdd.push({
+              id: Date.now() + Math.random(),
+              customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+              timestamp: new Date().toISOString(),
+              type: ActivityType.OrderStatusChanged,
+              description: `อัปเดตคำสั่งซื้อ ${o.id} เปลี่ยนจาก '${OrderStatus.Pending}' เป็น '${OrderStatus.Picking}'`,
+              actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+            });
+          }
           return { ...o, orderStatus: OrderStatus.Picking };
         }
         return o;
@@ -2231,15 +2349,18 @@ const App: React.FC = () => {
       if (activitiesToAdd.length > 0) {
         if (true) {
           activitiesToAdd.forEach((activity) => {
-            createActivity({
-              customerId: activity.customerId,
-              timestamp: activity.timestamp,
-              type: activity.type,
-              description: activity.description,
-              actorName: activity.actorName,
-            }).catch((e) => {
-              console.error("Failed to create activity", e);
-            });
+            const customerIdForActivity = getCustomerIdForActivity(activity.customerId);
+            if (customerIdForActivity) {
+              createActivity({
+                customerId: customerIdForActivity, // ส่ง INT ไป API
+                timestamp: activity.timestamp,
+                type: activity.type,
+                description: activity.description,
+                actorName: activity.actorName,
+              }).catch((e) => {
+                console.error("Failed to create activity", e);
+              });
+            }
           });
         }
         setActivities((prev) => [...activitiesToAdd, ...prev]);
@@ -2287,14 +2408,17 @@ const App: React.FC = () => {
           const existingTrackingNumbers =
             (orderToUpdate as Order).trackingNumbers || [];
           if (!existingTrackingNumbers.includes(update.trackingNumber)) {
-            activitiesToAdd.push({
-              id: Date.now() + Math.random(),
-              customerId: (orderToUpdate as Order).customerId,
-              timestamp: new Date().toISOString(),
-              type: ActivityType.TrackingAdded,
-              description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
-              actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-            });
+            const customerIdForActivity = getCustomerIdForActivity((orderToUpdate as Order).customerId);
+            if (customerIdForActivity) {
+              activitiesToAdd.push({
+                id: Date.now() + Math.random(),
+                customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+                timestamp: new Date().toISOString(),
+                type: ActivityType.TrackingAdded,
+                description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
+                actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+              });
+            }
 
             const newOrderState: Order = {
               ...(orderToUpdate as Order),
@@ -2319,14 +2443,17 @@ const App: React.FC = () => {
             if (
               (orderToUpdate as Order).orderStatus !== newOrderState.orderStatus
             ) {
-              activitiesToAdd.push({
-                id: Date.now() + Math.random(),
-                customerId: (orderToUpdate as Order).customerId,
-                timestamp: new Date().toISOString(),
-                type: ActivityType.OrderStatusChanged,
-                description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
-                actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-              });
+              const customerIdForActivity = getCustomerIdForActivity((orderToUpdate as Order).customerId);
+              if (customerIdForActivity) {
+                activitiesToAdd.push({
+                  id: Date.now() + Math.random(),
+                  customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+                  timestamp: new Date().toISOString(),
+                  type: ActivityType.OrderStatusChanged,
+                  description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
+                  actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+                });
+              }
             }
             updatedOrdersMap.set(update.orderId, newOrderState);
             if (true) {
@@ -2644,6 +2771,39 @@ const App: React.FC = () => {
 
       if (res && res.ok) {
         const createdOrderId = res.id;
+        
+        // บันทึกกิจกรรมการสร้างออเดอร์
+        const customer = customers.find(c => c.id === customerIdForOrder || c.pk === customerIdForOrder);
+        if (customer) {
+          // ใช้ customer_id (INT) สำหรับบันทึก activities
+          const customerIdForActivity = customer.pk || (typeof customer.id === 'number' ? customer.id : null);
+          
+          if (customerIdForActivity) {
+            const newActivity: Activity = {
+              id: Date.now() + Math.random(),
+              customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+              timestamp: new Date().toISOString(),
+              type: ActivityType.OrderCreated,
+              description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
+              actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+            };
+            
+            if (true) {
+              try {
+                await createActivity({
+                  customerId: customerIdForActivity, // ส่ง INT ไป API
+                  timestamp: newActivity.timestamp,
+                  type: newActivity.type,
+                  description: newActivity.description,
+                  actorName: newActivity.actorName,
+                });
+              } catch (e) {
+                console.error("Failed to create activity for new order", e);
+              }
+            }
+            setActivities((prev) => [newActivity, ...prev]);
+          }
+        }
 
         // Handle multiple slips upload
         if (slipUploadsArray.length > 0) {
@@ -2823,12 +2983,22 @@ const App: React.FC = () => {
         }));
         setOrders(mappedOrders);
 
+        // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
+        const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
+          if (!customerIdInt) return '';
+          const customer = customersList.find(c => 
+            c.pk === customerIdInt || 
+            (typeof c.id === 'number' && c.id === customerIdInt)
+          );
+          return customer?.id || String(customerIdInt);
+        };
+
         // Refresh activities
         setActivities(
           Array.isArray(refreshedActivitiesRaw)
             ? refreshedActivitiesRaw.map((a: any) => ({
               id: a.id,
-              customerId: a.customer_id,
+              customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
               timestamp: a.timestamp,
               type: a.type,
               description: a.description,
@@ -2987,16 +3157,26 @@ const App: React.FC = () => {
         }))
         : [];
 
-      const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
-        ? refreshedActivitiesRaw.map((a) => ({
-          id: a.id,
-          customerId: a.customer_id,
-          timestamp: a.timestamp,
-          type: a.type,
-          description: a.description,
-          actorName: a.actor_name,
-        }))
-        : [];
+        // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
+        const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
+          if (!customerIdInt) return '';
+          const customer = customersList.find(c => 
+            c.pk === customerIdInt || 
+            (typeof c.id === 'number' && c.id === customerIdInt)
+          );
+          return customer?.id || String(customerIdInt);
+        };
+
+        const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
+          ? refreshedActivitiesRaw.map((a) => ({
+            id: a.id,
+            customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
+            timestamp: a.timestamp,
+            type: a.type,
+            description: a.description,
+            actorName: a.actor_name,
+          }))
+          : [];
 
       const tagsByCustomer: Record<string, Tag[]> = {};
       if (Array.isArray(refreshedCustomerTagsRaw)) {
@@ -3064,6 +3244,10 @@ const App: React.FC = () => {
     const resolvedGrade = calculateCustomerGrade(
       updatedCustomer.totalPurchases,
     );
+    
+    // หาลูกค้าเดิมเพื่อเปรียบเทียบการเปลี่ยนแปลง
+    const originalCustomer = customers.find(c => c.id === updatedCustomer.id);
+    
     if (true) {
       try {
         const targetId = updatedCustomer.pk || updatedCustomer.id;
@@ -3089,10 +3273,93 @@ const App: React.FC = () => {
           lineId: updatedCustomer.lineId,
           address: updatedCustomer.address,
         });
+        
+        // แสดง popup แจ้งเตือนเมื่อแก้ไขสำเร็จ
+        alert(`แก้ไขข้อมูลลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" สำเร็จ`);
       } catch (e) {
         console.error("update customer API failed", e);
+        alert("เกิดข้อผิดพลาดในการแก้ไขข้อมูลลูกค้า กรุณาลองใหม่อีกครั้ง");
+        return; // ไม่ปิด modal ถ้าเกิด error
       }
     }
+    
+    // บันทึกกิจกรรมเมื่อมีการเปลี่ยนแปลง
+    const activitiesToAdd: Activity[] = [];
+    
+    // ใช้ customer_id (INT) สำหรับบันทึก activities
+    const customerIdForActivity = updatedCustomer.pk || (typeof updatedCustomer.id === 'number' ? updatedCustomer.id : null);
+    
+    if (originalCustomer && customerIdForActivity) {
+      // ตรวจสอบการเปลี่ยนแปลง lifecycle_status
+      if (originalCustomer.lifecycleStatus !== updatedCustomer.lifecycleStatus) {
+        activitiesToAdd.push({
+          id: Date.now() + Math.random(),
+          customerId: String(customerIdForActivity), // เก็บเป็น string ใน state แต่ส่ง INT ไป API
+          timestamp: new Date().toISOString(),
+          type: ActivityType.StatusChange,
+          description: `เปลี่ยนสถานะลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.lifecycleStatus}' เป็น '${updatedCustomer.lifecycleStatus}'`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        });
+      }
+      
+      // ตรวจสอบการเปลี่ยนแปลง behavioral_status
+      if (originalCustomer.behavioralStatus !== updatedCustomer.behavioralStatus) {
+        activitiesToAdd.push({
+          id: Date.now() + Math.random(),
+          customerId: String(customerIdForActivity),
+          timestamp: new Date().toISOString(),
+          type: ActivityType.StatusChange,
+          description: `เปลี่ยนสถานะพฤติกรรมลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.behavioralStatus}' เป็น '${updatedCustomer.behavioralStatus}'`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        });
+      }
+      
+      // ตรวจสอบการเปลี่ยนแปลง grade
+      if (originalCustomer.grade !== resolvedGrade) {
+        activitiesToAdd.push({
+          id: Date.now() + Math.random(),
+          customerId: String(customerIdForActivity),
+          timestamp: new Date().toISOString(),
+          type: ActivityType.GradeChange,
+          description: `เปลี่ยนเกรดลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${originalCustomer.grade}' เป็น '${resolvedGrade}'`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        });
+      }
+      
+      // ตรวจสอบการเปลี่ยนแปลง assigned_to
+      if (originalCustomer.assignedTo !== updatedCustomer.assignedTo) {
+        const oldOwner = users.find(u => u.id === originalCustomer.assignedTo);
+        const newOwner = users.find(u => u.id === updatedCustomer.assignedTo);
+        const oldOwnerName = oldOwner ? `${oldOwner.firstName} ${oldOwner.lastName}` : 'ยังไม่ได้มอบหมาย';
+        const newOwnerName = newOwner ? `${newOwner.firstName} ${newOwner.lastName}` : 'ยังไม่ได้มอบหมาย';
+        
+        activitiesToAdd.push({
+          id: Date.now() + Math.random(),
+          customerId: String(customerIdForActivity),
+          timestamp: new Date().toISOString(),
+          type: ActivityType.Assignment,
+          description: `เปลี่ยนผู้ดูแลลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" จาก '${oldOwnerName}' เป็น '${newOwnerName}'`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        });
+      }
+    }
+    
+    // บันทึกกิจกรรม
+    if (activitiesToAdd.length > 0 && customerIdForActivity) {
+      if (true) {
+        activitiesToAdd.forEach((activity) => {
+          createActivity({
+            customerId: customerIdForActivity, // ส่ง INT ไป API
+            timestamp: activity.timestamp,
+            type: activity.type,
+            description: activity.description,
+            actorName: activity.actorName,
+          }).catch((e) => console.error("Failed to create activity", e));
+        });
+      }
+      setActivities((prev) => [...activitiesToAdd, ...prev]);
+    }
+    
     setCustomers((prev) =>
       prev.map((c) =>
         c.id === updatedCustomer.id
@@ -3171,15 +3438,64 @@ const App: React.FC = () => {
       ),
     );
 
+    // Redistribute ownership (adds 30 days)
+    try {
+      await redistributeCustomer(customerId);
+      const updated = await getCustomerOwnershipStatus(customerId);
+      if (updated && updated.ownership_expires) {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customerId
+              ? { ...c, ownershipExpires: updated.ownership_expires }
+              : c,
+          ),
+        );
+      }
+    } catch (e) {
+      console.error("Redistribute customer failed", e);
+    }
+
     setViewingCustomerId((prev) => (prev === customerId ? null : prev));
   };
 
-  const handleTakeCustomer = (customerToTake: Customer) => {
+  const handleTakeCustomer = async (customerToTake: Customer) => {
     if (
       window.confirm(
         `คุณต้องการรับผิดชอบลูกค้า "${customerToTake.firstName} ${customerToTake.lastName}" หรือไม่?`,
       )
     ) {
+      const dateAssigned = new Date().toISOString();
+
+      // 1. Update assignment in DB
+      try {
+        await updateCustomer(customerToTake.id, {
+          assignedTo: currentUser.id,
+          dateAssigned,
+        });
+      } catch (e) {
+        console.error("Failed to take customer (update assignment)", e);
+        alert("เกิดข้อผิดพลาดในการรับลูกค้า");
+        return;
+      }
+
+      // 2. Trigger Retrieve logic (adds 30 days)
+      try {
+        await retrieveCustomer(customerToTake.id);
+      } catch (e) {
+        console.error("Failed to retrieve customer (ownership)", e);
+      }
+
+      // 3. Get updated status and update local state
+      let newOwnershipExpires = customerToTake.ownershipExpires;
+      try {
+        const updated = await getCustomerOwnershipStatus(customerToTake.id);
+        if (updated && updated.ownership_expires) {
+          newOwnershipExpires = updated.ownership_expires;
+        }
+      } catch (e) {
+        console.error("Failed to get updated ownership status", e);
+      }
+
       setCustomers((prev) =>
         prev.map((c) =>
           c.id === customerToTake.id
@@ -3188,7 +3504,8 @@ const App: React.FC = () => {
               assignedTo: currentUser.id,
               previousLifecycleStatus: c.lifecycleStatus,
               lifecycleStatus: CustomerLifecycleStatus.FollowUp,
-              dateAssigned: new Date().toISOString(),
+              dateAssigned,
+              ownershipExpires: newOwnershipExpires,
             }
             : c,
         ),
@@ -3409,7 +3726,7 @@ const App: React.FC = () => {
     callLogData: Omit<CallHistory, "id">,
     customerId: string,
     newFollowUpDate?: string,
-    newTags?: string[],
+    newTags?: Tag[],
   ) => {
     const newCallLog: CallHistory = {
       ...callLogData,
@@ -3452,17 +3769,12 @@ const App: React.FC = () => {
         if (c.id === customerId) {
           let updatedCustomerTags: Tag[] = [...c.tags];
           if (newTags && newTags.length > 0) {
-            const existingTagNames = new Set(
-              updatedCustomerTags.map((t) => t.name),
+            const existingTagIds = new Set(
+              updatedCustomerTags.map((t) => t.id),
             );
-            const tagsToAdd: Tag[] = newTags
-              .filter((tagName) => !existingTagNames.has(tagName))
-              .map((tagName) => ({
-                // Create new USER tags on the fly. This won't be added to user's palette but will appear on customer.
-                id: Date.now() + Math.random(),
-                name: tagName,
-                type: TagType.User,
-              }));
+            const tagsToAdd: Tag[] = newTags.filter(
+              (tag) => !existingTagIds.has(tag.id),
+            );
             updatedCustomerTags = [...updatedCustomerTags, ...tagsToAdd];
           }
 
@@ -3502,6 +3814,26 @@ const App: React.FC = () => {
         }
 
         await updateCustomer(customerId, updateData);
+
+        // Add tags to customer if provided
+        if (newTags && newTags.length > 0 && customer) {
+          const existingTagNames = new Set(customer.tags.map((t) => t.name));
+          for (const tagName of newTags) {
+            if (!existingTagNames.has(tagName)) {
+              try {
+                // Create a temporary tag object
+                const tempTag: Tag = {
+                  id: Date.now() + Math.random(),
+                  name: tagName,
+                  type: TagType.User,
+                };
+                await handleAddTagToCustomer(customerId, tempTag);
+              } catch (e) {
+                console.error(`Failed to add tag "${tagName}" to customer`, e);
+              }
+            }
+          }
+        }
       } catch (e) {
         console.error("update customer call data", e);
       }
@@ -3549,28 +3881,31 @@ const App: React.FC = () => {
       }
     }
 
-    const newActivity: Activity = {
-      id: Date.now(),
-      customerId: customerId,
-      timestamp: new Date().toISOString(),
-      type: ActivityType.CallLogged,
-      description: `บันทึกการโทร: ${callLogData.result}`,
-      actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-    };
-    if (true) {
-      try {
-        await createActivity({
-          customerId: newActivity.customerId,
-          timestamp: newActivity.timestamp,
-          type: newActivity.type,
-          description: newActivity.description,
-          actorName: newActivity.actorName,
-        });
-      } catch (e) {
-        console.error("Failed to create activity", e);
+    const customerIdForActivity = getCustomerIdForActivity(customerId);
+    if (customerIdForActivity) {
+      const newActivity: Activity = {
+        id: Date.now(),
+        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+        timestamp: new Date().toISOString(),
+        type: ActivityType.CallLogged,
+        description: `บันทึกการโทร: ${callLogData.result}`,
+        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+      };
+      if (true) {
+        try {
+          await createActivity({
+            customerId: customerIdForActivity, // ส่ง INT ไป API
+            timestamp: newActivity.timestamp,
+            type: newActivity.type,
+            description: newActivity.description,
+            actorName: newActivity.actorName,
+          });
+        } catch (e) {
+          console.error("Failed to create activity", e);
+        }
       }
+      setActivities((prev) => [newActivity, ...prev]);
     }
-    setActivities((prev) => [newActivity, ...prev]);
 
     closeModal();
   };
@@ -3765,28 +4100,31 @@ const App: React.FC = () => {
       }
     }
 
-    const newActivity: Activity = {
-      id: Date.now() + Math.random(),
-      customerId: appointmentData.customerId,
-      timestamp: new Date().toISOString(),
-      type: ActivityType.AppointmentSet,
-      description: `นัดหมาย: ${appointmentData.title}`,
-      actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-    };
-    if (true) {
-      try {
-        await createActivity({
-          customerId: newActivity.customerId,
-          timestamp: newActivity.timestamp,
-          type: newActivity.type,
-          description: newActivity.description,
-          actorName: newActivity.actorName,
-        });
-      } catch (e) {
-        console.error("Failed to create activity", e);
+    const customerIdForActivity = getCustomerIdForActivity(appointmentData.customerId);
+    if (customerIdForActivity) {
+      const newActivity: Activity = {
+        id: Date.now() + Math.random(),
+        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+        timestamp: new Date().toISOString(),
+        type: ActivityType.AppointmentSet,
+        description: `นัดหมาย: ${appointmentData.title}`,
+        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+      };
+      if (true) {
+        try {
+          await createActivity({
+            customerId: customerIdForActivity, // ส่ง INT ไป API
+            timestamp: newActivity.timestamp,
+            type: newActivity.type,
+            description: newActivity.description,
+            actorName: newActivity.actorName,
+          });
+        } catch (e) {
+          console.error("Failed to create activity", e);
+        }
       }
+      setActivities((prev) => [newActivity, ...prev]);
     }
-    setActivities((prev) => [newActivity, ...prev]);
 
     closeModal();
   };
@@ -3901,28 +4239,31 @@ const App: React.FC = () => {
       }
     }
 
-    const newActivity: Activity = {
-      id: Date.now() + Math.random(),
-      customerId: appointmentToUpdate.customerId,
-      timestamp: new Date().toISOString(),
-      type: ActivityType.AppointmentSet,
-      description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
-      actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-    };
-    if (true) {
-      try {
-        await createActivity({
-          customerId: newActivity.customerId,
-          timestamp: newActivity.timestamp,
-          type: newActivity.type,
-          description: newActivity.description,
-          actorName: newActivity.actorName,
-        });
-      } catch (e) {
-        console.error("Failed to create activity", e);
+    const customerIdForActivity = getCustomerIdForActivity(appointmentToUpdate.customerId);
+    if (customerIdForActivity) {
+      const newActivity: Activity = {
+        id: Date.now() + Math.random(),
+        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+        timestamp: new Date().toISOString(),
+        type: ActivityType.AppointmentSet,
+        description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
+        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+      };
+      if (true) {
+        try {
+          await createActivity({
+            customerId: customerIdForActivity, // ส่ง INT ไป API
+            timestamp: newActivity.timestamp,
+            type: newActivity.type,
+            description: newActivity.description,
+            actorName: newActivity.actorName,
+          });
+        } catch (e) {
+          console.error("Failed to create activity", e);
+        }
       }
+      setActivities((prev) => [newActivity, ...prev]);
     }
-    setActivities((prev) => [newActivity, ...prev]);
   };
 
   const handleAddTagToCustomer = async (customerId: string, tag: Tag) => {
@@ -3976,34 +4317,147 @@ const App: React.FC = () => {
     );
   };
 
-  const handleCreateUserTag = (tagName: string): Tag | null => {
-    let newTag: Tag | null = null;
-    setUsers((prev) => {
-      return prev.map((u) => {
-        if (u.id === currentUser.id) {
-          if (u.customTags.length >= 10) {
-            alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
-            return u;
-          }
-          const existingTag = [...systemTags, ...u.customTags].find(
-            (t) => t.name.toLowerCase() === tagName.toLowerCase(),
-          );
-          if (existingTag) {
-            alert("มี Tag นี้อยู่แล้ว");
-            return u;
-          }
+  const handleUpdateUserTag = async (
+    tagId: number,
+    payload: { name?: string; color?: string },
+  ) => {
+    try {
+      await updateTag(tagId, payload);
+    } catch (e) {
+      console.error("update tag", e);
+      throw e;
+    }
 
-          newTag = {
-            id: Date.now(),
-            name: tagName,
-            type: TagType.User,
-          };
-          return { ...u, customTags: [...u.customTags, newTag] };
-        }
-        return u;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== currentUser.id) return u;
+        const updated = (u.customTags || []).map((t) =>
+          t.id === tagId ? { ...t, ...payload } : t,
+        );
+        return { ...u, customTags: updated };
+      }),
+    );
+
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (!c.tags || c.tags.length === 0) return c;
+        const updatedTags = c.tags.map((t) =>
+          t.id === tagId ? { ...t, ...payload } : t,
+        );
+        return { ...c, tags: updatedTags };
+      }),
+    );
+  };
+
+  // Function to remove tag from all customers after tag deletion (for both System and User tags)
+  const handleTagDeleted = (tagId: number) => {
+    setCustomers((prev) =>
+      prev.map((c) => ({
+        ...c,
+        tags: (c.tags || []).filter((t) => t.id !== tagId),
+      })),
+    );
+  };
+
+  const handleDeleteUserTag = async (tagId: number) => {
+    const affectedCustomers = customers.filter((c) =>
+      (c.tags || []).some((t) => t.id === tagId),
+    );
+
+    try {
+      await deleteTag(tagId);
+
+      // Ensure mappings on server are removed (in case deleteTag does not cascade)
+      await Promise.allSettled(
+        affectedCustomers.map((c) => removeCustomerTag(c.id, tagId)),
+      );
+    } catch (e: any) {
+      const message =
+        (e?.data && (e?.data?.message || e?.data?.error)) ||
+        e?.message ||
+        "ไม่สามารถลบ Tag ได้";
+      console.error("delete tag", e);
+      alert(message);
+      throw e;
+    }
+
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== currentUser.id) return u;
+        return {
+          ...u,
+          customTags: (u.customTags || []).filter((t) => t.id !== tagId),
+        };
+      }),
+    );
+
+    // Remove tag from all customers
+    handleTagDeleted(tagId);
+  };
+
+  const handleCreateUserTag = async (tagName: string): Promise<Tag | null> => {
+    // Check limit first
+    const currentUserData = users.find(u => u.id === currentUser.id);
+    if (currentUserData && currentUserData.customTags.length >= 10) {
+      alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
+      return null;
+    }
+
+    // Check if tag name already exists
+    const existingTag = [...systemTags, ...(currentUserData?.customTags || [])].find(
+      (t) => t.name.toLowerCase() === tagName.toLowerCase(),
+    );
+    if (existingTag) {
+      alert("มี Tag นี้อยู่แล้ว");
+      return null;
+    }
+
+    try {
+      // Create tag via API (this will also link it to the user in user_tags table)
+      const result = await createTag({
+        name: tagName,
+        type: 'USER',
+        color: '#9333EA', // Default color
+        userId: currentUser.id,
       });
-    });
-    return newTag;
+      
+      const tagId = Number((result && (result.id ?? result.ID)) || 0);
+      if (!tagId) {
+        alert("ไม่สามารถสร้าง Tag ได้");
+        return null;
+      }
+
+      const newTag: Tag = {
+        id: tagId,
+        name: tagName,
+        type: TagType.User,
+        color: '#9333EA',
+      };
+
+      // Update local state
+      setUsers((prev) => {
+        return prev.map((u) => {
+          if (u.id === currentUser.id) {
+            return { ...u, customTags: [...u.customTags, newTag] };
+          }
+          return u;
+        });
+      });
+
+      // Refresh tags list
+      const tagsData = await listTags({ type: "SYSTEM" });
+      setSystemTags(tagsData.filter((t: Tag) => t.type === TagType.System));
+
+      return newTag;
+    } catch (error: any) {
+      const errorMsg = error?.data?.message || error?.message || "ไม่สามารถสร้าง Tag ได้";
+      if (error?.data?.error === 'TAG_LIMIT_REACHED') {
+        alert("ไม่สามารถเพิ่ม Tag ได้เนื่องจากมีครบ 10 Tag แล้ว");
+      } else {
+        alert(errorMsg);
+      }
+      return null;
+    }
   };
 
   const sanitizeValue = (value: unknown) => {
@@ -4988,6 +5442,7 @@ const App: React.FC = () => {
             user={currentUser}
             orders={companyOrders}
             customers={companyCustomers}
+            activities={activities}
             openModal={openModal}
           />
         );
@@ -5039,6 +5494,7 @@ const App: React.FC = () => {
     if (viewingCustomer) {
       return (
         <CustomerDetailPage
+          activities={activities}
           customer={viewingCustomer}
           orders={companyOrders.filter(
             (o) => {
@@ -5137,6 +5593,7 @@ const App: React.FC = () => {
             user={currentUser}
             orders={companyOrders}
             customers={companyCustomers}
+            activities={activities}
             openModal={openModal}
           />
         );
@@ -5304,7 +5761,7 @@ const App: React.FC = () => {
     }
     if (activePage === "Tags") {
       return (
-        <TagsManagementPage systemTags={systemTags} users={companyUsers} />
+        <TagsManagementPage systemTags={systemTags} users={companyUsers} currentUser={currentUser} onTagDeleted={handleTagDeleted} />
       );
     }
     if (activePage === "Companies") {
@@ -6147,7 +6604,9 @@ const App: React.FC = () => {
           <LogCallModal
             customer={modalState.data as Customer}
             user={currentUser}
+            systemTags={systemTags}
             onSave={handleLogCall}
+            onCreateUserTag={handleCreateUserTag}
             onClose={closeModal}
           />
         );
@@ -6217,6 +6676,8 @@ const App: React.FC = () => {
             onAddTag={handleAddTagToCustomer}
             onRemoveTag={handleRemoveTagFromCustomer}
             onCreateUserTag={handleCreateUserTag}
+            onUpdateUserTag={handleUpdateUserTag}
+            onDeleteUserTag={handleDeleteUserTag}
             onClose={closeModal}
           />
         );
@@ -6306,6 +6767,29 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F5F5F5]">
+      {showCheckInPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">เริ่มงานวันนี้ไหม?</h3>
+            <p className="text-sm text-gray-600 mb-4">ต้องการบันทึกเข้างานตอนนี้เลยหรือไม่</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded-md border text-sm"
+                onClick={handleCheckInPromptSkip}
+              >
+                ไม่ใช่ตอนนี้
+              </button>
+              <button
+                className="px-4 py-2 rounded-md bg-green-600 text-white text-sm"
+                onClick={handleCheckInPromptConfirm}
+                disabled={attendanceLoading}
+              >
+                {attendanceLoading ? "กำลังบันทึก..." : "บันทึกเข้างาน"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {!viewingCustomer && !hideSidebar && (
         <Sidebar
           user={currentUser}

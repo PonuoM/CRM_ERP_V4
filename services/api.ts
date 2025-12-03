@@ -475,12 +475,23 @@ export async function createCall(payload: any) {
   });
 }
 
-export async function listTags() {
-  return apiFetch("tags");
+export async function listTags(params?: { type?: "SYSTEM" | "USER"; userId?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.type) qs.set("type", params.type);
+  if (params?.userId) qs.set("userId", String(params.userId));
+  const query = qs.toString();
+  return apiFetch(`tags${query ? `?${query}` : ""}`);
 }
 
 export async function createTag(payload: any) {
   return apiFetch("tags", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateTag(id: number, payload: { name?: string; color?: string }) {
+  return apiFetch(`tags/${encodeURIComponent(String(id))}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function deleteTag(id: number) {

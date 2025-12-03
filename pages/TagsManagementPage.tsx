@@ -1,36 +1,39 @@
 import React, { useMemo, useState } from 'react';
 import { Tag, TagType, User } from '@/types';
 import Modal from '@/components/Modal';
-import { createTag, deleteTag } from '@/services/api';
+import { createTag, deleteTag, updateTag } from '@/services/api';
 
 interface TagsManagementPageProps {
   systemTags?: Tag[];
   users?: User[];
+  currentUser?: User;
+  onTagDeleted?: (tagId: number) => void;
 }
 
-const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = [], users = [] }) => {
+const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = [], users = [], currentUser, onTagDeleted }) => {
+  const [sysList, setSysList] = useState<Tag[]>(systemTags);
   const [keyword, setKeyword] = useState('');
+  const [viewUser, setViewUser] = useState<User | null>(null);
+  const [manageSystemTag, setManageSystemTag] = useState<Tag | null>(null);
+  const [manageUserTag, setManageUserTag] = useState<{ tag: Tag; owner: string; ownerId: number } | null>(null);
+  const [newTagName, setNewTagName] = useState('');
 
   const filteredSystem = useMemo(() => {
     const k = keyword.toLowerCase();
-    return systemTags
+    return sysList
       .filter(t => t.type === TagType.System)
       .filter(t => !k || t.name.toLowerCase().includes(k));
-  }, [systemTags, keyword]);
+  }, [sysList, keyword]);
 
-  const userTags = useMemo(() => {
-    const list: { name: string; owner: string }[] = [];
-    users.forEach(u => {
-      (u.customTags || []).forEach(t => list.push({ name: t.name, owner: u.username }));
-    });
-    const k = keyword.toLowerCase();
-    return list.filter(it => !k || it.name.toLowerCase().includes(k));
-  }, [users, keyword]);
-
-  const [manageSystemTag, setManageSystemTag] = useState<Tag | null>(null);
-  const [manageUserTag, setManageUserTag] = useState<{ name: string; owner: string } | null>(null);
-  const [sysList, setSysList] = useState<Tag[]>(systemTags);
-  const [newTagName, setNewTagName] = useState('');
+  const userTagSummary = useMemo(() => {
+    return users
+      .map(u => ({
+        user: u,
+        count: (u.customTags || []).length,
+      }))
+      .filter(item => item.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [users]);
 
   React.useEffect(() => { setSysList(systemTags); }, [systemTags]);
 
@@ -52,6 +55,24 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
     try {
       await deleteTag(Number(tag.id));
       setSysList(prev => prev.filter(t => t.id !== tag.id));
+      // Remove tag from all customers
+      if (onTagDeleted) {
+        onTagDeleted(Number(tag.id));
+      }
+    } catch (e) {
+      alert('Failed to delete tag');
+    }
+  };
+
+  const handleDeleteUserTag = async (tag: Tag) => {
+    if (!confirm(`Delete tag "${tag.name}" ?`)) return;
+    try {
+      await deleteTag(Number(tag.id));
+      // Remove tag from all customers
+      if (onTagDeleted) {
+        onTagDeleted(Number(tag.id));
+      }
+      window.location.reload(); // Refresh to show updated tags
     } catch (e) {
       alert('Failed to delete tag');
     }
@@ -82,7 +103,15 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
             {filteredSystem.length === 0 && sysList.length === 0 && <p className="text-sm text-gray-500">No tags</p>}
             {(filteredSystem.length > 0 ? filteredSystem : sysList).map(t => (
               <div key={t.id} className="px-3 py-2 bg-gray-100 rounded text-sm flex items-center justify-between">
-                <span>{t.name}</span>
+                <div className="flex items-center gap-2">
+                  {t.color && (
+                    <span 
+                      className="w-4 h-4 rounded-full border border-gray-300" 
+                      style={{ backgroundColor: t.color }}
+                    />
+                  )}
+                  <span>{t.name}</span>
+                </div>
                 <div className="space-x-3">
                   <button className="text-blue-600 hover:underline" onClick={() => setManageSystemTag(t)}>Manage</button>
                   <button className="text-red-600 hover:underline" onClick={() => handleDeleteSystemTag(t)}>Delete</button>
@@ -94,17 +123,22 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
         </div>
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <h3 className="text-md font-semibold text-gray-700 mb-4">User Tags (limit 10/user)</h3>
-          <div className="space-y-2">
-            {userTags.map((t, i) => (
-              <div key={i} className="px-3 py-2 bg-gray-100 rounded text-sm flex items-center justify-between">
-                <span>{t.name}</span>
-                <div className="space-x-2">
-                  <span className="text-xs text-gray-500">by {t.owner}</span>
-                  <button className="text-blue-600 hover:underline" onClick={() => setManageUserTag(t)}>Manage</button>
+          <div className="space-y-2 mb-4">
+            {userTagSummary.map(({ user, count }) => (
+              <div key={user.id} className="px-3 py-2 bg-gray-50 rounded text-sm flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="font-semibold">{user.username}</span>
+                  <span className="text-xs text-gray-500">ใช้ไป {count}/10</span>
                 </div>
+                <button
+                  className="text-blue-600 hover:underline text-sm"
+                  onClick={() => setViewUser(user)}
+                >
+                  ดู Tag
+                </button>
               </div>
             ))}
-            {userTags.length === 0 && <p className="text-sm text-gray-500">No user tags</p>}
+            {userTagSummary.length === 0 && <p className="text-sm text-gray-500">No users</p>}
           </div>
         </div>
       </div>
@@ -113,7 +147,19 @@ const TagsManagementPage: React.FC<TagsManagementPageProps> = ({ systemTags = []
         <SystemTagModal tag={manageSystemTag} onClose={() => setManageSystemTag(null)} />
       )}
       {manageUserTag && (
-        <UserTagModal item={manageUserTag} onClose={() => setManageUserTag(null)} />
+        <UserTagModal 
+          item={manageUserTag} 
+          onClose={() => setManageUserTag(null)} 
+          onDelete={handleDeleteUserTag}
+          onTagDeleted={onTagDeleted}
+        />
+      )}
+      {viewUser && (
+        <UserTagListModal
+          user={viewUser}
+          onClose={() => setViewUser(null)}
+          onManageTag={(tag) => setManageUserTag({ tag, owner: viewUser.username, ownerId: viewUser.id })}
+        />
       )}
     </div>
   );
@@ -127,6 +173,21 @@ export default TagsManagementPage;
 // Modals
 const SystemTagModal: React.FC<{ tag: Tag; onClose: () => void }> = ({ tag, onClose }) => {
   const [name, setName] = useState(tag.name);
+  const [color, setColor] = useState(tag.color || '#9333EA');
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await updateTag(tag.id, { name, color });
+      onClose();
+      window.location.reload(); // Refresh to show updated tags
+    } catch (e) {
+      alert('Failed to update tag');
+      setLoading(false);
+    }
+  };
+
   return (
     <Modal title={`Manage Tag: ${tag.name}`} onClose={onClose}>
       <div className="space-y-4">
@@ -134,17 +195,74 @@ const SystemTagModal: React.FC<{ tag: Tag; onClose: () => void }> = ({ tag, onCl
           <label className="block text-xs text-gray-500 mb-1">Name</label>
           <input className="w-full border rounded-md px-3 py-2 text-sm" value={name} onChange={e=>setName(e.target.value)} />
         </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Color</label>
+          <div className="flex items-center gap-3">
+            <input 
+              type="color" 
+              value={color} 
+              onChange={e=>setColor(e.target.value)}
+              className="w-16 h-10 border rounded-md cursor-pointer"
+            />
+            <input 
+              type="text" 
+              value={color} 
+              onChange={e=>setColor(e.target.value)}
+              className="flex-1 border rounded-md px-3 py-2 text-sm"
+              placeholder="#9333EA"
+            />
+          </div>
+        </div>
         <div className="flex justify-end space-x-2">
-          <button className="px-4 py-2 border rounded-md text-sm" onClick={onClose}>Cancel</button>
-          <button className="px-4 py-2 bg-green-600 text-white rounded-md text-sm" onClick={onClose}>Save</button>
+          <button className="px-4 py-2 border rounded-md text-sm" onClick={onClose} disabled={loading}>Cancel</button>
+          <button className="px-4 py-2 bg-green-600 text-white rounded-md text-sm" onClick={handleSave} disabled={loading}>
+            {loading ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </Modal>
   );
 };
 
-const UserTagModal: React.FC<{ item: { name: string; owner: string }; onClose: () => void }> = ({ item, onClose }) => {
-  const [name, setName] = useState(item.name);
+const UserTagModal: React.FC<{ item: { tag: Tag; owner: string; ownerId: number }; onClose: () => void; onDelete?: (tag: Tag) => void; onTagDeleted?: (tagId: number) => void }> = ({ item, onClose, onDelete, onTagDeleted }) => {
+  const [name, setName] = useState(item.tag.name);
+  const [color, setColor] = useState(item.tag.color || '#9333EA');
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await updateTag(item.tag.id, { name, color });
+      onClose();
+      window.location.reload(); // Refresh to show updated tags
+    } catch (e) {
+      alert('Failed to update tag');
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete tag "${item.tag.name}"?`)) return;
+    setDeleting(true);
+    try {
+      if (onDelete) {
+        onDelete(item.tag);
+      } else {
+        await deleteTag(Number(item.tag.id));
+        // Remove tag from all customers
+        if (onTagDeleted) {
+          onTagDeleted(Number(item.tag.id));
+        }
+        onClose();
+        window.location.reload();
+      }
+    } catch (e) {
+      alert('Failed to delete tag');
+      setDeleting(false);
+    }
+  };
+
   return (
     <Modal title={`Manage User Tag`} onClose={onClose}>
       <div className="space-y-4">
@@ -153,10 +271,67 @@ const UserTagModal: React.FC<{ item: { name: string; owner: string }; onClose: (
           <input className="w-full border rounded-md px-3 py-2 text-sm" value={name} onChange={e=>setName(e.target.value)} />
           <p className="text-xs text-gray-500 mt-1">Owner: {item.owner}</p>
         </div>
-        <div className="flex justify-end space-x-2">
-          <button className="px-4 py-2 border rounded-md text-sm" onClick={onClose}>Cancel</button>
-          <button className="px-4 py-2 bg-green-600 text-white rounded-md text-sm" onClick={onClose}>Save</button>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Color</label>
+          <div className="flex items-center gap-3">
+            <input 
+              type="color" 
+              value={color} 
+              onChange={e=>setColor(e.target.value)}
+              className="w-16 h-10 border rounded-md cursor-pointer"
+            />
+            <input 
+              type="text" 
+              value={color} 
+              onChange={e=>setColor(e.target.value)}
+              className="flex-1 border rounded-md px-3 py-2 text-sm"
+              placeholder="#9333EA"
+            />
+          </div>
         </div>
+        <div className="flex justify-between">
+          <button 
+            className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700" 
+            onClick={handleDelete} 
+            disabled={deleting || loading}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+          <div className="flex space-x-2">
+            <button className="px-4 py-2 border rounded-md text-sm" onClick={onClose} disabled={loading || deleting}>Cancel</button>
+            <button className="px-4 py-2 bg-green-600 text-white rounded-md text-sm" onClick={handleSave} disabled={loading || deleting}>
+              {loading ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+const UserTagListModal: React.FC<{ user: User; onClose: () => void; onManageTag: (tag: Tag) => void }> = ({ user, onClose, onManageTag }) => {
+  const tags = user.customTags || [];
+  return (
+    <Modal title={`Tags ของ ${user.username} (${tags.length}/10)`} onClose={onClose}>
+      <div className="space-y-2">
+        {tags.length === 0 && <p className="text-sm text-gray-500">ยังไม่มี Tag</p>}
+        {tags.map((t) => (
+          <div key={t.id} className="px-3 py-2 bg-gray-100 rounded text-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {t.color && (
+                <span
+                  className="w-4 h-4 rounded-full border border-gray-300"
+                  style={{ backgroundColor: t.color }}
+                />
+              )}
+              <span>{t.name}</span>
+            </div>
+            <button className="text-blue-600 hover:underline" onClick={() => onManageTag(t)}>Manage</button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex justify-end">
+        <button className="px-4 py-2 border rounded-md text-sm" onClick={onClose}>Close</button>
       </div>
     </Modal>
   );
