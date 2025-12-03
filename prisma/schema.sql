@@ -665,7 +665,7 @@ CREATE TABLE IF NOT EXISTS `call_history` (
 `crop_type` VARCHAR(128) NULL,
 `area_size` VARCHAR(128) NULL,
 `notes` TEXT NULL,
-`duration` INT NULL,
+`duration` DECIMAL(12, 2) NULL,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
@@ -752,7 +752,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'duration'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `duration` INT NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `duration` DECIMAL(12, 2) NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6588,6 +6588,7 @@ CREATE TABLE IF NOT EXISTS `platforms` (
 `description` VARCHAR(255) NULL,
 `company_id` INT NULL,
 `active` BOOLEAN NULL,
+`role_show` VARCHAR(255) NULL,
 `sort_order` INT NULL,
 `show_pages_from` VARCHAR(64) NULL,
 `created_at` TIMESTAMP NULL,
@@ -6639,6 +6640,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'active'
 ) = 0,
   'ALTER TABLE `platforms` ADD COLUMN `active` BOOLEAN NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'role_show'
+) = 0,
+  'ALTER TABLE `platforms` ADD COLUMN `role_show` VARCHAR(255) NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8050,6 +8061,7 @@ CREATE TABLE IF NOT EXISTS `tags` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `name` VARCHAR(128) NULL,
 `type` VARCHAR(255) NULL,
+`color` VARCHAR(20) NULL,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
@@ -8077,6 +8089,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tags' AND COLUMN_NAME = 'type' AND DATA_TYPE = 'text'
 ) > 0,
   'ALTER TABLE `tags` MODIFY COLUMN `type` VARCHAR(255) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tags' AND COLUMN_NAME = 'color'
+) = 0,
+  'ALTER TABLE `tags` ADD COLUMN `color` VARCHAR(20) NULL',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

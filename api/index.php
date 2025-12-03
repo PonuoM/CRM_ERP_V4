@@ -2802,10 +2802,16 @@ function handle_platforms(PDO $pdo, ?string $id): void {
                     json_response(['error' => 'COMPANY_ID_REQUIRED'], 400);
                     return;
                 }
-                $stmt = $pdo->prepare('INSERT INTO platforms (name, display_name, description, company_id, active, sort_order, show_pages_from) VALUES (?,?,?,?,?,?,?)');
+                $stmt = $pdo->prepare('INSERT INTO platforms (name, display_name, description, company_id, active, sort_order, show_pages_from, role_show) VALUES (?,?,?,?,?,?,?,?)');
                 $active = isset($in['active']) ? (!empty($in['active']) ? 1 : 0) : 1;
                 $sortOrder = isset($in['sortOrder']) ? (int)$in['sortOrder'] : 0;
                 $showPagesFrom = isset($in['showPagesFrom']) ? (trim($in['showPagesFrom']) ?: null) : null;
+                $roleShow = isset($in['roleShow']) ? $in['roleShow'] : null;
+                if (is_array($roleShow)) {
+                    $roleShow = json_encode(array_values($roleShow));
+                } else {
+                    $roleShow = null;
+                }
                 $stmt->execute([
                     $in['name'] ?? '',
                     $in['displayName'] ?? $in['name'] ?? '',
@@ -2813,7 +2819,8 @@ function handle_platforms(PDO $pdo, ?string $id): void {
                     $companyId,
                     $active,
                     $sortOrder,
-                    $showPagesFrom
+                    $showPagesFrom,
+                    $roleShow
                 ]);
                 json_response(['id' => $pdo->lastInsertId()]);
                 break;
@@ -2838,6 +2845,15 @@ function handle_platforms(PDO $pdo, ?string $id): void {
                 if (isset($in['active'])) { $set[] = 'active = ?'; $params[] = !empty($in['active']) ? 1 : 0; }
                 if (isset($in['sortOrder'])) { $set[] = 'sort_order = ?'; $params[] = (int)$in['sortOrder']; }
                 if (isset($in['showPagesFrom'])) { $set[] = 'show_pages_from = ?'; $params[] = trim($in['showPagesFrom']) ?: null; }
+                if (array_key_exists('roleShow', $in)) {
+                    $set[] = 'role_show = ?';
+                    $value = $in['roleShow'];
+                    if (is_array($value)) {
+                        $params[] = json_encode(array_values($value));
+                    } else {
+                        $params[] = null;
+                    }
+                }
                 if (!$set) json_response(['error' => 'NO_FIELDS'], 400);
                 $params[] = $id;
                 $sql = 'UPDATE platforms SET '.implode(', ', $set).' WHERE id = ?';

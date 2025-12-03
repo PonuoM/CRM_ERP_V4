@@ -268,6 +268,7 @@ export async function createPlatform(payload: {
   active?: boolean;
   sortOrder?: number;
   showPagesFrom?: string | null;
+  roleShow?: string[];
 }) {
   return apiFetch("platforms", {
     method: "POST",
@@ -279,6 +280,7 @@ export async function createPlatform(payload: {
       active: payload.active ?? true,
       sortOrder: payload.sortOrder ?? 0,
       showPagesFrom: payload.showPagesFrom && payload.showPagesFrom.trim() !== '' ? payload.showPagesFrom : null,
+      roleShow: Array.isArray(payload.roleShow) && payload.roleShow.length > 0 ? payload.roleShow : null,
     }),
   });
 }
@@ -290,15 +292,23 @@ export async function updatePlatform(id: number, payload: {
   active?: boolean;
   sortOrder?: number;
   showPagesFrom?: string | null;
+  roleShow?: string[] | null;
 }) {
   // Build payload with showPagesFrom handling
   const updatePayload: any = { ...payload };
 
   // If showPagesFrom is explicitly provided (even if null), include it in the update
   if (payload.showPagesFrom !== undefined) {
-    updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
-      ? payload.showPagesFrom
-      : null;
+      updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
+        ? payload.showPagesFrom
+        : null;
+    }
+
+  if (payload.roleShow !== undefined) {
+    updatePayload.roleShow =
+      Array.isArray(payload.roleShow) && payload.roleShow.length > 0
+        ? payload.roleShow
+        : null;
   }
 
   return apiFetch(`platforms/${id}`, {
