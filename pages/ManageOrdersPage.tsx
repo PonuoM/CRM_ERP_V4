@@ -787,7 +787,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'บัญชีร้านค้า': '', // ว่างเปล่า
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
-            'ช่องทางชำระเงิน': order.paymentMethod,
+            'ช่องทางชำระเงิน': '',
             'เวลาชำระเงิน': '',
             'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
             'ข้อความจากร้านค้า': '',
