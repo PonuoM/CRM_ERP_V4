@@ -18,6 +18,7 @@ export interface Tag {
   id: number;
   name: string;
   type: TagType;
+  color?: string;
 }
 
 export type UserStatus = 'active' | 'inactive' | 'resigned';

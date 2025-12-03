@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
-import { User, Order, OrderStatus, PaymentStatus, PaymentMethod, Customer, ModalType } from '../types';
-import { FileScan, Truck, Undo2, AlertCircle, Activity } from 'lucide-react';
+import { User, Order, OrderStatus, PaymentStatus, PaymentMethod, Customer, ModalType, Activity } from '../types';
+import { FileScan, Truck, Undo2, AlertCircle, Activity as ActivityIcon } from 'lucide-react';
 import { OrderStatusChart } from '../components/Charts';
 
 interface BackofficeDashboardProps {
   user: User;
   orders: Order[];
   customers: Customer[];
+  activities: Activity[];
   openModal: (type: ModalType, data: Order) => void;
 }
 
@@ -23,7 +24,7 @@ const DashboardStatCard: React.FC<{ title: string; value: string; icon: React.El
 );
 
 
-const BackofficeDashboard: React.FC<BackofficeDashboardProps> = ({ user, orders, customers, openModal }) => {
+const BackofficeDashboard: React.FC<BackofficeDashboardProps> = ({ user, orders, customers, activities, openModal }) => {
   
   const stats = useMemo(() => {
     const pendingVerification = orders.filter(o => o.paymentStatus === PaymentStatus.PendingVerification);
@@ -52,12 +53,38 @@ const BackofficeDashboard: React.FC<BackofficeDashboardProps> = ({ user, orders,
     return Object.entries(statusCounts).map(([label, value]) => ({ label, value, total: orders.length }));
   }, [orders]);
 
-  const recentActivities = [
-      { id: 1, text: "ออเดอร์ ORD-2024-005 เปลี่ยนสถานะเป็น 'กำลังจัดสินค้า'", time: "5 นาทีที่แล้ว" },
-      { id: 2, text: "คุณอัปเดตเลข Tracking สำหรับ ORD-2024-004", time: "1 ชั่วโมงที่แล้ว" },
-      { id: 3, text: "ได้รับสลิปสำหรับ ORD-2024-003", time: "3 ชั่วโมงที่แล้ว" },
-      { id: 4, text: "ออเดอร์ ORD-2024-001 ถูกจัดส่งสำเร็จ", time: "เมื่อวานนี้" },
-  ];
+  // ดึงกิจกรรมล่าสุดจาก activities จริง
+  const recentActivities = useMemo(() => {
+    if (!activities || activities.length === 0) return [];
+    
+    return activities
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5)
+      .map(activity => {
+        const timeAgo = getTimeAgo(new Date(activity.timestamp));
+        return {
+          id: activity.id,
+          text: activity.description,
+          time: timeAgo
+        };
+      });
+  }, [activities]);
+  
+  // Helper function สำหรับคำนวณเวลาที่ผ่านมา
+  function getTimeAgo(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return "เมื่อสักครู่";
+    if (diffMins < 60) return `${diffMins} นาทีที่แล้ว`;
+    if (diffHours < 24) return `${diffHours} ชั่วโมงที่แล้ว`;
+    if (diffDays === 1) return "เมื่อวานนี้";
+    if (diffDays < 7) return `${diffDays} วันที่แล้ว`;
+    return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
 
   return (
     <div className="p-6">
@@ -127,7 +154,7 @@ const BackofficeDashboard: React.FC<BackofficeDashboardProps> = ({ user, orders,
 
             <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                   <Activity size={20} className="mr-2 text-gray-400" /> กิจกรรมล่าสุด
+                   <ActivityIcon size={20} className="mr-2 text-gray-400" /> กิจกรรมล่าสุด
                 </h3>
                 <div className="space-y-4">
                     {recentActivities.map(activity => (

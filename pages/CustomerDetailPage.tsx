@@ -11,6 +11,7 @@ import {
   TagType,
   CustomerLog,
   LineItem,
+  Activity,
 } from "../types";
 // FIX: Add 'X', 'Repeat', 'Paperclip' icons to the import from 'lucide-react'.
 import {
@@ -55,6 +56,7 @@ interface CustomerDetailPageProps {
   orders: Order[];
   callHistory: CallHistory[];
   appointments: Appointment[];
+  activities: Activity[];
   user: User;
   allUsers: User[];
   systemTags: Tag[];
@@ -94,6 +96,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     orders,
     callHistory,
     appointments,
+    activities,
     user,
     allUsers,
     systemTags,
@@ -584,12 +587,36 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return `${diffInDays} วันที่แล้ว`;
   };
 
+  // Helper function to get contrasting text color (black or white)
+  const getContrastColor = (hexColor: string): string => {
+    // Remove # if present
+    const color = hexColor.replace('#', '');
+    // Convert to RGB
+    const r = parseInt(color.substr(0, 2), 16);
+    const g = parseInt(color.substr(2, 2), 16);
+    const b = parseInt(color.substr(4, 2), 16);
+    // Calculate brightness
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    // Return black or white based on brightness
+    return brightness > 128 ? '#000000' : '#FFFFFF';
+  };
+
+  // Filter activities for this customer
+  const customerActivities = useMemo(() => {
+    if (!activities || !Array.isArray(activities)) return [];
+    return activities.filter(a => 
+      a.customerId === customer.id || 
+      a.customerId === String(customer.pk) ||
+      (customer.pk && String(a.customerId) === String(customer.pk))
+    );
+  }, [activities, customer.id, customer.pk]);
+
   useEffect(() => {
     let cancelled = false;
     setActivityLogsLoading(true);
     setActivityLogsError(null);
 
-    // Use customer.pk (customer_id) for customer_logs lookup, fallback to customer.id
+    // Load customer_logs (for detailed change history)
     const customerIdForLogs = customer.pk ? String(customer.pk) : customer.id;
     listCustomerLogs(customerIdForLogs, { limit: 50 })
       .then((rows) => {
@@ -639,6 +666,34 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   );
 
   const recentLogEntries = useMemo(() => logEntries.slice(0, 5), [logEntries]);
+
+  // Combine customer_logs and activities for display
+  const allRecentActivities = useMemo(() => {
+    const activityItems = customerActivities
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5)
+      .map(activity => ({
+        id: `activity-${activity.id}`,
+        timestamp: activity.timestamp,
+        description: activity.description,
+        actorName: activity.actorName,
+        type: 'activity' as const,
+      }));
+    
+    const logItems = recentLogEntries.map(({ log, summaries }) => ({
+      id: `log-${log.id}`,
+      timestamp: log.createdAt,
+      description: summaries.map(s => s.summary).join(', ') || '',
+      actorName: allUsers.find(u => u.id === log.createdBy)?.firstName + ' ' + allUsers.find(u => u.id === log.createdBy)?.lastName || '',
+      type: 'log' as const,
+      actionType: log.actionType,
+      summaries: summaries,
+    }));
+
+    return [...activityItems, ...logItems]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5);
+  }, [customerActivities, recentLogEntries, allUsers]);
 
   const Paginator: React.FC<{
     currentPage: number;
@@ -1407,20 +1462,26 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           <div className="bg-white p-4 rounded-lg shadow-sm border">
             <h3 className="font-semibold mb-2 text-gray-700">TAG</h3>
             <div className="flex flex-wrap gap-2 mb-2 min-h-[24px]">
-              {customer.tags.map((tag) => (
-                <span
-                  key={tag.id}
-                  className={`flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${tag.type === TagType.System ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"}`}
-                >
-                  {tag.name}
-                  <button
-                    onClick={() => onRemoveTag(customer.id, tag.id)}
-                    className="ml-1.5 opacity-70 hover:opacity-100"
+              {customer.tags.map((tag) => {
+                const tagColor = tag.color || '#9333EA';
+                const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
+                const textColor = getContrastColor(bgColor);
+                return (
+                  <span
+                    key={tag.id}
+                    className="flex items-center text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: bgColor, color: textColor }}
                   >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
+                    {tag.name}
+                    <button
+                      onClick={() => onRemoveTag(customer.id, tag.id)}
+                      className="ml-1.5 opacity-70 hover:opacity-100"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
             <div className="flex space-x-2">
               <input
@@ -1450,12 +1511,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
             )}
             {!activityLogsLoading &&
               !activityLogsError &&
-              recentLogEntries.length === 0 && (
+              allRecentActivities.length === 0 && (
                 <div className="text-sm text-gray-500">ยังไม่มีกิจกรรม</div>
               )}
             {!activityLogsLoading &&
               !activityLogsError &&
-              recentLogEntries.length > 0 && (
+              allRecentActivities.length > 0 && (
                 <div className="overflow-x-auto max-h-60 overflow-y-auto">
                   <table className="w-full text-xs text-left border border-gray-100 rounded-md overflow-hidden">
                     <thead className="bg-gray-50 text-gray-600 uppercase text-[11px]">
@@ -1467,46 +1528,57 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {recentLogEntries.map(({ log, summaries }) => {
+                      {allRecentActivities.map((item) => {
                         return (
-                          <tr key={log.id} className="align-top">
+                          <tr key={item.id} className="align-top">
                             <td className="px-3 py-3 whitespace-nowrap text-[11px] text-gray-500">
                               <div className="font-medium text-gray-700">
-                                {formatThaiDateTime(log.createdAt, {
+                                {formatThaiDateTime(item.timestamp, {
                                   dateStyle: "medium",
                                   timeStyle: "short",
                                 })}
                               </div>
-                              <div>{getRelativeTime(log.createdAt)}</div>
+                              <div>{getRelativeTime(item.timestamp)}</div>
                             </td>
                             <td className="px-3 py-3 text-gray-700">
                               <div className="flex items-center gap-2">
                                 <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center">
-                                  <ActivityIcon action={log.actionType} />
+                                  {item.type === 'activity' ? (
+                                    <Calendar className="w-4 h-4 text-gray-500" />
+                                  ) : (
+                                    <ActivityIcon action={(item as any).actionType || 'update'} />
+                                  )}
                                 </div>
                                 <span className="font-semibold text-gray-800">
-                                  {actionLabels[log.actionType] ??
-                                    log.actionType}
+                                  {item.type === 'activity' ? 'กิจกรรม' : (
+                                    actionLabels[(item as any).actionType] ?? (item as any).actionType
+                                  )}
                                 </span>
                               </div>
                             </td>
                             <td className="px-3 py-3 text-gray-600">
                               <div className="space-y-1">
-                                {summaries.map((line, idx) => (
-                                  <div
-                                    key={`${log.id}-summary-${idx}`}
-                                    className="flex text-[11px] leading-snug"
-                                  >
-                                    <span className="mr-1 text-gray-400">
-                                      •
-                                    </span>
-                                    <span>{line}</span>
+                                {item.type === 'activity' ? (
+                                  <div className="text-[11px] leading-snug">
+                                    {item.description}
                                   </div>
-                                ))}
+                                ) : (
+                                  (item as any).summaries?.map((line: any, idx: number) => (
+                                    <div
+                                      key={`${item.id}-summary-${idx}`}
+                                      className="flex text-[11px] leading-snug"
+                                    >
+                                      <span className="mr-1 text-gray-400">
+                                        •
+                                      </span>
+                                      <span>{line.summary}</span>
+                                    </div>
+                                  ))
+                                )}
                               </div>
                             </td>
                             <td className="px-3 py-3 text-gray-600 whitespace-nowrap text-[11px]">
-                              {log.createdByName ? log.createdByName : "ระบบ"}
+                              {item.actorName || 'ระบบ'}
                             </td>
                           </tr>
                         );

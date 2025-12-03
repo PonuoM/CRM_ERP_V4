@@ -211,8 +211,16 @@ try {
                 }
 
                 // Get current customer address
-                $stmt = $pdo->prepare("SELECT street, province, district, subdistrict, postal_code FROM customers WHERE id = ?");
-                $stmt->execute([$data['customerId']]);
+                // Find customer by customer_ref_id or customer_id, then select using customer_id (PK)
+                $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                $findStmt->execute([$data['customerId'], is_numeric($data['customerId']) ? (int)$data['customerId'] : null]);
+                $customer = $findStmt->fetch();
+                if (!$customer || !$customer['customer_id']) {
+                    json_response(['error' => 'Customer not found'], 404);
+                    return;
+                }
+                $stmt = $pdo->prepare("SELECT street, province, district, subdistrict, postal_code FROM customers WHERE customer_id = ?");
+                $stmt->execute([$customer['customer_id']]);
                 $currentCustomerAddress = $stmt->fetch();
 
                 $oldAddressId = null;
@@ -221,7 +229,7 @@ try {
                 if ($currentCustomerAddress && $currentCustomerAddress['street']) {
                     $stmt = $pdo->prepare("INSERT INTO customer_address (customer_id, address, recipient_first_name, recipient_last_name, province, district, sub_district, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
                     $stmt->execute([
-                        $data['customerId'],
+                        $customer['customer_id'],
                         $currentCustomerAddress['street'],
                         null,
                         null,
@@ -234,14 +242,14 @@ try {
                 }
 
                 // Update customer's primary address with the new one
-                $stmt = $pdo->prepare("UPDATE customers SET street = ?, province = ?, district = ?, subdistrict = ?, postal_code = ? WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE customers SET street = ?, province = ?, district = ?, subdistrict = ?, postal_code = ? WHERE customer_id = ?");
                 $stmt->execute([
                     $newPrimaryAddress['address'],
                     $newPrimaryAddress['province'],
                     $newPrimaryAddress['district'],
                     $newPrimaryAddress['sub_district'],
                     $newPrimaryAddress['zip_code'],
-                    $data['customerId']
+                    $customer['customer_id']
                 ]);
 
                 // Delete the new primary address from customer_address table since it's now in customers table

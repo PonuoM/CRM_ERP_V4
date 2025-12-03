@@ -330,7 +330,15 @@ function handle_users(PDO $pdo, ?string $id): void {
                 $stmt = $pdo->prepare('SELECT id, username, first_name, last_name, email, phone, role, company_id, team_id, supervisor_id, status, created_at, updated_at, last_login, login_count FROM users WHERE id = ?');
                 $stmt->execute([$id]);
                 $row = $stmt->fetch();
-                $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
+                if ($row) {
+                    // Load customTags for this user
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN user_tags ut ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = ?');
+                    $tagsStmt->execute([$id, 'USER']);
+                    $row['customTags'] = $tagsStmt->fetchAll();
+                    json_response($row);
+                } else {
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                }
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 $status = $_GET['status'] ?? null;
@@ -355,7 +363,17 @@ function handle_users(PDO $pdo, ?string $id): void {
                 $sql .= ' ORDER BY id';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
-                json_response($stmt->fetchAll());
+                $users = $stmt->fetchAll();
+                
+                // Load customTags for each user
+                foreach ($users as &$user) {
+                    $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN user_tags ut ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = ?');
+                    $tagsStmt->execute([$user['id'], 'USER']);
+                    $user['customTags'] = $tagsStmt->fetchAll();
+                }
+                unset($user);
+                
+                json_response($users);
             }
             break;
         case 'POST':
@@ -2219,8 +2237,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     if ((isset($paymentStatus) && strcasecmp((string)$paymentStatus, 'Paid') === 0) ||
                         (isset($orderStatus) && strcasecmp((string)$orderStatus, 'Delivered') === 0)) {
                         if ($customerId) {
-                            $upd = $pdo->prepare('UPDATE customers SET lifecycle_status=? WHERE id=?');
-                            $upd->execute(['Old3Months', $customerId]);
+                            // Find customer by customer_ref_id or customer_id, then update using customer_id (PK)
+                            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                            $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+                            $customer = $findStmt->fetch();
+                            if ($customer && $customer['customer_id']) {
+                                $upd = $pdo->prepare('UPDATE customers SET lifecycle_status=? WHERE customer_id=?');
+                                $upd->execute(['Old3Months', $customer['customer_id']]);
+                            }
                         }
                     }
                 } catch (Throwable $e) { /* ignore */ }
@@ -2245,8 +2269,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
                             if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
                             
-                            $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE id=?');
-                            $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customerId]);
+                            // Find customer by customer_ref_id or customer_id, then update using customer_id (PK)
+                            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                            $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+                            $customer = $findStmt->fetch();
+                            if ($customer && $customer['customer_id']) {
+                                $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE customer_id=?');
+                                $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customer['customer_id']]);
+                            }
                         }
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
@@ -2872,7 +2902,13 @@ function handle_customer_blocks(PDO $pdo, ?string $id): void {
                 $stmt->execute([$customerId, $reason, $blockedBy]);
                 // Remove assignment and flag as blocked
                 try {
-                    $pdo->prepare('UPDATE customers SET assigned_to = NULL, is_blocked = 1 WHERE id = ?')->execute([$customerId]);
+                    // Try to find customer by customer_ref_id or customer_id, then update using customer_id (PK)
+                    $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                    $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+                    $customer = $findStmt->fetch();
+                    if ($customer && $customer['customer_id']) {
+                        $pdo->prepare('UPDATE customers SET assigned_to = NULL, is_blocked = 1 WHERE customer_id = ?')->execute([$customer['customer_id']]);
+                    }
                 } catch (Throwable $e) { /* ignore */ }
                 json_response(['ok' => true], 201);
             } catch (Throwable $e) {
@@ -2894,11 +2930,18 @@ function handle_customer_blocks(PDO $pdo, ?string $id): void {
                 if ($active === 0) {
                     // clear block flag on customer
                     try {
-                        $row = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id=?')->execute([(int)$id]);
                         $cidStmt = $pdo->prepare('SELECT customer_id FROM customer_blocks WHERE id=?');
                         $cidStmt->execute([(int)$id]);
                         $cid = $cidStmt->fetchColumn();
-                        if ($cid) { $pdo->prepare('UPDATE customers SET is_blocked = 0 WHERE id = ?')->execute([$cid]); }
+                        if ($cid) {
+                            // Find customer by customer_ref_id (from customer_blocks) or customer_id, then update using customer_id (PK)
+                            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                            $findStmt->execute([$cid, is_numeric($cid) ? (int)$cid : null]);
+                            $customer = $findStmt->fetch();
+                            if ($customer && $customer['customer_id']) {
+                                $pdo->prepare('UPDATE customers SET is_blocked = 0 WHERE customer_id = ?')->execute([$customer['customer_id']]);
+                            }
+                        }
                     } catch (Throwable $e) { /* ignore */ }
                 }
                 json_response(['ok' => true]);
@@ -3570,10 +3613,16 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
 
     if ($creatorId !== null && $customerId !== null) {
         try {
-            $auto = $pdo->prepare('UPDATE customers SET assigned_to=?, date_assigned = COALESCE(date_assigned, NOW()) WHERE id=? AND (assigned_to IS NULL OR assigned_to=0)');
-            $auto->execute([$creatorId, $customerId]);
-            $hist = $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())');
-            $hist->execute([$customerId, $creatorId]);
+            // Find customer by customer_ref_id or customer_id, then update using customer_id (PK)
+            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+            $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+            $customer = $findStmt->fetch();
+            if ($customer && $customer['customer_id']) {
+                $auto = $pdo->prepare('UPDATE customers SET assigned_to=?, date_assigned = COALESCE(date_assigned, NOW()) WHERE customer_id=? AND (assigned_to IS NULL OR assigned_to=0)');
+                $auto->execute([$creatorId, $customer['customer_id']]);
+                $hist = $pdo->prepare('INSERT IGNORE INTO customer_assignment_history(customer_id, user_id, assigned_at) VALUES (?,?, NOW())');
+                $hist->execute([$customer['customer_id'], $creatorId]);
+            }
         } catch (Throwable $e) { /* ignore auto-assign failures */ }
     }
 }
@@ -3733,8 +3782,14 @@ function handle_calls(PDO $pdo, ?string $id): void {
             // Increment total_calls and mark lifecycle to Old on first call
             if (!empty($in['customerId'])) {
                 try {
-                    $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1 WHERE id=?')->execute([$in['customerId']]);
-                    $pdo->prepare('UPDATE customers SET lifecycle_status=\'Old\' WHERE id=? AND COALESCE(total_calls,0) <= 1')->execute([$in['customerId']]);
+                    // Find customer by customer_ref_id or customer_id, then update using customer_id (PK)
+                    $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                    $findStmt->execute([$in['customerId'], is_numeric($in['customerId']) ? (int)$in['customerId'] : null]);
+                    $customer = $findStmt->fetch();
+                    if ($customer && $customer['customer_id']) {
+                        $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1 WHERE customer_id=?')->execute([$customer['customer_id']]);
+                        $pdo->prepare('UPDATE customers SET lifecycle_status=\'Old\' WHERE customer_id=? AND COALESCE(total_calls,0) <= 1')->execute([$customer['customer_id']]);
+                    }
                 } catch (Throwable $e) { /* ignore */ }
             }
             json_response(['id' => $pdo->lastInsertId()]);
@@ -4124,22 +4179,189 @@ function handle_cod_records(PDO $pdo, ?string $id): void {
 function handle_tags(PDO $pdo, ?string $id): void {
     switch (method()) {
         case 'GET':
+            $type = isset($_GET['type']) ? strtoupper((string)$_GET['type']) : null;
+            $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+
+            // Filter by type and owner when requested
+            if ($type === 'SYSTEM') {
+                $stmt = $pdo->prepare('SELECT * FROM tags WHERE type = ? ORDER BY id');
+                $stmt->execute(['SYSTEM']);
+                json_response($stmt->fetchAll());
+                break;
+            }
+
+            if ($type === 'USER' && $userId) {
+                $stmt = $pdo->prepare('SELECT t.* FROM tags t JOIN user_tags ut ON ut.tag_id = t.id WHERE t.type = ? AND ut.user_id = ? ORDER BY t.id');
+                $stmt->execute(['USER', $userId]);
+                json_response($stmt->fetchAll());
+                break;
+            }
+
+            // Fallback: return all tags (used by admin screens)
             $stmt = $pdo->query('SELECT * FROM tags ORDER BY id');
             json_response($stmt->fetchAll());
+            break;
         case 'POST':
             $in = json_input();
-            $stmt = $pdo->prepare('INSERT INTO tags (name, type) VALUES (?, ?)');
-            $stmt->execute([$in['name'] ?? '', $in['type'] ?? 'USER']);
-            json_response(['id' => $pdo->lastInsertId()]);
-        case 'DELETE':
+            $tagType = strtoupper($in['type'] ?? 'USER');
+            $userId = $in['userId'] ?? null;
+            $name = trim((string)($in['name'] ?? ''));
+            $color = $in['color'] ?? null;
+
+            if ($name === '') {
+                json_response(['error' => 'VALIDATION_FAILED', 'message' => 'Name is required'], 400);
+            }
+            
+            // If creating a USER tag, check limit (10 tags per user)
+            if ($tagType === 'USER' && $userId) {
+                $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                $countStmt->execute([$userId]);
+                $tagCount = (int)$countStmt->fetchColumn();
+                if ($tagCount >= 10) {
+                    json_response(['error' => 'TAG_LIMIT_REACHED', 'message' => 'User has reached the maximum limit of 10 tags'], 400);
+                    return;
+                }
+            }
+
+            // Check for existing tag with the same name/type
+            $existingStmt = $pdo->prepare('SELECT id FROM tags WHERE name = ? AND type = ? LIMIT 1');
+            $existingStmt->execute([$name, $tagType]);
+            $existingId = (int)$existingStmt->fetchColumn();
+
+            if ($existingId) {
+                // If USER tag, ensure link exists
+                if ($tagType === 'USER' && $userId) {
+                    $linkCheck = $pdo->prepare('SELECT 1 FROM user_tags WHERE user_id = ? AND tag_id = ?');
+                    $linkCheck->execute([$userId, $existingId]);
+                    if (!$linkCheck->fetchColumn()) {
+                        // Re-check quota before linking
+                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                        $countStmt->execute([$userId]);
+                        $tagCount = (int)$countStmt->fetchColumn();
+                        if ($tagCount >= 10) {
+                            json_response(['error' => 'TAG_LIMIT_REACHED', 'message' => 'User has reached the maximum limit of 10 tags'], 400);
+                            return;
+                        }
+
+                        $linkStmt = $pdo->prepare('INSERT INTO user_tags (user_id, tag_id) VALUES (?, ?)');
+                        $linkStmt->execute([$userId, $existingId]);
+                    }
+                }
+                json_response(['id' => $existingId, 'existing' => true]);
+                break;
+            }
+            
+            $stmt = $pdo->prepare('INSERT INTO tags (name, type, color) VALUES (?, ?, ?)');
+            $stmt->execute([
+                $name, 
+                $tagType,
+                $color ?? null
+            ]);
+            $tagId = (int)$pdo->lastInsertId();
+            
+            // If creating a USER tag, link it to the user in user_tags table
+            if ($tagType === 'USER' && $userId) {
+                try {
+                    $linkStmt = $pdo->prepare('INSERT INTO user_tags (user_id, tag_id) VALUES (?, ?)');
+                    $linkStmt->execute([$userId, $tagId]);
+                } catch (Throwable $e) {
+                    // If linking fails, delete the tag we just created
+                    $pdo->prepare('DELETE FROM tags WHERE id = ?')->execute([$tagId]);
+                    json_response(['error' => 'LINK_FAILED', 'message' => $e->getMessage()], 500);
+                    return;
+                }
+            }
+            
+            json_response(['id' => $tagId]);
+            break;
+        case 'PUT':
+        case 'PATCH':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
             try {
-                $stmt = $pdo->prepare('DELETE FROM tags WHERE id = ?');
-                $stmt->execute([$id]);
+                $in = json_input();
+                $updates = [];
+                $params = [];
+                
+                if (isset($in['name'])) {
+                    $updates[] = 'name = ?';
+                    $params[] = $in['name'];
+                }
+                if (isset($in['color'])) {
+                    $updates[] = 'color = ?';
+                    $params[] = $in['color'];
+                }
+                
+                if (empty($updates)) {
+                    json_response(['error' => 'NO_UPDATES'], 400);
+                    return;
+                }
+                
+                $params[] = $id;
+                $stmt = $pdo->prepare('UPDATE tags SET ' . implode(', ', $updates) . ' WHERE id = ?');
+                $stmt->execute($params);
                 json_response(['ok' => true]);
             } catch (Throwable $e) {
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
+        case 'DELETE':
+            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            $tagId = (int)$id;
+            if ($tagId <= 0) json_response(['error' => 'INVALID_ID'], 400);
+            try {
+                $pdo->beginTransaction();
+
+                // First check if tag exists
+                $checkStmt = $pdo->prepare('SELECT id, name, type FROM tags WHERE id = ?');
+                $checkStmt->execute([$tagId]);
+                $tag = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$tag) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'NOT_FOUND'], 404);
+                    return;
+                }
+
+                // Clean up tag references manually (in case foreign key cascade doesn't work)
+                // This ensures data is cleaned up even if CASCADE constraints are missing
+                $customerTagsStmt = $pdo->prepare('DELETE FROM customer_tags WHERE tag_id = ?');
+                $customerTagsStmt->execute([$tagId]);
+                $customerTagsDeleted = $customerTagsStmt->rowCount();
+                
+                $userTagsStmt = $pdo->prepare('DELETE FROM user_tags WHERE tag_id = ?');
+                $userTagsStmt->execute([$tagId]);
+                $userTagsDeleted = $userTagsStmt->rowCount();
+
+                // Finally delete the tag itself
+                // Foreign key CASCADE should handle the above, but we do it manually to be sure
+                $stmt = $pdo->prepare('DELETE FROM tags WHERE id = ?');
+                $stmt->execute([$tagId]);
+                
+                $deletedRows = $stmt->rowCount();
+
+                if ($deletedRows === 0) {
+                    $pdo->rollBack();
+                    json_response(['error' => 'DELETE_FAILED', 'message' => 'Tag could not be deleted'], 500);
+                    return;
+                }
+
+                $pdo->commit();
+                json_response([
+                    'ok' => true,
+                    'deleted' => [
+                        'tag' => true,
+                        'customer_tags' => $customerTagsDeleted,
+                        'user_tags' => $userTagsDeleted
+                    ]
+                ]);
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log("Tag deletion failed for tag_id=$tagId: " . $e->getMessage());
                 json_response(['error' => 'DELETE_FAILED', 'message' => $e->getMessage()], 500);
             }
+            break;
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
@@ -4151,11 +4373,11 @@ function handle_customer_tags(PDO $pdo): void {
             try {
                 $customerId = $_GET['customerId'] ?? null;
                 if ($customerId) {
-                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.customer_id=? ORDER BY t.name');
+                    $stmt = $pdo->prepare('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.customer_id=? ORDER BY t.name');
                     $stmt->execute([$customerId]);
                     json_response($stmt->fetchAll());
                 } else {
-                    $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
+                    $stmt = $pdo->query('SELECT ct.customer_id, t.id, t.name, t.type, t.color FROM customer_tags ct JOIN tags t ON t.id=ct.tag_id ORDER BY ct.customer_id, t.name');
                     json_response($stmt->fetchAll());
                 }
             } catch (Throwable $e) {
@@ -4199,10 +4421,30 @@ function handle_activities(PDO $pdo, ?string $id): void {
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 $cid = $_GET['customerId'] ?? null;
-                $sql = 'SELECT * FROM activities';
+                $sql = 'SELECT a.* FROM activities a';
                 $params = [];
-                if ($cid) { $sql .= ' WHERE customer_id=?'; $params[] = $cid; }
-                $sql .= ' ORDER BY timestamp DESC';
+                if ($cid) {
+                    // ถ้าเป็นตัวเลข ให้ query ด้วย customer_id โดยตรง
+                    // ถ้าเป็น string ให้ join กับ customers เพื่อหา customer_id จาก customer_ref_id
+                    if (is_numeric($cid)) {
+                        $sql .= ' WHERE a.customer_id=?';
+                        $params[] = (int)$cid;
+                    } else {
+                        // หา customer_id จาก customer_ref_id
+                        $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $findStmt->execute([$cid, is_numeric($cid) ? (int)$cid : null]);
+                        $customer = $findStmt->fetch();
+                        if ($customer && $customer['customer_id']) {
+                            $sql .= ' WHERE a.customer_id=?';
+                            $params[] = (int)$customer['customer_id'];
+                        } else {
+                            // ถ้าหาไม่เจอ ให้ return empty array
+                            json_response([]);
+                            return;
+                        }
+                    }
+                }
+                $sql .= ' ORDER BY a.timestamp DESC';
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 json_response($stmt->fetchAll());

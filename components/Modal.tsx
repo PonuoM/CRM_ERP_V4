@@ -10,6 +10,8 @@ interface ModalProps {
   // Optional: require confirmation before closing
   requireConfirmation?: boolean;
   confirmationMessage?: string;
+  // Optional: allow closing by clicking backdrop (default: false)
+  closeOnBackdropClick?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({ 
@@ -18,7 +20,8 @@ const Modal: React.FC<ModalProps> = ({
   children, 
   size = 'md',
   requireConfirmation = false,
-  confirmationMessage = 'คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป'
+  confirmationMessage = 'คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป',
+  closeOnBackdropClick = false
 }) => {
   const [showConfirmation, setShowConfirmation] = useState(false);
 
@@ -57,7 +60,7 @@ const Modal: React.FC<ModalProps> = ({
         className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center" 
         aria-modal="true" 
         role="dialog"
-        onClick={handleClose}
+        onClick={closeOnBackdropClick ? handleClose : undefined}
       >
         <div 
           className={`bg-white rounded-lg shadow-xl w-full ${sizeClass} ${heightClass} flex flex-col`}
