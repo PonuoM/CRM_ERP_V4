@@ -3183,17 +3183,6 @@ const App: React.FC = () => {
         return customer?.id || String(customerIdInt);
       };
 
-      const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
-        ? refreshedActivitiesRaw.map((a) => ({
-          id: a.id,
-          customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
-          timestamp: a.timestamp,
-          type: a.type,
-          description: a.description,
-          actorName: a.actor_name,
-        }))
-        : [];
-
       const tagsByCustomer: Record<string, Tag[]> = {};
       if (Array.isArray(refreshedCustomerTagsRaw)) {
         refreshedCustomerTagsRaw.forEach((t) => {
