@@ -1123,19 +1123,16 @@ export async function updateOrderSlip(payload: {
   bankAccountId?: number;
   transferDate?: string;
   url?: string;
-  companyId: number;
   updatedBy?: number;
 }) {
-  return apiFetch("Slip_DB/update_order_slip.php", {
-    method: "POST",
+  return apiFetch(`order_slips/${encodeURIComponent(String(payload.id))}`, {
+    method: "PATCH",
     body: JSON.stringify({
-      id: payload.id,
       amount: payload.amount,
-      bank_account_id: payload.bankAccountId,
-      transfer_date: payload.transferDate,
+      bankAccountId: payload.bankAccountId,
+      transferDate: payload.transferDate,
       url: payload.url,
-      company_id: payload.companyId,
-      updated_by: payload.updatedBy,
+      updatedBy: payload.updatedBy,
     }),
   });
 }

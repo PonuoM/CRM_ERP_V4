@@ -749,8 +749,8 @@ const App: React.FC = () => {
         // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
         const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
           if (!customerIdInt) return '';
-          const customer = customersList.find(c => 
-            c.pk === customerIdInt || 
+          const customer = customersList.find(c =>
+            c.pk === customerIdInt ||
             (typeof c.id === 'number' && c.id === customerIdInt)
           );
           return customer?.id || String(customerIdInt);
@@ -1403,11 +1403,23 @@ const App: React.FC = () => {
     if (!sessionUser || !loginDate || !currentUser?.id) return;
     const today = new Date().toISOString().slice(0, 10);
     if (loginDate !== today) return;
-    const seenDate = localStorage.getItem("checkinPromptSeenDate");
+
+    // Wait for attendance info to be loaded
+    if (attendanceLoading) return;
+
+    // If already checked in today (has firstLogin), do not prompt
+    if (attendanceInfo?.firstLogin && attendanceInfo.firstLogin.startsWith(today)) {
+      return;
+    }
+
+    // Check if we've already asked this user today
+    const seenKey = `checkinPromptSeenDate_${currentUser.id}`;
+    const seenDate = localStorage.getItem(seenKey);
+
     if (seenDate !== today) {
       setShowCheckInPrompt(true);
     }
-  }, [sessionUser?.id, sessionUser?.loginDate, currentUser?.id]);
+  }, [sessionUser?.id, sessionUser?.loginDate, currentUser?.id, attendanceInfo?.firstLogin, attendanceLoading]);
 
   // Reset landing page to Home when user changes (prevents showing previous role's page)
   useEffect(() => {
@@ -1652,15 +1664,19 @@ const App: React.FC = () => {
   }, [currentUser?.id, setAttendanceSession]);
 
   const handleCheckInPromptConfirm = async () => {
+    if (!currentUser?.id) return;
     const today = getTodayIsoString();
-    localStorage.setItem("checkinPromptSeenDate", today);
+    const seenKey = `checkinPromptSeenDate_${currentUser.id}`;
+    localStorage.setItem(seenKey, today);
     setShowCheckInPrompt(false);
     await handleCheckIn();
   };
 
   const handleCheckInPromptSkip = () => {
+    if (!currentUser?.id) return;
     const today = getTodayIsoString();
-    localStorage.setItem("checkinPromptSeenDate", today);
+    const seenKey = `checkinPromptSeenDate_${currentUser.id}`;
+    localStorage.setItem(seenKey, today);
     setShowCheckInPrompt(false);
   };
 
@@ -2036,8 +2052,8 @@ const App: React.FC = () => {
       return customerId;
     }
     // หา customer จาก customers array
-    const customer = customers.find(c => 
-      c.id === customerId || 
+    const customer = customers.find(c =>
+      c.id === customerId ||
       String(c.id) === String(customerId) ||
       c.pk === customerId ||
       String(c.pk) === String(customerId)
@@ -2127,7 +2143,7 @@ const App: React.FC = () => {
 
     if (activitiesToAdd.length > 0 && customerIdForActivity) {
       setActivities((prev) => [...activitiesToAdd, ...prev]);
-      
+
       // บันทึก activities ลง database
       if (true) {
         activitiesToAdd.forEach((activity) => {
@@ -2771,13 +2787,13 @@ const App: React.FC = () => {
 
       if (res && res.ok) {
         const createdOrderId = res.id;
-        
+
         // บันทึกกิจกรรมการสร้างออเดอร์
         const customer = customers.find(c => c.id === customerIdForOrder || c.pk === customerIdForOrder);
         if (customer) {
           // ใช้ customer_id (INT) สำหรับบันทึก activities
           const customerIdForActivity = customer.pk || (typeof customer.id === 'number' ? customer.id : null);
-          
+
           if (customerIdForActivity) {
             const newActivity: Activity = {
               id: Date.now() + Math.random(),
@@ -2787,7 +2803,7 @@ const App: React.FC = () => {
               description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
             };
-            
+
             if (true) {
               try {
                 await createActivity({
@@ -2986,8 +3002,8 @@ const App: React.FC = () => {
         // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
         const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
           if (!customerIdInt) return '';
-          const customer = customersList.find(c => 
-            c.pk === customerIdInt || 
+          const customer = customersList.find(c =>
+            c.pk === customerIdInt ||
             (typeof c.id === 'number' && c.id === customerIdInt)
           );
           return customer?.id || String(customerIdInt);
@@ -3157,26 +3173,26 @@ const App: React.FC = () => {
         }))
         : [];
 
-        // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
-        const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
-          if (!customerIdInt) return '';
-          const customer = customersList.find(c => 
-            c.pk === customerIdInt || 
-            (typeof c.id === 'number' && c.id === customerIdInt)
-          );
-          return customer?.id || String(customerIdInt);
-        };
+      // Helper function เพื่อ map customer_id (INT) เป็น customer.id (string)
+      const mapActivityCustomerId = (customerIdInt: number | null, customersList: Customer[]): string => {
+        if (!customerIdInt) return '';
+        const customer = customersList.find(c =>
+          c.pk === customerIdInt ||
+          (typeof c.id === 'number' && c.id === customerIdInt)
+        );
+        return customer?.id || String(customerIdInt);
+      };
 
-        const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
-          ? refreshedActivitiesRaw.map((a) => ({
-            id: a.id,
-            customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
-            timestamp: a.timestamp,
-            type: a.type,
-            description: a.description,
-            actorName: a.actor_name,
-          }))
-          : [];
+      const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
+        ? refreshedActivitiesRaw.map((a) => ({
+          id: a.id,
+          customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
+          timestamp: a.timestamp,
+          type: a.type,
+          description: a.description,
+          actorName: a.actor_name,
+        }))
+        : [];
 
       const tagsByCustomer: Record<string, Tag[]> = {};
       if (Array.isArray(refreshedCustomerTagsRaw)) {
@@ -3244,10 +3260,10 @@ const App: React.FC = () => {
     const resolvedGrade = calculateCustomerGrade(
       updatedCustomer.totalPurchases,
     );
-    
+
     // หาลูกค้าเดิมเพื่อเปรียบเทียบการเปลี่ยนแปลง
     const originalCustomer = customers.find(c => c.id === updatedCustomer.id);
-    
+
     if (true) {
       try {
         const targetId = updatedCustomer.pk || updatedCustomer.id;
@@ -3273,7 +3289,7 @@ const App: React.FC = () => {
           lineId: updatedCustomer.lineId,
           address: updatedCustomer.address,
         });
-        
+
         // แสดง popup แจ้งเตือนเมื่อแก้ไขสำเร็จ
         alert(`แก้ไขข้อมูลลูกค้า "${updatedCustomer.firstName} ${updatedCustomer.lastName}" สำเร็จ`);
       } catch (e) {
@@ -3282,13 +3298,13 @@ const App: React.FC = () => {
         return; // ไม่ปิด modal ถ้าเกิด error
       }
     }
-    
+
     // บันทึกกิจกรรมเมื่อมีการเปลี่ยนแปลง
     const activitiesToAdd: Activity[] = [];
-    
+
     // ใช้ customer_id (INT) สำหรับบันทึก activities
     const customerIdForActivity = updatedCustomer.pk || (typeof updatedCustomer.id === 'number' ? updatedCustomer.id : null);
-    
+
     if (originalCustomer && customerIdForActivity) {
       // ตรวจสอบการเปลี่ยนแปลง lifecycle_status
       if (originalCustomer.lifecycleStatus !== updatedCustomer.lifecycleStatus) {
@@ -3301,7 +3317,7 @@ const App: React.FC = () => {
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         });
       }
-      
+
       // ตรวจสอบการเปลี่ยนแปลง behavioral_status
       if (originalCustomer.behavioralStatus !== updatedCustomer.behavioralStatus) {
         activitiesToAdd.push({
@@ -3313,7 +3329,7 @@ const App: React.FC = () => {
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         });
       }
-      
+
       // ตรวจสอบการเปลี่ยนแปลง grade
       if (originalCustomer.grade !== resolvedGrade) {
         activitiesToAdd.push({
@@ -3325,14 +3341,14 @@ const App: React.FC = () => {
           actorName: `${currentUser.firstName} ${currentUser.lastName}`,
         });
       }
-      
+
       // ตรวจสอบการเปลี่ยนแปลง assigned_to
       if (originalCustomer.assignedTo !== updatedCustomer.assignedTo) {
         const oldOwner = users.find(u => u.id === originalCustomer.assignedTo);
         const newOwner = users.find(u => u.id === updatedCustomer.assignedTo);
         const oldOwnerName = oldOwner ? `${oldOwner.firstName} ${oldOwner.lastName}` : 'ยังไม่ได้มอบหมาย';
         const newOwnerName = newOwner ? `${newOwner.firstName} ${newOwner.lastName}` : 'ยังไม่ได้มอบหมาย';
-        
+
         activitiesToAdd.push({
           id: Date.now() + Math.random(),
           customerId: String(customerIdForActivity),
@@ -3343,7 +3359,7 @@ const App: React.FC = () => {
         });
       }
     }
-    
+
     // บันทึกกิจกรรม
     if (activitiesToAdd.length > 0 && customerIdForActivity) {
       if (true) {
@@ -3359,7 +3375,7 @@ const App: React.FC = () => {
       }
       setActivities((prev) => [...activitiesToAdd, ...prev]);
     }
-    
+
     setCustomers((prev) =>
       prev.map((c) =>
         c.id === updatedCustomer.id
@@ -4420,7 +4436,7 @@ const App: React.FC = () => {
         color: '#9333EA', // Default color
         userId: currentUser.id,
       });
-      
+
       const tagId = Number((result && (result.id ?? result.ID)) || 0);
       if (!tagId) {
         alert("ไม่สามารถสร้าง Tag ได้");

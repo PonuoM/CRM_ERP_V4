@@ -656,22 +656,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-  const canVerifySlip =
-
-
-
-    currentUser?.role === UserRole.Backoffice ||
-
-
-
-    currentUser?.role === UserRole.Admin ||
-
-
-
-    currentUser?.role === UserRole.SuperAdmin;
-
   // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
   const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
+
+  const canVerifySlip =
+    currentUser?.role === UserRole.Backoffice ||
+    currentUser?.role === UserRole.Admin ||
+    currentUser?.role === UserRole.SuperAdmin;
+  const canEditPayAfterSlips =
+    currentOrder?.paymentMethod === PaymentMethod.PayAfter;
+  const canEditSlips =
+    !isOrderCompleted && (canVerifySlip || canEditPayAfterSlips);
 
   const initialSlips = Array.isArray((order as any).slips)
 
@@ -2900,7 +2895,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
             bankAccountId: slip.bankAccountId ? Number(slip.bankAccountId) : undefined,
             transferDate: slip.transferDate ? fromLocalDatetimeString(slip.transferDate) : undefined,
             url: slip.url,
-            companyId: currentOrder.companyId || 1,
             updatedBy: currentUser?.id,
           });
         }
@@ -3084,21 +3078,37 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
   const handleSave = () => {
-
-
+    // Persist slip metadata edits (bank/date/amount) for Transfer/PayAfter
+    if (
+      (currentOrder.paymentMethod === PaymentMethod.Transfer ||
+        currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
+      slips.length > 0
+    ) {
+      slips.forEach((slip: any) => {
+        if (!slip.id) return;
+        updateOrderSlip({
+          id: slip.id,
+          amount:
+            typeof slip.amount === "number" && !Number.isNaN(slip.amount)
+              ? slip.amount
+              : undefined,
+          bankAccountId: slip.bankAccountId
+            ? Number(slip.bankAccountId)
+            : undefined,
+          transferDate: slip.transferDate
+            ? fromLocalDatetimeString(slip.transferDate)
+            : undefined,
+        }).catch((err) => {
+          console.error("update slip meta", err);
+        });
+      });
+    }
 
     const updatedOrder = { ...currentOrder, totalAmount: calculatedTotals.totalAmount };
 
-
-
     setCurrentOrder(updatedOrder);
 
-
-
     onSave(updatedOrder);
-
-
-
   };
 
 
@@ -5010,11 +5020,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 </div>
               )}
 
-              {currentOrder.paymentMethod === PaymentMethod.Transfer && (
+              {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+                currentOrder.paymentMethod === PaymentMethod.PayAfter) && (
                 <>
                   <div className="space-y-4 mt-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">รายการสลิปโอนเงิน</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">รายการสลิปที่โอนเงิน</label>
 
                       {slips.length > 0 ? (
                         <div className="overflow-x-auto border rounded-lg">
@@ -5055,7 +5066,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                       {index + 1}
                                     </td>
                                     <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                      {canVerifySlip && !isOrderCompleted ? (
+                                      {canEditSlips ? (
                                         <select
                                           value={slip.bankAccountId || ""}
                                           onChange={(e) => {
@@ -5080,7 +5091,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                       )}
                                     </td>
                                     <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                      {canVerifySlip && !isOrderCompleted ? (
+                                      {canEditSlips ? (
                                         <input
                                           type="datetime-local"
                                           value={toLocalDatetimeString(slip.transferDate)}
@@ -5099,7 +5110,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                       )}
                                     </td>
                                     <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
-                                      {canVerifySlip && !isOrderCompleted ? (
+                                      {canEditSlips ? (
                                         <input
                                           type="number"
                                           step="0.01"
@@ -5253,7 +5264,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 </>
               )}
 
-              {currentOrder.paymentMethod === PaymentMethod.PayAfter && (
+              {false && currentOrder.paymentMethod === PaymentMethod.PayAfter && (
                 <>
                   <div className="space-y-2">
                     <div>
@@ -6982,6 +6993,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 export default OrderManagementModal;
+
+
 
 
 

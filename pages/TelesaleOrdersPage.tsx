@@ -70,7 +70,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
 
   const advRef = useRef<HTMLDivElement | null>(null);
-  
+
   // Use persistent state for pagination
   const paginationKey = `telesale_orders_pagination_${user?.id ?? '0'}`;
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>(
@@ -166,7 +166,16 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   }, [orders, user.id]);
 
   const pendingSlipOrders = useMemo(() => {
-    return myOrders.filter(o => o.paymentMethod === PaymentMethod.Transfer && o.paymentStatus !== PaymentStatus.Paid);
+    return myOrders.filter(o => {
+      // Must be PayAfter
+      if (o.paymentMethod !== PaymentMethod.PayAfter) return false;
+
+      // Must NOT have slip
+      const hasSlip = (o.slipUrl && o.slipUrl.trim() !== '') || (o.slips && o.slips.length > 0);
+      if (hasSlip) return false;
+
+      return true;
+    });
   }, [myOrders]);
 
   const displayedOrders = activeTab === 'pendingSlip' ? pendingSlipOrders : myOrders;
@@ -349,8 +358,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
         <button
           onClick={() => setActiveTab('all')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'all'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-blue-600 text-blue-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <List size={16} />
@@ -361,8 +370,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
         <button
           onClick={() => setActiveTab('pendingSlip')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'pendingSlip'
-              ? 'border-b-2 border-orange-600 text-orange-600'
-              : 'text-gray-500 hover:text-gray-700'
+            ? 'border-b-2 border-orange-600 text-orange-600'
+            : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <CreditCard size={16} />
@@ -504,10 +513,10 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
                   onClick={() => (typeof page === 'number' ? handlePageChange(page) : undefined)}
                   disabled={page === '...'}
                   className={`px-3 py-1 text-sm rounded ${page === effectivePage
-                      ? 'bg-blue-600 text-white'
-                      : page === '...'
-                        ? 'text-gray-400 cursor-default'
-                        : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-blue-600 text-white'
+                    : page === '...'
+                      ? 'text-gray-400 cursor-default'
+                      : 'text-gray-700 hover:bg-gray-100'
                     }`}
                 >
                   {page}
