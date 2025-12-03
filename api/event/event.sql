@@ -1,4 +1,5 @@
-SET GLOBAL event_scheduler = ON;
+-- NOTE: enabling event_scheduler requires SUPER/SYSTEM_VARIABLES_ADMIN; ask admin to run:
+-- SET GLOBAL event_scheduler = ON;
 
 DROP EVENT IF EXISTS ev_move_expired_to_waiting;
 DROP EVENT IF EXISTS ev_waiting_to_ready;
@@ -6,7 +7,7 @@ DROP EVENT IF EXISTS ev_refresh_customer_grade;
 
 DELIMITER $$
 
--- 1) หมดอายุ -> เข้า “ตะกร้ารอ”
+-- 1) Move expired customers to waiting basket
 CREATE EVENT ev_move_expired_to_waiting
     ON SCHEDULE EVERY 1 DAY
     STARTS TIMESTAMP(CURRENT_DATE, '14:45:00')
@@ -20,14 +21,14 @@ BEGIN
       is_in_waiting_basket = 1,
       waiting_basket_start_date = NOW(),
       followup_bonus_remaining = 1
-      -- bucket_type เป็น generated จะเปลี่ยนเป็น waiting อัตโนมัติ
+      -- bucket_type is generated; will become 'waiting'
   WHERE ownership_expires IS NOT NULL
     AND ownership_expires <= NOW()
     AND COALESCE(is_in_waiting_basket,0) = 0
     AND COALESCE(is_blocked,0) = 0;
 END$$
 
--- 2) ตะกร้ารอครบ 30 วัน -> ready
+-- 2) Waiting >=30 days -> ready (Old) with new expiry
 CREATE EVENT ev_waiting_to_ready
     ON SCHEDULE EVERY 1 DAY
     STARTS TIMESTAMP(CURRENT_DATE, '14:45:00')
@@ -43,14 +44,14 @@ BEGIN
       lifecycle_status = 'Old',
       follow_up_count = 0,
       followup_bonus_remaining = 1
-      -- bucket_type จะกลายเป็น ready อัตโนมัติ (ไม่ waiting, ไม่ blocked, assigned_to NULL)
+      -- bucket_type will become 'ready' (not waiting, not blocked, no assigned_to)
   WHERE ownership_expires IS NOT NULL
     AND NOW() > DATE_ADD(ownership_expires, INTERVAL 30 DAY)
     AND COALESCE(is_in_waiting_basket,0) = 1
     AND COALESCE(is_blocked,0) = 0;
 END$$
 
--- 3) อัปเดต grade ตามยอดซื้อสะสม
+-- 3) Refresh grade by total_purchases
 CREATE EVENT ev_refresh_customer_grade
     ON SCHEDULE EVERY 1 DAY
     STARTS TIMESTAMP(CURRENT_DATE, '14:45:00')
