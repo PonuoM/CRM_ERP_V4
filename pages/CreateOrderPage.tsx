@@ -5624,13 +5624,34 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       }
 
-    }
+      }
 
-
+    // Ensure boxNumber of promotion children follows their promotion parent
+    const normalizedItems =
+      (orderData.items || []).map((item) => {
+        if (!item.parentItemId) {
+          return item;
+        }
+        const parent = (orderData.items || []).find(
+          (p) => p.id === item.parentItemId && p.isPromotionParent,
+        );
+        if (!parent) {
+          return item;
+        }
+        // If parent has a valid boxNumber, force child to use the same box
+        const parentBox = parent.boxNumber || 1;
+        if (item.boxNumber === parentBox) {
+          return item;
+        }
+        return {
+          ...item,
+          boxNumber: parentBox,
+        };
+      });
 
     const finalOrderData: Partial<Order> = {
-
-      ...orderData,
+        ...orderData,
+        items: normalizedItems,
 
       shippingAddress,
 
