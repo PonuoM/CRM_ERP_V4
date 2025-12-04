@@ -33,7 +33,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       KEY idx_statement_reconcile_company_created (company_id, created_at),
       KEY idx_statement_reconcile_bank (bank_account_id),
       CONSTRAINT fk_statement_reconcile_bank FOREIGN KEY (bank_account_id) REFERENCES bank_account(id) ON DELETE SET NULL ON UPDATE NO ACTION
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
   $pdo->exec("
@@ -54,7 +54,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       CONSTRAINT fk_statement_reconcile_batch FOREIGN KEY (batch_id) REFERENCES statement_reconcile_batches(id) ON DELETE CASCADE ON UPDATE NO ACTION,
       CONSTRAINT fk_statement_reconcile_statement FOREIGN KEY (statement_log_id) REFERENCES statement_logs(id) ON DELETE CASCADE ON UPDATE NO ACTION,
       CONSTRAINT fk_statement_reconcile_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE ON UPDATE NO ACTION
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
   // Allow multiple statement rows to be reconciled to the same order (up to the order total).
@@ -62,28 +62,6 @@ function ensure_reconcile_tables(PDO $pdo): void
     $pdo->exec("ALTER TABLE statement_reconcile_logs DROP INDEX uniq_order_log");
   } catch (PDOException $e) {
     // Ignore if the index does not exist.
-  }
-
-  // Align collations with orders/statement_logs to avoid mismatch errors.
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_batches CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_logs MODIFY order_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_batches MODIFY document_no VARCHAR(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
   }
 }
 
@@ -118,9 +96,6 @@ if ($companyId <= 0 || !$startDateRaw || !$endDateRaw) {
 
 try {
   $pdo = db_connect();
-  $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  $pdo->exec("SET CHARACTER SET utf8mb4");
-
   ensure_reconcile_tables($pdo);
 
   $startDate = normalize_date($startDateRaw, false);
