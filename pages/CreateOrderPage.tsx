@@ -1864,6 +1864,23 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       setUpsellError(null);
 
+      // Update upsell slips if any
+      if (upsellSlips.length > 0) {
+        await Promise.all(
+          upsellSlips.map((slip) => {
+            if (slip.id) {
+              return updateOrderSlip({
+                id: slip.id,
+                amount: typeof slip.amount === "number" ? slip.amount : undefined,
+                transferDate: slip.transferDate ?? undefined,
+                updatedBy: currentUser.id,
+              });
+            }
+            return Promise.resolve();
+          })
+        );
+      }
+
       const itemsToAdd = upsellItems.map((item) => ({
 
         productId: item.productId,
