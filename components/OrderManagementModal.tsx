@@ -5059,7 +5059,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                               {slips.map((slip, index) => {
                                 const bankLabel = resolveBankName(slip.bankAccountId);
                                 const transferLabel = formatSlipDateTime(slip.transferDate);
-                                const isChecked = (slip as any).checked ?? false;
+                                const isComplete = !!(slip.amount && slip.bankAccountId && slip.transferDate);
+                                const isChecked = !!(slip as any).checked;
 
                                 return (
                                   <tr key={slip.id} className={isChecked ? "bg-green-50" : ""}>
@@ -5145,7 +5146,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                     </td>
                                     {canVerifySlip && (
                                       <td className="px-3 py-2 whitespace-nowrap text-center">
-                                        {slip.amount && slip.bankAccountId && slip.transferDate ? (
+                                        {false ? (
                                           // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
                                           <div className="flex items-center justify-center">
                                             <CheckCircle className="w-5 h-5 text-green-600" />
@@ -5160,7 +5161,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                                           <input
                                             type="checkbox"
                                             checked={isChecked}
+                                            disabled={!isComplete}
                                             onChange={(e) => {
+                                              if (!isComplete) return;
                                               const checked = e.target.checked;
                                               setSlips((prev) =>
                                                 prev.map((s) =>

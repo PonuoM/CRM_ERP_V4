@@ -1783,7 +1783,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const invalidItems = upsellItems.filter(
 
-      (item) => !item.productId || !item.productName,
+      (item) =>
+        !item.isPromotionParent &&
+        (!item.productId || !item.productName),
 
     );
 
