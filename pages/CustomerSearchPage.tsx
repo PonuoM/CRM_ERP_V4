@@ -203,7 +203,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
 
         {searchResults.length > 0 && (
           <div className="mt-6 bg-white p-4 rounded-2xl shadow-lg">
-            <h3 className="font-semibold text-gray-700 mb-2">�,o�,��,?�,��,��,,�1%�,T�,��,��,��,1�,?�,,�1%�,�:</h3>
+            <h3 className="font-semibold text-gray-700 mb-2">ผลการค้นหาลูกค้า {searchResults.length} รายการ</h3>
             <ul className="space-y-2">
               {searchResults.map((customer) => (
                 <li
