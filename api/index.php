@@ -6145,6 +6145,9 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     $newTotalAmount = isset($order['total_amount']) ? (float)$order['total_amount'] : 0.0;
                     // Track additional net total per box for order_boxes
                     $boxNetAdditions = [];
+
+                    // Helper to validate that a parent_item_id actually exists to satisfy FK
+                    $parentCheckStmt = $pdo->prepare('SELECT id FROM order_items WHERE id = ? LIMIT 1');
                     
                     // Get max box_number for this order
                     $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
@@ -6161,7 +6164,22 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                         $discount = (float)($item['discount'] ?? 0);
                         $isFreebie = isset($item['isFreebie']) && $item['isFreebie'] ? 1 : 0;
                         $promotionId = $item['promotionId'] ?? null;
-                        $parentItemId = $item['parentItemId'] ?? null;
+
+                        // Resolve parentItemId only if it points to an existing order_items.id
+                        $parentItemId = null;
+                        if (array_key_exists('parentItemId', $item) && $item['parentItemId'] !== null && $item['parentItemId'] !== '') {
+                            $candidateParent = $item['parentItemId'];
+                            if (is_numeric($candidateParent)) {
+                                $candidateParent = (int)$candidateParent;
+                                if ($candidateParent > 0) {
+                                    $parentCheckStmt->execute([$candidateParent]);
+                                    if ($parentCheckStmt->fetchColumn()) {
+                                        $parentItemId = $candidateParent;
+                                    }
+                                }
+                            }
+                        }
+
                         $isPromotionParent = isset($item['isPromotionParent']) && $item['isPromotionParent'] ? 1 : 0;
                         $netTotal = calculate_order_item_net_total([
                             'quantity' => $quantity,
