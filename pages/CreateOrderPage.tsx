@@ -87,6 +87,8 @@ interface UpsellSlip {
   uploadedBy?: number | null;
   uploadedByName?: string | null;
   createdAt?: string;
+  amount?: number | null;
+  transferDate?: string | null;
 }
 
 
@@ -714,6 +716,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         raw?.upload_by_name ??
         null,
       createdAt: raw?.createdAt ?? raw?.created_at,
+      amount:
+        typeof raw?.amount !== "undefined" && raw?.amount !== null
+          ? Number(raw.amount)
+          : undefined,
+      transferDate: raw?.transferDate ?? raw?.transfer_date ?? null,
     }),
     [],
   );
@@ -5626,39 +5633,39 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       }
 
-      }
+    }
 
-      // Ensure boxNumber & quantities of promotion children follow their promotion parent
-      const normalizedItems =
-        (orderData.items || []).map((item) => {
-          if (!item.parentItemId) {
-            return item;
-          }
+    // Ensure boxNumber & quantities of promotion children follow their promotion parent
+    const normalizedItems =
+      (orderData.items || []).map((item) => {
+        if (!item.parentItemId) {
+          return item;
+        }
 
-          const parent = (orderData.items || []).find(
-            (p) => p.id === item.parentItemId && p.isPromotionParent,
-          );
-          if (!parent) {
-            return item;
-          }
+        const parent = (orderData.items || []).find(
+          (p) => p.id === item.parentItemId && p.isPromotionParent,
+        );
+        if (!parent) {
+          return item;
+        }
 
-          const parentBox = parent.boxNumber || 1;
-          const parentQty = parent.quantity || 1;
+        const parentBox = parent.boxNumber || 1;
+        const parentQty = parent.quantity || 1;
 
-          const patched: LineItem = { ...item };
+        const patched: LineItem = { ...item };
 
-          // Force child boxNumber to match parent
-          patched.boxNumber = parentBox;
+        // Force child boxNumber to match parent
+        patched.boxNumber = parentBox;
 
-          // Scale child quantity by parent quantity (e.g. promo x2)
-          patched.quantity = (item.quantity || 0) * parentQty;
+        // Scale child quantity by parent quantity (e.g. promo x2)
+        patched.quantity = (item.quantity || 0) * parentQty;
 
-          return patched;
-        });
+        return patched;
+      });
 
     const finalOrderData: Partial<Order> = {
-        ...orderData,
-        items: normalizedItems,
+      ...orderData,
+      items: normalizedItems,
 
       shippingAddress,
 
@@ -7808,19 +7815,76 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <div className="text-sm text-red-600">{upsellSlipError}</div>
                   )}
                   {upsellSlips.length > 0 ? (
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-4">
                       {upsellSlips.map((slip) => (
                         <div
                           key={slip.id || slip.url}
-                          className="w-28 h-28 border rounded-md p-1 relative bg-white"
+                          className="flex flex-col gap-2 p-3 border rounded-md bg-slate-50 w-56"
                         >
-                          <img
-                            src={slip.url}
-                            alt="Transfer slip"
-                            className="w-full h-full object-contain rounded"
-                          />
-                          <div className="absolute inset-x-1 bottom-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded">
-                            {resolveUpsellSlipUploaderName(slip)}
+                          <div className="w-full h-40 bg-white border rounded-md relative">
+                            <img
+                              src={slip.url}
+                              alt="Transfer slip"
+                              className="w-full h-full object-contain rounded"
+                            />
+                            <div className="absolute inset-x-1 bottom-1 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded text-center truncate">
+                              {resolveUpsellSlipUploaderName(slip)}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">
+                                วันที่โอน
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={slip.transferDate || ""}
+                                onChange={(e) => {
+                                  const value = e.target.value || "";
+                                  setUpsellSlips((prev) =>
+                                    prev.map((s) =>
+                                      (s.id && slip.id && s.id === slip.id) ||
+                                        (!s.id && !slip.id && s.url === slip.url)
+                                        ? { ...s, transferDate: value }
+                                        : s,
+                                    ),
+                                  );
+                                }}
+                                className="w-full border rounded px-2 py-1 text-xs bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">
+                                จำนวนเงิน
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={
+                                  typeof slip.amount === "number" &&
+                                    !Number.isNaN(slip.amount)
+                                    ? slip.amount
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const nextAmount =
+                                    raw === "" ? null : Number(raw);
+                                  setUpsellSlips((prev) =>
+                                    prev.map((s) =>
+                                      (s.id && slip.id && s.id === slip.id) ||
+                                        (!s.id && !slip.id && s.url === slip.url)
+                                        ? { ...s, amount: nextAmount }
+                                        : s,
+                                    ),
+                                  );
+                                }}
+                                className="w-full border rounded px-2 py-1 text-xs bg-white"
+                              />
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -12928,10 +12992,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         prev.map((s) =>
                                           s.id === slip.id
                                             ? {
-                                                ...s,
-                                                bankAccountId:
-                                                  Number(e.target.value) || undefined,
-                                              }
+                                              ...s,
+                                              bankAccountId:
+                                                Number(e.target.value) || undefined,
+                                            }
                                             : s,
                                         ),
                                       )
@@ -12953,18 +13017,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   <input
                                     type="datetime-local"
                                     value={slip.transferDate || ""}
-                                  onChange={(e) =>
-                                    setTransferSlipUploads((prev) =>
-                                      prev.map((s) =>
-                                        s.id === slip.id
-                                          ? { ...s, transferDate: e.target.value }
-                                          : s,
-                                      ),
-                                    )
-                                  }
-                                  className="w-full border rounded px-2 py-1 text-sm"
-                                />
-                              </div>
+                                    onChange={(e) =>
+                                      setTransferSlipUploads((prev) =>
+                                        prev.map((s) =>
+                                          s.id === slip.id
+                                            ? { ...s, transferDate: e.target.value }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                  />
+                                </div>
                                 <div>
                                   <label className="block text-gray-600 mb-1">
                                     จำนวนเงิน
