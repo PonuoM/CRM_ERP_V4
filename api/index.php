@@ -6143,6 +6143,8 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     $insertedItems = [];
                     // Initialize with existing total amount
                     $newTotalAmount = isset($order['total_amount']) ? (float)$order['total_amount'] : 0.0;
+                    // Track additional net total per box for order_boxes
+                    $boxNetAdditions = [];
                     
                     // Get max box_number for this order
                     $boxStmt = $pdo->prepare("SELECT COALESCE(MAX(box_number), 0) as max_box FROM order_items WHERE parent_order_id = ?");
@@ -6206,6 +6208,12 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                         $itemId = $pdo->lastInsertId();
                         
                         $newTotalAmount += $netTotal;
+
+                        // Accumulate net total per box for order_boxes
+                        if (!isset($boxNetAdditions[$boxNumber])) {
+                            $boxNetAdditions[$boxNumber] = 0.0;
+                        }
+                        $boxNetAdditions[$boxNumber] += $netTotal;
                         
                         $insertedItems[] = [
                             'id' => $itemId,
@@ -6239,6 +6247,46 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                     $updateParams[] = $orderId;
                     $updateOrderStmt = $pdo->prepare("UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?");
                     $updateOrderStmt->execute($updateParams);
+
+                    // Maintain per-box COD/collection amounts in order_boxes for COD orders
+                    if (($order['payment_method'] ?? '') === 'COD' && !empty($boxNetAdditions)) {
+                        $selectBox = $pdo->prepare('SELECT collection_amount, cod_amount FROM order_boxes WHERE order_id=? AND box_number=? LIMIT 1');
+                        $updateBox = $pdo->prepare('UPDATE order_boxes SET collection_amount=?, cod_amount=? WHERE order_id=? AND box_number=?');
+                        $insertBox = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,?)');
+                        $paymentMethod = $order['payment_method'] ?? 'COD';
+
+                        foreach ($boxNetAdditions as $boxNumber => $addedNet) {
+                            $boxNum = (int)$boxNumber;
+                            if ($boxNum <= 0) {
+                                $boxNum = 1;
+                            }
+                            $subOrderIdForBox = "{$orderId}-{$boxNum}";
+
+                            $selectBox->execute([$orderId, $boxNum]);
+                            $existing = $selectBox->fetch(PDO::FETCH_ASSOC);
+                            if ($existing) {
+                                $existingCollection = isset($existing['collection_amount']) ? (float)$existing['collection_amount'] : 0.0;
+                                $existingCod = isset($existing['cod_amount']) ? (float)$existing['cod_amount'] : 0.0;
+                                $newCollection = $existingCollection + $addedNet;
+                                $newCod = $existingCod + $addedNet;
+                                $updateBox->execute([$newCollection, $newCod, $orderId, $boxNum]);
+                            } else {
+                                $collectionAmount = (float)$addedNet;
+                                $codAmount = (float)$addedNet;
+                                $insertBox->execute([
+                                    $orderId,
+                                    $subOrderIdForBox,
+                                    $boxNum,
+                                    $paymentMethod,
+                                    $collectionAmount,
+                                    $codAmount,
+                                    0.0,
+                                    0.0,
+                                    'PENDING',
+                                ]);
+                            }
+                        }
+                    }
                     
                     // Create activity log for successful upsell
                     $activityStmt = $pdo->prepare('INSERT INTO activities (customer_id, timestamp, type, description, actor_name) VALUES (?, NOW(), ?, ?, ?)');
