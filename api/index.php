@@ -6081,47 +6081,6 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
                 $creatorId = $in['creatorId'] ?? null;
                 $items = $in['items'] ?? [];
                 
-                $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                // For each order, fetch items with creator_id
-                foreach ($orders as &$order) {
-                    $orderId = $order['id'];
-                    $itemStmt = $pdo->prepare("
-                        SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity,
-                               oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number,
-                               oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
-                               oi.creator_id, oi.parent_order_id,
-                               p.sku as product_sku
-                        FROM order_items oi
-                        LEFT JOIN products p ON oi.product_id = p.id
-                        WHERE oi.parent_order_id = ?
-                        ORDER BY oi.id
-                    ");
-                    $itemStmt->execute([$orderId]);
-                    $order['items'] = $itemStmt->fetchAll(PDO::FETCH_ASSOC);
-                    foreach ($order['items'] as &$orderItem) {
-                        if (!isset($orderItem['net_total']) || $orderItem['net_total'] === null) {
-                            $orderItem['net_total'] = calculate_order_item_net_total($orderItem);
-                        }
-                    }
-                    unset($orderItem);
-                }
-                
-                json_response($orders);
-            } else {
-                json_response(['error' => 'INVALID_ENDPOINT'], 404);
-            }
-            break;
-            
-        case 'POST':
-            if ($id === 'items') {
-                // Add new items to existing order (upsell)
-                $in = json_input();
-                
-                $orderId = $in['orderId'] ?? null;
-                $creatorId = $in['creatorId'] ?? null;
-                $items = $in['items'] ?? [];
-                
                 if (!$orderId || !$creatorId || empty($items)) {
                     json_response(['error' => 'MISSING_REQUIRED_FIELDS', 'message' => 'orderId, creatorId, and items are required'], 400);
                     return;
