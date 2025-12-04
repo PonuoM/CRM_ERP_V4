@@ -25,7 +25,7 @@ require_once "../config.php";
 // We need to define the function ourselves to avoid header conflicts
 if (!defined("RECONCILE_CHARSET")) {
   define("RECONCILE_CHARSET", "utf8mb4");
-  define("RECONCILE_COLLATION", "utf8mb4_0900_ai_ci");
+  define("RECONCILE_COLLATION", ""); // use server/database default collation
 }
 
 /**
@@ -34,9 +34,6 @@ if (!defined("RECONCILE_CHARSET")) {
  */
 function ensure_reconcile_tables(PDO $pdo): void
 {
-  $charset = RECONCILE_CHARSET;
-  $collation = RECONCILE_COLLATION;
-
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS statement_reconcile_batches (
       id INT NOT NULL AUTO_INCREMENT,
@@ -54,7 +51,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       KEY idx_statement_reconcile_company_created (company_id, created_at),
       KEY idx_statement_reconcile_bank (bank_account_id),
       CONSTRAINT fk_statement_reconcile_bank FOREIGN KEY (bank_account_id) REFERENCES bank_account(id) ON DELETE SET NULL ON UPDATE NO ACTION
-    ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation};
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
   $pdo->exec("
@@ -75,7 +72,7 @@ function ensure_reconcile_tables(PDO $pdo): void
       CONSTRAINT fk_statement_reconcile_batch FOREIGN KEY (batch_id) REFERENCES statement_reconcile_batches(id) ON DELETE CASCADE ON UPDATE NO ACTION,
       CONSTRAINT fk_statement_reconcile_statement FOREIGN KEY (statement_log_id) REFERENCES statement_logs(id) ON DELETE CASCADE ON UPDATE NO ACTION,
       CONSTRAINT fk_statement_reconcile_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE ON UPDATE NO ACTION
-    ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation};
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   ");
 
   // Allow multiple statement rows to be reconciled to the same order (up to the order total).
@@ -85,33 +82,9 @@ function ensure_reconcile_tables(PDO $pdo): void
     // Ignore if the index does not exist.
   }
   
-  // Align collations with orders/statement_logs to avoid mismatch errors.
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_batches CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_logs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_logs MODIFY order_id VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
-  try {
-    $pdo->exec("ALTER TABLE statement_reconcile_batches MODIFY document_no VARCHAR(120) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL");
-  } catch (PDOException $e) {
-    // ignore if cannot convert
-  }
 }
 
-if (!defined("RECONCILE_CHARSET")) {
-  define("RECONCILE_CHARSET", "utf8mb4");
-  define("RECONCILE_COLLATION", "utf8mb4_0900_ai_ci");
-}
+// RECONCILE_CHARSET / RECONCILE_COLLATION already defined above
 
 function normalize_date(string $value, bool $endOfDay = false): string
 {
@@ -193,13 +166,21 @@ if ($companyId <= 0 || $userId <= 0 || $codDocumentId <= 0 || $statementLogId <=
 try {
   $pdo = db_connect();
   $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-  
-  // Set connection to the unified collation
-  $pdo->exec("SET SESSION collation_connection = 'utf8mb4_0900_ai_ci'");
-  $pdo->exec("SET SESSION character_set_connection = 'utf8mb4'");
-  $pdo->exec("SET SESSION collation_database = 'utf8mb4_0900_ai_ci'");
-  $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  $pdo->exec("SET CHARACTER SET utf8mb4");
+
+  // Align connection charset/collation with the database default
+  try {
+    $collInfo = $pdo->query("SELECT @@collation_database AS coll, @@character_set_database AS ch")->fetch(PDO::FETCH_ASSOC);
+    if (is_array($collInfo)) {
+      $dbCollation = $collInfo["coll"] ?? null;
+      $dbCharset = $collInfo["ch"] ?? null;
+      if ($dbCharset && $dbCollation) {
+        $pdo->exec("SET NAMES {$dbCharset} COLLATE {$dbCollation}");
+        $pdo->exec("SET collation_connection = '{$dbCollation}'");
+      }
+    }
+  } catch (Throwable $ignored) {
+    // If this fails, continue with existing connection settings
+  }
 
   ensure_reconcile_tables($pdo);
 

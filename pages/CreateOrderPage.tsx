@@ -12965,7 +12965,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </div>
                                 <div>
                                   <label className="block text-gray-600 mb-1">
-                                    �,,�,؅1?�,��,��,��,-
+                                    จำนวนเงิน
                                   </label>
                                   <input
                                     type="number"
