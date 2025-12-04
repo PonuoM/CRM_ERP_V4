@@ -304,11 +304,29 @@ function handle_auth(PDO $pdo, ?string $id): void {
             // Optionally record work login when explicitly requested
             $workLogin = isset($in['workLogin']) ? (bool)$in['workLogin'] : false;
             if ($workLogin) {
-                $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
-                $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-                $loginStmt = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
-                $loginStmt->execute([$u['id'], $ipAddress, $userAgent]);
-                $loginHistoryId = (int)$pdo->lastInsertId();
+                $today = (new DateTime('now'))->format('Y-m-d');
+                // Prevent duplicate login history rows for the same user/date
+                $existsStmt = $pdo->prepare('SELECT id, login_time FROM user_login_history WHERE user_id = ? AND login_time >= ? AND login_time < DATE_ADD(?, INTERVAL 1 DAY) ORDER BY login_time ASC LIMIT 1');
+                $existsStmt->execute([$u['id'], $today, $today]);
+                $existing = $existsStmt->fetch();
+                if ($existing) {
+                    $loginHistoryId = (int)$existing['id'];
+                    $loginHistoryTime = $existing['login_time'];
+                } else {
+                    $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
+                    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+                    $loginStmt = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, ip_address, user_agent) VALUES (?, NOW(), ?, ?)');
+                    $loginStmt->execute([$u['id'], $ipAddress, $userAgent]);
+                    $loginHistoryId = (int)$pdo->lastInsertId();
+                    $loginHistoryTime = null;
+                }
+
+                // Keep daily attendance in sync when a login history already exists
+                try {
+                    $pdo->prepare('CALL sp_upsert_user_daily_attendance(?, ?)')->execute([$u['id'], $today]);
+                } catch (Throwable $e) {
+                    // Non-fatal: attendance will recompute on next check-in/list call
+                }
             }
         } catch (Throwable $e) {
             // Log error but don't fail login
@@ -317,7 +335,12 @@ function handle_auth(PDO $pdo, ?string $id): void {
 
         unset($u['password']);
         $resp = ['ok' => true, 'user' => $u];
-        if (isset($loginHistoryId)) { $resp['loginHistoryId'] = $loginHistoryId; }
+        if (isset($loginHistoryId)) {
+            $resp['loginHistoryId'] = $loginHistoryId;
+            if (isset($loginHistoryTime)) {
+                $resp['loginTime'] = $loginHistoryTime;
+            }
+        }
         json_response($resp);
     }
     json_response(['error' => 'NOT_FOUND'], 404);
