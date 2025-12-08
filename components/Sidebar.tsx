@@ -577,7 +577,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && (
             <div>
               <p className="font-semibold text-sm text-gray-800">{`${user.firstName} ${user.lastName}`}</p>
-              <p className="text-xs text-gray-500">{user.role}</p>
+              <p className="text-xs text-gray-500">
+                {user.role === UserRole.AdminControl ? "Admin Company" : user.role}
+              </p>
             </div>
           )}
         </div>

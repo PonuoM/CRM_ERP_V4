@@ -6870,7 +6870,11 @@ const App: React.FC = () => {
                   </div>
                   <div className="hidden md:block">
                     <p className="font-semibold text-sm text-gray-800">{`${currentUser.firstName} ${currentUser.lastName}`}</p>
-                    <p className="text-xs text-gray-500">{currentUser.role}</p>
+                    <p className="text-xs text-gray-500">
+                      {currentUser.role === UserRole.AdminControl
+                        ? "Admin Company"
+                        : currentUser.role}
+                    </p>
                   </div>
                   <ChevronDown
                     className={`w-4 h-4 text-gray-500 transition-transform ${isUserDropdownOpen ? "rotate-180" : ""
