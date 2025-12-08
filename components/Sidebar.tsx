@@ -350,6 +350,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           dataGroup,
           inventoryGroup,
           reportsGroup,
+          {
+            icon: BarChart2,
+            label: PAGE_STATS,
+            children: [
+              { icon: FileText, label: PAGE_STATS_OVERVIEW },
+              { icon: FileText, label: PAGE_ENGAGEMENT_STATS },
+            ],
+          },
           customersGroupFixed,
           callGroup,
           paymentSlipGroup,
