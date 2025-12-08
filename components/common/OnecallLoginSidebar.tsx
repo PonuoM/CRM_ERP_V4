@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Settings, X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import resolveApiBasePath from "@/utils/apiBasePath";
 
 // User role enum
 enum UserRole {
@@ -58,10 +59,23 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
   // Function to check if user has permission to access Onecall settings
   const hasPermission = (): boolean => {
     if (!currentUser) return false;
-    return (
-      currentUser.role === UserRole.SuperAdmin ||
-      currentUser.role === UserRole.AdminControl
-    );
+
+    const rawRole: any = (currentUser as any).role;
+    const roleStr =
+      typeof rawRole === "string"
+        ? rawRole
+        : rawRole && typeof rawRole === "object" && "toString" in rawRole
+          ? String(rawRole)
+          : "";
+
+    const normalized = roleStr.trim().toLowerCase();
+
+    // Allow both global enum values (from types.ts) and local ones
+    if (normalized === "super admin") return true;
+    if (normalized === "admin control") return true;
+    if (normalized === "admincontrol") return true;
+
+    return false;
   };
 
   // Function to get company ID from currentUser or localStorage
@@ -104,9 +118,10 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
 
       // Get current user data
       const currentUser = getCurrentUser();
+      const apiBase = resolveApiBasePath();
 
       // Save username
-      const usernameResponse = await fetch("/api/Onecall_DB/env_manager.php", {
+      const usernameResponse = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -126,7 +141,7 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       }
 
       // Save password
-      const passwordResponse = await fetch("/api/Onecall_DB/env_manager.php", {
+      const passwordResponse = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -175,8 +190,9 @@ const OnecallLoginSidebar: React.FC<OnecallLoginSidebarProps> = ({
       console.log("Checking database status for company:", companyId);
 
       const currentUser = getCurrentUser();
+      const apiBase = resolveApiBasePath();
 
-      const response = await fetch("/api/Onecall_DB/env_manager.php", {
+      const response = await fetch(`${apiBase}/Onecall_DB/env_manager.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
