@@ -92,3 +92,30 @@ function cors(): void
     exit();
   }
 }
+
+function validate_auth(PDO $pdo): void
+{
+  $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+  
+  if (!$auth && function_exists('getallheaders')) {
+      $headers = getallheaders();
+      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+  }
+
+  if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Missing or invalid token'], 401);
+  }
+  $token = $matches[1];
+
+  $stmt = $pdo->prepare('SELECT user_id, expires_at FROM user_tokens WHERE token = ?');
+  $stmt->execute([$token]);
+  $t = $stmt->fetch();
+
+  if (!$t) {
+    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Invalid token'], 401);
+  }
+
+  if (strtotime($t['expires_at']) < time()) {
+    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Token expired'], 401);
+  }
+}

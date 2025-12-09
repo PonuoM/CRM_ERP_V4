@@ -424,6 +424,9 @@ export default function LoginPage() {
         'sessionUser',
         JSON.stringify({ ...res.user, loginDate: today }),
       );
+      if (res.token) {
+        localStorage.setItem('authToken', res.token);
+      }
       localStorage.removeItem('checkinPromptSeenDate');
 
       setTimeout(() => {

@@ -57,6 +57,10 @@ if ($resource === '' || $resource === 'health') {
     json_response(['ok' => true, 'status' => 'healthy']);
 }
 
+if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
+    validate_auth($pdo);
+}
+
     switch ($resource) {
     case 'auth':
         handle_auth($pdo, $id);
@@ -301,6 +305,11 @@ function handle_auth(PDO $pdo, ?string $id): void {
             $updateStmt = $pdo->prepare('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?');
             $updateStmt->execute([$u['id']]);
 
+            // Generate Access Token
+            $token = bin2hex(random_bytes(32));
+            $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+            $pdo->prepare('INSERT INTO user_tokens (user_id, token, expires_at) VALUES (?, ?, ?)')->execute([$u['id'], $token, $expires]);
+
             // Optionally record work login when explicitly requested
             $workLogin = isset($in['workLogin']) ? (bool)$in['workLogin'] : false;
             if ($workLogin) {
@@ -334,7 +343,7 @@ function handle_auth(PDO $pdo, ?string $id): void {
         }
 
         unset($u['password']);
-        $resp = ['ok' => true, 'user' => $u];
+        $resp = ['ok' => true, 'user' => $u, 'token' => $token];
         if (isset($loginHistoryId)) {
             $resp['loginHistoryId'] = $loginHistoryId;
             if (isset($loginHistoryTime)) {

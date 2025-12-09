@@ -14,6 +14,7 @@ export type LoginResponse = {
     team_id?: number;
     supervisor_id?: number;
   };
+  token?: string;
   error?: string;
 };
 
@@ -22,8 +23,14 @@ const apiBasePath =
 const base = `${apiBasePath.replace(/\/$/, "")}/index.php/`; // works with or without Apache rewrite
 
 export async function apiFetch(path: string, init?: RequestInit) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json", ...(init?.headers || {}) };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${base}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers,
     ...init,
   });
 
@@ -36,6 +43,16 @@ export async function apiFetch(path: string, init?: RequestInit) {
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("sessionUser");
+        localStorage.removeItem("authToken");
+        // Force reload to trigger index.tsx check
+        if (!window.location.search.includes('login')) {
+          window.location.reload();
+        }
+      }
+    }
     const errMsg =
       (data && (data.message || data.error)) || res.statusText || "API error";
     const err = new Error(`API ${res.status}: ${errMsg}`);
@@ -304,10 +321,10 @@ export async function updatePlatform(id: number, payload: {
 
   // If showPagesFrom is explicitly provided (even if null), include it in the update
   if (payload.showPagesFrom !== undefined) {
-      updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
-        ? payload.showPagesFrom
-        : null;
-    }
+    updatePayload.showPagesFrom = payload.showPagesFrom && payload.showPagesFrom.trim() !== ''
+      ? payload.showPagesFrom
+      : null;
+  }
 
   if (payload.roleShow !== undefined) {
     updatePayload.roleShow =
