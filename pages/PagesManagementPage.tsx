@@ -327,6 +327,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [newPagePlatform, setNewPagePlatform] = useState("");
   const [newPageUrl, setNewPageUrl] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
+  const [disablePancakeLoading, setDisablePancakeLoading] = useState(false);
 
   // Delete modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -420,13 +421,13 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
         setPlatforms(
           Array.isArray(plats)
             ? plats.map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                displayName: p.display_name,
-                description: p.description,
-                active: p.active,
-                sortOrder: p.sort_order,
-              }))
+              id: p.id,
+              name: p.name,
+              displayName: p.display_name,
+              description: p.description,
+              active: p.active,
+              sortOrder: p.sort_order,
+            }))
             : []
         );
         // Set default platform if available
@@ -637,6 +638,63 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             >
               {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล"}
             </button>
+            <button
+              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm disabled:opacity-50"
+              onClick={async () => {
+                if (!currentUser?.companyId) {
+                  alert("กรุณาเลือกบริษัทให้ถูกต้องก่อน");
+                  return;
+                }
+
+                const confirmed = window.confirm(
+                  "ยืนยันปิดการใช้งาน Pancake ทั้งหมดสำหรับบริษัทนี้หรือไม่?",
+                );
+                if (!confirmed) {
+                  return;
+                }
+
+                setDisablePancakeLoading(true);
+                try {
+                  const response = await fetch(
+                    "api/Marketing_DB/disable_pancake_pages.php",
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        company_id: currentUser.companyId,
+                      }),
+                    },
+                  );
+
+                  const data = await response.json();
+
+                  if (!response.ok || !data.success) {
+                    throw new Error(
+                      data.error || "Failed to disable Pancake pages",
+                    );
+                  }
+
+                  await fetchPages(); // รีเฟรชรายการหน้า
+
+                  alert("ปิดการใช้งาน Pancake สำเร็จแล้ว");
+                } catch (error) {
+                  console.error("Error disabling Pancake pages:", error);
+                  alert(
+                    "เกิดข้อผิดพลาดในการปิดการใช้งาน Pancake: " +
+                    (error instanceof Error ? error.message : "Unknown error"),
+                  );
+                } finally {
+                  setDisablePancakeLoading(false);
+                }
+              }}
+              disabled={disablePancakeLoading || !currentUser?.companyId}
+            >
+              {disablePancakeLoading
+                ? "กำลังปิด Pancake..."
+                : "ปิดการใช้งาน Pancake"}
+            </button>
           </div>
         </div>
       </div>
@@ -760,9 +818,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                           console.error("Error updating page status:", error);
                           alert(
                             "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
-                              (error instanceof Error
-                                ? error.message
-                                : "Unknown error"),
+                            (error instanceof Error
+                              ? error.message
+                              : "Unknown error"),
                           );
                         }
                       }}
@@ -923,9 +981,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       console.error("Error creating page:", error);
                       alert(
                         "เกิดข้อผิดพลาดในการเพิ่มเพจ: " +
-                          (error instanceof Error
-                            ? error.message
-                            : "Unknown error"),
+                        (error instanceof Error
+                          ? error.message
+                          : "Unknown error"),
                       );
                     } finally {
                       setAddPageLoading(false);
@@ -999,9 +1057,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       console.error("Error deleting page:", error);
                       alert(
                         "เกิดข้อผิดพลาดในการลบเพจ: " +
-                          (error instanceof Error
-                            ? error.message
-                            : "Unknown error"),
+                        (error instanceof Error
+                          ? error.message
+                          : "Unknown error"),
                       );
                     } finally {
                       setDeleteLoading(false);
@@ -1088,7 +1146,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                                 if (!response.ok || !data.success) {
                                   throw new Error(
                                     data.error ||
-                                      "Failed to update page status",
+                                    "Failed to update page status",
                                   );
                                 }
 
@@ -1112,9 +1170,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                                 );
                                 alert(
                                   "เกิดข้อผิดพลาดในการอัปเดตสถานะ: " +
-                                    (error instanceof Error
-                                      ? error.message
-                                      : "Unknown error"),
+                                  (error instanceof Error
+                                    ? error.message
+                                    : "Unknown error"),
                                 );
                               }
                             }}
