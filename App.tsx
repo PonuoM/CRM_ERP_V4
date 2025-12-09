@@ -3722,11 +3722,24 @@ const App: React.FC = () => {
         return [...prev, { ...productToSave, id: newId }];
       }
     });
+    // Refresh data from server to be sure
+    fetchProducts();
     closeModal();
   };
 
-  const handleDeleteProduct = (productId: number) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+  const handleDeleteProduct = async (productId: number) => {
+    try {
+      const result = await deleteProductWithLots(productId);
+      if (result.success) {
+        setProducts((prev) => prev.filter((p) => p.id !== productId));
+        fetchProducts(); // Refresh full list
+      } else {
+        alert("Failed to delete product: " + (result.message || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error deleting product:", err);
+      alert("Error deleting product");
+    }
     closeModal();
   };
 
