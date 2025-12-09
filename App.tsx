@@ -97,6 +97,7 @@ import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
 import DebtCollectionPage from "./pages/DebtCollectionPage";
 import UserManagementModal from "./components/UserManagementModal";
+import { deleteProductWithLots } from "./services/productApi";
 import ProductManagementModal from "./components/ProductManagementModal";
 import ConfirmDeleteModal from "./components/ConfirmDeleteModal";
 import {
@@ -227,7 +228,16 @@ const App: React.FC = () => {
   // Check URL parameter for initial page and sidebar visibility
   const getInitialPage = () => {
     const urlParams = new URLSearchParams(window.location.search);
-    return resolvePageFromParam(urlParams.get("page"));
+    const pageParam = urlParams.get("page");
+    if (pageParam) return resolvePageFromParam(pageParam);
+
+    // Fallback to localStorage if available
+    try {
+      const saved = localStorage.getItem("ui.activePage");
+      if (saved) return JSON.parse(saved);
+    } catch { }
+
+    return "Dashboard";
   };
 
   const shouldHideSidebar = () => {
@@ -235,10 +245,7 @@ const App: React.FC = () => {
     return urlParams.get("nosidebar") === "true";
   };
 
-  const [activePage, setActivePage] = usePersistentState<string>(
-    "ui.activePage",
-    getInitialPage(),
-  );
+  const [activePage, setActivePage] = useState<string>(getInitialPage);
   const [hideSidebar, setHideSidebar] = usePersistentState<boolean>(
     "ui.hideSidebar",
     shouldHideSidebar(),
@@ -396,6 +403,24 @@ const App: React.FC = () => {
 
     const url = new URL(window.location.href);
     const params = url.searchParams;
+
+    // Sync activePage to URL
+    if (activePage === 'Dashboard') {
+      if (params.has('page')) {
+        params.delete('page');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } else {
+      if (params.get('page') !== activePage) {
+        params.set('page', activePage);
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+
+    // Sync to localStorage manually since we removed usePersistentState
+    try {
+      localStorage.setItem("ui.activePage", JSON.stringify(activePage));
+    } catch { }
 
     const nextPageParam =
       !activePage || activePage === "Dashboard" ? null : activePage;
@@ -1425,8 +1450,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
     if (lastUserIdRef.current !== currentUser.id) {
+      const isFirstLoad = lastUserIdRef.current === null;
       lastUserIdRef.current = currentUser.id;
-      setActivePage("Home");
+      // Only reset to Home if this is a subsequent user switch, not the initial load
+      if (!isFirstLoad) {
+        setActivePage("Home");
+      }
     }
   }, [currentUser?.id, setActivePage]);
 
@@ -3839,18 +3868,18 @@ const App: React.FC = () => {
         // Add tags to customer if provided
         if (newTags && newTags.length > 0 && customer) {
           const existingTagNames = new Set(customer.tags.map((t) => t.name));
-          for (const tagName of newTags) {
-            if (!existingTagNames.has(tagName)) {
+          for (const newTagObj of newTags) {
+            if (!existingTagNames.has(newTagObj.name)) {
               try {
                 // Create a temporary tag object
                 const tempTag: Tag = {
                   id: Date.now() + Math.random(),
-                  name: tagName,
+                  name: newTagObj.name,
                   type: TagType.User,
                 };
                 await handleAddTagToCustomer(customerId, tempTag);
               } catch (e) {
-                console.error(`Failed to add tag "${tagName}" to customer`, e);
+                console.error(`Failed to add tag "${newTagObj.name}" to customer`, e);
               }
             }
           }
