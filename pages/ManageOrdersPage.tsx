@@ -825,10 +825,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
             'รับสินค้าที่ร้านหรือไม่': '',
             'รหัสสินค้าบนแพลตฟอร์ม': '', // ว่างเปล่า
-            'รหัสสินค้าในระบบ': product?.sku ?? '',
-            'ชื่อสินค้า': item.productName,
+            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${product?.sku ?? ''}-${item.quantity}` : (product?.sku ?? ''),
+            'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
-            'จำนวน': item.quantity,
+            'จำนวน': 1,
             'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
             'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
