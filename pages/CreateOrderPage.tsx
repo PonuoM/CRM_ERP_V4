@@ -9997,15 +9997,19 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
 
-                                  return filteredPages.map((pg) => (
+                                  return filteredPages
+                                    .sort((a, b) =>
+                                      a.name.localeCompare(b.name, "th"),
+                                    )
+                                    .map((pg) => (
 
-                                    <option key={pg.id} value={pg.id}>
+                                      <option key={pg.id} value={pg.id}>
 
-                                      {pg.name}
+                                        {pg.name}
 
-                                    </option>
+                                      </option>
 
-                                  ));
+                                    ));
 
                                 })()}
 
@@ -11509,89 +11513,76 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <label className={commonLabelClass}>วันที่จัดส่ง</label>
 
-                      <input
-
-                        type="date"
-
-                        ref={deliveryDateRef}
-
-                        value={orderData.deliveryDate}
-
-                        min={(() => {
-
-                          // วันที่ต่ำสุดคือวันนี้
-
-                          return new Date().toISOString().split("T")[0];
-
-                        })()}
-
-                        max={(() => {
-
-                          // วันที่สูงสุดคือวันที่ 7 ของเดือนถัดไป
-
-                          const now = new Date();
-
-                          const nextMonth = new Date(
-
-                            now.getFullYear(),
-
-                            now.getMonth() + 1,
-
-                            7,
-
-                          );
-
-                          return nextMonth.toISOString().split("T")[0];
-
-                        })()}
-
-                        onChange={(e) => {
-
-                          const selectedDate = e.target.value;
-
-                          // ตรวจสอบว่าวันที่เลือกไม่เกินวันที่ 7 ของเดือนถัดไป
-
-                          const now = new Date();
-
-                          const nextMonth = new Date(
-
-                            now.getFullYear(),
-
-                            now.getMonth() + 1,
-
-                            7,
-
-                          );
-
-                          const maxDate = nextMonth.toISOString().split("T")[0];
-
-                          if (selectedDate > maxDate) {
-
-                            const maxDateObj = new Date(maxDate);
-
-                            const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
-
-                            alert(
-
-                              `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
-
-                            );
-
-                            // ตั้งค่าเป็นวันที่สูงสุดที่อนุญาต
-
-                            updateOrderData("deliveryDate", maxDate);
-
-                            return;
-
+                      <div className="relative">
+                        <input
+                          type="text"
+                          readOnly
+                          value={
+                            orderData.deliveryDate
+                              ? (() => {
+                                const [y, m, d] = orderData.deliveryDate.split("-");
+                                return `${d}/${m}/${y}`;
+                              })()
+                              : ""
                           }
-
-                          updateOrderData("deliveryDate", selectedDate);
-
-                        }}
-
-                        className={commonInputClass}
-
-                      />
+                          placeholder="dd/mm/yyyy"
+                          className={commonInputClass}
+                        />
+                        <input
+                          type="date"
+                          ref={deliveryDateRef}
+                          value={orderData.deliveryDate}
+                          min={(() => {
+                            return new Date().toISOString().split("T")[0];
+                          })()}
+                          max={(() => {
+                            const now = new Date();
+                            const nextMonth = new Date(
+                              now.getFullYear(),
+                              now.getMonth() + 1,
+                              7,
+                            );
+                            return nextMonth.toISOString().split("T")[0];
+                          })()}
+                          onChange={(e) => {
+                            const selectedDate = e.target.value;
+                            const now = new Date();
+                            const nextMonth = new Date(
+                              now.getFullYear(),
+                              now.getMonth() + 1,
+                              7,
+                            );
+                            const maxDate = nextMonth.toISOString().split("T")[0];
+                            if (selectedDate > maxDate) {
+                              const maxDateObj = new Date(maxDate);
+                              const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                              alert(
+                                `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                              );
+                              updateOrderData("deliveryDate", maxDate);
+                              return;
+                            }
+                            updateOrderData("deliveryDate", selectedDate);
+                          }}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 9v7.5"
+                            />
+                          </svg>
+                        </div>
+                      </div>
 
                       {(() => {
 
@@ -11713,6 +11704,300 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
           <div className="space-y-6">
 
+            {/* Section 4: Payment Method */}
+            {(selectedCustomer || isCreatingNewCustomer) && (
+              <div className="bg-white rounded-lg border border-gray-300 p-6">
+                <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
+                  วิธีการชำระเงิน
+                </h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className={commonLabelClass}>
+                      เลือกวิธีการชำระเงิน
+                    </label>
+                    <select
+                      ref={paymentMethodRef}
+                      value={orderData.paymentMethod ?? ""}
+                      onChange={(e) =>
+                        updateOrderData(
+                          "paymentMethod",
+                          e.target.value
+                            ? (e.target.value as PaymentMethod)
+                            : undefined,
+                        )
+                      }
+                      className={commonInputClass}
+                    >
+                      <option value="">เลือกวิธีการชำระเงิน</option>
+                      <option value={PaymentMethod.Transfer}>โอนเงิน</option>
+                      <option value={PaymentMethod.COD}>
+                        เก็บเงินปลายทาง (COD)
+                      </option>
+                      <option value={PaymentMethod.PayAfter}>
+                        รับสินค้าก่อน
+                      </option>
+                    </select>
+                  </div>
+
+                  {orderData.paymentMethod === PaymentMethod.Transfer && (
+                    <div
+                      ref={transferSlipSectionRef}
+                      className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50"
+                    >
+                      <p className="text-sm text-[#0e141b]">
+                        แนบสลิปโอนเงินได้หลายภาพตามต้องการ (ระบุธนาคาร/เวลาโอนต่อสลิป)
+                      </p>
+                      {transferSlipUploads.length > 0 && (
+                        <div className="flex flex-wrap gap-4">
+                          {transferSlipUploads.map((slip) => (
+                            <div
+                              key={slip.id}
+                              className="relative w-56 border border-blue-200 bg-white rounded-md overflow-hidden p-2 space-y-2"
+                            >
+                              <img
+                                src={slip.dataUrl}
+                                alt={slip.name || "payment slip"}
+                                className="object-cover w-full h-24 rounded"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeTransferSlip(slip.id)}
+                                className="absolute top-1 right-1 bg-white/80 text-red-600 rounded-full px-2 leading-none font-bold hover:bg-red-50"
+                                title="ลบ"
+                              >
+                                ×
+                              </button>
+                              <div className="space-y-2 text-xs">
+                                <div>
+                                  <label className="block text-gray-600 mb-1">
+                                    ธนาคารที่รับโอน
+                                  </label>
+                                  <select
+                                    value={slip.bankAccountId ?? ""}
+                                    onChange={(e) =>
+                                      setTransferSlipUploads((prev) =>
+                                        prev.map((s) =>
+                                          s.id === slip.id
+                                            ? {
+                                              ...s,
+                                              bankAccountId:
+                                                Number(e.target.value) || undefined,
+                                            }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                  >
+                                    <option value="">เลือกธนาคาร</option>
+                                    {bankAccounts.map((bank) => (
+                                      <option key={bank.id} value={bank.id}>
+                                        {bank.bank} - {bank.bank_number}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-gray-600 mb-1">
+                                    เวลาที่รับโอน
+                                  </label>
+                                  <input
+                                    type="datetime-local"
+                                    value={slip.transferDate || ""}
+                                    onChange={(e) =>
+                                      setTransferSlipUploads((prev) =>
+                                        prev.map((s) =>
+                                          s.id === slip.id
+                                            ? { ...s, transferDate: e.target.value }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-gray-600 mb-1">
+                                    จำนวนเงิน
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={
+                                      typeof slip.amount === "number" && !Number.isNaN(slip.amount)
+                                        ? slip.amount
+                                        : ""
+                                    }
+                                    onChange={(e) => {
+                                      const nextAmount =
+                                        e.target.value === "" ? null : Number(e.target.value);
+                                      setTransferSlipUploads((prev) =>
+                                        prev.map((s) =>
+                                          s.id === slip.id ? { ...s, amount: nextAmount } : s,
+                                        ),
+                                      );
+                                    }}
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <label className="flex flex-col items-center justify-center w-full md:w-auto px-4 py-3 border border-dashed border-blue-400 rounded-md bg-white text-sm text-blue-600 font-medium cursor-pointer hover:bg-blue-50">
+                        <span>เลือกไฟล์สลิป</span>
+                        <span className="text-xs text-blue-400 mt-1">
+                          รองรับ .jpg, .jpeg, .png และหลายไฟล์ในครั้งเดียว
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleTransferSlipUpload}
+                        />
+                      </label>
+                      {transferSlipUploads.length === 0 && (
+                        <p className="text-xs text-red-600 font-medium">
+                          กรุณาอัปโหลดสลิปก่อนบันทึกออเดอร์
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {orderData.paymentMethod === PaymentMethod.COD && (
+                    <div
+                      ref={codSectionRef}
+                      className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
+                    >
+                      <h4 className="font-semibold text-[#0e141b]">
+                        รายละเอียดการเก็บเงินปลายทาง
+                      </h4>
+                      <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
+                        โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
+                        <strong>฿{totalAmount.toFixed(2)}</strong>
+                        <span className="ml-2">
+                          (ยอดรวมปัจจุบัน:{" "}
+                          <span
+                            className={
+                              !isCodValid
+                                ? "text-red-600 font-bold"
+                                : "text-green-700 font-bold"
+                            }
+                          >
+                            ฿{codTotal.toFixed(2)}
+                          </span>
+                          )
+                        </span>
+                        <span className="block mt-1">
+                          {codRemaining === 0 ? (
+                            <span className="text-green-700 font-medium">
+                              ครบถ้วนแล้ว
+                            </span>
+                          ) : codRemaining > 0 ? (
+                            <span className="text-orange-600 font-medium">
+                              คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-red-600 font-medium">
+                              เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <label className={commonLabelClass}>จำนวนกล่อง</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={(() => {
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                            const parentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            return parentItems.length || 1;
+                          })()}
+                          value={numBoxes}
+                          onChange={(e) => {
+                            clearValidationErrorFor("cod");
+                            const newValue = Math.max(
+                              1,
+                              Number(e.target.value),
+                            );
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                            const parentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            const maxBoxes = parentItems.length || 1;
+                            if (newValue > maxBoxes) {
+                              alert(
+                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
+                              );
+                              return;
+                            }
+                            setNumBoxes(newValue);
+                          }}
+                          onFocus={onFocusSelectAll}
+                          className={commonInputClass}
+                        />
+                        {(() => {
+                          const parentItems = (orderData.items || []).filter(
+                            (it) => !it.parentItemId,
+                          );
+                          const maxBoxes = parentItems.length || 1;
+                          if (numBoxes > maxBoxes) {
+                            return (
+                              <p className="text-red-600 text-xs mt-1">
+                                จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด{" "}
+                                {maxBoxes} กล่อง)
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                      <button
+                        onClick={divideCodEqually}
+                        className="text-sm text-blue-600 font-medium hover:underline"
+                      >
+                        แบ่งยอดเท่าๆ กัน
+                      </button>
+                      <div className="space-y-2">
+                        {orderData.boxes?.map((box, index) => (
+                          <div key={index} className="flex items-center gap-4">
+                            <label className="font-medium text-[#0e141b] w-24">
+                              กล่อง #{box.boxNumber}:
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="ยอด COD"
+                              value={box.codAmount}
+                              onChange={(e) =>
+                                handleCodBoxAmountChange(
+                                  index,
+                                  Number(e.target.value),
+                                )
+                              }
+                              onFocus={onFocusSelectAll}
+                              className={commonInputClass}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      {!isCodValid && (
+                        <p className="text-red-600 text-sm font-medium">
+                          ยอดรวม COD ไม่ถูกต้อง
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Section 3: Products */}
 
             {(selectedCustomer || isCreatingNewCustomer) && (
@@ -11729,56 +12014,95 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                 {/* Product Selection Tabs */}
 
-                <div className="mb-4 border-b border-gray-200">
-
+                <div className="mb-4 border-b border-gray-200 flex justify-between items-center">
                   <ul className="flex -mb-px text-sm font-medium text-center">
-
                     <li className="mr-2">
-
                       <button
-
                         onClick={() => setSelectorTab("products")}
-
                         className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "products"
-
-                          ? "text-blue-600 border-blue-600"
-
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
                           }`}
-
                       >
-
                         สินค้าปกติ
-
                       </button>
-
                     </li>
-
                     <li className="mr-2">
-
                       <button
-
                         onClick={() => setSelectorTab("promotions")}
-
                         className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "promotions"
-
-                          ? "text-blue-600 border-blue-600"
-
-                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-
+                            ? "text-blue-600 border-blue-600"
+                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
                           }`}
-
                       >
-
                         โปรโมชั่น/เซ็ตสินค้า
-
                       </button>
-
                     </li>
-
                   </ul>
 
+                  {(() => {
+                    // Check if any SKU appears more than 3 times
+                    const skuCounts = (orderData.items || []).reduce(
+                      (acc, item) => {
+                        if (!item.parentItemId && item.productId) {
+                          acc[item.productId] = (acc[item.productId] || 0) + 1;
+                        }
+                        return acc;
+                      },
+                      {} as Record<number, number>,
+                    );
+                    const hasManySameSku = Object.values(skuCounts).some(
+                      (count) => count > 3,
+                    );
+
+                    if (hasManySameSku) {
+                      return (
+                        <button
+                          onClick={() => {
+                            const currentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            const newNumBoxes = currentItems.length;
+                            setNumBoxes(newNumBoxes);
+
+                            // Update items to have boxNumber corresponding to their index + 1
+                            const updatedItems = (orderData.items || []).map(
+                              (it) => {
+                                if (!it.parentItemId) {
+                                  // Find index in the filtered list
+                                  const idx = currentItems.findIndex(
+                                    (c) => c.id === it.id,
+                                  );
+                                  return { ...it, boxNumber: idx + 1 };
+                                }
+                                return it;
+                              },
+                            );
+                            updateOrderData("items", updatedItems);
+
+                            // Update boxes with COD amounts
+                            const newBoxes = currentItems.map((it, idx) => {
+                              const baseTotal =
+                                (it.quantity || 0) * (it.pricePerUnit || 0);
+                              const total = Math.max(
+                                0,
+                                baseTotal - (it.discount || 0),
+                              );
+                              return {
+                                boxNumber: idx + 1,
+                                codAmount: total,
+                              };
+                            });
+                            updateOrderData("boxes", newBoxes);
+                          }}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-colors"
+                        >
+                          คำนวณกล่องอัตโนมัติ
+                        </button>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
 
@@ -11799,12 +12123,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                         style={{
 
-                          gridTemplateColumns: "repeat(15, minmax(0, 1fr))",
+                          gridTemplateColumns: "repeat(17, minmax(0, 1fr))",
 
                         }}
 
                       >
 
+                        <div className="col-span-1 flex flex-col items-center justify-center">
+                          <label className="text-xs text-[#4e7397] mb-1 block text-center">
+                            ลำดับ
+                          </label>
+                          <span className="text-sm font-medium text-gray-600 text-center">
+                            {index + 1}
+                          </span>
+                        </div>
                         <div className="col-span-2">
 
                           <label className="text-xs text-[#4e7397] mb-1 block">
@@ -12349,7 +12681,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           >
 
-                            ลบ
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={1.5}
+                              stroke="currentColor"
+                              className="w-5 h-5"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                              />
+                            </svg>
 
                           </button>
 
@@ -12362,41 +12707,44 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
                   <button
-
-                    onClick={() =>
-
-                      updateOrderData("items", [
-
-                        ...(orderData.items || []),
-
-                        {
-
-                          id: Date.now(),
-
-                          productName: "",
-
-                          quantity: 1,
-
-                          pricePerUnit: 0,
-
-                          discount: 0,
-
-                          isFreebie: false,
-
-                          boxNumber: 1,
-
-                        },
-
-                      ])
-
-                    }
-
+                    onClick={() => {
+                      const currentItems = orderData.items || [];
+                      if (currentItems.length === 0) {
+                        // If no items, add a default empty item
+                        updateOrderData("items", [
+                          ...currentItems,
+                          {
+                            id: Date.now(),
+                            productName: "",
+                            quantity: 1,
+                            pricePerUnit: 0,
+                            discount: 0,
+                            isFreebie: false,
+                            boxNumber: 1,
+                          },
+                        ]);
+                      } else {
+                        // If items exist, copy the last one
+                        const lastItem = currentItems[currentItems.length - 1];
+                        const countStr = window.prompt("ต้องการคัดลอกกี่รายการ?", "1");
+                        if (countStr) {
+                          const count = parseInt(countStr, 10);
+                          if (!isNaN(count) && count > 0) {
+                            const newItems = [];
+                            for (let i = 0; i < count; i++) {
+                              newItems.push({
+                                ...lastItem,
+                                id: Date.now() + i, // Ensure unique ID
+                              });
+                            }
+                            updateOrderData("items", [...currentItems, ...newItems]);
+                          }
+                        }
+                      }
+                    }}
                     className="text-sm text-blue-600 font-medium hover:underline"
-
                   >
-
-                    + เพิ่มรายการสินค้า
-
+                    + คัดลอกรายการล่าสุด
                   </button>
 
                   <div className="mt-3">
@@ -12897,638 +13245,88 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
 
-            {/* Section 4: Payment Method */}
 
-            {(selectedCustomer || isCreatingNewCustomer) && (
-
-              <div className="bg-white rounded-lg border border-gray-300 p-6">
-
-                <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
-
-                  วิธีการชำระเงิน
-
-                </h2>
-
-
-
-                <div className="space-y-4">
-
-                  <div>
-
-                    <label className={commonLabelClass}>
-
-                      เลือกวิธีการชำระเงิน
-
-                    </label>
-
-                    <select
-
-                      ref={paymentMethodRef}
-
-                      value={orderData.paymentMethod ?? ""}
-
-                      onChange={(e) =>
-
-                        updateOrderData(
-
-                          "paymentMethod",
-
-                          e.target.value
-
-                            ? (e.target.value as PaymentMethod)
-
-                            : undefined,
-
-                        )
-
-                      }
-
-                      className={commonInputClass}
-
-                    >
-
-                      <option value="">เลือกวิธีการชำระเงิน</option>
-
-                      <option value={PaymentMethod.Transfer}>โอนเงิน</option>
-
-                      <option value={PaymentMethod.COD}>
-
-                        เก็บเงินปลายทาง (COD)
-
-                      </option>
-
-                      <option value={PaymentMethod.PayAfter}>
-
-                        รับสินค้าก่อน
-
-                      </option>
-
-                    </select>
-
-                  </div>
-
-
-
-                  {orderData.paymentMethod === PaymentMethod.Transfer && (
-                    <div
-                      ref={transferSlipSectionRef}
-                      className="space-y-4 p-4 border border-blue-300 rounded-md bg-blue-50"
-                    >
-                      <p className="text-sm text-[#0e141b]">
-                        แนบสลิปโอนเงินได้หลายภาพตามต้องการ (ระบุธนาคาร/เวลาโอนต่อสลิป)
-                      </p>
-                      {transferSlipUploads.length > 0 && (
-                        <div className="flex flex-wrap gap-4">
-                          {transferSlipUploads.map((slip) => (
-                            <div
-                              key={slip.id}
-                              className="relative w-56 border border-blue-200 bg-white rounded-md overflow-hidden p-2 space-y-2"
-                            >
-                              <img
-                                src={slip.dataUrl}
-                                alt={slip.name || "payment slip"}
-                                className="object-cover w-full h-24 rounded"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeTransferSlip(slip.id)}
-                                className="absolute top-1 right-1 bg-white/80 text-red-600 rounded-full px-2 leading-none font-bold hover:bg-red-50"
-                                title="ลบ"
-                              >
-                                ×
-                              </button>
-                              <div className="space-y-2 text-xs">
-                                <div>
-                                  <label className="block text-gray-600 mb-1">
-                                    ธนาคารที่รับโอน
-                                  </label>
-                                  <select
-                                    value={slip.bankAccountId ?? ""}
-                                    onChange={(e) =>
-                                      setTransferSlipUploads((prev) =>
-                                        prev.map((s) =>
-                                          s.id === slip.id
-                                            ? {
-                                              ...s,
-                                              bankAccountId:
-                                                Number(e.target.value) || undefined,
-                                            }
-                                            : s,
-                                        ),
-                                      )
-                                    }
-                                    className="w-full border rounded px-2 py-1 text-sm"
-                                  >
-                                    <option value="">เลือกธนาคาร</option>
-                                    {bankAccounts.map((bank) => (
-                                      <option key={bank.id} value={bank.id}>
-                                        {bank.bank} - {bank.bank_number}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-gray-600 mb-1">
-                                    เวลาที่รับโอน
-                                  </label>
-                                  <input
-                                    type="datetime-local"
-                                    value={slip.transferDate || ""}
-                                    onChange={(e) =>
-                                      setTransferSlipUploads((prev) =>
-                                        prev.map((s) =>
-                                          s.id === slip.id
-                                            ? { ...s, transferDate: e.target.value }
-                                            : s,
-                                        ),
-                                      )
-                                    }
-                                    className="w-full border rounded px-2 py-1 text-sm"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-gray-600 mb-1">
-                                    จำนวนเงิน
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={
-                                      typeof slip.amount === "number" && !Number.isNaN(slip.amount)
-                                        ? slip.amount
-                                        : ""
-                                    }
-                                    onChange={(e) => {
-                                      const nextAmount =
-                                        e.target.value === "" ? null : Number(e.target.value);
-                                      setTransferSlipUploads((prev) =>
-                                        prev.map((s) =>
-                                          s.id === slip.id ? { ...s, amount: nextAmount } : s,
-                                        ),
-                                      );
-                                    }}
-                                    className="w-full border rounded px-2 py-1 text-sm"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <label className="flex flex-col items-center justify-center w-full md:w-auto px-4 py-3 border border-dashed border-blue-400 rounded-md bg-white text-sm text-blue-600 font-medium cursor-pointer hover:bg-blue-50">
-
-                        <span>เลือกไฟล์สลิป</span>
-
-                        <span className="text-xs text-blue-400 mt-1">
-
-                          รองรับ .jpg, .jpeg, .png และหลายไฟล์ในครั้งเดียว
-
-                        </span>
-
-                        <input
-
-                          type="file"
-
-                          accept="image/*"
-
-                          multiple
-
-                          className="hidden"
-
-                          onChange={handleTransferSlipUpload}
-
-                        />
-
-                      </label>
-
-                      {transferSlipUploads.length === 0 && (
-
-                        <p className="text-xs text-red-600 font-medium">
-
-                          กรุณาอัปโหลดสลิปก่อนบันทึกออเดอร์
-
-                        </p>
-
-                      )}
-
-                    </div>
-
-                  )}
-
-
-
-                  {orderData.paymentMethod === PaymentMethod.COD && (
-
-                    <div
-
-                      ref={codSectionRef}
-
-                      className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
-
-                    >
-
-                      <h4 className="font-semibold text-[#0e141b]">
-
-                        รายละเอียดการเก็บเงินปลายทาง
-
-                      </h4>
-
-                      <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
-
-                        โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
-
-                        <strong>฿{totalAmount.toFixed(2)}</strong>
-
-                        <span className="ml-2">
-
-                          (ยอดรวมปัจจุบัน:{" "}
-
-                          <span
-
-                            className={
-
-                              !isCodValid
-
-                                ? "text-red-600 font-bold"
-
-                                : "text-green-700 font-bold"
-
-                            }
-
-                          >
-
-                            ฿{codTotal.toFixed(2)}
-
-                          </span>
-
-                          )
-
-                        </span>
-
-                        <span className="block mt-1">
-
-                          {codRemaining === 0 ? (
-
-                            <span className="text-green-700 font-medium">
-
-                              ครบถ้วนแล้ว
-
-                            </span>
-
-                          ) : codRemaining > 0 ? (
-
-                            <span className="text-orange-600 font-medium">
-
-                              คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
-
-                            </span>
-
-                          ) : (
-
-                            <span className="text-red-600 font-medium">
-
-                              เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
-
-                            </span>
-
-                          )}
-
-                        </span>
-
-                      </div>
-
-                      <div>
-
-                        <label className={commonLabelClass}>จำนวนกล่อง</label>
-
-                        <input
-
-                          type="number"
-
-                          min="1"
-
-                          max={(() => {
-
-                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
-
-                            const parentItems = (orderData.items || []).filter(
-
-                              (it) => !it.parentItemId,
-
-                            );
-
-                            return parentItems.length || 1;
-
-                          })()}
-
-                          value={numBoxes}
-
-                          onChange={(e) => {
-
-                            clearValidationErrorFor("cod");
-
-                            const newValue = Math.max(
-
-                              1,
-
-                              Number(e.target.value),
-
-                            );
-
-                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
-
-                            const parentItems = (orderData.items || []).filter(
-
-                              (it) => !it.parentItemId,
-
-                            );
-
-                            const maxBoxes = parentItems.length || 1;
-
-                            if (newValue > maxBoxes) {
-
-                              alert(
-
-                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
-
-                              );
-
-                              return;
-
-                            }
-
-                            setNumBoxes(newValue);
-
-                          }}
-
-                          onFocus={onFocusSelectAll}
-
-                          className={commonInputClass}
-
-                        />
-
-                        {(() => {
-
-                          const parentItems = (orderData.items || []).filter(
-
-                            (it) => !it.parentItemId,
-
-                          );
-
-                          const maxBoxes = parentItems.length || 1;
-
-                          if (numBoxes > maxBoxes) {
-
-                            return (
-
-                              <p className="text-red-600 text-xs mt-1">
-
-                                จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด{" "}
-
-                                {maxBoxes} กล่อง)
-
-                              </p>
-
-                            );
-
-                          }
-
-                          return null;
-
-                        })()}
-
-                      </div>
-
-                      <button
-
-                        onClick={divideCodEqually}
-
-                        className="text-sm text-blue-600 font-medium hover:underline"
-
-                      >
-
-                        แบ่งยอดเท่าๆ กัน
-
-                      </button>
-
-                      <div className="space-y-2">
-
-                        {orderData.boxes?.map((box, index) => (
-
-                          <div key={index} className="flex items-center gap-4">
-
-                            <label className="font-medium text-[#0e141b] w-24">
-
-                              กล่อง #{box.boxNumber}:
-
-                            </label>
-
-                            <input
-
-                              type="number"
-
-                              placeholder="ยอด COD"
-
-                              value={box.codAmount}
-
-                              onChange={(e) =>
-
-                                handleCodBoxAmountChange(
-
-                                  index,
-
-                                  Number(e.target.value),
-
-                                )
-
-                              }
-
-                              onFocus={onFocusSelectAll}
-
-                              className={commonInputClass}
-
-                            />
-
-                          </div>
-
-                        ))}
-
-                      </div>
-
-                      {!isCodValid && (
-
-                        <p className="text-red-600 text-sm font-medium">
-
-                          ยอดรวม COD ไม่ถูกต้อง
-
-                        </p>
-
-                      )}
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              </div>
-
-            )}
 
 
 
             {/* Order Summary */}
-
-            <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
-
-              <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">
-
-                สรุปคำสั่งซื้อ
-
-              </h3>
-
-              <div className="space-y-3 text-sm">
-
-                <div className="flex justify-between text-[#4e7397]">
-
-                  <span>ยอดรวมสินค้า</span>
-
-                  <span className="text-[#0e141b] font-medium">
-
-                    ฿{subTotal.toFixed(2)}
-
-                  </span>
-
-                </div>
-
-                <div className="flex justify-between text-[#4e7397]">
-
-                  <span>ส่วนลดรายการสินค้า</span>
-
-                  <span className="text-red-600 font-medium">
-
-                    -฿{itemsDiscount.toFixed(2)}
-
-                  </span>
-
-                </div>
-
-                <div className="flex justify-between text-[#4e7397]">
-
-                  <span>ค่าขนส่ง</span>
-
-                  <span className="text-[#0e141b] font-medium">
-
-                    ฿{(orderData.shippingCost || 0).toFixed(2)}
-
-                  </span>
-
-                </div>
-
-                <div className="flex justify-between text-[#4e7397]">
-
-                  <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
-
-                  <span className="text-red-600 font-medium">
-
-                    -฿{billDiscountAmount.toFixed(2)}
-
-                  </span>
-
-                </div>
-
-                <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
-
-                  <span className="text-[#0e141b]">ยอดสุทธิ</span>
-
-                  <span className="text-green-600">
-
-                    ฿{totalAmount.toFixed(2)}
-
-                  </span>
-
-                </div>
-
-              </div>
-
-
-
-              {orderData.items && orderData.items.length > 0 && (
-
-                <div className="mt-6 pt-6 border-t">
-
-                  <h4 className="font-medium text-sm mb-3 text-[#0e141b]">
-
-                    รายการสินค้า (
-
-                    {
-
-                      (orderData.items || []).filter((it) => !it.parentItemId)
-
-                        .length
-
-                    }
-
-                    )
-
-                  </h4>
-
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-
-                    {(orderData.items || [])
-
-                      .filter((it) => !it.parentItemId)
-
-                      .map((item, idx) => (
-
-                        <div
-
-                          key={item.id}
-
-                          className="text-xs p-2 bg-white rounded border"
-
-                        >
-
-                          <div className="font-medium text-[#0e141b]">
-
-                            {item.productName || "(ไม่ระบุ)"}
-
-                          </div>
-
-                          <div className="text-[#4e7397] mt-1">
-
-                            {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
-
-                            {item.discount > 0 && (
-
-                              <span> - ฿{item.discount}</span>
-
-                            )}
-
-                            {item.isFreebie && (
-
-                              <span className="ml-2 text-green-600">
-
-                                (ของแถม)
-
-                              </span>
-
-                            )}
-
-                          </div>
-
-                        </div>
-
-                      ))}
-
+            {(selectedCustomer || isCreatingNewCustomer) && (
+              <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
+                <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">
+                  สรุปคำสั่งซื้อ
+                </h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ยอดรวมสินค้า</span>
+                    <span className="text-[#0e141b] font-medium">
+                      ฿{subTotal.toFixed(2)}
+                    </span>
                   </div>
-
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ส่วนลดรายการสินค้า</span>
+                    <span className="text-red-600 font-medium">
+                      -฿{itemsDiscount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ค่าขนส่ง</span>
+                    <span className="text-[#0e141b] font-medium">
+                      ฿{(orderData.shippingCost || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[#4e7397]">
+                    <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
+                    <span className="text-red-600 font-medium">
+                      -฿{billDiscountAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
+                    <span className="text-[#0e141b]">ยอดสุทธิ</span>
+                    <span className="text-green-600">
+                      ฿{totalAmount.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
 
-              )}
-
-            </div>
+                {orderData.items && orderData.items.length > 0 && (
+                  <div className="mt-6 pt-6 border-t">
+                    <h4 className="font-medium text-sm mb-3 text-[#0e141b]">
+                      รายการสินค้า (
+                      {
+                        (orderData.items || []).filter((it) => !it.parentItemId)
+                          .length
+                      }
+                      )
+                    </h4>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {(orderData.items || [])
+                        .filter((it) => !it.parentItemId)
+                        .map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className="text-xs p-2 bg-white rounded border"
+                          >
+                            <div className="font-medium text-[#0e141b]">
+                              {item.productName || "(ไม่ระบุ)"}
+                            </div>
+                            <div className="text-[#4e7397] mt-1">
+                              {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
+                              {item.discount > 0 && (
+                                <span> - ฿{item.discount}</span>
+                              )}
+                              {item.isFreebie && (
+                                <span className="ml-2 text-green-600">
+                                  (ของแถม)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
 
@@ -13537,28 +13335,19 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
         {/* Footer Actions */}
-
-        <div className="mt-6 flex justify-end gap-3 pb-6">
-
-          <button
-
-            onClick={handleSave}
-
-            disabled={
-
-              !isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)
-
-            }
-
-            className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-
-          >
-
-            บันทึกคำสั่งซื้อ
-
-          </button>
-
-        </div>
+        {(selectedCustomer || isCreatingNewCustomer) && (
+          <div className="mt-6 flex justify-end gap-3 pb-6">
+            <button
+              onClick={handleSave}
+              disabled={
+                !isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)
+              }
+              className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              บันทึกคำสั่งซื้อ
+            </button>
+          </div>
+        )}
 
       </div>
 
