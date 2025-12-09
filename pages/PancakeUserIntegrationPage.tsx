@@ -115,8 +115,13 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase.replace(/\/$/, "")}/get_admin_page_users.php`,
+        { headers }
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -138,8 +143,13 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadPageUsers = async () => {
     setLoadingPageUsers(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase.replace(/\/$/, "")}/get_page_users.php`,
+        { headers }
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -161,13 +171,17 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const loadPagesWithUsers = async () => {
     setLoadingPagesWithUsers(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${apiBase.replace(/\/$/, "")}/get_pages_with_users.php`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             companyId: currentUser?.companyId || 1,
           }),
@@ -213,14 +227,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
 
     setLoading(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       // Update the page_user record with the internal user ID
       const response = await fetch(
         `${apiBase.replace(/\/$/, "")}/update_page_user_connection.php`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             pageUserId: selectedPageUser.id,
             internalUserId: selectedInternalUser.id,
@@ -276,12 +294,16 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   const handleDisconnectPageUser = async (pageUserId: number) => {
     setLoading(true);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       // Update page_user record to set user_id to NULL
       const response = await fetch(`${apiBase}/Page_DB/disconnect_page_user.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           pageUserId: pageUserId,
         }),
@@ -463,11 +485,10 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
       {/* Alert Message */}
       {message && (
         <div
-          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${
-            message.type === "success"
+          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
               ? "bg-green-100 text-green-800"
               : "bg-red-100 text-red-800"
-          }`}
+            }`}
         >
           {message.type === "success" ? (
             <Check className="w-5 h-5" />
@@ -484,11 +505,10 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
           <nav className="flex gap-1 p-1">
             <button
               onClick={() => setActiveTab("mappings")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "mappings"
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "mappings"
                   ? "bg-orange-100 text-orange-700"
                   : "text-gray-600 hover:text-gray-900"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Link className="w-4 h-4" />
@@ -497,11 +517,10 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
             </button>
             <button
               onClick={() => setActiveTab("search")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "search"
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "search"
                   ? "bg-orange-100 text-orange-700"
                   : "text-gray-600 hover:text-gray-900"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4" />
@@ -799,11 +818,10 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                                 : user,
                             )
                           }
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedInternalUser?.id === user.id
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedInternalUser?.id === user.id
                               ? "border-orange-500 bg-orange-50"
                               : "border-gray-200 hover:bg-gray-50"
-                          }`}
+                            }`}
                         >
                           <div className="font-medium text-gray-900">
                             {user.first_name} {user.last_name}
@@ -842,31 +860,28 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                   <div className="flex gap-2 mb-4">
                     <button
                       onClick={() => setPageUserFilter("all")}
-                      className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === "all"
+                      className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "all"
                           ? "bg-orange-100 text-orange-700 border border-orange-300"
                           : "bg-gray-100 text-gray-700 border border-gray-300"
-                      }`}
+                        }`}
                     >
                       ทั้งหมด
                     </button>
                     <button
                       onClick={() => setPageUserFilter("connected")}
-                      className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === "connected"
+                      className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "connected"
                           ? "bg-green-100 text-green-700 border border-green-300"
                           : "bg-gray-100 text-gray-700 border border-gray-300"
-                      }`}
+                        }`}
                     >
                       เชื่อมต่อแล้ว
                     </button>
                     <button
                       onClick={() => setPageUserFilter("unconnected")}
-                      className={`px-3 py-1.5 text-sm rounded-md ${
-                        pageUserFilter === "unconnected"
+                      className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "unconnected"
                           ? "bg-red-100 text-red-700 border border-red-300"
                           : "bg-gray-100 text-gray-700 border border-gray-300"
-                      }`}
+                        }`}
                     >
                       ยังไม่เชื่อมต่อ
                     </button>
@@ -909,11 +924,10 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                                 selectedPageUser?.id === user.id ? null : user,
                               )
                             }
-                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                              selectedPageUser?.id === user.id
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedPageUser?.id === user.id
                                 ? "border-orange-500 bg-orange-50"
                                 : "border-gray-200 hover:bg-gray-50"
-                            }`}
+                              }`}
                           >
                             <div
                               className={`font-medium ${user.user_id === null ? "text-red-600" : "text-gray-900"}`}

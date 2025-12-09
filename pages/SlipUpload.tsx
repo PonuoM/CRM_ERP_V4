@@ -89,6 +89,11 @@ interface SlipItem {
   amount: string;
 }
 
+interface SlipEntry {
+  file: File | null;
+  preview: string | null;
+}
+
 interface SlipHistory {
   id: number;
   order_id: string;
@@ -141,23 +146,23 @@ const OrderDetailsModal: React.FC<{ orderId: number; onClose: () => void }> = ({
 
         const rawItems = Array.isArray(r.items)
           ? r.items.map((it: any) => ({
-              id: it.id,
-              productId: it.product_id,
-              productName: it.product_name,
-              quantity: Number(it.quantity || 0),
-              // If parent_item_id exists OR is_freebie is true, set price and discount to 0
-              pricePerUnit:
-                it.parent_item_id || it.is_freebie
-                  ? 0
-                  : Number(it.price_per_unit || 0),
-              discount:
-                it.parent_item_id || it.is_freebie
-                  ? 0
-                  : Number(it.discount || 0),
-              creatorId: it.creator_id,
-              parentItemId: it.parent_item_id,
-              isFreebie: it.is_freebie,
-            }))
+            id: it.id,
+            productId: it.product_id,
+            productName: it.product_name,
+            quantity: Number(it.quantity || 0),
+            // If parent_item_id exists OR is_freebie is true, set price and discount to 0
+            pricePerUnit:
+              it.parent_item_id || it.is_freebie
+                ? 0
+                : Number(it.price_per_unit || 0),
+            discount:
+              it.parent_item_id || it.is_freebie
+                ? 0
+                : Number(it.discount || 0),
+            creatorId: it.creator_id,
+            parentItemId: it.parent_item_id,
+            isFreebie: it.is_freebie,
+          }))
           : [];
 
         // Sort items: Parents first, then their children
@@ -517,8 +522,13 @@ const SlipUpload: React.FC = () => {
         return;
       }
 
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${companyId}`,
+        { headers }
       );
       const data = await response.json();
 
@@ -571,8 +581,13 @@ const SlipUpload: React.FC = () => {
       const user = JSON.parse(sessionUser);
       const companyId = user.company_id;
 
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase}/Slip_DB/get_slip_history.php?order_id=${orderId}&company_id=${companyId}`,
+        { headers }
       );
       const data = await response.json();
 
@@ -926,8 +941,13 @@ const SlipUpload: React.FC = () => {
       if (activeFilters.end_date)
         queryParams.append("end_date", activeFilters.end_date);
 
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase}/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
+        { headers }
       );
 
       if (!response.ok) {
@@ -1127,11 +1147,10 @@ const SlipUpload: React.FC = () => {
                   <button
                     key={i}
                     onClick={() => handlePageChange(i)}
-                    className={`px-3 py-1 text-sm border rounded ${
-                      i === currentPage
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "border-gray-300 hover:bg-gray-50"
-                    }`}
+                    className={`px-3 py-1 text-sm border rounded ${i === currentPage
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-gray-300 hover:bg-gray-50"
+                      }`}
                   >
                     {i}
                   </button>,
@@ -1185,11 +1204,10 @@ const SlipUpload: React.FC = () => {
       {/* Alert Message */}
       {message && (
         <div
-          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${
-            message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
-          }`}
+          className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
+            ? "bg-green-100 text-green-800"
+            : "bg-red-100 text-red-800"
+            }`}
         >
           {message.type === "success" ? (
             <CheckCircle className="w-5 h-5 text-green-600" />
@@ -1380,15 +1398,15 @@ const SlipUpload: React.FC = () => {
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {order.order_date
                           ? new Date(order.order_date).toLocaleDateString(
-                              "th-TH",
-                            )
+                            "th-TH",
+                          )
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {order.delivery_date
                           ? new Date(order.delivery_date).toLocaleDateString(
-                              "th-TH",
-                            )
+                            "th-TH",
+                          )
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-sm font-medium text-gray-900">
@@ -1408,13 +1426,12 @@ const SlipUpload: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-sm">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            order.payment_status === "จ่ายแล้ว"
-                              ? "bg-green-100 text-green-800"
-                              : order.payment_status === "จ่ายยังไม่ครบ"
-                                ? "bg-orange-100 text-orange-800"
-                                : "bg-yellow-100 text-yellow-800"
-                          }`}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${order.payment_status === "จ่ายแล้ว"
+                            ? "bg-green-100 text-green-800"
+                            : order.payment_status === "จ่ายยังไม่ครบ"
+                              ? "bg-orange-100 text-orange-800"
+                              : "bg-yellow-100 text-yellow-800"
+                            }`}
                         >
                           {order.payment_status}
                         </span>
@@ -1502,11 +1519,10 @@ const SlipUpload: React.FC = () => {
                       onChange={(e) =>
                         handleSlipFormChange("bank_account_id", e.target.value)
                       }
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        !slipFormData.bank_account_id
-                          ? "border-red-300 bg-red-50"
-                          : "border-gray-300"
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.bank_account_id
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
+                        }`}
                     >
                       <option value="">เลือกบัญชีธนาคาร</option>
                       {bankAccounts.map((bank) => (
@@ -1533,11 +1549,10 @@ const SlipUpload: React.FC = () => {
                     onChange={(e) =>
                       handleSlipFormChange("transfer_date", e.target.value)
                     }
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      !slipFormData.transfer_date
-                        ? "border-red-300 bg-red-50"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300"
+                      }`}
                   />
                 </div>
 
@@ -1723,8 +1738,8 @@ const SlipUpload: React.FC = () => {
                                 const normalizedUrl = url.startsWith("api/")
                                   ? "/" + url
                                   : url.startsWith("/") ||
-                                      url.startsWith("http://") ||
-                                      url.startsWith("https://")
+                                    url.startsWith("http://") ||
+                                    url.startsWith("https://")
                                     ? url
                                     : "/" + url;
                                 window.open(normalizedUrl, "_blank");

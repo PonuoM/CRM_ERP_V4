@@ -694,11 +694,18 @@ export async function uploadSlipImageFile(orderId: string, file: File): Promise<
   form.append("file", file);
   form.append("order_id", orderId);
 
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   // Use direct fetch for FormData (not through apiFetch which expects JSON)
   const res = await fetch(
     `${apiBasePath.replace(/\/$/, "")}/Slip_DB/upload_slip_image.php`,
     {
       method: "POST",
+      headers,
       body: form,
     },
   );
@@ -712,6 +719,7 @@ export async function uploadSlipImageFile(orderId: string, file: File): Promise<
 }
 
 // Create order slip with additional payment information
+// Create order slip with additional payment information
 export async function createOrderSlipWithPayment(data: {
   orderId: string;
   amount: number;
@@ -722,14 +730,18 @@ export async function createOrderSlipWithPayment(data: {
   uploadBy?: number;
   uploadByName?: string;
 }): Promise<{ success: boolean; message?: string; data?: any }> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   // Use direct fetch for legacy PHP endpoint (not through apiFetch router)
   const res = await fetch(
     `${apiBasePath.replace(/\/$/, "")}/Slip_DB/insert_order_slip.php`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         order_id: data.orderId,
         amount: data.amount,
@@ -1083,7 +1095,13 @@ export interface PageWithUsers {
 }
 
 export async function getPageUsers(): Promise<PageUser[]> {
-  const response = await fetch("api/get_page_users.php");
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch("api/get_page_users.php", { headers });
   if (!response.ok) {
     throw new Error("Failed to fetch page users");
   }
@@ -1094,9 +1112,15 @@ export async function getPageUsers(): Promise<PageUser[]> {
 export async function getPagesWithUsers(
   companyId: number,
 ): Promise<PageWithUsers[]> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch("api/get_pages_with_users.php", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ companyId }),
   });
   if (!response.ok) {
@@ -1110,9 +1134,15 @@ export async function updatePageUserConnection(
   pageUserId: number,
   internalUserId: number | null,
 ): Promise<{ ok: boolean; message?: string }> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch("api/update_page_user_connection.php", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       pageUserId,
       internalUserId,
@@ -1161,20 +1191,28 @@ export async function updateOrderSlip(payload: {
   transferDate?: string;
   url?: string;
   updatedBy?: number;
+  companyId?: number;
 }) {
   const legacyBase =
     typeof window === "undefined" ? "/api" : resolveApiBasePath();
   const url = `${legacyBase.replace(/\/$/, "")}/Slip_DB/update_order_slip.php`;
 
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       amount: payload.amount,
       bankAccountId: payload.bankAccountId,
       transferDate: payload.transferDate,
       url: payload.url,
       updatedBy: payload.updatedBy,
+      company_id: payload.companyId,
     }),
   });
 

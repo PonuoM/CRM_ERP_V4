@@ -128,8 +128,13 @@ const SlipAll: React.FC = () => {
         }
       }
 
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${apiBase}/Slip_DB/list_company_slips.php?${params.toString()}`,
+        { headers }
       );
       if (!response.ok) {
         throw new Error(`โหลดข้อมูลล้มเหลว (${response.status})`);
@@ -281,8 +286,13 @@ const SlipAll: React.FC = () => {
         if (sessionUser) {
           const parsed = JSON.parse(sessionUser);
           if (parsed.company_id) {
+            const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+            const headers: any = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+
             const res = await fetch(
               `${apiBase}/Slip_DB/get_payment_methods.php?company_id=${parsed.company_id}`,
+              { headers }
             );
             const data = await res.json();
             if (data.success && Array.isArray(data.data)) {

@@ -1867,11 +1867,15 @@ const App: React.FC = () => {
       // Password length validation removed - no minimum length requirement
 
       // Call API to change password
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch("/api/change_password.php", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           userId: currentUser.id,
           currentPassword: passwordForm.currentPassword,
@@ -1974,11 +1978,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const apiBase = resolveApiBasePath();
-      const response = await fetch(
-        `${apiBase}/get_warehouse_stocks.php?company_id=${currentUser.companyId}`,
-      );
-      const result = await response.json();
+      const result = await apiFetch(`get_warehouse_stocks.php?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setWarehouseStocks(result.data);
@@ -1993,11 +1993,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const apiBase = resolveApiBasePath();
-      const response = await fetch(
-        `${apiBase}/get_stock_movements.php?company_id=${currentUser.companyId}`,
-      );
-      const result = await response.json();
+      const result = await apiFetch(`get_stock_movements.php?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setStockMovements(result.data);
@@ -2012,11 +2008,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const apiBase = resolveApiBasePath();
-      const response = await fetch(
-        `${apiBase}/get_product_lots.php?company_id=${currentUser.companyId}`,
-      );
-      const result = await response.json();
+      const result = await apiFetch(`get_product_lots.php?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setProductLots(result.data);
@@ -3009,7 +3001,7 @@ const App: React.FC = () => {
           return customer?.id || String(customerIdInt);
         };
 
-          // Build tags map for customers
+        // Build tags map for customers
         const tagsByCustomer: Record<string, Tag[]> = {};
         if (Array.isArray(refreshedCustomerTagsRaw)) {
           for (const ct of refreshedCustomerTagsRaw) {
@@ -3023,9 +3015,9 @@ const App: React.FC = () => {
           }
         }
 
-          // Map customers
-          const mappedCustomers = Array.isArray(refreshedCustomersRaw)
-            ? refreshedCustomersRaw.map((r: any) => {
+        // Map customers
+        const mappedCustomers = Array.isArray(refreshedCustomersRaw)
+          ? refreshedCustomersRaw.map((r: any) => {
             const totalPurchases = Number(r.total_purchases || 0);
             const pk = r.customer_id ?? r.id ?? r.pk ?? null;
             const refId =
@@ -3088,24 +3080,24 @@ const App: React.FC = () => {
               facebookName: r.facebook_name ?? undefined,
               lineId: r.line_id ?? undefined,
               isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
-                waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
-              };
-            })
-            : [];
+              waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
+            };
+          })
+          : [];
 
-          // Refresh activities (after we have mappedCustomers, so activity.customerId uses UI ids)
-          setActivities(
-            Array.isArray(refreshedActivitiesRaw)
-              ? refreshedActivitiesRaw.map((a: any) => ({
-                  id: a.id,
-                  customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
-                  timestamp: a.timestamp,
-                  type: a.type,
-                  description: a.description,
-                  actorName: a.actor_name,
-                }))
-              : [],
-          );
+        // Refresh activities (after we have mappedCustomers, so activity.customerId uses UI ids)
+        setActivities(
+          Array.isArray(refreshedActivitiesRaw)
+            ? refreshedActivitiesRaw.map((a: any) => ({
+              id: a.id,
+              customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
+              timestamp: a.timestamp,
+              type: a.type,
+              description: a.description,
+              actorName: a.actor_name,
+            }))
+            : [],
+        );
         setCustomers(mappedCustomers);
 
         return createdOrderId;
@@ -3193,14 +3185,14 @@ const App: React.FC = () => {
             id: t.id,
             name: t.name,
             type: t.type as TagType,
-            });
           });
-        }
+        });
+      }
 
-        const mappedCustomers: Customer[] = Array.isArray(refreshedCustomersRaw)
-          ? refreshedCustomersRaw.map((r) => {
-            const resolvedId = String(r.id || r.customer_id);
-            const totalPurchasesVal = Number(r.total_purchases || 0);
+      const mappedCustomers: Customer[] = Array.isArray(refreshedCustomersRaw)
+        ? refreshedCustomersRaw.map((r) => {
+          const resolvedId = String(r.id || r.customer_id);
+          const totalPurchasesVal = Number(r.total_purchases || 0);
           return {
             id: resolvedId,
             pk: r.pk, // Keep pk for internal use
@@ -3232,20 +3224,20 @@ const App: React.FC = () => {
             lineId: r.line_id ?? undefined,
             isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
             waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
-            };
-          })
-          : [];
+          };
+        })
+        : [];
 
-        const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
-          ? refreshedActivitiesRaw.map((a) => ({
-            id: a.id,
-            customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
-            timestamp: a.timestamp,
-            type: a.type,
-            description: a.description,
-            actorName: a.actor_name,
-          }))
-          : [];
+      const mappedActivities: Activity[] = Array.isArray(refreshedActivitiesRaw)
+        ? refreshedActivitiesRaw.map((a) => ({
+          id: a.id,
+          customerId: mapActivityCustomerId(a.customer_id, mappedCustomers),
+          timestamp: a.timestamp,
+          type: a.type,
+          description: a.description,
+          actorName: a.actor_name,
+        }))
+        : [];
 
       setOrders(mappedOrders);
       setActivities(mappedActivities);
