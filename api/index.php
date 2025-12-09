@@ -1643,6 +1643,30 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $itemsMap[$itemOrderId][] = $item;
                         }
                     }
+
+                    // Sort items by box_number for each order to ensure 1, 2, 3... 10 order
+                    foreach ($itemsMap as &$orderItems) {
+                        usort($orderItems, function($a, $b) {
+                            $boxA = isset($a['box_number']) ? (int)$a['box_number'] : 0;
+                            $boxB = isset($b['box_number']) ? (int)$b['box_number'] : 0;
+                            
+                            if ($boxA > 0 && $boxB > 0) {
+                                return $boxA - $boxB;
+                            }
+                            
+                            // Fallback to order_id suffix if box_number is 0/missing
+                            $aSuffix = 0; $bSuffix = 0;
+                            if (preg_match('/-(\d+)$/', $a['order_id'], $m)) $aSuffix = (int)$m[1];
+                            if (preg_match('/-(\d+)$/', $b['order_id'], $m)) $bSuffix = (int)$m[1];
+                            
+                            if ($aSuffix !== $bSuffix) {
+                                return $aSuffix - $bSuffix;
+                            }
+                            
+                            return 0;
+                        });
+                    }
+                    unset($orderItems);
                     
                     // Fetch slips from main orders and sub orders
                     $slipSql = "SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name 
