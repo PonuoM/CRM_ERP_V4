@@ -2621,9 +2621,9 @@ function handle_pages(PDO $pdo, ?string $id): void {
                     $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
                 } else {
                     $companyId = $_GET['companyId'] ?? null;
-                    $sql = 'SELECT * FROM pages';
+                    $sql = 'SELECT * FROM pages WHERE still_in_list = 1';
                     $params = [];
-                    if ($companyId) { $sql .= ' WHERE company_id = ?'; $params[] = $companyId; }
+                    if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
                     $sql .= ' ORDER BY id DESC LIMIT 500';
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
