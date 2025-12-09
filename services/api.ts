@@ -635,7 +635,12 @@ export async function createExportLog(payload: {
 }
 
 export function downloadExportUrl(id: number | string) {
-  return `api/index.php/exports/${encodeURIComponent(String(id))}?download=1`;
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  let url = `api/index.php/exports/${encodeURIComponent(String(id))}?download=1`;
+  if (token) {
+    url += `&token=${encodeURIComponent(token)}`;
+  }
+  return url;
 }
 
 // Order slips (multi-image)

@@ -3699,15 +3699,9 @@ function get_order(PDO $pdo, string $id): ?array {
     if (!$o) return null;
     
     // Fetch items from main order and all sub orders
-    // Build list of order IDs: main order + potential sub orders (up to 10 boxes)
-    $allOrderIds = [$mainOrderId];
-    for ($i = 1; $i <= 10; $i++) {
-        $allOrderIds[] = "{$mainOrderId}-{$i}";
-    }
-    $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
-    
-    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.order_id IN ($placeholders) ORDER BY oi.order_id, oi.id");
-    $items->execute($allOrderIds);
+    // Use parent_order_id to find all items for this order group
+    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.parent_order_id = ? OR oi.order_id = ? ORDER BY oi.order_id, oi.id");
+    $items->execute([$mainOrderId, $mainOrderId]);
     $allItems = $items->fetchAll();
     foreach ($allItems as &$itemRow) {
         if (!isset($itemRow['net_total']) || $itemRow['net_total'] === null) {
@@ -3715,6 +3709,14 @@ function get_order(PDO $pdo, string $id): ?array {
         }
     }
     unset($itemRow);
+
+    // Build list of order IDs for slips query (slips don't have parent_order_id)
+    // Increased limit to 50 to cover most cases
+    $allOrderIds = [$mainOrderId];
+    for ($i = 1; $i <= 50; $i++) {
+        $allOrderIds[] = "{$mainOrderId}-{$i}";
+    }
+    $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
     
     // Filter items: if this is a sub order request, only return items for that sub order
     // Otherwise, return all items from main order and sub orders

@@ -101,6 +101,11 @@ function validate_auth(PDO $pdo): void
       $headers = getallheaders();
       $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
   }
+  
+  // Also check query param (for downloads)
+  if (!$auth && isset($_GET['token'])) {
+      $auth = 'Bearer ' . $_GET['token'];
+  }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Missing or invalid token'], 401);

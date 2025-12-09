@@ -1,4 +1,5 @@
 import { User } from '../types';
+import { apiFetch } from '../services/api';
 
 /**
  * Generate main order ID in format: yymmdd-xxxxxusernameสุ่ม2หลัก
@@ -14,21 +15,21 @@ export const generateMainOrderId = async (user: User, companyId: number): Promis
   const dd = String(now.getDate()).padStart(2, '0');
   const datePrefix = `${yy}${mm}${dd}`;
   const monthPrefix = `${yy}${mm}`;
-  
+
   // Get sequence number for today (call API to get next sequence)
   const sequence = await getNextOrderSequence(datePrefix, companyId, monthPrefix);
   const sequenceStr = String(sequence).padStart(5, '0');
-  
+
   // Use username instead of user ID
   const username = String(user.username || '').toLowerCase().replace(/\s+/g, '');
-  
+
   // Generate random 2 characters (alphanumeric)
   const randomChars = Math.random().toString(36).substring(2, 4);
-  
+
   // Format: yymmdd-xxxxxusernameสุ่ม2หลัก
   // Example: 251118-00001thanu3e (where thanu is user.username and 3e is random)
   const orderId = `${datePrefix}-${sequenceStr}${username}${randomChars}`;
-  
+
   // Debug log
   console.log('Generated Order ID:', {
     datePrefix,
@@ -38,7 +39,7 @@ export const generateMainOrderId = async (user: User, companyId: number): Promis
     randomChars,
     orderId
   });
-  
+
   return orderId;
 };
 
@@ -56,8 +57,7 @@ const getNextOrderSequence = async (datePrefix: string, companyId: number, month
       period: 'month',
       monthPrefix,
     });
-    const response = await fetch(`api/index.php/orders/sequence?${params.toString()}`);
-    const data = await response.json();
+    const data = await apiFetch(`orders/sequence?${params.toString()}`);
     return data.sequence || 1;
   } catch (error) {
     console.error('Failed to get order sequence:', error);
