@@ -1873,7 +1873,7 @@ const App: React.FC = () => {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const response = await fetch("/api/change_password.php", {
+      const response = await fetch(`${resolveApiBasePath()}/change_password.php`, {
         method: "POST",
         headers,
         body: JSON.stringify({
