@@ -672,10 +672,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     const escapeCsvCell = (cellData: any): string => {
       const str = String(cellData ?? '');
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
+      // Force Excel to treat as text by using ="value" syntax
+      return `="${str.replace(/"/g, '""')}"`;
     };
 
     const rows = selectedOrders.flatMap(order => {
@@ -801,7 +799,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
             'ชื่อร้านค้า': shopName,
-            'เวลาที่สั่งซื้อ': '', // ว่างเปล่า
+            'เวลาที่สั่งซื้อ': index === 0 ? (order.orderDate?.substring(0, 10) ?? '') : '',
             'บัญชีร้านค้า': '', // ว่างเปล่า
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
@@ -814,8 +812,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
             'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
-            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ?? '') : '',
-            'หมายเลขมือถือ': index === 0 ? (customer?.phone ?? '') : '',
+            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
+            'หมายเลขมือถือ': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
             'สถานที่': index === 0 ? address.street : '',
             'ภูมิภาค': index === 0 ? address.subdistrict : '',
             'อำเภอ': index === 0 ? address.district : '',
