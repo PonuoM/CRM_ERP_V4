@@ -825,7 +825,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
             'รับสินค้าที่ร้านหรือไม่': '',
             'รหัสสินค้าบนแพลตฟอร์ม': '', // ว่างเปล่า
-            'รหัสสินค้าในระบบ': item.id,
+            'รหัสสินค้าในระบบ': product?.sku ?? '',
             'ชื่อสินค้า': item.productName,
             'สีและรูปแบบ': '',
             'จำนวน': item.quantity,
