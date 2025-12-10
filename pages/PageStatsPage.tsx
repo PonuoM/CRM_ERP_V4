@@ -150,7 +150,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   useEffect(() => {
     const fetchPages = async () => {
       try {
-        const data = await listPages();
+        const data = await listPages(undefined, 'pancake', 1);
         setPages(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching pages:', error);

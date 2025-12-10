@@ -387,10 +387,12 @@ export async function deleteBankAccount(id: number) {
   });
 }
 
-export async function listPages(companyId?: number) {
+export async function listPages(companyId?: number, pageType?: string, active?: number) {
   const qs = new URLSearchParams();
   if (companyId) qs.set("companyId", String(companyId));
-  return apiFetch(`pages${companyId ? `?${qs}` : ""}`);
+  if (pageType) qs.set("page_type", pageType);
+  if (active !== undefined) qs.set("active", String(active));
+  return apiFetch(`pages${qs.toString() ? `?${qs}` : ""}`);
 }
 
 export async function createPage(payload: {

@@ -148,7 +148,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
   useEffect(() => {
     const fetchPages = async () => {
       try {
-        const data = await listPages();
+        const data = await listPages(undefined, 'pancake', 1);
         setAllPages(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching pages:', error);
