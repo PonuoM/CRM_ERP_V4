@@ -420,12 +420,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         setPromotions(Array.isArray(promo) ? promo : []);
         setUserAccessiblePages(userPages);
         // Set default filters for ads history to show all data (active pages only)
+        // Set default filters for ads history to show all data (active pages only)
         setAdsHistoryDateRange({ start: "", end: "" });
-        setAdsHistorySelectedPages(
-          userPages
-            .filter((page: Page) => page.active !== false)
-            .map((page: Page) => page.id),
-        );
+
+        // Setup pages list for logic usage
+        const allPages = Array.isArray(pg?.data)
+          ? pg.data.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            active: Boolean(r.active),
+          }))
+          : [];
+
+        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+          setAdsHistorySelectedPages(
+            allPages
+              .filter((page: any) => page.active !== false)
+              .map((page: any) => page.id)
+          );
+        } else {
+          setAdsHistorySelectedPages(
+            userPages
+              .filter((page: Page) => page.active !== false)
+              .map((page: Page) => page.id),
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -617,7 +636,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             : undefined,
           adsHistoryDateRange.start || undefined,
           adsHistoryDateRange.end || undefined,
-          currentUser.id,
+          currentUser.role === "Super Admin" ||
+            currentUser.role === "Admin Control"
+            ? undefined
+            : currentUser.id,
           adsHistoryPageSize,
           offset,
         );
@@ -926,19 +948,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       }
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
-      // เพิ่มเงื่อนไข user_id ให้แสดงเฉพาะข้อมูลของผู้ใช้ที่ระบุ
       if (userId) {
         params.set("user_id", String(userId));
-      } else {
-        params.set("user_id", String(currentUser.id));
       }
       if (limit) params.set("limit", String(limit));
       if (offset !== undefined) params.set("offset", String(offset));
 
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
         `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
         {
-          headers: { "Content-Type": "application/json" },
+          headers,
         },
       );
       const data = await res.json();
@@ -2538,7 +2563,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <div className="flex-1">
                 <label className={labelClass}>เลือกเพจ</label>
                 <MultiSelectPageFilter
-                  pages={userAccessiblePages.map((page) => ({
+                  pages={(currentUser.role === "Super Admin" ||
+                    currentUser.role === "Admin Control"
+                    ? pages
+                    : userAccessiblePages
+                  ).map((page) => ({
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
@@ -2727,6 +2756,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <tr>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">ผู้บันทึก</th>
                     <th className="px-3 py-2 text-left">ค่า Ads</th>
                     <th className="px-3 py-2 text-left">Impressions</th>
                     <th className="px-3 py-2 text-left">Reach</th>
@@ -2767,6 +2797,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                 ) : null;
                               })()}
                             </div>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {log.user_fullname || log.user_username || "-"}
                           </td>
                           <td className="px-3 py-2">
                             ฿{Number(log.ads_cost || 0).toFixed(2)}
