@@ -636,7 +636,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               }}
               disabled={syncing}
             >
-              {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล"}
+              {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล Pancake"}
             </button>
             <button
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm disabled:opacity-50"
@@ -746,7 +746,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <th className="py-2 px-3 font-medium">ประเภทเพจ</th>
               <th className="py-2 px-3 font-medium">URL</th>
               <th className="py-2 px-3 font-medium">สถานะ</th>
-              <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
+              <th className="py-2 px-3 font-medium">Admin</th>
+              <th className="py-2 px-3 font-medium">Marketing</th>
               <th className="py-2 px-3 font-medium text-center">จัดการ</th>
               <th className="py-2 px-3 font-medium text-center">ลบ</th>
             </tr>
@@ -833,6 +834,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   </label>
                 </td>
                 <td className="py-2 px-3">{p.user_count || 0} คน</td>
+                <td className="py-2 px-3">{p.marketing_user_count || 0} คน</td>
                 <td className="py-2 px-3 text-center">
                   <ManagePageButton
                     page={p}
@@ -863,7 +865,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             ))}
             {filtered.length === 0 && (
               <tr className="border-t">
-                <td colSpan={7} className="py-6 text-center text-gray-500">
+                <td colSpan={8} className="py-6 text-center text-gray-500">
                   ไม่พบข้อมูล
                 </td>
               </tr>
@@ -1089,6 +1091,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                     <th className="py-2 px-3 font-medium">URL</th>
                     <th className="py-2 px-3 font-medium">สถานะ</th>
                     <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
+                    <th className="py-2 px-3 font-medium">Marketing</th>
                     <th className="py-2 px-3 font-medium text-center">
                       จัดการ
                     </th>
@@ -1185,6 +1188,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                         </label>
                       </td>
                       <td className="py-2 px-3">{p.user_count || 0} คน</td>
+                      <td className="py-2 px-3">{p.marketing_user_count || 0} คน</td>
                       <td className="py-2 px-3 text-center">
                         <ManagePageButton
                           page={p}

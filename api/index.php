@@ -2654,7 +2654,7 @@ function handle_pages(PDO $pdo, ?string $id): void {
                     $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
                 } else {
                     $companyId = $_GET['companyId'] ?? null;
-                    $sql = 'SELECT * FROM pages WHERE still_in_list = 1';
+                    $sql = 'SELECT p.*, (SELECT COUNT(*) FROM marketing_user_page WHERE page_id = p.id) as marketing_user_count FROM pages p WHERE still_in_list = 1';
                     $params = [];
                     if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
                     $sql .= ' ORDER BY id DESC LIMIT 500';
