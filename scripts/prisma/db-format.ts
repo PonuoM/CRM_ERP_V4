@@ -257,6 +257,7 @@ function generateSql(models: Model[]): SqlOutput {
       tableColumns.push(`${tableName}.${field.name}`);
       const colType = mapColumnType(field);
       const isPk = pkField && pkField.name === field.name;
+      const isCreatedAt = field.name === 'created_at';
       const nullability = isPk ? "NOT NULL" : "NULL";
       const autoInc =
         isPk &&
@@ -264,9 +265,10 @@ function generateSql(models: Model[]): SqlOutput {
           (field.prismaType === "Int" || field.prismaType === "BigInt")
           ? "AUTO_INCREMENT"
           : "";
+      const defaultValue = isCreatedAt ? "DEFAULT CURRENT_TIMESTAMP" : "";
 
       columnDefs.push(
-        `  \`${field.name}\` ${colType} ${autoInc} ${nullability}`
+        `  \`${field.name}\` ${colType} ${autoInc} ${nullability} ${defaultValue}`
           .trim()
           .replace(/\s+/g, " ")
       );
@@ -288,7 +290,9 @@ function generateSql(models: Model[]): SqlOutput {
     for (const field of model.fields) {
       if (pkField && field.name === pkField.name) continue;
       const colType = mapColumnType(field);
-      const ddl = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.name}\` ${colType} NULL`;
+      const isCreatedAt = field.name === 'created_at';
+      const defaultValue = isCreatedAt ? "DEFAULT CURRENT_TIMESTAMP" : "";
+      const ddl = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.name}\` ${colType} NULL ${defaultValue}`;
       const alterWithCheck = [
         "SET @sql := IF((",
         "  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS",
