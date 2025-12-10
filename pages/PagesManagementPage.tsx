@@ -338,6 +338,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [pageTypes, setPageTypes] = useState<{ [key: string]: string }>({});
   const [loadingPageTypes, setLoadingPageTypes] = useState(false);
 
+  // Pancake Show In Create Order Env
+  const [pancakeShowInCreateOrder, setPancakeShowInCreateOrder] = useState(false);
+  const [loadingPancakeEnv, setLoadingPancakeEnv] = useState(false);
+
   // Fetch page types from env
   const fetchPageTypes = async () => {
     setLoadingPageTypes(true);
@@ -361,6 +365,62 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
       console.error("Error fetching page types:", error);
     } finally {
       setLoadingPageTypes(false);
+    }
+  };
+
+  // Fetch Pancake Env
+  const fetchPancakeEnv = async () => {
+    setLoadingPancakeEnv(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${apiBase}/Page_DB/env_manager.php?key=PANCAKE_SHOW_IN_CREATE_ORDER`,
+        { headers }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        // If data found and value is '1', set true
+        if (data && data.value === "1") {
+          setPancakeShowInCreateOrder(true);
+        } else {
+          setPancakeShowInCreateOrder(false);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching pancake env:", error);
+    } finally {
+      setLoadingPancakeEnv(false);
+    }
+  };
+
+  const handleTogglePancakeEnv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.checked;
+    setPancakeShowInCreateOrder(newValue); // Optimistic update
+
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      await fetch(`${apiBase}/Page_DB/env_manager.php`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          key: "PANCAKE_SHOW_IN_CREATE_ORDER",
+          value: newValue ? "1" : "0",
+        }),
+      });
+    } catch (error) {
+      console.error("Error updating pancake env:", error);
+      setPancakeShowInCreateOrder(!newValue); // Revert on error
+      alert("Failed to update setting");
     }
   };
 
@@ -466,7 +526,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
   useEffect(() => {
     fetchPages();
+    fetchPages();
     fetchPageTypes();
+    fetchPancakeEnv();
   }, [currentUser?.companyId]);
 
   // Filter pages based on still_in_list
@@ -584,6 +646,22 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pancakeShowInCreateOrder}
+              onChange={handleTogglePancakeEnv}
+              className="form-checkbox h-4 w-4 text-indigo-600 transition duration-150 ease-in-out"
+              disabled={loadingPancakeEnv}
+            />
+            <span className="text-sm text-gray-700">
+              แสดงเพจจาก Pancake ในหน้าสร้างออเดอร์
+            </span>
+          </label>
+
           <div className="flex items-end space-x-2">
             <button
               className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700"
@@ -1223,7 +1301,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 };
 
