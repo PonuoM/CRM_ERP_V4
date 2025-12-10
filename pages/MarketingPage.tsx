@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Calendar, Pencil, Download } from "lucide-react";
+import {
+  Search,
+  Download,
+  Filter,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  X,
+} from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
@@ -213,6 +225,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Ads history list
   const [adsLogs, setAdsLogs] = useState<any[]>([]);
   const [adsLogsLoading, setAdsLogsLoading] = useState(false);
+  const [editingLog, setEditingLog] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [adsLogsTotal, setAdsLogsTotal] = useState(0);
   // Server pagination info from API
   const [serverPagination, setServerPagination] = useState({
@@ -1001,9 +1015,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Update existing ads log
   const updateAdsLog = async (id: number, updates: any) => {
     try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("api/Marketing_DB/ads_log_update.php", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           id,
           user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
@@ -1014,6 +1034,42 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     } catch (e) {
       console.error("Failed to update ads log:", e);
       return { success: false, error: "Failed to update" };
+    }
+  };
+
+  // Handle edit log save
+  const handleEditLogSave = async (updatedLog: any) => {
+    // Only send fields that are allowed to be updated
+    const updates = {
+      ads_cost: Number(updatedLog.ads_cost),
+      impressions: Number(updatedLog.impressions),
+      reach: Number(updatedLog.reach),
+      clicks: Number(updatedLog.clicks),
+    };
+
+    const res = await updateAdsLog(updatedLog.id, updates);
+    if (res.success) {
+      alert("แก้ไขข้อมูลเรียบร้อยแล้ว");
+      setIsEditModalOpen(false);
+      setEditingLog(null);
+      // Refresh current page
+      const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+      const result = await loadAdsLogs(
+        adsHistorySelectedPages.length > 0
+          ? adsHistorySelectedPages
+          : undefined,
+        adsHistoryDateRange.start || undefined,
+        adsHistoryDateRange.end || undefined,
+        currentUser.role === "Super Admin" ||
+          currentUser.role === "Admin Control"
+          ? undefined
+          : currentUser.id,
+        adsHistoryPageSize,
+        offset,
+      );
+      setAdsLogs(result.data || []);
+    } else {
+      alert("เกิดข้อผิดพลาด: " + (res.error || "Failed to update"));
     }
   };
 
@@ -2761,7 +2817,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <th className="px-3 py-2 text-left">Impressions</th>
                     <th className="px-3 py-2 text-left">Reach</th>
                     <th className="px-3 py-2 text-left">Clicks</th>
-                    <th className="px-3 py-2 text-left">จัดการ</th>
+                    {(currentUser.role === "Super Admin" ||
+                      currentUser.role === "Admin Control") && (
+                        <th className="px-3 py-2 text-left">จัดการ</th>
+                      )}
                   </tr>
                 </thead>
                 <tbody>
@@ -2807,19 +2866,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">{log.impressions ?? 0}</td>
                           <td className="px-3 py-2">{log.reach ?? 0}</td>
                           <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                          <td className="px-3 py-2">
-                            <button
-                              className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                              title="แก้ไขรายการนี้"
-                              onClick={() => {
-                                const editDate = log.date || log.log_date || "";
-                                if (editDate) setSelectedDate(editDate);
-                                setActiveTab("adsInput");
-                              }}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          </td>
+                          {(currentUser.role === "Super Admin" ||
+                            currentUser.role === "Admin Control") && (
+                              <td className="px-3 py-2">
+                                <button
+                                  className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                                  title="แก้ไขรายการนี้"
+                                  onClick={() => {
+                                    setEditingLog({ ...log });
+                                    setIsEditModalOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
                         </tr>
                       );
                     })
@@ -2827,7 +2888,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <tr>
                       <td
                         className="px-3 py-6 text-center text-gray-500"
-                        colSpan={7}
+                        colSpan={
+                          currentUser.role === "Super Admin" ||
+                            currentUser.role === "Admin Control"
+                            ? 8
+                            : 7
+                        }
                       >
                         ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
                       </td>
@@ -2954,6 +3020,139 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             >
               ยกเลิก
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Ads Log Modal */}
+      {isEditModalOpen && editingLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg mx-4 overflow-hidden">
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold text-gray-800">
+                แก้ไขข้อมูล Ads
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    วันที่
+                  </label>
+                  <input
+                    type="text"
+                    value={editingLog.date || ""}
+                    disabled
+                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    เพจ
+                  </label>
+                  <input
+                    type="text"
+                    value={
+                      editingLog.page_name ||
+                      pages.find(
+                        (p) => p.id === Number(editingLog.page_id),
+                      )?.name ||
+                      editingLog.page_id
+                    }
+                    disabled
+                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  ค่า Ads (บาท)
+                </label>
+                <input
+                  type="number"
+                  value={editingLog.ads_cost}
+                  onChange={(e) =>
+                    setEditingLog({
+                      ...editingLog,
+                      ads_cost: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Impressions
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.impressions}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        impressions: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Reach
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.reach}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        reach: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Clicks
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.clicks}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        clicks: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleEditLogSave(editingLog)}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                บันทึก
+              </button>
+            </div>
           </div>
         </div>
       )}
