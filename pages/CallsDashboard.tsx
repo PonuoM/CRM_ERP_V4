@@ -256,6 +256,7 @@ const saveBatchToDatabase = async (
   amountRecord: number,
 ) => {
   try {
+    const apiBase = resolveApiBasePath();
     const requestData = {
       startdate: startDate,
       enddate: endDate,
@@ -319,6 +320,7 @@ const saveBatchToDatabase = async (
 // Function to save log data to database
 const saveLogToDatabase = async (logs: any[], batchId: number) => {
   try {
+    const apiBase = resolveApiBasePath();
     const requestData = {
       logs: logs,
       batch_id: batchId,
@@ -454,9 +456,8 @@ const CustomDatePicker: React.FC<{
     <div className="relative">
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        className={`w-full border rounded-md px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${
-          disabled ? "bg-gray-100 cursor-not-allowed text-gray-400" : "bg-white"
-        }`}
+        className={`w-full border rounded-md px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-400" : "bg-white"
+          }`}
       >
         <span className={value ? "text-gray-900" : "text-gray-400"}>
           {formatDisplayDate(value)}
@@ -532,11 +533,9 @@ const CustomDatePicker: React.FC<{
                   key={index}
                   onClick={() => handleDateSelect(date)}
                   disabled={isDisabled}
-                  className={`p-1 text-xs rounded relative ${
-                    !isCurrentMonth ? "text-gray-300" : ""
-                  } ${isDisabled ? "cursor-not-allowed" : "hover:bg-gray-100"} ${
-                    isSelected ? "bg-blue-500 text-white hover:bg-blue-600" : ""
-                  }`}
+                  className={`p-1 text-xs rounded relative ${!isCurrentMonth ? "text-gray-300" : ""
+                    } ${isDisabled ? "cursor-not-allowed" : "hover:bg-gray-100"} ${isSelected ? "bg-blue-500 text-white hover:bg-blue-600" : ""
+                    }`}
                 >
                   <span
                     className={`block ${isToday && !isSelected ? "text-orange-500 font-semibold" : ""}`}
@@ -545,9 +544,8 @@ const CustomDatePicker: React.FC<{
                   </span>
                   {isExisting && !isSelected && (
                     <div
-                      className={`absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full ${
-                        isToday ? "bg-orange-500" : "bg-green-500"
-                      }`}
+                      className={`absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full ${isToday ? "bg-orange-500" : "bg-green-500"
+                        }`}
                     />
                   )}
                   {isToday && !isSelected && (
@@ -622,7 +620,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         const su = JSON.parse(sessionUserStr);
         if (su && typeof su.company_id === "number") return su.company_id;
       }
-    } catch {}
+    } catch { }
     return undefined as number | undefined;
   }, [user]);
 
@@ -1231,11 +1229,10 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
                       <button
                         onClick={handleUpdateClick}
                         disabled={!startDate || !endDate || isLoading}
-                        className={`w-full border rounded-md px-3 py-2 text-sm flex items-center justify-center gap-2 ${
-                          !startDate || !endDate || isLoading
-                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
+                        className={`w-full border rounded-md px-3 py-2 text-sm flex items-center justify-center gap-2 ${!startDate || !endDate || isLoading
+                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
                       >
                         {isLoading ? (
                           <>
