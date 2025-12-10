@@ -5610,7 +5610,7 @@ const App: React.FC = () => {
       return <CallsDashboard calls={callHistory} user={currentUser} />;
     }
     if (activePage === "Pancake User Mapping") {
-      return <PancakeUserIntegrationPage />;
+      return <PancakeUserIntegrationPage currentUser={currentUser} />;
     }
 
     // Page stats (Super Admin): group default or specific page

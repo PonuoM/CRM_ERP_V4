@@ -127,45 +127,28 @@ try {
             
             $scopeCompanyId = $currentCompanyId; // Could be null
 
-            $query = "SELECT id FROM env WHERE `key` = :key AND ";
-            if ($scopeCompanyId === null) {
-                $query .= "company_id IS NULL";
-            } else {
-                $query .= "company_id = :company_id";
-            }
+            // Upsert Logic: Try to insert, if duplicate key, update value
+            // This handles both cases: new variable or existing variable (even if race condition)
+            $stmt = $pdo->prepare("
+                INSERT INTO env (`key`, `value`, `company_id`, created_at, updated_at) 
+                VALUES (:key, :value, :company_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON DUPLICATE KEY UPDATE 
+                `value` = :update_value, 
+                updated_at = CURRENT_TIMESTAMP
+            ");
             
-            $stmt = $pdo->prepare($query);
             $stmt->bindParam(':key', $key);
-            if ($scopeCompanyId !== null) {
-                $stmt->bindParam(':company_id', $scopeCompanyId);
-            }
+            $stmt->bindParam(':value', $value);
+            $stmt->bindParam(':company_id', $scopeCompanyId);
+            $stmt->bindParam(':update_value', $value);
+            
             $stmt->execute();
             
-            if ($stmt->fetch()) {
-                // Update existing
-                $updateSql = "UPDATE env SET `value` = :value, updated_at = CURRENT_TIMESTAMP WHERE `key` = :key AND ";
-                if ($scopeCompanyId === null) {
-                    $updateSql .= "company_id IS NULL";
-                } else {
-                    $updateSql .= "company_id = :company_id";
-                }
-                
-                $stmt = $pdo->prepare($updateSql);
-                $stmt->bindParam(':key', $key);
-                $stmt->bindParam(':value', $value);
-                if ($scopeCompanyId !== null) {
-                    $stmt->bindParam(':company_id', $scopeCompanyId);
-                }
-                $stmt->execute();
-                json_response(['success' => true, 'message' => 'Environment variable updated']);
+            if ($stmt->rowCount() > 0) {
+                 json_response(['success' => true, 'message' => 'Environment variable saved']);
             } else {
-                // Insert new
-                $stmt = $pdo->prepare("INSERT INTO env (`key`, `value`, `company_id`, created_at, updated_at) VALUES (:key, :value, :company_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-                $stmt->bindParam(':key', $key);
-                $stmt->bindParam(':value', $value);
-                $stmt->bindParam(':company_id', $scopeCompanyId); // Can be null
-                $stmt->execute();
-                json_response(['success' => true, 'message' => 'Environment variable created']);
+                 // rowCount can be 0 if value is same as existing
+                 json_response(['success' => true, 'message' => 'Environment variable saved (no changes)']);
             }
             break;
             
