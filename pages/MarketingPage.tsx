@@ -375,12 +375,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (data.success) {
         return Array.isArray(data.data.accessible_pages)
           ? data.data.accessible_pages.map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              platform: p.platform,
-              url: p.url ?? undefined,
-              active: Boolean(p.active),
-            }))
+            id: p.id,
+            name: p.name,
+            platform: p.platform,
+            url: p.url ?? undefined,
+            active: Boolean(p.active),
+          }))
           : [];
       }
       return [];
@@ -394,37 +394,37 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-        try {
-          const [pg, plats, promo, userPages] = await Promise.all([
-            listActivePages(currentUser.companyId),
-            listPlatforms(currentUser.companyId, true, currentUser.role),
-            listPromotions(),
-            loadPagesWithUserAccess(),
-          ]);
+      try {
+        const [pg, plats, promo, userPages] = await Promise.all([
+          listActivePages(currentUser.companyId),
+          listPlatforms(currentUser.companyId, true, currentUser.role),
+          listPromotions(),
+          loadPagesWithUserAccess(),
+        ]);
         if (cancelled) return;
         setPages(
           Array.isArray(pg?.data)
             ? pg.data.map((r: any) => ({
-                id: r.id,
-                name: r.name,
-                platform: r.platform,
-                url: r.url ?? undefined,
-                companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
-                active: Boolean(r.active),
-                page_type: r.page_type ?? r.pageType ?? undefined,
-              }))
+              id: r.id,
+              name: r.name,
+              platform: r.platform,
+              url: r.url ?? undefined,
+              companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
+              active: Boolean(r.active),
+              page_type: r.page_type ?? r.pageType ?? undefined,
+            }))
             : [],
         );
         setPlatforms(
           Array.isArray(plats)
             ? plats.map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                displayName: p.display_name,
-                description: p.description,
-                active: p.active,
-                sortOrder: p.sort_order,
-              }))
+              id: p.id,
+              name: p.name,
+              displayName: p.display_name,
+              description: p.description,
+              active: p.active,
+              sortOrder: p.sort_order,
+            }))
             : [],
         );
         setPromotions(Array.isArray(promo) ? promo : []);
@@ -454,12 +454,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (cancelled) return;
       const mapped: AdSpend[] = Array.isArray(rows)
         ? rows.map((r: any) => ({
-            id: Number(r.id),
-            pageId: Number(r.page_id),
-            spendDate: r.spend_date,
-            amount: Number(r.amount),
-            notes: r.notes ?? undefined,
-          }))
+          id: Number(r.id),
+          pageId: Number(r.page_id),
+          spendDate: r.spend_date,
+          amount: Number(r.amount),
+          notes: r.notes ?? undefined,
+        }))
         : [];
       setAdSpend(mapped);
     }
@@ -489,13 +489,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       setPages(
         Array.isArray(pg)
           ? pg.map((r: any) => ({
-              id: r.id,
-              name: r.name,
-              platform: r.platform,
-              url: r.url ?? undefined,
-              companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
-              active: Boolean(r.active),
-            }))
+            id: r.id,
+            name: r.name,
+            platform: r.platform,
+            url: r.url ?? undefined,
+            companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
+            active: Boolean(r.active),
+          }))
           : [],
       );
       setNewPage({
@@ -544,12 +544,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       );
       const mapped: AdSpend[] = Array.isArray(rows)
         ? rows.map((r: any) => ({
-            id: Number(r.id),
-            pageId: Number(r.page_id),
-            spendDate: r.spend_date,
-            amount: Number(r.amount),
-            notes: r.notes ?? undefined,
-          }))
+          id: Number(r.id),
+          pageId: Number(r.page_id),
+          spendDate: r.spend_date,
+          amount: Number(r.amount),
+          notes: r.notes ?? undefined,
+        }))
         : [];
       setAdSpend(mapped);
     } catch (e) {
@@ -692,11 +692,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const allUsers = await listUsers();
       const marketingRoleUsers = Array.isArray(allUsers)
         ? allUsers.filter(
-            (u: any) =>
-              u.role === "Marketing" &&
-              (u.company_id === currentUser.companyId ||
-                u.companyId === currentUser.companyId),
-          )
+          (u: any) =>
+            u.role === "Marketing" &&
+            (u.company_id === currentUser.companyId ||
+              u.companyId === currentUser.companyId),
+        )
         : [];
       setMarketingUsersList(marketingRoleUsers);
     } catch (e) {
@@ -792,6 +792,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Handle save all ads data - ใช้ ads_log_insert.php และ ads_log_update.php
   const handleSaveAllAdsData = async () => {
+    // Validate that if any field is filled, all 4 must be filled
+    for (const row of adsInputData) {
+      const hasAdsCost = row.adsCost !== undefined && row.adsCost !== null && row.adsCost.toString().trim() !== "";
+      const hasImpressions = row.impressions !== undefined && row.impressions !== null && row.impressions.toString().trim() !== "";
+      const hasReach = row.reach !== undefined && row.reach !== null && row.reach.toString().trim() !== "";
+      const hasClicks = row.clicks !== undefined && row.clicks !== null && row.clicks.toString().trim() !== "";
+
+      const filledCount = (hasAdsCost ? 1 : 0) + (hasImpressions ? 1 : 0) + (hasReach ? 1 : 0) + (hasClicks ? 1 : 0);
+
+      if (filledCount > 0 && filledCount < 4) {
+        const pageName = userPages.find(p => p.id.toString() === row.pageId.toString())?.name || "Unknown Page";
+        alert(`กรุณากรอกข้อมูลให้ครบทั้ง 4 ช่องสำหรับเพจ "${pageName}" (ค่า Ads, อิมเพรสชั่น, การเข้าถึง, ทัก/คลิก)`);
+        return;
+      }
+    }
+
     if (adsInputData.length === 0) {
       alert("ไม่มีข้อมูลที่ต้องการบันทึก");
       return;
@@ -1031,6 +1047,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const existingData = logs.data.reduce((acc: any[], log) => {
         acc.push({
           pageId: log.page_id.toString(),
+          id: log.id, // Store ID to track if it's an existing record
           adsCost: log.ads_cost ? log.ads_cost.toString() : "",
           impressions: log.impressions ? log.impressions.toString() : "",
           reach: log.reach ? log.reach.toString() : "",
@@ -1248,8 +1265,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         console.error(
           "Page access token generation failed:",
           tokenResult.message ||
-            tokenResult.errors?.[0]?.message ||
-            "Unknown error",
+          tokenResult.errors?.[0]?.message ||
+          "Unknown error",
         );
         // Return error information instead of null
         return {
@@ -1291,13 +1308,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
       const statsResponse = await fetch(
         `https://pages.fm/api/public_api/v1/pages/${externalPageId}/statistics/pages?` +
-          new URLSearchParams({
-            page_access_token: pageAccessToken,
-            page_id: externalPageId,
-            since: since.toString(),
-            until: until.toString(),
-            select_fields: JSON.stringify(selectFields),
-          }),
+        new URLSearchParams({
+          page_access_token: pageAccessToken,
+          page_id: externalPageId,
+          since: since.toString(),
+          until: until.toString(),
+          select_fields: JSON.stringify(selectFields),
+        }),
       );
 
       if (!statsResponse.ok) {
@@ -1427,57 +1444,52 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "dashboard"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "dashboard"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               แดชบอร์ด
             </button>
             <button
               onClick={() => setActiveTab("ads")}
-              className={`hidden py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "ads"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`hidden py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "ads"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               บันทึก Ads
             </button>
             <button
               onClick={() => setActiveTab("adsInput")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "adsInput"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsInput"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               กรอกค่า Ads
             </button>
             <button
               onClick={() => setActiveTab("adsHistory")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "adsHistory"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsHistory"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               ประวัติการกรอก Ads
             </button>
             {(currentUser.role === "Super Admin" ||
               currentUser.role === "Admin Control") && (
-              <button
-                onClick={() => setActiveTab("userManagement")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "userManagement"
+                <button
+                  onClick={() => setActiveTab("userManagement")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "userManagement"
                     ? "border-emerald-500 text-emerald-600"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                จัดการผู้ใช้การตลาด-เพจ
-              </button>
-            )}
+                    }`}
+                >
+                  จัดการผู้ใช้การตลาด-เพจ
+                </button>
+              )}
           </nav>
         </div>
       )}
@@ -1849,10 +1861,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                 {marketingPageUsers.filter(
                                   (user) => user.page_id === page.id,
                                 ).length === 0 && (
-                                  <div className="text-gray-500">
-                                    ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
-                                  </div>
-                                )}
+                                    <div className="text-gray-500">
+                                      ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                    </div>
+                                  )}
                               </div>
                             </td>
                           </tr>
@@ -1936,9 +1948,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "adsCost")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1951,9 +1964,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "impressions")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1966,9 +1980,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "reach")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1981,9 +1996,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "clicks")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -2258,22 +2274,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <button
                 type="button"
                 onClick={() => setDashboardView("user")}
-                className={`px-3 py-1.5 text-sm ${
-                  dashboardView === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 text-sm ${dashboardView === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
               >
                 รายบุคคล
               </button>
               <button
                 type="button"
                 onClick={() => setDashboardView("page")}
-                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${
-                  dashboardView === "page"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${dashboardView === "page"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
               >
                 รายเพจ
               </button>
