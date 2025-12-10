@@ -509,6 +509,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     try {
       // Fetch all pages (not filtered by company_id)
       const allPagesData = await listPages();
+
+      // Sort: Active first, then by Name
+      allPagesData.sort((a: any, b: any) => {
+        if (a.active === b.active) {
+          return a.name.localeCompare(b.name);
+        }
+        return b.active ? 1 : -1;
+      });
+
       setItems(allPagesData);
       console.log("Fetched all pages:", allPagesData);
       console.log(
@@ -577,15 +586,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
         (pageType === "all" || p.page_type === pageType),
     );
 
-    // Sort by active status (active pages first)
-    filteredPages.sort((a, b) => {
-      // If both have the same active status, sort by name
-      if (a.active === b.active) {
-        return a.name.localeCompare(b.name);
-      }
-      // Active pages (true) should come before inactive pages (false)
-      return b.active ? 1 : -1;
-    });
+    // Sort by name (Removed - rely on fetch order to prevent jumping)
+    // filteredPages.sort((a, b) => a.name.localeCompare(b.name));
 
     return filteredPages;
   }, [pagesForCurrentCompany, keyword, status, pageType]);
@@ -664,11 +666,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
           <div className="flex items-end space-x-2">
             <button
-              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700"
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm disabled:opacity-50"
               onClick={() => setAddPageModalOpen(true)}
             >
-              <span className="text-lg">+</span>
-              เพิ่มเพจ
+              + เพิ่มเพจ
             </button>
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm disabled:opacity-50"
@@ -892,7 +893,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                           );
 
                           // Show success message
-                          alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
+                          // alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
                         } catch (error) {
                           console.error("Error updating page status:", error);
                           alert(
