@@ -1597,32 +1597,32 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $trackingMap = [];
                 
                 if (!empty($orderIds)) {
-                    // Build list of order IDs including sub orders
-                    // For each main order ID, also include potential sub order IDs (-1, -2, -3, etc.)
-                    $allOrderIds = [];
-                    foreach ($orderIds as $mainOrderId) {
-                        $allOrderIds[] = $mainOrderId;
-                        // Add potential sub order IDs (up to 10 boxes should be enough)
-                        for ($i = 1; $i <= 10; $i++) {
-                            $allOrderIds[] = "{$mainOrderId}-{$i}";
-                        }
+                    // Fetch items directly using parent_order_id to get ALL items regardless of box count
+                    // This avoids the need to guess or query for max box numbers
+                    try {
+                        $parentPlaceholders = implode(',', array_fill(0, count($orderIds), '?'));
+                        $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
+                                           oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
+                                           oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
+                                           oi.creator_id, oi.parent_order_id,
+                                           p.sku as product_sku
+                                    FROM order_items oi
+                                    LEFT JOIN products p ON oi.product_id = p.id
+                                    WHERE oi.parent_order_id IN ($parentPlaceholders) OR oi.order_id IN ($parentPlaceholders)
+                                    ORDER BY oi.order_id, oi.id";
+                        
+                        // Execute with orderIds for both parent_order_id and order_id placeholders
+                        $itemStmt = $pdo->prepare($itemSql);
+                        $params = array_merge($orderIds, $orderIds);
+                        $itemStmt->execute($params);
+                        $items = $itemStmt->fetchAll();
+                    } catch (Throwable $e) {
+                        error_log("Failed to fetch order items: " . $e->getMessage());
+                        error_log("SQL: " . ($itemSql ?? 'N/A'));
+                        error_log("Params count: " . count($params ?? []));
+                        error_log("Placeholders count: " . (substr_count($parentPlaceholders ?? '', '?') * 2));
+                        $items = [];
                     }
-                    
-                    // Fetch items from main orders and sub orders
-                    $placeholders = implode(',', array_fill(0, count($allOrderIds), '?'));
-                    $itemSql = "SELECT oi.id, oi.order_id, oi.product_id, oi.product_name, oi.quantity, 
-                                       oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
-                                       oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
-                                       oi.creator_id, oi.parent_order_id,
-                                       p.sku as product_sku
-                                FROM order_items oi
-                                LEFT JOIN products p ON oi.product_id = p.id
-                                WHERE oi.order_id IN ($placeholders)
-                                ORDER BY oi.order_id, oi.id";
-                    
-                    $itemStmt = $pdo->prepare($itemSql);
-                    $itemStmt->execute($allOrderIds);
-                    $items = $itemStmt->fetchAll();
                     
                     // Map items to main order IDs
                     // Items from sub orders (mainOrderId-1, mainOrderId-2) should be mapped to main order (mainOrderId)
@@ -1668,14 +1668,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                     unset($orderItems);
                     
-                    // Fetch slips from main orders and sub orders
+                    // Fetch slips from main orders (using same approach as items query)
                     $slipSql = "SELECT id, order_id, url, created_at, amount, bank_account_id, transfer_date, upload_by, upload_by_name 
                                 FROM order_slips 
-                                WHERE order_id IN ($placeholders)
+                                WHERE order_id IN ($parentPlaceholders)
                                 ORDER BY created_at DESC";
                     
                     $slipStmt = $pdo->prepare($slipSql);
-                    $slipStmt->execute($allOrderIds);
+                    $slipStmt->execute($orderIds);
                     $slips = $slipStmt->fetchAll();
                     
                     // Map slips to main order IDs (similar to items)
@@ -2218,6 +2218,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
             $shippingProvider = array_key_exists('shippingProvider', $in) ? trim((string)$in['shippingProvider']) : (array_key_exists('shipping_provider', $in) ? trim((string)$in['shipping_provider']) : null); if ($shippingProvider === '') $shippingProvider = null;
             $totalAmount  = array_key_exists('total_amount', $in) ? $in['total_amount'] : (array_key_exists('totalAmount', $in) ? $in['totalAmount'] : null); if ($totalAmount === '') $totalAmount = null;
             $deliveryDate  = array_key_exists('deliveryDate', $in) ? $in['deliveryDate'] : (array_key_exists('delivery_date', $in) ? $in['delivery_date'] : null); if ($deliveryDate === '') $deliveryDate = null;
+            $salesChannelPageId = array_key_exists('salesChannelPageId', $in) ? $in['salesChannelPageId'] : (array_key_exists('sales_channel_page_id', $in) ? $in['sales_channel_page_id'] : null); if ($salesChannelPageId === '') $salesChannelPageId = null;
             $street        = array_key_exists('street', $in) ? $in['street'] : null; if ($street === '') $street = null;
             $subdistrict   = array_key_exists('subdistrict', $in) ? $in['subdistrict'] : (array_key_exists('sub_district', $in) ? $in['sub_district'] : null); if ($subdistrict === '') $subdistrict = null;
             $district      = array_key_exists('district', $in) ? $in['district'] : null; if ($district === '') $district = null;
@@ -2253,7 +2254,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
             $pdo->beginTransaction();
             try {
-                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount FROM orders WHERE id = ? FOR UPDATE');
+                $lockStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount, creator_id FROM orders WHERE id = ? FOR UPDATE');
                 $lockStmt->execute([$id]);
                 $existingOrder = $lockStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$existingOrder) {
@@ -2269,8 +2270,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
 
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), customer_type=COALESCE(?, customer_type)';
-                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), sales_channel_page_id=COALESCE(?, sales_channel_page_id), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), customer_type=COALESCE(?, customer_type)';
+                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
                     $params[] = $shippingProvider;
@@ -2460,6 +2461,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $updateBox = $pdo->prepare('UPDATE order_boxes SET payment_method=?, collection_amount=?, cod_amount=?, collected_amount=?, waived_amount=?, sub_order_id=?, status=COALESCE(status, \'PENDING\') WHERE order_id=? AND box_number=?');
                     $insertBox = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,\'PENDING\')');
 
+                    $boxNumbers = array_keys($normalizedBoxes);
+                    if (!empty($boxNumbers)) {
+                        $ph = implode(',', array_fill(0, count($boxNumbers), '?'));
+                        $delParams = array_merge([$id], $boxNumbers);
+                        $del = $pdo->prepare("DELETE FROM order_boxes WHERE order_id=? AND box_number NOT IN ($ph)");
+                        $del->execute($delParams);
+                    }
+
                     foreach ($normalizedBoxes as $num => $box) {
                         $subOrderId = "{$id}-{$num}";
                         $selectBox->execute([$id, $num]);
@@ -2489,20 +2498,138 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         }
                     }
 
-                    $boxNumbers = array_keys($normalizedBoxes);
-                    if (!empty($boxNumbers)) {
-                        $ph = implode(',', array_fill(0, count($boxNumbers), '?'));
-                        $delParams = array_merge([$id], $boxNumbers);
-                        $del = $pdo->prepare("DELETE FROM order_boxes WHERE order_id=? AND box_number NOT IN ($ph)");
-                        $del->execute($delParams);
-                    }
-
                     if ($effectivePaymentMethod === 'COD') {
                         $updCodAmount = $pdo->prepare('UPDATE orders SET cod_amount=? WHERE id=?');
                         $updCodAmount->execute([$boxSum, $id]);
                     } else {
                         $updCodAmount = $pdo->prepare('UPDATE orders SET cod_amount=NULL WHERE id=?');
                         $updCodAmount->execute([$id]);
+                    }
+                }
+
+                // Update items if provided (Delete all existing and re-create)
+                if (isset($in['items']) && is_array($in['items'])) {
+                    $itemCreatorId = $in['creatorId'] ?? $existingOrder['creator_id'] ?? null;
+
+                    // 1. Clear old allocations and items to prevent duplicates/conflicts
+                    // 1. Clear old allocations and items to prevent duplicates/conflicts (Check Main ID and Sub-IDs)
+                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
+
+                    // 2. Prepare insert statement (same as POST)
+                    $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+
+                    $computeNetValues = function(array $item): array {
+                        $quantity = isset($item['quantity']) ? (int)$item['quantity'] : 0;
+                        $quantity = $quantity < 0 ? 0 : $quantity;
+                        $pricePerUnit = isset($item['pricePerUnit']) ? (float)$item['pricePerUnit'] : (float)($item['price_per_unit'] ?? 0.0);
+                        $pricePerUnit = $pricePerUnit < 0 ? 0.0 : $pricePerUnit;
+                        $discount = isset($item['discount']) ? (float)$item['discount'] : 0.0;
+                        $isFreebie = (!empty($item['isFreebie']) || (!empty($item['is_freebie']) && (int)$item['is_freebie'] === 1)) ? 1 : 0;
+                        $netTotal = calculate_order_item_net_total([
+                            'quantity' => $quantity,
+                            'pricePerUnit' => $pricePerUnit,
+                            'discount' => $discount,
+                            'isFreebie' => $isFreebie,
+                        ]);
+                        return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];
+                    };
+
+                    $getOrderIdForBox = function($boxNumber) use ($id) {
+                         $boxNum = (int)$boxNumber;
+                         if ($boxNum <= 0) return "{$id}-1";
+                         return "{$id}-{$boxNum}";
+                    };
+
+                    $clientToDbParent = [];
+                    $clientToDbItem = [];
+
+                    // 3.1) Insert promotion parents
+                    foreach ($in['items'] as $it) {
+                        $isParent = !empty($it['isPromotionParent']);
+                        if ($isParent) {
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+                            $ins->execute([
+                                $orderIdForItem, $id,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
+                                $it['promotionId'] ?? null, null, 1, $itemCreatorId,
+                            ]);
+                            $dbId = (int)$pdo->lastInsertId();
+                            if (isset($it['id'])) {
+                                $clientToDbParent[(string)$it['id']] = $dbId;
+                                $clientToDbItem[(string)$it['id']] = $dbId;
+                            }
+                        }
+                    }
+
+                    // 3.2) Insert regular items
+                    foreach ($in['items'] as $it) {
+                         $isParent = !empty($it['isPromotionParent']);
+                         $hasParent = isset($it['parentItemId']) && $it['parentItemId'] !== null && $it['parentItemId'] !== '';
+                         if (!$isParent && !$hasParent) {
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+                            $ins->execute([
+                                $orderIdForItem, $id,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
+                                $it['promotionId'] ?? null, null, 0, $itemCreatorId,
+                            ]);
+                            $dbId = (int)$pdo->lastInsertId();
+                            if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
+                         }
+                    }
+
+                    // 3.3) Insert children
+                    foreach ($in['items'] as $it) {
+                        $isParent = !empty($it['isPromotionParent']);
+                        $clientParent = $it['parentItemId'] ?? null;
+                        if (!$isParent && ($clientParent !== null && $clientParent !== '')) {
+                            $resolved = null;
+                            if ($clientParent !== null && isset($clientToDbParent[(string)$clientParent])) {
+                                $resolved = $clientToDbParent[(string)$clientParent];
+                            }
+                            $boxNumber = isset($it['boxNumber']) ? (int)$it['boxNumber'] : 1;
+                            $orderIdForItem = $getOrderIdForBox($boxNumber);
+                            [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie] = $computeNetValues($it);
+                            $ins->execute([
+                                $orderIdForItem, $id,
+                                $it['productId'] ?? null, $it['productName'] ?? null, $quantity,
+                                $pricePerUnit, $discount, $netTotal, $isFreebie, $boxNumber,
+                                $it['promotionId'] ?? null, $resolved, 0, $itemCreatorId,
+                            ]);
+                            $dbId = (int)$pdo->lastInsertId();
+                            if (isset($it['id'])) { $clientToDbItem[(string)$it['id']] = $dbId; }
+                        }
+                    }
+
+                    // 4) Re-create allocations (PENDING status)
+                    // Note: This resets allocation status to PENDING. If you need to preserve fulfillment status, logic needs to be much more complex.
+                    // For now, assuming editing order implies re-evaluating stock.
+                    $alloc = $pdo->prepare('INSERT INTO order_item_allocations (order_id, order_item_id, product_id, required_quantity, is_freebie, promotion_id, status, created_by) VALUES (?,?,?,?,?,?,?,?)');
+                    foreach ($in['items'] as $it) {
+                        $isParent = !empty($it['isPromotionParent']);
+                        $productId = $it['productId'] ?? null;
+                        if ($isParent) { continue; }
+                        if (!$productId) { continue; }
+                        $orderItemId = null;
+                        if (isset($it['id']) && isset($clientToDbItem[(string)$it['id']])) {
+                            $orderItemId = $clientToDbItem[(string)$it['id']];
+                        }
+                        $alloc->execute([
+                            $id,
+                            $orderItemId,
+                            $productId,
+                            max(0, (int)($it['quantity'] ?? 0)),
+                            !empty($it['isFreebie']) ? 1 : 0,
+                            $it['promotionId'] ?? null,
+                            'PENDING',
+                            $itemCreatorId,
+                        ]);
                     }
                 }
 

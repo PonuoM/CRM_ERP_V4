@@ -2187,6 +2187,9 @@ const App: React.FC = () => {
           notes: updatedOrder.notes ?? null,
           delivery_date: updatedOrder.deliveryDate ?? null,
           total_amount: updatedOrder.totalAmount ?? null,
+          items: updatedOrder.items,
+          salesChannel: updatedOrder.salesChannel,
+          salesChannelPageId: updatedOrder.salesChannelPageId,
         };
         if (updatedOrder.shippingAddress) {
           payload.recipient_first_name =

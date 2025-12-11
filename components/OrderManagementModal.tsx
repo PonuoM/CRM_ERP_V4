@@ -519,45 +519,94 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
     );
 
-
-
   }, [subDistricts, subDistrictSearchTerm]);
 
-
-
+  // Load address data on mount
   useEffect(() => {
+    const loadProvinces = async () => {
+      try {
+        const response = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setProvinces(data.data || []);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading provinces:", error);
+      }
+    };
+    loadProvinces();
+  }, []);
 
+  // Load districts when province selected
+  useEffect(() => {
+    if (selectedProvince) {
+      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setDistricts(data.data || []);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setDistricts([]);
+    }
+  }, [selectedProvince]);
 
+  // Load subdistricts when district selected
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setSubDistricts(data.data || []);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setSubDistricts([]);
+    }
+  }, [selectedDistrict]);
 
-    const addr = order.shippingAddress || {};
+  // Initialize selections from current order address
+  useEffect(() => {
+    const addr = currentOrder.shippingAddress || {};
 
-
-
+    // 1. Set text inputs
     setProvinceSearchTerm(addr.province || '');
-
-
-
     setDistrictSearchTerm(addr.district || '');
-
-
-
     setSubDistrictSearchTerm(addr.subdistrict || '');
 
+    // 2. Try to match IDs if provinces loaded
+    if (provinces.length > 0 && addr.province) {
+      const province = provinces.find(p => p.name_th === addr.province);
+      if (province) {
+        setSelectedProvince(province.id);
+        // Districts will load via effect
+      }
+    }
+  }, [currentOrder.shippingAddress?.province, provinces.length]); // Re-run when provinces load or addr changes
 
+  // 3. Try to match District ID when Districts loaded
+  useEffect(() => {
+    const addr = currentOrder.shippingAddress || {};
+    if (selectedProvince && districts.length > 0 && addr.district) {
+      const district = districts.find(d => d.name_th === addr.district);
+      if (district) {
+        setSelectedDistrict(district.id);
+      }
+    }
+  }, [districts.length, selectedProvince, currentOrder.shippingAddress?.district]);
 
-    setSelectedProvince(null);
-
-
-
-    setSelectedDistrict(null);
-
-
-
-    setSelectedSubDistrict(null);
-
-
-
-  }, [order.id, order.shippingAddress]);
+  // 4. Try to match Subdistrict ID when Subdistricts loaded
+  useEffect(() => {
+    const addr = currentOrder.shippingAddress || {};
+    if (selectedDistrict && subDistricts.length > 0 && addr.subdistrict) {
+      const sub = subDistricts.find(s => s.name_th === addr.subdistrict);
+      if (sub) {
+        setSelectedSubDistrict(sub.id);
+      }
+    }
+  }, [subDistricts.length, selectedDistrict, currentOrder.shippingAddress?.subdistrict]);
 
 
 
@@ -1054,11 +1103,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-  const handleRemoveItem = (index: number) => {
+  const handleRemoveItem = (itemToRemove: any) => {
+    // Find the actual index in the unsorted currentOrder.items array
+    const actualIndex = currentOrder.items.findIndex(item => {
+      // Match by unique combination of boxNumber and productId
+      const sameBox = (item.boxNumber || (item as any).box_number) === (itemToRemove.boxNumber || (itemToRemove as any).box_number);
+      const sameProduct = item.productId === itemToRemove.productId;
+      return sameBox && sameProduct;
+    });
+
+    if (actualIndex === -1) {
+      console.error('Item to remove not found in currentOrder.items');
+      return;
+    }
+
     setCurrentOrder(prev => {
-      const itemToRemove = prev.items[index];
       const newItems = [...prev.items];
-      newItems.splice(index, 1);
+      newItems.splice(actualIndex, 1);
 
       let newBoxes = prev.boxes || [];
       // If the removed item had a box number, checks if any other items remain in that box
@@ -2388,7 +2449,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-    const computedTotal = computeOrderTotal(currentOrder);
+    const computedTotal = calculateOrderTotal(currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount);
 
 
 
@@ -3073,13 +3134,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
   // Removed manual confirm button: payment status derives from amountPaid
 
+  const calculateOrderTotal = (items: any[], shippingCost: number, billDiscount: number) => {
+    const goodsSum = items.reduce(
+      (acc, item) => acc + (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)),
+      0,
+    );
+    const itemsDiscount = items.reduce(
+      (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
+      0,
+    );
+    const subTotal = goodsSum - itemsDiscount;
+    const billDiscountAmount = (subTotal * (billDiscount || 0)) / 100;
+    return subTotal + (shippingCost || 0) - billDiscountAmount;
+  };
 
 
 
+  const handleSave = async () => {
+    if (!currentUser) return;
 
+    // Validate COD if applicable
+    if (currentOrder.paymentMethod === PaymentMethod.COD) {
+      const codTotal = currentOrder.boxes?.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0) || 0;
+      const orderTotal = calculateOrderTotal(currentOrder.items, currentOrder.shippingCost, currentOrder.billDiscount);
 
+      if (Math.abs(codTotal - orderTotal) > 0.1) { // Floating point tolerance
+        alert(`ไม่สามารถบันทึกได้: ยอดเก็บเงินปลายทางรวม (${codTotal.toLocaleString()}) ไม่ตรงกับยอดรวมออเดอร์ (${orderTotal.toLocaleString()})\nกรุณาแก้ไขยอดเก็บเงินในแต่ละกล่องให้ถูกต้อง`);
+        return;
+      }
+    }
 
-  const handleSave = () => {
     // Persist slip metadata edits (bank/date/amount) for Transfer/PayAfter
     if (
       (currentOrder.paymentMethod === PaymentMethod.Transfer ||
@@ -3106,7 +3190,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
       });
     }
 
-    const updatedOrder = { ...currentOrder, totalAmount: calculatedTotals.totalAmount };
+    const updatedOrder = {
+      ...currentOrder,
+      totalAmount: calculatedTotals.totalAmount,
+      updatedBy: currentUser.id,
+    };
 
     setCurrentOrder(updatedOrder);
 
@@ -3389,8 +3477,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
   return (
 
-
-
     <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl">
 
 
@@ -3563,7 +3649,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
 
 
@@ -3638,69 +3724,100 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
               )}
             </div>
 
+            <div>{/* Platform/Channel Selector */}
+              <p className="text-xs text-gray-500">ช่องทางการขาย</p>
+              {showInputs ? (
+                <select
+                  value={currentOrder.salesChannel || ''}
+                  onChange={(e) => {
+                    const channel = e.target.value || undefined;
+                    setCurrentOrder(prev => ({
+                      ...prev,
+                      salesChannel: channel,
+                      salesChannelPageId: undefined // Clear page when channel changes
+                    }));
+                  }}
+                  className="w-full p-1 text-sm border rounded"
+                >
+                  <option value="">-- เลือกช่องทาง --</option>
+                  {platforms.map(platform => (
+                    <option key={platform.id} value={platform.name}>
+                      {platform.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="font-medium text-gray-800">
+                  {currentOrder.salesChannel || '-'}
+                </p>
+              )}
+            </div>
+
             <div>{/* Page Selector */}
               {(() => {
                 const selectedPlatform = platforms.find(p => p.name.toLowerCase() === (currentOrder.salesChannel || '').toLowerCase());
 
-                // Fallback for read-only if we just have data but no proper platform loaded (unlikely but safe)
-                if (!selectedPlatform) {
-                  if (!showInputs && currentOrder.salesChannelPageId) {
-                    const page = pages.find(p => p.id === currentOrder.salesChannelPageId);
-                    return (
-                      <div>
-                        <p className="text-xs text-gray-500">เพจ</p>
-                        <p className="font-medium text-gray-800">{page ? page.name : `Page ID: ${currentOrder.salesChannelPageId}`}</p>
-                      </div>
-                    );
-                  }
-                  return null;
+                console.log('Debug - salesChannel:', currentOrder.salesChannel);
+                console.log('Debug - selectedPlatform:', selectedPlatform);
+                console.log('Debug - all platforms:', platforms);
+
+                // Don't show page selector for 'โทร' platform in edit mode
+                if (selectedPlatform && selectedPlatform.name === 'โทร') {
+                  return showInputs ? null : <p className="font-medium text-gray-800">-</p>;
                 }
 
-                if (selectedPlatform.name === 'โทร') return null;
+                // Filter pages based on selected platform
+                let filtered: Page[] = [];
+                if (selectedPlatform) {
+                  const hasShowPagesFrom = selectedPlatform.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
+                  const platformToMatch = hasShowPagesFrom
+                    ? selectedPlatform.showPagesFrom.toLowerCase()
+                    : selectedPlatform.name.toLowerCase();
 
-                const hasShowPagesFrom = selectedPlatform.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
-                const usesOwnPages = !selectedPlatform.showPagesFrom || selectedPlatform.showPagesFrom === '';
+                  console.log('Debug - platformToMatch:', platformToMatch);
 
-                if (hasShowPagesFrom || usesOwnPages) {
-                  const filtered = pages.filter(p => {
+                  filtered = pages.filter(p => {
                     if (!p.active) return false;
-                    if (hasShowPagesFrom) return p.platform === selectedPlatform.showPagesFrom;
-                    return p.platform === selectedPlatform.name;
+                    const pagePlatform = (p.platform || '').toLowerCase();
+                    const matches = pagePlatform === platformToMatch;
+                    if (!matches) {
+                      console.log('Debug - page', p.name, 'platform:', pagePlatform, 'does not match', platformToMatch);
+                    }
+                    return matches;
                   });
 
-                  // if (filtered.length === 0 && showInputs) return null; // Don't hide, show empty select instead
-
-                  return (
-                    <div>
-                      <p className="text-xs text-gray-500">เพจ</p>
-                      {showInputs ? (
-                        <div className="mt-1">
-                          <select
-                            value={currentOrder.salesChannelPageId || ''}
-                            onChange={(e) => {
-                              const pid = e.target.value ? Number(e.target.value) : undefined;
-                              setCurrentOrder(prev => ({ ...prev, salesChannelPageId: pid }));
-                            }}
-                            className="w-full p-1 text-sm border rounded"
-                          >
-                            <option value="">-- เลือกเพจ --</option>
-                            {filtered.map(page => (
-                              <option key={page.id} value={page.id}>{page.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <p className="font-medium text-gray-800">
-                          {(() => {
-                            const page = pages.find(p => p.id === currentOrder.salesChannelPageId);
-                            return page ? page.name : (currentOrder.salesChannelPageId || '-');
-                          })()}
-                        </p>
-                      )}
-                    </div>
-                  );
+                  console.log('Debug - filtered pages:', filtered);
                 }
-                return null;
+
+                // Always show page selector (disabled if no platform selected)
+                return (
+                  <>
+                    <p className="text-xs text-gray-500">เพจ</p>
+                    {showInputs ? (
+                      <select
+                        value={currentOrder.salesChannelPageId || ''}
+                        onChange={(e) => {
+                          const pid = e.target.value ? Number(e.target.value) : undefined;
+                          setCurrentOrder(prev => ({ ...prev, salesChannelPageId: pid }));
+                        }}
+                        disabled={!currentOrder.salesChannel}
+                        className="w-full p-1 text-sm border rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- เลือกเพจ --</option>
+                        {filtered.map(page => (
+                          <option key={page.id} value={page.id}>{page.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="font-medium text-gray-800">
+                        {(() => {
+                          const page = pages.find(p => p.id === currentOrder.salesChannelPageId);
+                          return page ? page.name : (currentOrder.salesChannelPageId || '-');
+                        })()}
+                      </p>
+                    )}
+                  </>
+                );
               })()}
             </div>
           </div>
@@ -4441,7 +4558,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
                   <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
 
-
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อรายการ</th>
 
                   <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
 
@@ -4477,9 +4594,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
               <tbody>
 
-
-
-                {currentOrder.items.map((item, index) => {
+                {[...currentOrder.items].sort((a, b) => {
+                  const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
+                  const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
+                  return boxA - boxB;
+                }).map((item, index) => {
 
 
 
@@ -4539,7 +4658,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                         {item.productId ? (products.find(p => p.id === item.productId)?.sku || '-') : '-'}
                       </td>
 
-
+                      <td className="px-3 py-2 text-center text-xs text-gray-700">
+                        {canEditItem ? (
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.boxNumber || 1}
+                            onChange={(e) => handleItemChange(index, 'boxNumber', Number(e.target.value))}
+                            className="w-12 border rounded px-1 text-center"
+                          />
+                        ) : (
+                          item.boxNumber || 1
+                        )}
+                      </td>
 
                       <td className="px-3 py-2 text-sm text-gray-800">
 
@@ -4717,7 +4848,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-                                onClick={() => handleRemoveItem(index)}
+                                onClick={() => handleRemoveItem(item)}
 
 
 
@@ -4747,9 +4878,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
                         )
                       }
-
-
-
                     </tr>
 
 
@@ -4778,7 +4906,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-                    <td colSpan={8} className="px-3 py-2 text-center">
+                    <td colSpan={9} className="px-3 py-2 text-center">
 
 
 
@@ -4822,7 +4950,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-                  <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
+                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
 
 
 
@@ -5987,7 +6115,35 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
                 )}
               </div>
 
+              {/* COD Validation Summary - Show when payment method is COD */}
+              {currentOrder.paymentMethod === PaymentMethod.COD && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+                  <div className="flex justify-between items-center text-sm mb-1">
+                    <span className="text-gray-600">ยอดรวมออเดอร์:</span>
+                    <span className="font-medium text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm mb-1">
+                    <span className="text-gray-600">ยอดเก็บเงินรวมทุกกล่อง:</span>
+                    <span className="font-medium text-blue-600">
+                      ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
+                    <span className="font-medium text-gray-700">ส่วนต่าง:</span>
+                    {(() => {
+                      const boxTotal = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
+                      const diff = boxTotal - calculatedTotals.totalAmount;
+                      const isMatch = Math.abs(diff) < 0.01;
 
+                      return (
+                        <span className={`font-bold ${isMatch ? 'text-green-600' : 'text-red-600'}`}>
+                          {isMatch ? 'ครบถ้วน (0.00)' : `${diff > 0 ? '+' : ''}${diff.toLocaleString()} (ยอดไม่ตรง)`}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
 
               <div className="overflow-x-auto">
 
