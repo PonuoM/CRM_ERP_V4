@@ -1978,7 +1978,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const result = await apiFetch(`get_warehouse_stocks.php?company_id=${currentUser.companyId}`);
+      const result = await apiFetch(`warehouse_stocks?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setWarehouseStocks(result.data);
@@ -1993,7 +1993,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const result = await apiFetch(`get_stock_movements.php?company_id=${currentUser.companyId}`);
+      const result = await apiFetch(`stock_movements?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setStockMovements(result.data);
@@ -2008,7 +2008,7 @@ const App: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     try {
-      const result = await apiFetch(`get_product_lots.php?company_id=${currentUser.companyId}`);
+      const result = await apiFetch(`product_lots?company_id=${currentUser.companyId}`);
 
       if (result.success && Array.isArray(result.data)) {
         setProductLots(result.data);
@@ -6819,7 +6819,10 @@ const App: React.FC = () => {
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={setIsSidebarCollapsed}
           onLogout={handleLogout}
-          permissions={rolePermissions || undefined}
+          permissions={{
+            ...(rolePermissions || {}),
+            onChangePassword: () => setIsChangePasswordModalOpen(true),
+          }}
         />
       )}
       <div
@@ -6863,64 +6866,6 @@ const App: React.FC = () => {
                   <option value={UserRole.Marketing}>Marketing</option>
                 </select>
                 <ChevronsUpDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-              </div>
-              <div className="relative"></div>
-              <div className="relative">
-                <button
-                  onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
-                >
-                  <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
-                    {currentUser.firstName.charAt(0)}
-                  </div>
-                  <div className="hidden md:block">
-                    <p className="font-semibold text-sm text-gray-800">{`${currentUser.firstName} ${currentUser.lastName}`}</p>
-                    <p className="text-xs text-gray-500">
-                      {currentUser.role === UserRole.AdminControl
-                        ? "Admin Company"
-                        : currentUser.role}
-                    </p>
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 text-gray-500 transition-transform ${isUserDropdownOpen ? "rotate-180" : ""
-                      }`}
-                  />
-                </button>
-
-                {/* User Dropdown Menu */}
-                {isUserDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <button
-                      onClick={() => {
-                        setIsChangePasswordModalOpen(true);
-                        setIsUserDropdownOpen(false);
-                      }}
-                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <Key className="w-4 h-4 mr-2 text-gray-500" />
-                      เปลี่ยนรหัสผ่าน
-                    </button>
-                    <button
-                      onClick={() => {
-                        // TODO: Implement logout functionality
-                        alert("ฟังก์ชัน logout จะถูกเพิ่มในอนาคต");
-                        setIsUserDropdownOpen(false);
-                      }}
-                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <LogOut className="w-4 h-4 mr-2 text-gray-500" />
-                      ออกจากระบบ
-                    </button>
-                  </div>
-                )}
-
-                {/* Close dropdown when clicking outside */}
-                {isUserDropdownOpen && (
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsUserDropdownOpen(false)}
-                  />
-                )}
               </div>
             </div>
           </header>

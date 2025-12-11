@@ -92,6 +92,13 @@ interface UpsellSlip {
 }
 
 
+const SHIPPING_PROVIDERS = [
+  "J&T Express",
+  "Flash Express",
+  "Kerry Express",
+  "Aiport Logistic",
+];
+
 const sanitizeAddressValue = (value?: string | null): string => {
 
   if (value == null) return "";
@@ -288,11 +295,10 @@ type ValidationField =
 
 // Order Summary Component
 
-const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({
-
-  orderData,
-
-}) => {
+const OrderSummary: React.FC<{
+  orderData: Partial<Order>;
+  onUpdateOrder: (field: keyof Order, value: any) => void;
+}> = ({ orderData, onUpdateOrder }) => {
 
   const visibleItems = useMemo(
 
@@ -354,9 +360,9 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({
 
   return (
 
-    <div className="bg-slate-50 border border-gray-300 rounded-lg p-6 sticky top-6">
+    <div className="bg-slate-50 border border-gray-300 rounded-lg p-4 sticky top-6">
 
-      <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">
+      <h3 className="font-semibold text-base mb-3 pb-2 border-b text-[#0e141b]">
 
         สรุปคำสั่งซื้อ
 
@@ -388,31 +394,38 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({
 
         </div>
 
-        <div className="flex justify-between text-[#4e7397]">
-
+        <div className="flex justify-between items-center text-[#4e7397]">
           <span>ค่าขนส่ง</span>
-
-          <span className="text-[#0e141b] font-medium">
-
-            ฿{(orderData.shippingCost || 0).toFixed(2)}
-
-          </span>
-
+          <input
+            type="number"
+            value={orderData.shippingCost || 0}
+            onChange={(e) =>
+              onUpdateOrder("shippingCost", Number(e.target.value))
+            }
+            onFocus={(e) => e.target.select()}
+            className="w-24 p-1 text-right border border-gray-300 rounded text-sm text-[#0e141b] focus:ring-1 focus:ring-blue-500"
+          />
         </div>
 
-        <div className="flex justify-between text-[#4e7397]">
-
-          <span>ส่วนลดท้ายบิล</span>
-
-          <span className="text-red-600 font-medium">
-
-            -฿{billDiscountAmount.toFixed(2)}
-
-          </span>
-
+        <div className="flex justify-between items-center text-[#4e7397]">
+          <span>ส่วนลดท้ายบิล (%)</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">
+              (-฿{billDiscountAmount.toFixed(2)})
+            </span>
+            <input
+              type="number"
+              value={orderData.billDiscount || 0}
+              onChange={(e) =>
+                onUpdateOrder("billDiscount", Number(e.target.value))
+              }
+              onFocus={(e) => e.target.select()}
+              className="w-24 p-1 text-right border border-gray-300 rounded text-sm text-red-600 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
-        <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
+        <div className="flex justify-between font-bold text-base border-t pt-3 mt-3">
 
           <span className="text-[#0e141b]">ยอดสุทธิ</span>
 
@@ -426,9 +439,9 @@ const OrderSummary: React.FC<{ orderData: Partial<Order> }> = ({
 
       {visibleItems.length > 0 && (
 
-        <div className="mt-6 pt-6 border-t">
+        <div className="mt-4 pt-4 border-t">
 
-          <h4 className="font-medium text-sm mb-3 text-[#0e141b]">
+          <h4 className="font-medium text-xs mb-2 text-[#0e141b]">
 
             รายการสินค้า ({visibleItems.length})
 
@@ -520,12 +533,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   );
 
-  const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(
+  const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
 
-    !initialData?.customer,
-
-  );
-
+  type CustomerStatus = "new" | "existing" | "reorder" | null;
+  const [customerStatus, setCustomerStatus] = useState<CustomerStatus>("existing");
   const isUpsellMode = initialData?.upsell === true;
 
   const [upsellOrders, setUpsellOrders] = useState<Order[]>([]);
@@ -609,6 +620,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [newCustomerBackupPhone, setNewCustomerBackupPhone] = useState("");
 
+  const [newCustomerType, setNewCustomerType] = useState("New Customer");
+
   const [newCustomerPhoneError, setNewCustomerPhoneError] = useState("");
 
   const [newCustomerBackupPhoneError, setNewCustomerBackupPhoneError] =
@@ -636,6 +649,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [editedCustomerBackupPhone, setEditedCustomerBackupPhone] = useState(
 
     initialData?.customer?.backupPhone || "",
+
+  );
+
+  const [editedCustomerType, setEditedCustomerType] = useState(
+
+    initialData?.customer?.customerType || "New Customer",
 
   );
 
@@ -1806,66 +1825,54 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
 
-    // Validate COD boxes if payment method is COD
+    try {
+      // Validate COD boxes if payment method is COD
 
-    if (selectedUpsellOrder.paymentMethod === PaymentMethod.COD) {
+      if (selectedUpsellOrder.paymentMethod === PaymentMethod.COD) {
 
-      // Check if all items have box number assigned
+        // Check if all items have box number assigned
 
-      const itemsWithoutBox = upsellItems.filter(
+        const itemsWithoutBox = upsellItems.filter(
 
-        item => !item.isFreebie && !item.parentItemId && (!item.boxNumber || item.boxNumber < 1 || item.boxNumber > numUpsellBoxes)
+          item => !item.isFreebie && !item.parentItemId && (!item.boxNumber || item.boxNumber < 1 || item.boxNumber > numUpsellBoxes)
 
-      );
+        );
 
-      if (itemsWithoutBox.length > 0) {
+        if (itemsWithoutBox.length > 0) {
 
-        setUpsellError("กรุณาเลือกกล่องให้ครบทุกรายการสินค้า");
+          setUpsellError("กรุณาเลือกกล่องให้ครบทุกรายการสินค้า");
 
-        return;
-
-      }
-
-
-
-      // Get boxes that actually have items (don't require all boxes from 1 to numUpsellBoxes)
-
-      const uniqueBoxes = new Set<number>();
-
-      upsellItems.forEach(item => {
-
-        if (!item.isFreebie && !item.parentItemId && item.boxNumber && item.boxNumber >= 1 && item.boxNumber <= numUpsellBoxes) {
-
-          uniqueBoxes.add(item.boxNumber);
+          return;
 
         }
 
-      });
+
+
+        // Get boxes that actually have items (don't require all boxes from 1 to numUpsellBoxes)
+
+        const uniqueBoxes = new Set<number>();
+
+        upsellItems.forEach(item => {
+
+          if (!item.isFreebie && !item.parentItemId && item.boxNumber && item.boxNumber >= 1 && item.boxNumber <= numUpsellBoxes) {
+
+            uniqueBoxes.add(item.boxNumber);
+
+          }
+
+        });
 
 
 
-      // Validate COD amounts - only check boxes that have items
+        // Validate COD amounts - only check boxes that have items
 
-      if (!isUpsellCodValid) {
+        if (!isUpsellCodValid) {
 
-        setUpsellError(`ยอด COD ในแต่ละกล่องรวมกันต้องเท่ากับยอดเพิ่มใหม่ (${upsellNewItemsTotal.toFixed(2)} บาท)`);
+          setUpsellError(`ยอด COD ในแต่ละกล่องรวมกันต้องเท่ากับยอดเพิ่มใหม่ (${upsellNewItemsTotal.toFixed(2)} บาท)`);
 
-        return;
+          return;
 
-      }
-
-    }
-
-
-
-    try {
-
-      setUpsellSaving(true);
-
-      setUpsellError(null);
-
-      // Update upsell slips if any
-      if (upsellSlips.length > 0) {
+        }
         await Promise.all(
           upsellSlips.map((slip) => {
             if (slip.id) {
@@ -5425,10 +5432,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const handleSave = async () => {
 
-    const isAddressIncomplete = Object.values(shippingAddress).some(
-
-      (val) => (val as string).trim() === "",
-
+    const isAddressIncomplete = Object.entries(shippingAddress).some(
+      ([key, val]) =>
+        key !== "recipientLastName" && (val as string).trim() === "",
     );
 
     if (isAddressIncomplete) {
@@ -5439,6 +5445,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       return;
 
+    }
+
+    // Validate Customer Status
+    if (!customerStatus) {
+      alert("กรุณาเลือกสถานะลูกค้า (ลูกค้าใหม่ หรือ ลูกค้าเก่า)");
+      return;
     }
 
     if (!orderData.deliveryDate) {
@@ -5915,9 +5927,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         (selectedCustomer?.backupPhone || "").trim();
 
+      const hasCustomerTypeChanged =
+
+        editedCustomerType !== (selectedCustomer?.customerType || "New Customer");
 
 
-      if (hasNameChanged || hasPhoneChanged || hasBackupPhoneChanged) {
+
+      if (hasNameChanged || hasPhoneChanged || hasBackupPhoneChanged || hasCustomerTypeChanged) {
 
         (payload as any).updateCustomerInfo = {
 
@@ -5994,6 +6010,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
 
 
+
+    // Add customerType to payload (moved from customer payload to order payload)
+    (payload as any).customerType = isCreatingNewCustomer ? newCustomerType : editedCustomerType;
 
     let savedOrderId: string | undefined;
 
@@ -9183,13 +9202,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       {/* Main Content */}
 
-      <div className="w-full mx-auto p-6">
+      <div className="w-full mx-auto p-4 flex flex-col lg:flex-row gap-4">
 
-        <div className="space-y-6">
+        <div className="flex-1 space-y-4 min-w-0">
 
           {/* Left Column: Customer Information & Shipping Address */}
 
-          <div className="space-y-6">
+          <div className="space-y-4">
 
             {/* Section 1: Customer Information */}
 
@@ -9211,153 +9230,161 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                 <div className="space-y-4">
 
-                  <div>
 
-                    <label className={commonLabelClass}>
 
-                      ค้นหาลูกค้า (ชื่อ / เบอร์โทร)
+                  {customerStatus === "existing" && (
+                    <div>
 
-                    </label>
+                      <label className={commonLabelClass}>
 
-                    <input
+                        ค้นหาลูกค้า (ชื่อ / เบอร์โทร)
 
-                      type="text"
+                      </label>
 
-                      ref={customerSearchInputRef}
+                      <input
 
-                      value={searchTerm}
+                        type="text"
 
-                      onChange={(e) => {
+                        ref={customerSearchInputRef}
 
-                        clearValidationErrorFor("customerSelector");
+                        value={searchTerm}
 
-                        setSearchTerm(e.target.value);
+                        onChange={(e) => {
 
-                        setSelectedCustomer(null);
+                          clearValidationErrorFor("customerSelector");
 
-                        setIsCreatingNewCustomer(false);
+                          setSearchTerm(e.target.value);
 
-                      }}
+                          setSelectedCustomer(null);
 
-                      placeholder="พิมพ์เพื่อค้นหา..."
+                          setIsCreatingNewCustomer(false);
 
-                      className={commonInputClass}
+                        }}
 
-                      disabled={loadingCustomerData}
+                        placeholder="พิมพ์เพื่อค้นหา..."
 
-                    />
+                        className={commonInputClass}
 
-                    {loadingCustomerData && (
+                        disabled={loadingCustomerData}
 
-                      <div className="mt-2 text-sm text-blue-600 flex items-center">
+                      />
 
-                        <svg
+                      {loadingCustomerData && (
 
-                          className="animate-spin h-4 w-4 mr-2"
+                        <div className="mt-2 text-sm text-blue-600 flex items-center">
 
-                          viewBox="0 0 24 24"
+                          <svg
 
-                        >
+                            className="animate-spin h-4 w-4 mr-2"
 
-                          <circle
+                            viewBox="0 0 24 24"
 
-                            className="opacity-25"
+                          >
 
-                            cx="12"
+                            <circle
 
-                            cy="12"
+                              className="opacity-25"
 
-                            r="10"
+                              cx="12"
 
-                            stroke="currentColor"
+                              cy="12"
 
-                            strokeWidth="4"
+                              r="10"
 
-                            fill="none"
+                              stroke="currentColor"
 
-                          />
+                              strokeWidth="4"
 
-                          <path
+                              fill="none"
 
-                            className="opacity-75"
+                            />
 
-                            fill="currentColor"
+                            <path
 
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              className="opacity-75"
 
-                          />
+                              fill="currentColor"
 
-                        </svg>
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 
-                        กำลังโหลดข้อมูลลูกค้า...
+                            />
 
-                      </div>
+                          </svg>
 
-                    )}
+                          กำลังโหลดข้อมูลลูกค้า...
 
-                    {searchResults.length > 0 &&
-
-                      !selectedCustomer &&
-
-                      !loadingCustomerData && (
-
-                        <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
-
-                          {searchResults.map((c) => (
-
-                            <li
-
-                              key={
-
-                                c.id ||
-
-                                c.customerId ||
-
-                                c.customerRefId ||
-
-                                `${c.phone}-${c.firstName}-${c.lastName}`
-
-                              }
-
-                              onClick={() => handleSelectCustomer(c)}
-
-                              className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
-
-                            >
-
-                              {`${c.firstName} ${c.lastName}`} - {c.phone}
-
-                            </li>
-
-                          ))}
-
-                        </ul>
+                        </div>
 
                       )}
 
-                    {!selectedCustomer &&
+                      {searchResults.length > 0 &&
 
-                      searchTerm &&
+                        !selectedCustomer &&
 
-                      searchResults.length === 0 &&
+                        !loadingCustomerData && (
 
-                      !isCreatingNewCustomer && (
+                          <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
 
-                        <button
+                            {searchResults.map((c) => (
 
-                          onClick={startCreatingNewCustomer}
+                              <li
 
-                          className="mt-2 text-sm text-blue-600 font-medium hover:underline"
+                                key={
 
-                        >
+                                  c.id ||
 
-                          ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
+                                  c.customerId ||
 
-                        </button>
+                                  c.customerRefId ||
 
-                      )}
+                                  `${c.phone}-${c.firstName}-${c.lastName}`
 
-                  </div>
+                                }
+
+                                onClick={() => handleSelectCustomer(c)}
+
+                                className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
+
+                              >
+
+                                {`${c.firstName} ${c.lastName}`} - {c.phone}
+
+                              </li>
+
+                            ))}
+
+                          </ul>
+
+                        )}
+
+                      {!selectedCustomer &&
+
+                        searchTerm &&
+
+                        searchResults.length === 0 &&
+
+                        !isCreatingNewCustomer && (
+
+                          <button
+
+                            onClick={() => {
+                              // If they click "Create new" from search, switch status to 'new'
+                              setCustomerStatus('new');
+                              startCreatingNewCustomer();
+                            }}
+
+                            className="mt-2 text-sm text-blue-600 font-medium hover:underline"
+
+                          >
+
+                            ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
+
+                          </button>
+
+                        )}
+
+                    </div>
+                  )}
 
 
 
@@ -9469,42 +9496,52 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               </div>
 
-                              <div>
-
-                                <label className={commonLabelClass}>
-
-                                  เบอร์สำรอง
-
-                                </label>
-
-                                <input
-
-                                  type="text"
-
-                                  value={newCustomerBackupPhone}
-
-                                  onChange={handleNewCustomerBackupPhoneChange}
-
-                                  className={commonInputClass}
-
-                                  placeholder="เช่น 0XXXXXXXXX"
-
-                                />
-
-                                {newCustomerBackupPhoneError && (
-
-                                  <p className="text-xs text-red-500 mt-1">
-
-                                    {newCustomerBackupPhoneError}
-
-                                  </p>
-
-                                )}
-
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className={commonLabelClass}>
+                                    เบอร์สำรอง
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={newCustomerBackupPhone}
+                                    onChange={handleNewCustomerBackupPhoneChange}
+                                    className={commonInputClass}
+                                    placeholder="เช่น 0XXXXXXXXX"
+                                  />
+                                </div>
+                                <div>
+                                  <label className={commonLabelClass}>
+                                    สถานะลูกค้า <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={customerStatus || ""}
+                                    onChange={(e) => {
+                                      const status = e.target.value as any;
+                                      setCustomerStatus(status);
+                                      if (status === "existing") {
+                                        setIsCreatingNewCustomer(false);
+                                      } else {
+                                        setIsCreatingNewCustomer(true);
+                                        // Update the type tag as well
+                                        if (status === "new") setNewCustomerType("New Customer");
+                                        if (status === "reorder") setNewCustomerType("Reorder");
+                                      }
+                                    }}
+                                    className={`${commonInputClass} ${!customerStatus ? "border-red-500 ring-1 ring-red-500" : ""}`}
+                                  >
+                                    <option value="" disabled>-- เลือก --</option>
+                                    <option value="new">ลูกค้าใหม่</option>
+                                    <option value="reorder">รีออเดอร์</option>
+                                  </select>
+                                </div>
                               </div>
 
+                              {newCustomerBackupPhoneError && (
+                                <p className="text-xs text-red-500 mt-1">
+                                  {newCustomerBackupPhoneError}
+                                </p>
+                              )}
                             </div>
-
                           </div>
 
                         ) : (
@@ -9605,43 +9642,62 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               </div>
 
-                              <div>
-
-                                <label className={commonLabelClass}>
-
-                                  เบอร์สำรอง
-
-                                </label>
-
-                                <input
-
-                                  type="text"
-
-                                  value={editedCustomerBackupPhone}
-
-                                  onChange={handleEditedCustomerBackupPhoneChange}
-
-                                  className={commonInputClass}
-
-                                  placeholder="เช่น 0XXXXXXXXX"
-
-                                />
-
-                                {editedCustomerBackupPhoneError && (
-
-                                  <p className="text-xs text-red-500 mt-1">
-
-                                    {editedCustomerBackupPhoneError}
-
-                                  </p>
-
-                                )}
-
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className={commonLabelClass}>
+                                    เบอร์สำรอง
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editedCustomerBackupPhone}
+                                    onChange={handleEditedCustomerBackupPhoneChange}
+                                    className={commonInputClass}
+                                    placeholder="เช่น 0XXXXXXXXX"
+                                  />
+                                </div>
+                                <div>
+                                  <label className={commonLabelClass}>
+                                    สถานะลูกค้า <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={customerStatus || "existing"} // existing or reorder?
+                                    // If we are editing an existing customer, status is 'existing'.
+                                    // But user might want to switch to 'new' or 'reorder' mode (which clears selection).
+                                    onChange={(e) => {
+                                      const status = e.target.value as any;
+                                      setCustomerStatus(status);
+                                      if (status === "new" || status === "reorder") {
+                                        setIsCreatingNewCustomer(true);
+                                        setSelectedCustomer(null);
+                                        // Set type
+                                        if (status === "new") setNewCustomerType("New Customer");
+                                        if (status === "reorder") setNewCustomerType("Reorder");
+                                      }
+                                      // If 'existing', do nothing (we are here)
+                                    }}
+                                    className={commonInputClass}
+                                  >
+                                    <option value="" disabled>-- เลือก --</option>
+                                    <option value="new">ลูกค้าใหม่</option>
+                                    <option value="reorder">รีออเดอร์</option>
+                                  </select>
+                                </div>
                               </div>
+
+                              {editedCustomerBackupPhoneError && (
+
+                                <p className="text-xs text-red-500 mt-1">
+
+                                  {editedCustomerBackupPhoneError}
+
+                                </p>
+
+                              )}
 
                             </div>
 
                           </div>
+
 
                         )}
 
@@ -9699,7 +9755,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                         <label className={commonLabelClass}>
 
-                          ช่องทางการขาย
+                          ช่องทางการขาย <span className="text-red-500">*</span>
 
                         </label>
 
@@ -10441,7 +10497,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <label className={commonLabelClass}>
 
-                        บ้านเลขที่, ถนน
+                        บ้านเลขที่, ถนน <span className="text-red-500">*</span>
 
                       </label>
 
@@ -10465,7 +10521,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <div className="relative province-dropdown-container">
 
-                        <label className={commonLabelClass}>จังหวัด</label>
+                        <label className={commonLabelClass}>จังหวัด <span className="text-red-500">*</span></label>
 
                         <input
 
@@ -10725,7 +10781,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <div className="relative district-dropdown-container">
 
-                        <label className={commonLabelClass}>อำเภอ/เขต</label>
+                        <label className={commonLabelClass}>อำเภอ/เขต <span className="text-red-500">*</span></label>
 
                         <input
 
@@ -10937,7 +10993,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <div className="relative subdistrict-dropdown-container">
 
-                        <label className={commonLabelClass}>ตำบล/แขวง</label>
+                        <label className={commonLabelClass}>ตำบล/แขวง <span className="text-red-500">*</span></label>
 
                         <input
 
@@ -11141,7 +11197,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                       <div className="relative postal-code-dropdown-container">
 
-                        <label className={commonLabelClass}>รหัสไปรษณีย์</label>
+                        <label className={commonLabelClass}>รหัสไปรษณีย์ <span className="text-red-500">*</span></label>
 
                         <input
 
@@ -11511,7 +11567,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                     <div>
 
-                      <label className={commonLabelClass}>วันที่จัดส่ง</label>
+
+                      <label className={commonLabelClass}>
+                        วันที่จัดส่ง <span className="text-red-500">*</span>
+                      </label>
 
                       <div className="relative">
                         <input
@@ -11688,6 +11747,26 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                     </div>
 
+                    <div>
+                      <label className={commonLabelClass}>
+                        ขนส่งที่ต้องการใช้ <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={orderData.shippingProvider || ""}
+                        onChange={(e) =>
+                          updateOrderData("shippingProvider", e.target.value)
+                        }
+                        className={commonInputClass}
+                      >
+                        <option value="">เลือกขนส่ง</option>
+                        {SHIPPING_PROVIDERS.map((provider) => (
+                          <option key={provider} value={provider}>
+                            {provider}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                   </div>
 
                 </div>
@@ -11714,7 +11793,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                 <div className="space-y-4">
                   <div>
                     <label className={commonLabelClass}>
-                      เลือกวิธีการชำระเงิน
+                      เลือกวิธีการชำระเงิน <span className="text-red-500">*</span>
                     </label>
                     <select
                       ref={paymentMethodRef}
@@ -12020,8 +12099,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       <button
                         onClick={() => setSelectorTab("products")}
                         className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "products"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
                           }`}
                       >
                         สินค้าปกติ
@@ -12031,8 +12110,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       <button
                         onClick={() => setSelectorTab("promotions")}
                         className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "promotions"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
                           }`}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
@@ -13164,190 +13243,54 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
 
                     </div>
-
                   )}
 
-
-
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-
-                    <div>
-
-                      <label className={commonLabelClass}>ค่าขนส่ง</label>
-
-                      <input
-
-                        type="number"
-
-                        value={orderData.shippingCost}
-
-                        onChange={(e) =>
-
-                          updateOrderData(
-
-                            "shippingCost",
-
-                            Number(e.target.value),
-
-                          )
-
-                        }
-
-                        onFocus={onFocusSelectAll}
-
-                        className={commonInputClass}
-
-                      />
-
-                    </div>
-
-                    <div>
-
-                      <label className={commonLabelClass}>
-
-                        ส่วนลดท้ายบิล (%)
-
-                      </label>
-
-                      <input
-
-                        type="number"
-
-                        value={orderData.billDiscount}
-
-                        onChange={(e) =>
-
-                          updateOrderData(
-
-                            "billDiscount",
-
-                            Number(e.target.value),
-
-                          )
-
-                        }
-
-                        onFocus={onFocusSelectAll}
-
-                        className={commonInputClass}
-
-                      />
-
-                    </div>
-
-                  </div>
-
                 </div>
-
-              </div>
-
-            )}
-
-
-
-
-
-
-
-            {/* Order Summary */}
-            {(selectedCustomer || isCreatingNewCustomer) && (
-              <div className="bg-slate-50 border border-gray-300 rounded-lg p-6">
-                <h3 className="font-semibold text-lg mb-4 pb-2 border-b text-[#0e141b]">
-                  สรุปคำสั่งซื้อ
-                </h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between text-[#4e7397]">
-                    <span>ยอดรวมสินค้า</span>
-                    <span className="text-[#0e141b] font-medium">
-                      ฿{subTotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[#4e7397]">
-                    <span>ส่วนลดรายการสินค้า</span>
-                    <span className="text-red-600 font-medium">
-                      -฿{itemsDiscount.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[#4e7397]">
-                    <span>ค่าขนส่ง</span>
-                    <span className="text-[#0e141b] font-medium">
-                      ฿{(orderData.shippingCost || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[#4e7397]">
-                    <span>ส่วนลดท้ายบิล ({billDiscountPercent}%)</span>
-                    <span className="text-red-600 font-medium">
-                      -฿{billDiscountAmount.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg border-t pt-3 mt-3">
-                    <span className="text-[#0e141b]">ยอดสุทธิ</span>
-                    <span className="text-green-600">
-                      ฿{totalAmount.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                {orderData.items && orderData.items.length > 0 && (
-                  <div className="mt-6 pt-6 border-t">
-                    <h4 className="font-medium text-sm mb-3 text-[#0e141b]">
-                      รายการสินค้า (
-                      {
-                        (orderData.items || []).filter((it) => !it.parentItemId)
-                          .length
-                      }
-                      )
-                    </h4>
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {(orderData.items || [])
-                        .filter((it) => !it.parentItemId)
-                        .map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="text-xs p-2 bg-white rounded border"
-                          >
-                            <div className="font-medium text-[#0e141b]">
-                              {item.productName || "(ไม่ระบุ)"}
-                            </div>
-                            <div className="text-[#4e7397] mt-1">
-                              {item.quantity} × ฿{item.pricePerUnit.toFixed(2)}
-                              {item.discount > 0 && (
-                                <span> - ฿{item.discount}</span>
-                              )}
-                              {item.isFreebie && (
-                                <span className="ml-2 text-green-600">
-                                  (ของแถม)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
+
+
+
+
+
+
+
+
 
           </div>
 
+
+          {/* Footer Actions */}
+          {
+            (selectedCustomer || isCreatingNewCustomer) && (
+              <div className="mt-6 flex justify-end gap-3 pb-6">
+                <button
+                  onClick={handleSave}
+                  disabled={
+                    !isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)
+                  }
+                  className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  บันทึกคำสั่งซื้อ
+                </button>
+              </div>
+            )
+          }
         </div>
 
-
-
-        {/* Footer Actions */}
-        {(selectedCustomer || isCreatingNewCustomer) && (
-          <div className="mt-6 flex justify-end gap-3 pb-6">
-            <button
-              onClick={handleSave}
-              disabled={
-                !isCodValid || (isCreatingNewCustomer && !!newCustomerPhoneError)
-              }
-              className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              บันทึกคำสั่งซื้อ
-            </button>
-          </div>
-        )}
+        {/* Right Column: Sticky Order Summary */}
+        {
+          (selectedCustomer || isCreatingNewCustomer) && (
+            <div className="w-full lg:w-80 shrink-0">
+              <div className="sticky top-4">
+                <OrderSummary
+                  orderData={orderData}
+                  onUpdateOrder={updateOrderData}
+                />
+              </div>
+            </div>
+          )
+        }
 
       </div>
 
@@ -13355,105 +13298,107 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       {/* Success Modal */}
 
-      {showSuccessModal && (
+      {
+        showSuccessModal && (
 
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
 
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
 
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
 
-              <svg
+                <svg
 
-                className="h-6 w-6"
+                  className="h-6 w-6"
 
-                fill="none"
+                  fill="none"
 
-                stroke="currentColor"
+                  stroke="currentColor"
 
-                viewBox="0 0 24 24"
+                  viewBox="0 0 24 24"
 
-                xmlns="http://www.w3.org/2000/svg"
+                  xmlns="http://www.w3.org/2000/svg"
 
-              >
+                >
 
-                <path
+                  <path
 
-                  strokeLinecap="round"
+                    strokeLinecap="round"
 
-                  strokeLinejoin="round"
+                    strokeLinejoin="round"
 
-                  strokeWidth={2}
+                    strokeWidth={2}
 
-                  d="M5 13l4 4L19 7"
+                    d="M5 13l4 4L19 7"
 
-                />
+                  />
 
-              </svg>
+                </svg>
 
-            </div>
+              </div>
 
-            <h3 className="text-lg font-semibold text-[#0e141b]">
+              <h3 className="text-lg font-semibold text-[#0e141b]">
 
-              สร้างคำสั่งซื้อสำเร็จ
+                สร้างคำสั่งซื้อสำเร็จ
 
-            </h3>
+              </h3>
 
-            {createdOrderId && (
+              {createdOrderId && (
 
-              <p className="mt-1 text-sm text-[#4e7397]">
+                <p className="mt-1 text-sm text-[#4e7397]">
 
-                หมายเลขคำสั่งซื้อ {createdOrderId}
+                  หมายเลขคำสั่งซื้อ {createdOrderId}
+
+                </p>
+
+              )}
+
+              <p className="mt-4 text-sm text-[#4e7397]">
+
+                สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
 
               </p>
 
-            )}
+              <div className="mt-6 flex justify-center">
 
-            <p className="mt-4 text-sm text-[#4e7397]">
+                <button
 
-              สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
+                  onClick={() => {
 
-            </p>
+                    setShowSuccessModal(false);
 
-            <div className="mt-6 flex justify-center">
+                    // On success, call onSuccess callback (goes to Dashboard)
 
-              <button
+                    if (onSuccess) {
 
-                onClick={() => {
+                      onSuccess();
 
-                  setShowSuccessModal(false);
+                    } else {
 
-                  // On success, call onSuccess callback (goes to Dashboard)
+                      onCancel();
 
-                  if (onSuccess) {
+                    }
 
-                    onSuccess();
+                  }}
 
-                  } else {
+                  className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
 
-                    onCancel();
+                >
 
-                  }
+                  กลับสู่หน้าหลัก
 
-                }}
+                </button>
 
-                className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-
-              >
-
-                กลับสู่หน้าหลัก
-
-              </button>
+              </div>
 
             </div>
 
           </div>
 
-        </div>
+        )
+      }
 
-      )}
-
-    </div>
+    </div >
 
   );
 

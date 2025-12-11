@@ -460,10 +460,10 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                 }
                 disabled={page === "..."}
                 className={`px-3 py-1 text-sm rounded ${page === currentPage
-                    ? "bg-blue-600 text-white"
-                    : page === "..."
-                      ? "text-gray-400 cursor-default"
-                      : "text-gray-700 hover:bg-gray-100"
+                  ? "bg-blue-600 text-white"
+                  : page === "..."
+                    ? "text-gray-400 cursor-default"
+                    : "text-gray-700 hover:bg-gray-100"
                   }`}
               >
                 {page}

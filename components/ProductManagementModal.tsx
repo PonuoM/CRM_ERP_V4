@@ -24,12 +24,13 @@ const FormField: React.FC<{ icon: React.ElementType, label: string, required?: b
   </div>
 );
 
-// Custom Dropdown Component for Shop Selection
-const ShopDropdown: React.FC<{
+// Custom Dropdown Component for Select or Type
+const CreatableSelect: React.FC<{
   value: string;
   onChange: (value: string) => void;
   options: string[];
-}> = ({ value, onChange, options }) => {
+  placeholder?: string;
+}> = ({ value, onChange, options, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,7 +76,7 @@ const ShopDropdown: React.FC<{
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
           className="w-full p-2 pr-8 border rounded-md bg-white text-black"
-          placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
+          placeholder={placeholder || "เลือกหรือพิมพ์..."}
           autoComplete="off"
         />
         <ChevronDown
@@ -100,8 +101,8 @@ const ShopDropdown: React.FC<{
   );
 };
 
-const productCategories = ['ปุ๋ย', 'ยาฆ่าแมลง', 'เมล็ดพันธุ์', 'วัสดุปลูก', 'อุปกรณ์การเกษตร'];
-const productUnits = ['กระสอบ', 'ขวด', 'ซอง', 'ถุง', 'ชิ้น', 'กิโลกรัม'];
+const productCategories = ['ปุ๋ย', 'ชีวภัณฑ์'];
+const productUnits = ['กระสอบ', 'ถุง', 'ซอง', 'ขวด'];
 
 
 const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product, onSave, onClose, companyId, warehouses = [], products = [] }) => {
@@ -115,6 +116,24 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
       .filter((shop, index, self) => self.indexOf(shop) === index) // unique
       .sort();
     return shops;
+  }, [products, companyId]);
+
+  // ดึงรายการหมวดหมู่ที่มีอยู่แล้ว (รวม default และจาก DB)
+  const existingCategories = useMemo(() => {
+    const dbCategories = products
+      .filter(p => p.companyId === companyId && p.category)
+      .map(p => p.category)
+      .filter((c, index, self) => self.indexOf(c) === index);
+    return [...new Set([...productCategories, ...dbCategories])].sort();
+  }, [products, companyId]);
+
+  // ดึงรายการหน่วยนับที่มีอยู่แล้ว (รวม default และจาก DB)
+  const existingUnits = useMemo(() => {
+    const dbUnits = products
+      .filter(p => p.companyId === companyId && p.unit)
+      .map(p => p.unit)
+      .filter((u, index, self) => self.indexOf(u) === index);
+    return [...new Set([...productUnits, ...dbUnits])].sort();
   }, [products, companyId]);
 
   const getInitialState = () => ({
@@ -217,6 +236,14 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
 
   const handleShopChange = (value: string) => {
     setFormData(prev => ({ ...prev, shop: value }));
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setFormData(prev => ({ ...prev, category: value }));
+  };
+
+  const handleUnitChange = (value: string) => {
+    setFormData(prev => ({ ...prev, unit: value }));
   };
 
   const handleSave = async () => {
@@ -342,27 +369,28 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product
                         <FormField label="ชื่อสินค้า" required icon={Folder}>
                           <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black" placeholder="กรอกชื่อสินค้า" />
                         </FormField>
-                        <FormField label="หมวดหมู่" icon={BarChart3}>
-                          <select name="category" value={formData.category} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
-                            <option value="">เลือกหมวดหมู่</option>
-                            {productCategories.map(cat => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
+                        <FormField label="หมวดหมู่" icon={BarChart3} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
+                          <CreatableSelect
+                            value={formData.category}
+                            onChange={handleCategoryChange}
+                            options={existingCategories}
+                            placeholder="เลือกหรือพิมพ์หมวดหมู่"
+                          />
                         </FormField>
-                        <FormField label="หน่วยนับ" required icon={Info}>
-                          <select name="unit" value={formData.unit} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-black">
-                            <option value="">เลือกหน่วย</option>
-                            {productUnits.map(unit => (
-                              <option key={unit} value={unit}>{unit}</option>
-                            ))}
-                          </select>
+                        <FormField label="หน่วยนับ" required icon={Info} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
+                          <CreatableSelect
+                            value={formData.unit}
+                            onChange={handleUnitChange}
+                            options={existingUnits}
+                            placeholder="เลือกหรือพิมพ์หน่วยนับ"
+                          />
                         </FormField>
                         <FormField label="ร้านค้า" icon={ShoppingCart} hint="เลือกจากรายการที่มีอยู่ หรือพิมพ์เพิ่มใหม่">
-                          <ShopDropdown
-                            value={formData.shop}
+                          <CreatableSelect
+                            value={formData.shop || ''}
                             onChange={handleShopChange}
                             options={existingShops}
+                            placeholder="เลือกหรือพิมพ์ชื่อร้านค้า"
                           />
                         </FormField>
                       </div>

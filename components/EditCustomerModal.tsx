@@ -18,25 +18,25 @@ interface AddressData {
 const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave, onClose }) => {
   const [formData, setFormData] = useState<Customer>(customer);
   const [backupPhoneError, setBackupPhoneError] = useState('');
-  
+
   // Address selector states
   const [provinces, setProvinces] = useState<AddressData[]>([]);
   const [districts, setDistricts] = useState<AddressData[]>([]);
   const [subDistricts, setSubDistricts] = useState<AddressData[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
-  
+
   const [selectedProvince, setSelectedProvince] = useState<number | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
   const [selectedSubDistrict, setSelectedSubDistrict] = useState<number | null>(null);
-  
+
   const [provinceSearchTerm, setProvinceSearchTerm] = useState('');
   const [districtSearchTerm, setDistrictSearchTerm] = useState('');
   const [subDistrictSearchTerm, setSubDistrictSearchTerm] = useState('');
-  
+
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
   const [showDistrictDropdown, setShowDistrictDropdown] = useState(false);
   const [showSubDistrictDropdown, setShowSubDistrictDropdown] = useState(false);
-  
+
   const provinceRef = useRef<HTMLDivElement>(null);
   const districtRef = useRef<HTMLDivElement>(null);
   const subDistrictRef = useRef<HTMLDivElement>(null);
@@ -151,7 +151,7 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
       if (subDistrict) {
         const district = districts.find(d => d.id === selectedDistrict);
         const province = provinces.find(p => p.id === selectedProvince);
-        
+
         setFormData(prev => ({
           ...prev,
           address: {
@@ -192,13 +192,13 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   const handleBackupPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // รับเฉพาะตัวเลข
     const value = e.target.value.replace(/[^0-9]/g, '');
-    
+
     // จำกัดความยาวไม่เกิน 10 หลัก
     if (value.length > 10) return;
-    
+
     // อัปเดตค่า
     setFormData(prev => ({ ...prev, backupPhone: value }));
-    
+
     // Validation
     if (value.length === 0) {
       setBackupPhoneError('');
@@ -252,8 +252,8 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   const commonLabelClass = "block text-gray-700 font-medium mb-1";
 
   return (
-    <Modal 
-      title={`แก้ไขข้อมูล: ${customer.firstName} ${customer.lastName}`} 
+    <Modal
+      title={`แก้ไขข้อมูล: ${customer.firstName} ${customer.lastName}`}
       onClose={onClose}
       requireConfirmation={true}
       confirmationMessage="คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป"
@@ -262,34 +262,34 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={commonLabelClass}>ชื่อ</label>
-            <input 
-              type="text" 
-              name="firstName" 
-              value={formData.firstName} 
-              onChange={handleChange} 
-              className={commonInputClass} 
+            <input
+              type="text"
+              name="firstName"
+              value={formData.firstName}
+              onChange={handleChange}
+              className={commonInputClass}
             />
           </div>
           <div>
             <label className={commonLabelClass}>นามสกุล</label>
-            <input 
-              type="text" 
-              name="lastName" 
-              value={formData.lastName} 
-              onChange={handleChange} 
-              className={commonInputClass} 
+            <input
+              type="text"
+              name="lastName"
+              value={formData.lastName}
+              onChange={handleChange}
+              className={commonInputClass}
             />
           </div>
         </div>
-        
+
         <div>
           <label className={commonLabelClass}>เบอร์โทร</label>
-          <input 
-            type="text" 
-            name="phone" 
-            value={formData.phone} 
-            onChange={handleChange} 
-            className={commonInputClass} 
+          <input
+            type="text"
+            name="phone"
+            value={formData.phone}
+            onChange={handleChange}
+            className={commonInputClass}
           />
         </div>
 
@@ -298,11 +298,11 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
             <Phone size={16} className="text-gray-600 mr-2" />
             <span>เบอร์สำรอง</span>
           </label>
-          <input 
-            type="text" 
-            name="backupPhone" 
-            value={formData.backupPhone || ''} 
-            onChange={handleBackupPhoneChange} 
+          <input
+            type="text"
+            name="backupPhone"
+            value={formData.backupPhone || ''}
+            onChange={handleBackupPhoneChange}
             className={commonInputClass + (backupPhoneError ? ' border-red-500' : '')}
             placeholder="0XXXXXXXXX (10 หลัก)"
             maxLength={10}
@@ -314,9 +314,9 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
 
         <div>
           <label className={commonLabelClass}>ที่อยู่ (เต็ม)</label>
-          <textarea 
+          <textarea
             name="street"
-            value={formData.address?.street || ''} 
+            value={formData.address?.street || ''}
             onChange={(e) => handleAddressChange('street', e.target.value)}
             className={commonInputClass}
             rows={2}
@@ -518,39 +518,39 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
             <Facebook size={16} className="text-blue-600 mr-2" />
             <span>ชื่อใน Facebook</span>
           </label>
-          <input 
-            type="text" 
-            name="facebookName" 
-            value={formData.facebookName || ''} 
-            onChange={handleChange} 
-            className={commonInputClass} 
+          <input
+            type="text"
+            name="facebookName"
+            value={formData.facebookName || ''}
+            onChange={handleChange}
+            className={commonInputClass}
           />
         </div>
-        
+
         <div>
           <label className={`${commonLabelClass} flex items-center`}>
             <MessageSquare size={16} className="text-green-500 mr-2" />
             <span>LINE ID</span>
           </label>
-          <input 
-            type="text" 
-            name="lineId" 
-            value={formData.lineId || ''} 
-            onChange={handleChange} 
-            className={commonInputClass} 
+          <input
+            type="text"
+            name="lineId"
+            value={formData.lineId || ''}
+            onChange={handleChange}
+            className={commonInputClass}
           />
         </div>
       </div>
-      
+
       <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
         >
           ยกเลิก
         </button>
-        <button 
-          onClick={handleSave} 
+        <button
+          onClick={handleSave}
           className="px-4 py-2 bg-green-100 text-green-700 font-semibold rounded-lg hover:bg-green-200"
         >
           บันทึก

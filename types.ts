@@ -590,3 +590,14 @@ export interface ModalState {
   type: ModalType | null;
   data: any; // Can be Customer, Order, or other data for modals
 }
+
+export interface Platform {
+  id: number;
+  name: string;
+}
+
+export interface Page {
+  id: number;
+  name: string;
+  platformId: number;
+}

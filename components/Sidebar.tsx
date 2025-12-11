@@ -21,7 +21,10 @@ import {
   Phone,
   CheckCircle,
   DollarSign,
+  Key,
+  ChevronRight,
 } from "lucide-react";
+
 interface SidebarProps {
   user: UserType;
   activePage: string;
@@ -29,7 +32,7 @@ interface SidebarProps {
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
   onLogout: () => void;
-  permissions?: Record<string, { view?: boolean; use?: boolean }>;
+  permissions?: Record<string, { view?: boolean; use?: boolean }> & { onChangePassword?: () => void };
 }
 
 type NavItem = { icon: React.ElementType; label: string; children?: NavItem[] };
@@ -62,6 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     [HOME_GROUP]: true,
   });
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const canView = (key: string) => {
     const perm = permissions?.[key];
@@ -565,33 +569,63 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 px-4 py-2 space-y-1">
         {navItems.map(renderNavItem)}
       </nav>
-      <div className="px-4 py-4 border-t border-gray-200 mt-auto">
-        <div
-          className={`flex items-center mb-4 ${isCollapsed ? "justify-center" : ""}`}
-        >
-          {!isCollapsed && (
-            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600 mr-3">
+      <div className="border-t border-gray-200 mt-auto relative">
+        <div className={`p-4 ${isCollapsed ? "items-center justify-center flex" : ""}`}>
+          <button
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className={`flex items-center w-full hover:bg-gray-50 rounded-lg p-2 transition-colors ${isCollapsed ? "justify-center" : "space-x-3"
+              }`}
+          >
+            <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold flex-shrink-0">
               {user.firstName.charAt(0)}
             </div>
-          )}
-          {!isCollapsed && (
-            <div>
-              <p className="font-semibold text-sm text-gray-800">{`${user.firstName} ${user.lastName}`}</p>
-              <p className="text-xs text-gray-500">
-                {user.role === UserRole.AdminControl ? "Admin Company" : user.role}
-              </p>
+            {!isCollapsed && (
+              <div className="overflow-hidden text-left flex-1">
+                <p className="font-semibold text-sm text-gray-800 truncate">{`${user.firstName} ${user.lastName}`}</p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user.role === UserRole.AdminControl
+                    ? "Admin Company"
+                    : user.role}
+                </p>
+              </div>
+            )}
+            {!isCollapsed && (
+              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${isUserMenuOpen ? "rotate-90" : ""}`} />
+            )}
+          </button>
+
+          {/* Popover Menu */}
+          {isUserMenuOpen && (
+            <div
+              className={`absolute bottom-0 left-full ml-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50`}
+            >
+              <div className="py-1">
+                {permissions?.onChangePassword && (
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      permissions.onChangePassword?.();
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <Key className="w-4 h-4 mr-3" />
+                    เปลี่ยนรหัสผ่าน
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <LogOut className="w-4 h-4 mr-3" />
+                  ออกจากระบบ
+                </button>
+              </div>
             </div>
           )}
         </div>
-        <button
-          onClick={onLogout}
-          className="w-full flex items-center p-2.5 text-sm font-medium rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 text-left"
-        >
-          <LogOut
-            className={`w-5 h-5 flex-shrink-0 ${isCollapsed ? "" : "mr-3"}`}
-          />
-          {!isCollapsed && "ออกจากระบบ"}
-        </button>
       </div>
     </div>
   );

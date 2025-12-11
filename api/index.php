@@ -1786,6 +1786,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($hasTransferDate) {
                     $columns[] = 'transfer_date';
                 }
+                // Always add customer_type as it was added via migration
+                $columns[] = 'customer_type';
                 
                 foreach ($columns as $col) {
                     $placeholders[] = '?';
@@ -1946,6 +1948,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($hasTransferDate) {
                     $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
                 }
+                $values[] = $in['customerType'] ?? null;
 
                 try {
                     $stmt->execute($values);
@@ -2198,6 +2201,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
             $postalCode    = array_key_exists('postal_code', $in) ? $in['postal_code'] : (array_key_exists('postalCode', $in) ? $in['postalCode'] : null); if ($postalCode === '') $postalCode = null;
             $recipientFirstName = array_key_exists('recipient_first_name', $in) ? $in['recipient_first_name'] : (array_key_exists('recipientFirstName', $in) ? $in['recipientFirstName'] : null); if ($recipientFirstName === '') $recipientFirstName = null;
             $recipientLastName  = array_key_exists('recipient_last_name', $in) ? $in['recipient_last_name'] : (array_key_exists('recipientLastName', $in) ? $in['recipientLastName'] : null); if ($recipientLastName === '') $recipientLastName = null;
+            $customerType       = array_key_exists('customer_type', $in) ? $in['customer_type'] : (array_key_exists('customerType', $in) ? $in['customerType'] : null); if ($customerType === '') $customerType = null;
 
             $slipUrl = array_key_exists('slipUrl', $in) ? $in['slipUrl'] : null; if ($slipUrl === '') $slipUrl = null;
             // If slipUrl is a data URL image, persist to file and store path
@@ -2241,8 +2245,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
 
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount)';
-                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount];
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), customer_type=COALESCE(?, customer_type)';
+                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
                     $params[] = $shippingProvider;
