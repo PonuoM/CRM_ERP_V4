@@ -505,7 +505,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   promotions,
 
-  pages = [],
+  pages: rawPages = [],
 
   platforms = [],
 
@@ -526,6 +526,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   onUpsellSuccess,
 
 }) => {
+
+  const pages = useMemo(() => {
+    return [...(rawPages || [])].sort((a, b) => a.name.localeCompare(b.name, "th"));
+  }, [rawPages]);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
 
@@ -4427,8 +4431,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     try {
       // Fetch fresh customer data from database
+      const token = localStorage.getItem("authToken");
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(
         `${resolveApiBasePath().replace(/\/$/, "")}/index.php/customers/${encodeURIComponent(customer.id)}`,
+        { headers },
       );
 
 
