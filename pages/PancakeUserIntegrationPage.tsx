@@ -25,6 +25,7 @@ import {
   UserPancakeMapping,
 } from "../services/api";
 import PageIconFront from "@/components/PageIconFront";
+import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface AdminPageUserFromDB {
@@ -76,25 +77,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
 }) => {
   const apiBase = useMemo(() => resolveApiBasePath(), []);
 
-  // Custom hook logic directly here for Env Manager
-  interface EnvVariable {
-    id?: number;
-    key: string;
-    value: string;
-    created_at?: string;
-    updated_at?: string;
-  }
-
   // Env Manager State
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
-  const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
-  const [newEnvVar, setNewEnvVar] = useState<EnvVariable>({
-    key: 'ACCESS_TOKEN_PANCAKE_',
-    value: ''
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
-  const [isStoreDbEnabled, setIsStoreDbEnabled] = useState<boolean>(true); // Default to enabled
 
   // Main State
   const [activeTab, setActiveTab] = useState<"mappings" | "search">("mappings");
@@ -141,124 +125,13 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
     loadPagesWithUsers();
     loadUserMappings();
 
-    // Load Env Variables if user is Admin/SuperAdmin
-    if (currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl)) {
-      fetchEnvVariables();
-      // Initialize new Env Var key with company ID default
-      const companyId = currentUser.companyId || currentUser.company_id;
-      setNewEnvVar(prev => ({
-        ...prev,
-        key: `ACCESS_TOKEN_PANCAKE_${companyId}`
-      }));
+    loadAdminPageUsers();
+    loadPageUsers();
+    loadPagesWithUsers();
+    loadUserMappings();
+  }, [currentUser]);
 
-      // Check if database upload is enabled
-      const checkDbSetting = async () => {
-        try {
-          const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-            }
-          });
-          if (envResponse.ok) {
-            const envData = await envResponse.json();
-            const dbSetting = Array.isArray(envData) ? envData.find((env: any) => env.key === 'page_store_db') : null;
-            setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
-          }
-        } catch (error) {
-          console.error('Error checking database setting:', error);
-        }
-      };
-      checkDbSetting();
-    }
-  }, [currentUser]); // Added currentUser dependency
 
-  const fetchEnvVariables = async () => {
-    try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setEnvVariables(Array.isArray(data) ? data : []);
-      }
-    } catch (error) {
-      console.error('Error fetching env variables:', error);
-    }
-  };
-
-  const saveEnvVariable = async (envVar: EnvVariable) => {
-    if (!envVar.key.trim() || !envVar.value.trim()) {
-      alert('กรุณาระบุ key และ value');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
-        body: JSON.stringify({
-          key: envVar.key,
-          value: envVar.value
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchEnvVariables();
-          setNewEnvVar({
-            key: currentUser ? `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}` : 'ACCESS_TOKEN_PANCAKE_',
-            value: ''
-          });
-          alert('บันทึกสำเร็จ');
-        } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-        }
-      } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-      }
-    } catch (error) {
-      console.error('Error saving env variable:', error);
-      alert('เกิดข้อผิดพลาดในการบันทึก');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const deleteEnvVariable = async (key: string) => {
-    if (!confirm(`คุณต้องการลบตัวแปร ${key} หรือไม่?`)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          await fetchEnvVariables();
-          alert('ลบสำเร็จ');
-        } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-        }
-      } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-      }
-    } catch (error) {
-      console.error('Error deleting env variable:', error);
-      alert('เกิดข้อผิดพลาดในการลบ');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
@@ -1220,7 +1093,6 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
         <button
           onClick={() => {
             setIsEnvSidebarOpen(true);
-            setWasEnvSidebarOpened(true);
           }}
           className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
           title="จัดการตัวแปรสภาพแวดล้อม"
@@ -1229,147 +1101,14 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
         </button>
       )}
 
-      {/* Off-canvas sidebar for env management */}
-      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
-        <>
-          {/* Overlay */}
-          {isEnvSidebarOpen && (
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 z-40"
-              onClick={() => setIsEnvSidebarOpen(false)}
-            />
-          )}
-
-          <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-50 ${isEnvSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b">
-                <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
-                <button
-                  onClick={() => setIsEnvSidebarOpen(false)}
-                  className="p-1 rounded-full hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-4">
-                  {/* Add new env variable */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="text-md font-medium mb-3">เพิ่มตัวแปรใหม่</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Key</label>
-                        <input
-                          type="text"
-                          value={newEnvVar.key}
-                          onChange={(e) => setNewEnvVar({ ...newEnvVar, key: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="ACCESS_TOKEN_PANCAKE_1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-                        <textarea
-                          value={newEnvVar.value}
-                          onChange={(e) => setNewEnvVar({ ...newEnvVar, value: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="ค่าของตัวแปร"
-                          rows={3}
-                        />
-                      </div>
-                      <button
-                        onClick={() => saveEnvVariable(newEnvVar)}
-                        disabled={isLoading}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        <Save className="w-4 h-4" />
-                        {isLoading ? 'กำลังบันทึก...' : 'บันทึก'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List existing env variables */}
-                  <div>
-                    <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
-                    {(() => {
-                      // Filter env variables to show only ACCESS_TOKEN_PANCAKE_* for current user's company
-                      const filteredEnvVars = envVariables.filter(envVar =>
-                        envVar.key.startsWith('ACCESS_TOKEN_PANCAKE_') &&
-                        currentUser &&
-                        (envVar.key === `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}` || envVar.key === `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`)
-                      );
-
-                      return filteredEnvVars.length === 0 ? (
-                        <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {filteredEnvVars.map((envVar) => (
-                            <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1 mr-2">
-                                  <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
-                                  <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
-                                  {envVar.updated_at && (
-                                    <div className="text-xs text-gray-400 mt-1">
-                                      อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
-                                    </div>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => deleteEnvVariable(envVar.key)}
-                                  disabled={isLoading}
-                                  className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                  title="ลบตัวแปร"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Database Upload Setting */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="text-md font-medium mb-3">การตั้งค่าฐานข้อมูล</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="storeDbEnabled"
-                          checked={isStoreDbEnabled}
-                          onChange={(e) => {
-                            const isEnabled = e.target.checked;
-                            setIsStoreDbEnabled(isEnabled);
-
-                            // Save the setting to database
-                            saveEnvVariable({
-                              key: 'page_store_db',
-                              value: isEnabled ? '1' : '0'
-                            });
-                          }}
-                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="storeDbEnabled" className="text-sm text-gray-700">
-                          เปิดใช้งานฟังก์ชันอัปโหลดข้อมูลลงฐานข้อมูล
-                        </label>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        เมื่อปิดใช้งาน ปุ่ม "อัปโหลดข้อมูล" จะไม่แสดง
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Off-canvas sidebar for env management - Refactored to component */}
+      <PancakeEnvOffSidebar
+        isOpen={isEnvSidebarOpen}
+        onClose={() => setIsEnvSidebarOpen(false)}
+        currentUser={currentUser}
+        onUpdate={() => {
+        }}
+      />
     </div>
   );
 };

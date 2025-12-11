@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Page, User } from "@/types";
+import { Page, User, UserRole } from "@/types";
 import Modal from "@/components/Modal";
 import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
+import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { Settings } from "lucide-react";
 
 // Function to sync pages from pages.fm API to database
 const syncPagesWithDatabase = async (currentUser?: User) => {
@@ -341,6 +343,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   // Pancake Show In Create Order Env
   const [pancakeShowInCreateOrder, setPancakeShowInCreateOrder] = useState(false);
   const [loadingPancakeEnv, setLoadingPancakeEnv] = useState(false);
+  const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState(false);
 
   // Fetch page types from env
   const fetchPageTypes = async () => {
@@ -1301,7 +1304,30 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             </div>
           </div>
         )}
+
       </div>
+
+      {/* Floating button for env management - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
+        <button
+          onClick={() => setIsEnvSidebarOpen(true)}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
+          title="จัดการตัวแปรสภาพแวดล้อม"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Off-canvas sidebar for env management */}
+      <PancakeEnvOffSidebar
+        isOpen={isEnvSidebarOpen}
+        onClose={() => setIsEnvSidebarOpen(false)}
+        currentUser={currentUser}
+        onUpdate={() => {
+          fetchPageTypes();
+          fetchPancakeEnv();
+        }}
+      />
     </div >
   );
 };
