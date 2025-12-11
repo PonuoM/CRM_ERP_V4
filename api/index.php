@@ -2659,11 +2659,31 @@ function handle_pages(PDO $pdo, ?string $id): void {
                 } else {
                     $companyId = $_GET['companyId'] ?? null;
                     $pageType = $_GET['page_type'] ?? null;
+                    $checkPancakeShow = isset($_GET['CheckPancakeShow']) && $_GET['CheckPancakeShow'] == '1';
+
                     $sql = 'SELECT p.*, (SELECT COUNT(*) FROM marketing_user_page WHERE page_id = p.id) as marketing_user_count FROM pages p WHERE still_in_list = 1';
                     $params = [];
                     if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
                     if ($pageType) { $sql .= ' AND page_type = ?'; $params[] = $pageType; }
                     if (isset($_GET['active'])) { $sql .= ' AND active = ?'; $params[] = $_GET['active']; }
+
+                    // CheckPancakeShow logic
+                    if ($checkPancakeShow && $companyId) {
+                        try {
+                            $envStmt = $pdo->prepare("SELECT value FROM env WHERE `key` = 'PANCAKE_SHOW_IN_CREATE_ORDER' AND company_id = ?");
+                            $envStmt->execute([$companyId]);
+                            $envVal = $envStmt->fetchColumn();
+                            
+                            // If env value is not '1', exclude pancake pages
+                            if ($envVal != '1') {
+                                $sql .= " AND (page_type IS NULL OR page_type != 'pancake')";
+                            }
+                        } catch (Throwable $e) {
+                            // If env table issue, exclude by default
+                            $sql .= " AND (page_type IS NULL OR page_type != 'pancake')";
+                        }
+                    }
+
                     $sql .= ' ORDER BY id DESC LIMIT 500';
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
