@@ -411,7 +411,7 @@ export interface OrderSlip {
 export interface Order {
   id: string;
   customerId: string;
-  customerType?: string;
+  customerStatus?: string;
   customerRefId?: number;
   companyId: number;
   creatorId: number;

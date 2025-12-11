@@ -360,7 +360,7 @@ const OrderSummary: React.FC<{
 
   return (
 
-    <div className="bg-slate-50 border border-gray-300 rounded-lg p-4 sticky top-6">
+    <div className="bg-white border border-gray-300 rounded-lg p-4 sticky top-6">
 
       <h3 className="font-semibold text-base mb-3 pb-2 border-b text-[#0e141b]">
 
@@ -539,8 +539,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
 
-  type CustomerStatus = "new" | "existing" | "reorder" | null;
-  const [customerStatus, setCustomerStatus] = useState<CustomerStatus>("existing");
+  const [customerStatus, setCustomerStatus] = useState("");
+
+
   const isUpsellMode = initialData?.upsell === true;
 
   const [upsellOrders, setUpsellOrders] = useState<Order[]>([]);
@@ -5456,9 +5457,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     }
 
+
     // Validate Customer Status
     if (!customerStatus) {
-      alert("กรุณาเลือกสถานะลูกค้า (ลูกค้าใหม่ หรือ ลูกค้าเก่า)");
+      alert("กรุณาเลือกสถานะลูกค้า");
       return;
     }
 
@@ -5760,7 +5762,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       })(),
 
       warehouseId: warehouseId || undefined,
-      customerType: isCreatingNewCustomer ? newCustomerType : editedCustomerType,
+      customerStatus: customerStatus,
     };
 
 
@@ -9241,159 +9243,157 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
 
 
-                  {customerStatus === "existing" && (
-                    <div>
+                  <div>
 
-                      <label className={commonLabelClass}>
+                    <label className={commonLabelClass}>
 
-                        ค้นหาลูกค้า (ชื่อ / เบอร์โทร)
+                      ค้นหาลูกค้า (ชื่อ / เบอร์โทร)
 
-                      </label>
+                    </label>
 
-                      <input
+                    <input
 
-                        type="text"
+                      type="text"
 
-                        ref={customerSearchInputRef}
+                      ref={customerSearchInputRef}
 
-                        value={searchTerm}
+                      value={searchTerm}
 
-                        onChange={(e) => {
+                      onChange={(e) => {
 
-                          clearValidationErrorFor("customerSelector");
+                        clearValidationErrorFor("customerSelector");
 
-                          setSearchTerm(e.target.value);
+                        setSearchTerm(e.target.value);
 
-                          setSelectedCustomer(null);
+                        setSelectedCustomer(null);
 
-                          setIsCreatingNewCustomer(false);
+                        setIsCreatingNewCustomer(false);
 
-                        }}
+                      }}
 
-                        placeholder="พิมพ์เพื่อค้นหา..."
+                      placeholder="พิมพ์เพื่อค้นหา..."
 
-                        className={commonInputClass}
+                      className={commonInputClass}
 
-                        disabled={loadingCustomerData}
+                      disabled={loadingCustomerData}
 
-                      />
+                    />
 
-                      {loadingCustomerData && (
+                    {loadingCustomerData && (
 
-                        <div className="mt-2 text-sm text-blue-600 flex items-center">
+                      <div className="mt-2 text-sm text-blue-600 flex items-center">
 
-                          <svg
+                        <svg
 
-                            className="animate-spin h-4 w-4 mr-2"
+                          className="animate-spin h-4 w-4 mr-2"
 
-                            viewBox="0 0 24 24"
+                          viewBox="0 0 24 24"
 
-                          >
+                        >
 
-                            <circle
+                          <circle
 
-                              className="opacity-25"
+                            className="opacity-25"
 
-                              cx="12"
+                            cx="12"
 
-                              cy="12"
+                            cy="12"
 
-                              r="10"
+                            r="10"
 
-                              stroke="currentColor"
+                            stroke="currentColor"
 
-                              strokeWidth="4"
+                            strokeWidth="4"
 
-                              fill="none"
+                            fill="none"
 
-                            />
+                          />
 
-                            <path
+                          <path
 
-                              className="opacity-75"
+                            className="opacity-75"
 
-                              fill="currentColor"
+                            fill="currentColor"
 
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 
-                            />
+                          />
 
-                          </svg>
+                        </svg>
 
-                          กำลังโหลดข้อมูลลูกค้า...
+                        กำลังโหลดข้อมูลลูกค้า...
 
-                        </div>
+                      </div>
+
+                    )}
+
+                    {searchResults.length > 0 &&
+
+                      !selectedCustomer &&
+
+                      !loadingCustomerData && (
+
+                        <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
+
+                          {searchResults.map((c) => (
+
+                            <li
+
+                              key={
+
+                                c.id ||
+
+                                c.customerId ||
+
+                                c.customerRefId ||
+
+                                `${c.phone}-${c.firstName}-${c.lastName}`
+
+                              }
+
+                              onClick={() => handleSelectCustomer(c)}
+
+                              className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
+
+                            >
+
+                              {`${c.firstName} ${c.lastName}`} - {c.phone}
+
+                            </li>
+
+                          ))}
+
+                        </ul>
 
                       )}
 
-                      {searchResults.length > 0 &&
+                    {!selectedCustomer &&
 
-                        !selectedCustomer &&
+                      searchTerm &&
 
-                        !loadingCustomerData && (
+                      searchResults.length === 0 &&
 
-                          <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
+                      !isCreatingNewCustomer && (
 
-                            {searchResults.map((c) => (
+                        <button
 
-                              <li
+                          onClick={() => {
+                            startCreatingNewCustomer();
+                          }}
 
-                                key={
+                          className="mt-2 text-sm text-blue-600 font-medium hover:underline"
 
-                                  c.id ||
+                        >
 
-                                  c.customerId ||
+                          ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
 
-                                  c.customerRefId ||
+                        </button>
 
-                                  `${c.phone}-${c.firstName}-${c.lastName}`
+                      )}
 
-                                }
+                  </div>
 
-                                onClick={() => handleSelectCustomer(c)}
 
-                                className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
-
-                              >
-
-                                {`${c.firstName} ${c.lastName}`} - {c.phone}
-
-                              </li>
-
-                            ))}
-
-                          </ul>
-
-                        )}
-
-                      {!selectedCustomer &&
-
-                        searchTerm &&
-
-                        searchResults.length === 0 &&
-
-                        !isCreatingNewCustomer && (
-
-                          <button
-
-                            onClick={() => {
-                              // If they click "Create new" from search, switch status to 'new'
-                              setCustomerStatus('new');
-                              startCreatingNewCustomer();
-                            }}
-
-                            className="mt-2 text-sm text-blue-600 font-medium hover:underline"
-
-                          >
-
-                            ไม่พบลูกค้านี้ในระบบ? สร้างรายชื่อใหม่
-
-                          </button>
-
-                        )}
-
-                    </div>
-                  )}
 
 
 
@@ -9523,24 +9523,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     สถานะลูกค้า <span className="text-red-500">*</span>
                                   </label>
                                   <select
-                                    value={customerStatus || ""}
-                                    onChange={(e) => {
-                                      const status = e.target.value as any;
-                                      setCustomerStatus(status);
-                                      if (status === "existing") {
-                                        setIsCreatingNewCustomer(false);
-                                      } else {
-                                        setIsCreatingNewCustomer(true);
-                                        // Update the type tag as well
-                                        if (status === "new") setNewCustomerType("New Customer");
-                                        if (status === "reorder") setNewCustomerType("Reorder");
-                                      }
-                                    }}
-                                    className={`${commonInputClass} ${!customerStatus ? "border-red-500 ring-1 ring-red-500" : ""}`}
+                                    value={customerStatus}
+                                    onChange={(e) => setCustomerStatus(e.target.value)}
+                                    className={commonInputClass}
                                   >
-                                    <option value="" disabled>-- เลือก --</option>
-                                    <option value="new">ลูกค้าใหม่</option>
-                                    <option value="reorder">รีออเดอร์</option>
+                                    <option value="">กรุณาเลือก</option>
+                                    <option value="New Customer">ลูกค้าใหม่</option>
+                                    <option value="Reorder Customer">ลูกค้ารีออเดอร์</option>
                                   </select>
                                 </div>
                               </div>
@@ -9669,26 +9658,13 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     สถานะลูกค้า <span className="text-red-500">*</span>
                                   </label>
                                   <select
-                                    value={customerStatus || "existing"} // existing or reorder?
-                                    // If we are editing an existing customer, status is 'existing'.
-                                    // But user might want to switch to 'new' or 'reorder' mode (which clears selection).
-                                    onChange={(e) => {
-                                      const status = e.target.value as any;
-                                      setCustomerStatus(status);
-                                      if (status === "new" || status === "reorder") {
-                                        setIsCreatingNewCustomer(true);
-                                        setSelectedCustomer(null);
-                                        // Set type
-                                        if (status === "new") setNewCustomerType("New Customer");
-                                        if (status === "reorder") setNewCustomerType("Reorder");
-                                      }
-                                      // If 'existing', do nothing (we are here)
-                                    }}
+                                    value={customerStatus}
+                                    onChange={(e) => setCustomerStatus(e.target.value)}
                                     className={commonInputClass}
                                   >
-                                    <option value="" disabled>-- เลือก --</option>
-                                    <option value="new">ลูกค้าใหม่</option>
-                                    <option value="reorder">รีออเดอร์</option>
+                                    <option value="">กรุณาเลือก</option>
+                                    <option value="New Customer">ลูกค้าใหม่</option>
+                                    <option value="Reorder Customer">ลูกค้ารีออเดอร์</option>
                                   </select>
                                 </div>
                               </div>
