@@ -5760,7 +5760,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       })(),
 
       warehouseId: warehouseId || undefined,
-
+      customerType: isCreatingNewCustomer ? newCustomerType : editedCustomerType,
     };
 
 
