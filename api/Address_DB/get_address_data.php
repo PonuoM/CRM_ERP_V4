@@ -98,10 +98,10 @@ try {
                     JOIN address_districts d ON sd.district_id = d.id
                     JOIN address_provinces p ON d.province_id = p.id
                     LEFT JOIN address_geographies g ON p.geography_id = g.id
-                    WHERE sd.zip_code = ?
+                    WHERE sd.zip_code LIKE ?
                     ORDER BY sd.name_th
                 ");
-                $stmt->execute([$search]);
+                $stmt->execute([$search . '%']);
                 $response['data'] = $stmt->fetchAll();
             } else {
                 $response['success'] = false;

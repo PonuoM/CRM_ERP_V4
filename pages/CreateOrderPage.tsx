@@ -397,6 +397,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const [customerStatus, setCustomerStatus] = useState("");
   const customerStatusRef = useRef<HTMLSelectElement>(null);
+  const postalCodeInputRef = useRef<HTMLInputElement>(null);
 
   const isUpsellMode = initialData?.upsell === true;
 
@@ -2126,6 +2127,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     }
   }, [selectedDistrict]);
 
+  // Restore focus to postal code input when results are loaded
+  useEffect(() => {
+    if (showPostalCodeDropdown && postalCodeResults.length > 0) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        postalCodeInputRef.current?.focus();
+      });
+    }
+  }, [showPostalCodeDropdown, postalCodeResults.length]);
+
   // Update shipping address when sub-district is selected or when subdistricts data is loaded
 
   useEffect(() => {
@@ -3564,7 +3575,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         return;
       }
 
-      if (numericValue.length === 5) {
+      if (numericValue.length >= 3) {
         setAddressLoading(true);
 
         // Ensure provinces are loaded first
@@ -7923,6 +7934,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         </label>
 
                         <input
+                          ref={postalCodeInputRef}
                           type="text"
                           name="postalCode"
                           value={shippingAddress.postalCode}
