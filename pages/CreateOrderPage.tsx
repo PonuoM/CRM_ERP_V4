@@ -396,6 +396,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [isCreatingNewCustomer, setIsCreatingNewCustomer] = useState(false);
 
   const [customerStatus, setCustomerStatus] = useState("");
+  const customerStatusRef = useRef<HTMLSelectElement>(null);
 
   const isUpsellMode = initialData?.upsell === true;
 
@@ -704,30 +705,30 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       shippingAddress: raw.shippingAddress ??
         raw.shipping_address ?? {
-          recipientFirstName:
-            raw.recipientFirstName ?? raw.recipient_first_name,
+        recipientFirstName:
+          raw.recipientFirstName ?? raw.recipient_first_name,
 
-          recipientLastName: raw.recipientLastName ?? raw.recipient_last_name,
+        recipientLastName: raw.recipientLastName ?? raw.recipient_last_name,
 
-          street: raw.street,
+        street: raw.street,
 
-          subdistrict: raw.subdistrict,
+        subdistrict: raw.subdistrict,
 
-          district: raw.district,
+        district: raw.district,
 
-          province: raw.province,
+        province: raw.province,
 
-          postalCode: raw.postalCode ?? raw.postal_code,
-        },
+        postalCode: raw.postalCode ?? raw.postal_code,
+      },
 
       creatorId: raw.creatorId ?? raw.creator_id ?? raw.seller_id ?? null,
 
       totalAmount: Number(
         raw.totalAmount ??
-          raw.total_amount ??
-          raw.net_total ??
-          raw.summary_total ??
-          0,
+        raw.total_amount ??
+        raw.net_total ??
+        raw.summary_total ??
+        0,
       ),
 
       items: normalizeUpsellItems(
@@ -792,9 +793,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   useEffect(() => {
     const pm = selectedUpsellOrder
       ? normalizePaymentMethod(
-          selectedUpsellOrder.paymentMethod ??
-            (selectedUpsellOrder as any).payment_method,
-        )
+        selectedUpsellOrder.paymentMethod ??
+        (selectedUpsellOrder as any).payment_method,
+      )
       : undefined;
 
     if (!selectedUpsellOrder || pm !== PaymentMethod.Transfer) {
@@ -834,7 +835,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     if (!selectedUpsellOrder) return false;
     const pm = normalizePaymentMethod(
       selectedUpsellOrder.paymentMethod ??
-        (selectedUpsellOrder as any).payment_method,
+      (selectedUpsellOrder as any).payment_method,
     );
     return pm === PaymentMethod.Transfer;
   }, [selectedUpsellOrder]);
@@ -1147,7 +1148,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     const normalizedPayment = normalizePaymentMethod(
       selectedUpsellOrder.paymentMethod ??
-        (selectedUpsellOrder as any).payment_method,
+      (selectedUpsellOrder as any).payment_method,
     );
     if (normalizedPayment !== PaymentMethod.Transfer) {
       event.target.value = "";
@@ -2881,16 +2882,16 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         oldPrimaryAddress: currentCustomerAddress
           ? {
-              address: currentCustomerAddress.street || "",
+            address: currentCustomerAddress.street || "",
 
-              sub_district: currentCustomerAddress.subdistrict || "",
+            sub_district: currentCustomerAddress.subdistrict || "",
 
-              district: currentCustomerAddress.district || "",
+            district: currentCustomerAddress.district || "",
 
-              province: currentCustomerAddress.province || "",
+            province: currentCustomerAddress.province || "",
 
-              zip_code: currentCustomerAddress.postalCode || "",
-            }
+            zip_code: currentCustomerAddress.postalCode || "",
+          }
           : null,
       };
 
@@ -2920,12 +2921,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             address: {
               recipientFirstName: sanitizeAddressValue(
                 newPrimaryAddress.recipient_first_name ??
-                  newPrimaryAddress.recipientFirstName,
+                newPrimaryAddress.recipientFirstName,
               ),
 
               recipientLastName: sanitizeAddressValue(
                 newPrimaryAddress.recipient_last_name ??
-                  newPrimaryAddress.recipientLastName,
+                newPrimaryAddress.recipientLastName,
               ),
 
               street: sanitizeAddressValue(newPrimaryAddress.address),
@@ -3021,7 +3022,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       } else {
         alert(
           "ไม่สามารถตั้งค่าที่อยู่หลักได้: " +
-            (result.message || "เกิดข้อผิดพลาด"),
+          (result.message || "เกิดข้อผิดพลาด"),
         );
       }
     } catch (error) {
@@ -3231,8 +3232,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       address: {
         recipientFirstName: sanitizeAddressValue(
           apiData.recipient_first_name ??
-            apiData.recipientFirstName ??
-            firstName,
+          apiData.recipientFirstName ??
+          firstName,
         ),
 
         recipientLastName: sanitizeAddressValue(
@@ -3642,8 +3643,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                 const province = Array.isArray(loadedProvinces)
                   ? loadedProvinces.find(
-                      (p: any) => p.id === result.province_id,
-                    )
+                    (p: any) => p.id === result.province_id,
+                  )
                   : provinces.find((p) => p.id === result.province_id);
 
                 if (province) {
@@ -4027,6 +4028,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     // Validate Customer Status
     if (!customerStatus) {
       alert("กรุณาเลือกสถานะลูกค้า");
+      customerStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      customerStatusRef.current?.focus();
       return;
     }
 
@@ -4230,7 +4233,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         typeof orderData.paymentStatus !== "undefined"
           ? orderData.paymentStatus
           : orderData.paymentMethod === PaymentMethod.Transfer &&
-              transferSlipUploads.length > 0
+            transferSlipUploads.length > 0
             ? PaymentStatus.PendingVerification
             : PaymentStatus.Unpaid,
 
@@ -4384,9 +4387,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       const hasNameChanged =
         editedCustomerFirstName.trim() !==
-          (selectedCustomer?.firstName || "").trim() ||
+        (selectedCustomer?.firstName || "").trim() ||
         editedCustomerLastName.trim() !==
-          (selectedCustomer?.lastName || "").trim();
+        (selectedCustomer?.lastName || "").trim();
 
       const hasPhoneChanged =
         editedCustomerPhone.trim() !== (selectedCustomer?.phone || "").trim();
@@ -4841,12 +4844,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const price = isFree
         ? 0
         : toNumber(
-            (part as any).price_override ??
-              (part as any).priceOverride ??
-              (part as any).product_price,
+          (part as any).price_override ??
+          (part as any).priceOverride ??
+          (part as any).product_price,
 
-            prod?.price ?? 0,
-          );
+          prod?.price ?? 0,
+        );
 
       total += price * qty;
     }
@@ -5186,28 +5189,28 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         orderData.items?.map((it) =>
           it.id === editingItemId
             ? {
-                ...it,
+              ...it,
 
-                productName: p.name,
+              productName: p.name,
 
-                productId: p.id,
+              productId: p.id,
 
-                pricePerUnit: p.price,
+              pricePerUnit: p.price,
 
-                quantity: it.quantity || 1, // เก็บจำนวนเดิม
+              quantity: it.quantity || 1, // เก็บจำนวนเดิม
 
-                discount: it.discount || 0, // เก็บส่วนลดเดิม
+              discount: it.discount || 0, // เก็บส่วนลดเดิม
 
-                boxNumber: it.boxNumber || 1, // เก็บกล่องเดิม
+              boxNumber: it.boxNumber || 1, // เก็บกล่องเดิม
 
-                isFreebie: it.isFreebie || false, // เก็บสถานะของแถมเดิม
+              isFreebie: it.isFreebie || false, // เก็บสถานะของแถมเดิม
 
-                isPromotionParent: false, // เคลียร์ promotion parent status
+              isPromotionParent: false, // เคลียร์ promotion parent status
 
-                promotionId: undefined, // เคลียร์ promotionId
+              promotionId: undefined, // เคลียร์ promotionId
 
-                parentItemId: undefined, // เคลียร์ parentItemId
-              }
+              parentItemId: undefined, // เคลียร์ parentItemId
+            }
             : it,
         ),
       );
@@ -5534,14 +5537,14 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <span className="ml-2 font-medium text-gray-800">
                       {selectedUpsellOrder.deliveryDate
                         ? (() => {
-                            try {
-                              return new Date(
-                                selectedUpsellOrder.deliveryDate,
-                              ).toLocaleDateString("th-TH");
-                            } catch {
-                              return "-";
-                            }
-                          })()
+                          try {
+                            return new Date(
+                              selectedUpsellOrder.deliveryDate,
+                            ).toLocaleDateString("th-TH");
+                          } catch {
+                            return "-";
+                          }
+                        })()
                         : "-"}
                     </span>
                   </div>
@@ -5560,7 +5563,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <span className="ml-2 font-medium text-gray-800">
                       {resolvePaymentMethodLabel(
                         selectedUpsellOrder.paymentMethod ??
-                          (selectedUpsellOrder as any).payment_method,
+                        (selectedUpsellOrder as any).payment_method,
                       )}
                     </span>
                   </div>
@@ -5845,7 +5848,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   setUpsellSlips((prev) =>
                                     prev.map((s) =>
                                       (s.id && slip.id && s.id === slip.id) ||
-                                      (!s.id && !slip.id && s.url === slip.url)
+                                        (!s.id && !slip.id && s.url === slip.url)
                                         ? { ...s, transferDate: value }
                                         : s,
                                     ),
@@ -5865,7 +5868,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 placeholder="0.00"
                                 value={
                                   typeof slip.amount === "number" &&
-                                  !Number.isNaN(slip.amount)
+                                    !Number.isNaN(slip.amount)
                                     ? slip.amount
                                     : ""
                                 }
@@ -5876,7 +5879,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   setUpsellSlips((prev) =>
                                     prev.map((s) =>
                                       (s.id && slip.id && s.id === slip.id) ||
-                                      (!s.id && !slip.id && s.url === slip.url)
+                                        (!s.id && !slip.id && s.url === slip.url)
                                         ? { ...s, amount: nextAmount }
                                         : s,
                                     ),
@@ -5934,11 +5937,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setUpsellSelectorTab("products")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          upsellSelectorTab === "products"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                        }`}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${upsellSelectorTab === "products"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          }`}
                       >
                         สินค้าปกติ
                       </button>
@@ -5947,11 +5949,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setUpsellSelectorTab("promotions")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          upsellSelectorTab === "promotions"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                        }`}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${upsellSelectorTab === "promotions"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          }`}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
                       </button>
@@ -6137,7 +6138,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </label>
 
                               {selectedUpsellOrder?.paymentMethod ===
-                              PaymentMethod.COD ? (
+                                PaymentMethod.COD ? (
                                 <select
                                   value={item.boxNumber || 1}
                                   onChange={(e) =>
@@ -6861,6 +6862,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     <span className="text-red-500">*</span>
                                   </label>
                                   <select
+                                    ref={customerStatusRef}
                                     value={customerStatus}
                                     onChange={(e) =>
                                       setCustomerStatus(e.target.value)
@@ -6962,6 +6964,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     <span className="text-red-500">*</span>
                                   </label>
                                   <select
+                                    ref={customerStatusRef}
                                     value={customerStatus}
                                     onChange={(e) =>
                                       setCustomerStatus(e.target.value)
@@ -7090,136 +7093,136 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 !selectedPlatform.showPagesFrom)
                             );
                           })() && (
-                            <select
-                              ref={salesChannelPageRef}
-                              value={salesChannelPageId ?? ""}
-                              onChange={(e) => {
-                                clearValidationErrorFor("salesChannelPage");
+                              <select
+                                ref={salesChannelPageRef}
+                                value={salesChannelPageId ?? ""}
+                                onChange={(e) => {
+                                  clearValidationErrorFor("salesChannelPage");
 
-                                setSalesChannelPageId(
-                                  e.target.value
-                                    ? Number(e.target.value)
-                                    : null,
-                                );
-                              }}
-                              className={commonInputClass}
-                            >
-                              <option value="">เลือกเพจ</option>
+                                  setSalesChannelPageId(
+                                    e.target.value
+                                      ? Number(e.target.value)
+                                      : null,
+                                  );
+                                }}
+                                className={commonInputClass}
+                              >
+                                <option value="">เลือกเพจ</option>
 
-                              {(() => {
-                                // Filter pages by selected platform (dynamic, no hardcode)
+                                {(() => {
+                                  // Filter pages by selected platform (dynamic, no hardcode)
 
-                                // If platform has show_pages_from, use that instead of the platform name
+                                  // If platform has show_pages_from, use that instead of the platform name
 
-                                if (!salesChannel) return [];
+                                  if (!salesChannel) return [];
 
-                                const selectedPlatform = platforms.find(
-                                  (p) => p.name === salesChannel,
-                                );
-
-                                if (!selectedPlatform) {
-                                  console.log(
-                                    "🔍 Platform not found:",
-
-                                    salesChannel,
+                                  const selectedPlatform = platforms.find(
+                                    (p) => p.name === salesChannel,
                                   );
 
-                                  return [];
-                                }
+                                  if (!selectedPlatform) {
+                                    console.log(
+                                      "🔍 Platform not found:",
 
-                                // Determine which platform name to use for filtering pages
+                                      salesChannel,
+                                    );
 
-                                // If showPagesFrom is set and not empty, use it; otherwise use the platform's own name
+                                    return [];
+                                  }
 
-                                const hasShowPagesFrom =
-                                  selectedPlatform.showPagesFrom &&
-                                  typeof selectedPlatform.showPagesFrom ===
+                                  // Determine which platform name to use for filtering pages
+
+                                  // If showPagesFrom is set and not empty, use it; otherwise use the platform's own name
+
+                                  const hasShowPagesFrom =
+                                    selectedPlatform.showPagesFrom &&
+                                    typeof selectedPlatform.showPagesFrom ===
                                     "string" &&
-                                  selectedPlatform.showPagesFrom.trim() !== "";
+                                    selectedPlatform.showPagesFrom.trim() !== "";
 
-                                // Only return empty if showPagesFrom is explicitly set to empty string
+                                  // Only return empty if showPagesFrom is explicitly set to empty string
 
-                                // If showPagesFrom is null or undefined, use the platform's own name
+                                  // If showPagesFrom is null or undefined, use the platform's own name
 
-                                if (selectedPlatform.showPagesFrom === "") {
-                                  console.log(
-                                    "🔍 Platform has showPagesFrom set to empty string:",
+                                  if (selectedPlatform.showPagesFrom === "") {
+                                    console.log(
+                                      "🔍 Platform has showPagesFrom set to empty string:",
 
-                                    selectedPlatform,
-                                  );
+                                      selectedPlatform,
+                                    );
 
-                                  return [];
-                                }
+                                    return [];
+                                  }
 
-                                const platformToFilter = hasShowPagesFrom
-                                  ? selectedPlatform.showPagesFrom
-                                  : salesChannel;
+                                  const platformToFilter = hasShowPagesFrom
+                                    ? selectedPlatform.showPagesFrom
+                                    : salesChannel;
 
-                                console.log("🔍 Filtering pages:", {
-                                  salesChannel,
+                                  console.log("🔍 Filtering pages:", {
+                                    salesChannel,
 
-                                  showPagesFrom: selectedPlatform.showPagesFrom,
+                                    showPagesFrom: selectedPlatform.showPagesFrom,
 
-                                  platformToFilter,
+                                    platformToFilter,
 
-                                  totalPages: pages.length,
+                                    totalPages: pages.length,
 
-                                  pages: pages.map((p: any) => ({
-                                    name: p.name,
+                                    pages: pages.map((p: any) => ({
+                                      name: p.name,
 
-                                    platform: p.platform,
+                                      platform: p.platform,
 
-                                    active: p.active,
-                                  })),
-                                });
+                                      active: p.active,
+                                    })),
+                                  });
 
-                                const filteredPages = pages.filter((pg) => {
-                                  const pagePlatform = (pg as any).platform;
+                                  const filteredPages = pages.filter((pg) => {
+                                    const pagePlatform = (pg as any).platform;
 
-                                  if (!pagePlatform) return false;
+                                    if (!pagePlatform) return false;
 
-                                  // Case-insensitive comparison: compare page platform with platformToFilter
+                                    // Case-insensitive comparison: compare page platform with platformToFilter
 
-                                  const isPlatformMatch =
-                                    pagePlatform.toLowerCase() ===
-                                    platformToFilter.toLowerCase();
+                                    const isPlatformMatch =
+                                      pagePlatform.toLowerCase() ===
+                                      platformToFilter.toLowerCase();
 
-                                  // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
+                                    // Treat active as boolean-like (supports 1/0, '1'/'0', 'true'/'false')
 
-                                  const v: any = (pg as any).active;
+                                    const v: any = (pg as any).active;
 
-                                  const isActive =
-                                    typeof v === "boolean"
-                                      ? v
-                                      : typeof v === "number"
-                                        ? v !== 0
-                                        : typeof v === "string"
-                                          ? v.trim() !== "" &&
+                                    const isActive =
+                                      typeof v === "boolean"
+                                        ? v
+                                        : typeof v === "number"
+                                          ? v !== 0
+                                          : typeof v === "string"
+                                            ? v.trim() !== "" &&
                                             v !== "0" &&
                                             v.toLowerCase() !== "false"
-                                          : Boolean(v);
+                                            : Boolean(v);
 
-                                  return isPlatformMatch && isActive;
-                                });
+                                    return isPlatformMatch && isActive;
+                                  });
 
-                                console.log("🔍 Filtered pages result:", {
-                                  count: filteredPages.length,
+                                  console.log("🔍 Filtered pages result:", {
+                                    count: filteredPages.length,
 
-                                  pages: filteredPages.map((p: any) => p.name),
-                                });
+                                    pages: filteredPages.map((p: any) => p.name),
+                                  });
 
-                                return filteredPages
-                                  .sort((a, b) =>
-                                    a.name.localeCompare(b.name, "th"),
-                                  )
-                                  .map((pg) => (
-                                    <option key={pg.id} value={pg.id}>
-                                      {pg.name}
-                                    </option>
-                                  ));
-                              })()}
-                            </select>
-                          )}
+                                  return filteredPages
+                                    .sort((a, b) =>
+                                      a.name.localeCompare(b.name, "th"),
+                                    )
+                                    .map((pg) => (
+                                      <option key={pg.id} value={pg.id}>
+                                        {pg.name}
+                                      </option>
+                                    ));
+                                })()}
+                              </select>
+                            )}
                         </div>
                       </div>
                     </>
@@ -7279,11 +7282,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           {(selectedCustomer?.address?.recipientFirstName ||
                             selectedCustomer?.address?.recipientLastName) && (
-                            <div className="text-xs text-gray-500">
-                              ชื่อผู้รับ:{" "}
-                              {`${selectedCustomer.address.recipientFirstName || ""} ${selectedCustomer.address.recipientLastName || ""}`.trim()}
-                            </div>
-                          )}
+                              <div className="text-xs text-gray-500">
+                                ชื่อผู้รับ:{" "}
+                                {`${selectedCustomer.address.recipientFirstName || ""} ${selectedCustomer.address.recipientLastName || ""}`.trim()}
+                              </div>
+                            )}
 
                           {selectedCustomer?.address && (
                             <div className="text-sm text-gray-600 mt-1">
@@ -7329,11 +7332,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               {(address.recipient_first_name ||
                                 address.recipient_last_name) && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  ชื่อผู้รับ:{" "}
-                                  {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""}`.trim()}
-                                </div>
-                              )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    ชื่อผู้รับ:{" "}
+                                    {`${address.recipient_first_name || ""} ${address.recipient_last_name || ""}`.trim()}
+                                  </div>
+                                )}
                             </div>
 
                             <div className="flex items-center space-x-1">
@@ -7476,7 +7479,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           value={
                             selectedProvince && !provinceSearchTerm
                               ? provinces.find((p) => p.id === selectedProvince)
-                                  ?.name_th || ""
+                                ?.name_th || ""
                               : provinceSearchTerm
                           }
                           onChange={(e) => {
@@ -7548,9 +7551,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               if (
                                 input.selectionStart ===
-                                  currentProvinceName.length ||
+                                currentProvinceName.length ||
                                 input.selectionEnd - input.selectionStart ===
-                                  currentProvinceName.length
+                                currentProvinceName.length
                               ) {
                                 setSelectedProvince(null);
 
@@ -7587,8 +7590,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         {showProvinceDropdown && (
                           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                             {postalCodeResults.length > 0 &&
-                            filteredProvinces.length === 0 &&
-                            provinces.length > 0 ? (
+                              filteredProvinces.length === 0 &&
+                              provinces.length > 0 ? (
                               <div className="px-3 py-2 text-yellow-600 text-sm bg-yellow-50">
                                 ⚠️ กรุณาเลือกรหัสไปรษณีย์ก่อน
                                 หรือไม่มีจังหวัดที่ตรงกับรหัสไปรษณีย์{" "}
@@ -7653,7 +7656,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           value={
                             selectedDistrict && !districtSearchTerm
                               ? districts.find((d) => d.id === selectedDistrict)
-                                  ?.name_th || ""
+                                ?.name_th || ""
                               : districtSearchTerm
                           }
                           onChange={(e) => {
@@ -7719,9 +7722,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               if (
                                 input.selectionStart ===
-                                  currentDistrictName.length ||
+                                currentDistrictName.length ||
                                 input.selectionEnd - input.selectionStart ===
-                                  currentDistrictName.length
+                                currentDistrictName.length
                               ) {
                                 setSelectedDistrict(null);
 
@@ -7792,8 +7795,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           value={
                             selectedSubDistrict && !subDistrictSearchTerm
                               ? subDistricts.find(
-                                  (sd) => sd.id === selectedSubDistrict,
-                                )?.name_th || ""
+                                (sd) => sd.id === selectedSubDistrict,
+                              )?.name_th || ""
                               : subDistrictSearchTerm
                           }
                           onChange={(e) => {
@@ -7845,9 +7848,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                               if (
                                 input.selectionStart ===
-                                  currentSubDistrictName.length ||
+                                currentSubDistrictName.length ||
                                 input.selectionEnd - input.selectionStart ===
-                                  currentSubDistrictName.length
+                                currentSubDistrictName.length
                               ) {
                                 setSelectedSubDistrict(null);
 
@@ -8159,10 +8162,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           value={
                             orderData.deliveryDate
                               ? (() => {
-                                  const [y, m, d] =
-                                    orderData.deliveryDate.split("-");
-                                  return `${d}/${m}/${y}`;
-                                })()
+                                const [y, m, d] =
+                                  orderData.deliveryDate.split("-");
+                                return `${d}/${m}/${y}`;
+                              })()
                               : ""
                           }
                           placeholder="dd/mm/yyyy"
@@ -8401,11 +8404,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         prev.map((s) =>
                                           s.id === slip.id
                                             ? {
-                                                ...s,
-                                                bankAccountId:
-                                                  Number(e.target.value) ||
-                                                  undefined,
-                                              }
+                                              ...s,
+                                              bankAccountId:
+                                                Number(e.target.value) ||
+                                                undefined,
+                                            }
                                             : s,
                                         ),
                                       )
@@ -8432,9 +8435,9 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         prev.map((s) =>
                                           s.id === slip.id
                                             ? {
-                                                ...s,
-                                                transferDate: e.target.value,
-                                              }
+                                              ...s,
+                                              transferDate: e.target.value,
+                                            }
                                             : s,
                                         ),
                                       )
@@ -8452,7 +8455,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                     min="0"
                                     value={
                                       typeof slip.amount === "number" &&
-                                      !Number.isNaN(slip.amount)
+                                        !Number.isNaN(slip.amount)
                                         ? slip.amount
                                         : ""
                                     }
@@ -8646,11 +8649,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab("products")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          selectorTab === "products"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                        }`}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "products"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          }`}
                       >
                         สินค้าปกติ
                       </button>
@@ -8658,11 +8660,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <li className="mr-2">
                       <button
                         onClick={() => setSelectorTab("promotions")}
-                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${
-                          selectorTab === "promotions"
-                            ? "text-blue-600 border-blue-600"
-                            : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
-                        }`}
+                        className={`inline-block py-2 px-4 border-b-2 rounded-t-lg ${selectorTab === "promotions"
+                          ? "text-blue-600 border-blue-600"
+                          : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                          }`}
                       >
                         โปรโมชั่น/เซ็ตสินค้า
                       </button>
@@ -8852,12 +8853,12 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 orderData.items?.map((it) =>
                                   it.id === item.id
                                     ? {
-                                        ...it,
+                                      ...it,
 
-                                        quantity: nextQty,
+                                      quantity: nextQty,
 
-                                        discount: clampedDiscount,
-                                      }
+                                      discount: clampedDiscount,
+                                    }
                                     : it,
                                 ),
                               );
@@ -8897,7 +8898,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               const baseTotal = item.isFreebie
                                 ? 0
                                 : (item.quantity || 0) *
-                                  (item.pricePerUnit || 0);
+                                (item.pricePerUnit || 0);
 
                               // ป้องกันไม่ให้ส่วนลดเกินยอดขายรวมทั้งหมด
 
@@ -8913,10 +8914,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 orderData.items?.map((it) =>
                                   it.id === item.id
                                     ? {
-                                        ...it,
+                                      ...it,
 
-                                        discount: clampedDiscount,
-                                      }
+                                      discount: clampedDiscount,
+                                    }
                                     : it,
                                 ),
                               );
@@ -8928,7 +8929,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               item.isFreebie
                                 ? 0
                                 : (item.quantity || 0) *
-                                  (item.pricePerUnit || 0)
+                                (item.pricePerUnit || 0)
                             }
                           />
                         </div>
@@ -8981,10 +8982,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 orderData.items?.map((it) =>
                                   it.id === item.id
                                     ? {
-                                        ...it,
+                                      ...it,
 
-                                        discount: calculatedDiscount,
-                                      }
+                                      discount: calculatedDiscount,
+                                    }
                                     : it,
                                 ),
                               );
@@ -8997,7 +8998,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               item.isFreebie
                                 ? 0
                                 : (item.quantity || 0) *
-                                  (item.pricePerUnit || 0)
+                                (item.pricePerUnit || 0)
                             }
                           />
                         </div>
@@ -9016,18 +9017,18 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 orderData.items?.map((it) =>
                                   it.id === item.id
                                     ? {
-                                        ...it,
+                                      ...it,
 
-                                        boxNumber: Math.max(
-                                          1,
+                                      boxNumber: Math.max(
+                                        1,
 
-                                          Math.min(
-                                            Number(e.target.value),
+                                        Math.min(
+                                          Number(e.target.value),
 
-                                            numBoxes,
-                                          ),
+                                          numBoxes,
                                         ),
-                                      }
+                                      ),
+                                    }
                                     : it,
                                 ),
                               )
