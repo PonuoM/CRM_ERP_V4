@@ -601,27 +601,27 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               province: r.province || '',
               postalCode: r.postal_code || '',
             },
-              items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-                id: Number(it.id ?? i + 1),
-                productName: String(it.product_name ?? ''),
-                quantity: Number(it.quantity ?? 0),
-                pricePerUnit: Number(it.price_per_unit ?? 0),
-                discount: Number(it.discount ?? 0),
-                isFreebie: !!(it.is_freebie ?? 0),
-                boxNumber: Number(it.box_number ?? 0),
-                productId: it.product_id ? Number(it.product_id) : undefined,
-                // Preserve raw order_items IDs so CSV export can use them
-                orderId:
-                  typeof it.order_id !== 'undefined' && it.order_id !== null
-                    ? String(it.order_id)
-                    : undefined,
-                parentOrderId:
-                  typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
-                    ? String(it.parent_order_id)
-                    : undefined,
-                netTotal: Number(it.net_total ?? 0),
-                isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              })) : [],
+            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+              id: Number(it.id ?? i + 1),
+              productName: String(it.product_name ?? ''),
+              quantity: Number(it.quantity ?? 0),
+              pricePerUnit: Number(it.price_per_unit ?? 0),
+              discount: Number(it.discount ?? 0),
+              isFreebie: !!(it.is_freebie ?? 0),
+              boxNumber: Number(it.box_number ?? 0),
+              productId: it.product_id ? Number(it.product_id) : undefined,
+              // Preserve raw order_items IDs so CSV export can use them
+              orderId:
+                typeof it.order_id !== 'undefined' && it.order_id !== null
+                  ? String(it.order_id)
+                  : undefined,
+              parentOrderId:
+                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
+                  ? String(it.parent_order_id)
+                  : undefined,
+              netTotal: Number(it.net_total ?? 0),
+              isPromotionParent: !!(it.is_promotion_parent ?? 0),
+            })) : [],
             shippingCost: Number(r.shipping_cost ?? 0),
             billDiscount: Number(r.bill_discount ?? 0),
             totalAmount: Number(r.total_amount ?? 0),
@@ -672,10 +672,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     const escapeCsvCell = (cellData: any): string => {
       const str = String(cellData ?? '');
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
+      // Force Excel to treat as text by using ="value" syntax
+      return `="${str.replace(/"/g, '""')}"`;
     };
 
     const rows = selectedOrders.flatMap(order => {
@@ -718,30 +716,48 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       // สร้างแถวสำหรับแต่ละ orderId
       const orderRows: any[] = [];
-      itemsByOrderId.forEach((items, onlineOrderId) => {
-          // Exclude promotion parent items (is_promotion_parent = 1 in DB)
-          const exportItems = items.filter((it: any) => !it.isPromotionParent);
-          if (exportItems.length === 0) {
-            return;
-          }
 
-          exportItems.forEach((item, index) => {
-            const codAmount = order.paymentMethod === PaymentMethod.COD
-              ? (order.boxes?.reduce((sum, box) => sum + (box.codAmount ?? 0), 0) || 0)
-              : 0;
+      // Sort keys (orderIds) by suffix (box number)
+      const sortedOnlineOrderIds = Array.from(itemsByOrderId.keys()).sort((a, b) => {
+        const matchA = a.match(/-(\d+)$/);
+        const matchB = b.match(/-(\d+)$/);
+        const suffixA = matchA ? parseInt(matchA[1], 10) : 0;
+        const suffixB = matchB ? parseInt(matchB[1], 10) : 0;
+
+        if (suffixA > 0 && suffixB > 0) {
+          return suffixA - suffixB;
+        }
+        if (suffixA !== suffixB) {
+          return suffixA - suffixB;
+        }
+        return a.localeCompare(b);
+      });
+
+      sortedOnlineOrderIds.forEach((onlineOrderId) => {
+        const items = itemsByOrderId.get(onlineOrderId)!;
+        // Exclude promotion parent items (is_promotion_parent = 1 in DB)
+        const exportItems = items.filter((it: any) => !it.isPromotionParent);
+        if (exportItems.length === 0) {
+          return;
+        }
+
+        exportItems.forEach((item, index) => {
+          const codAmount = order.paymentMethod === PaymentMethod.COD
+            ? (order.boxes?.reduce((sum, box) => sum + (box.codAmount ?? 0), 0) || 0)
+            : 0;
 
           // คำนวณ totalAmount สำหรับ orderId นี้
-            // จำนวนเงินที่ต้องชำระ: ใช้จาก order_boxes.cod_amount ของกล่องที่ sub_order_id ตรงกับ order_items.order_id
-            const boxForThisOrder = (order.boxes || []).find(
-              (b: any) =>
-                String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
-            );
-            const orderIdTotalAmount =
-              order.paymentMethod === PaymentMethod.COD
-                ? (boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
-                    ? boxForThisOrder.codAmount
-                    : 0)
-                : "";
+          // จำนวนเงินที่ต้องชำระ: ใช้จาก order_boxes.cod_amount ของกล่องที่ sub_order_id ตรงกับ order_items.order_id
+          const boxForThisOrder = (order.boxes || []).find(
+            (b: any) =>
+              String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
+          );
+          const orderIdTotalAmount =
+            order.paymentMethod === PaymentMethod.COD
+              ? (boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
+                ? boxForThisOrder.codAmount
+                : 0)
+              : "";
 
           // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
@@ -783,7 +799,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
             'ชื่อร้านค้า': shopName,
-            'เวลาที่สั่งซื้อ': '', // ว่างเปล่า
+            'เวลาที่สั่งซื้อ': index === 0 ? (order.orderDate?.substring(0, 10) ?? '') : '',
             'บัญชีร้านค้า': '', // ว่างเปล่า
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
@@ -796,8 +812,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
             'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
-            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ?? '') : '',
-            'หมายเลขมือถือ': index === 0 ? (customer?.phone ?? '') : '',
+            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
+            'หมายเลขมือถือ': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
             'สถานที่': index === 0 ? address.street : '',
             'ภูมิภาค': index === 0 ? address.subdistrict : '',
             'อำเภอ': index === 0 ? address.district : '',
@@ -807,10 +823,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
             'รับสินค้าที่ร้านหรือไม่': '',
             'รหัสสินค้าบนแพลตฟอร์ม': '', // ว่างเปล่า
-            'รหัสสินค้าในระบบ': item.id,
-            'ชื่อสินค้า': item.productName,
+            'รหัสสินค้าในระบบ': item.quantity > 1 ? `${product?.sku ?? ''}-${item.quantity}` : (product?.sku ?? ''),
+            'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
-            'จำนวน': item.quantity,
+            'จำนวน': 1,
             'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
             'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
@@ -994,15 +1010,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         return;
       }
 
-      // Validate Shipping Provider Selection
-      const missingShipping = selectedOrders.find(o => !o.shippingProvider || o.shippingProvider.trim() === '');
-      if (missingShipping) {
-        setHighlightedOrderId(missingShipping.id);
-        alert(`กรุณาเลือกขนส่งสำหรับออเดอร์ ${missingShipping.id} ก่อนทำการ Export`);
-        return;
-      } else {
-        setHighlightedOrderId(null);
-      }
+
 
     } catch (e) {
       console.error('pre-export validation failed', e);
@@ -1248,20 +1256,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         )}
         {activeTab === 'verified' && (
           <div className="flex items-center space-x-2">
-            <select
-              disabled={selectedIds.length === 0}
-              onChange={(e) => {
-                handleBulkShippingChange(e.target.value);
-                e.target.value = ''; // Reset selection
-              }}
-              defaultValue=""
-              className="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="" disabled>เลือกขนส่ง ({selectedIds.length})</option>
-              {SHIPPING_PROVIDERS.map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+
             <button
               onClick={handleExportAndProcessSelected}
               disabled={selectedIds.length === 0}
@@ -1486,8 +1481,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           selectable={activeTab === 'pending' || activeTab === 'verified'}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
-          showShippingColumn
-          shippingEditable={activeTab === 'verified'}
+          showShippingColumn={activeTab !== 'verified'}
+          shippingEditable={false}
           shippingOptions={SHIPPING_PROVIDERS}
           shippingSavingIds={Array.from(shippingSavingIds)}
           onShippingChange={handleShippingProviderChange}

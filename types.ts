@@ -471,6 +471,7 @@ export interface Page {
   // Optional page type from pages.page_type (e.g., business, personal)
   page_type?: string;
   pageType?: string;
+  marketing_user_count?: number; // Count of marketing users
 }
 
 export interface AdSpend {

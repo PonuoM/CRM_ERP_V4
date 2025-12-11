@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { UserRole } from "@/types";
 import {
   Search,
   UserCheck,
@@ -12,6 +13,9 @@ import {
   ExternalLink,
   Users,
   Database,
+  Settings,
+  Save,
+  Trash2,
 } from "lucide-react";
 import {
   listAdminPageUsers,
@@ -21,6 +25,7 @@ import {
   UserPancakeMapping,
 } from "../services/api";
 import PageIconFront from "@/components/PageIconFront";
+import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
 
 interface AdminPageUserFromDB {
@@ -71,6 +76,11 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
   currentUser,
 }) => {
   const apiBase = useMemo(() => resolveApiBasePath(), []);
+
+  // Env Manager State
+  const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
+
+  // Main State
   const [activeTab, setActiveTab] = useState<"mappings" | "search">("mappings");
   const [internalUsers, setInternalUsers] = useState<AdminPageUserFromDB[]>([]);
   const [pageUsers, setPageUsers] = useState<PageUserFromDB[]>([]);
@@ -110,7 +120,18 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
     loadPageUsers();
     loadPagesWithUsers();
     loadUserMappings();
-  }, []);
+    loadAdminPageUsers();
+    loadPageUsers();
+    loadPagesWithUsers();
+    loadUserMappings();
+
+    loadAdminPageUsers();
+    loadPageUsers();
+    loadPagesWithUsers();
+    loadUserMappings();
+  }, [currentUser]);
+
+
 
   const loadAdminPageUsers = async () => {
     setLoadingUsers(true);
@@ -472,13 +493,15 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={() => window.open("https://pancake.in.th", "_blank")}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            เปิด Pancake
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.open("https://pancake.in.th", "_blank")}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              เปิด Pancake
+            </button>
+          </div>
         </div>
       </div>
 
@@ -486,8 +509,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
       {message && (
         <div
           className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+            ? "bg-green-100 text-green-800"
+            : "bg-red-100 text-red-800"
             }`}
         >
           {message.type === "success" ? (
@@ -506,8 +529,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
             <button
               onClick={() => setActiveTab("mappings")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "mappings"
-                  ? "bg-orange-100 text-orange-700"
-                  : "text-gray-600 hover:text-gray-900"
+                ? "bg-orange-100 text-orange-700"
+                : "text-gray-600 hover:text-gray-900"
                 }`}
             >
               <div className="flex items-center gap-2">
@@ -518,8 +541,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
             <button
               onClick={() => setActiveTab("search")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "search"
-                  ? "bg-orange-100 text-orange-700"
-                  : "text-gray-600 hover:text-gray-900"
+                ? "bg-orange-100 text-orange-700"
+                : "text-gray-600 hover:text-gray-900"
                 }`}
             >
               <div className="flex items-center gap-2">
@@ -819,8 +842,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                             )
                           }
                           className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedInternalUser?.id === user.id
-                              ? "border-orange-500 bg-orange-50"
-                              : "border-gray-200 hover:bg-gray-50"
+                            ? "border-orange-500 bg-orange-50"
+                            : "border-gray-200 hover:bg-gray-50"
                             }`}
                         >
                           <div className="font-medium text-gray-900">
@@ -861,8 +884,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                     <button
                       onClick={() => setPageUserFilter("all")}
                       className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "all"
-                          ? "bg-orange-100 text-orange-700 border border-orange-300"
-                          : "bg-gray-100 text-gray-700 border border-gray-300"
+                        ? "bg-orange-100 text-orange-700 border border-orange-300"
+                        : "bg-gray-100 text-gray-700 border border-gray-300"
                         }`}
                     >
                       ทั้งหมด
@@ -870,8 +893,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                     <button
                       onClick={() => setPageUserFilter("connected")}
                       className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "connected"
-                          ? "bg-green-100 text-green-700 border border-green-300"
-                          : "bg-gray-100 text-gray-700 border border-gray-300"
+                        ? "bg-green-100 text-green-700 border border-green-300"
+                        : "bg-gray-100 text-gray-700 border border-gray-300"
                         }`}
                     >
                       เชื่อมต่อแล้ว
@@ -879,8 +902,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                     <button
                       onClick={() => setPageUserFilter("unconnected")}
                       className={`px-3 py-1.5 text-sm rounded-md ${pageUserFilter === "unconnected"
-                          ? "bg-red-100 text-red-700 border border-red-300"
-                          : "bg-gray-100 text-gray-700 border border-gray-300"
+                        ? "bg-red-100 text-red-700 border border-red-300"
+                        : "bg-gray-100 text-gray-700 border border-gray-300"
                         }`}
                     >
                       ยังไม่เชื่อมต่อ
@@ -925,8 +948,8 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
                               )
                             }
                             className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedPageUser?.id === user.id
-                                ? "border-orange-500 bg-orange-50"
-                                : "border-gray-200 hover:bg-gray-50"
+                              ? "border-orange-500 bg-orange-50"
+                              : "border-gray-200 hover:bg-gray-50"
                               }`}
                           >
                             <div
@@ -1065,6 +1088,27 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
           )}
         </div>
       </div>
+      {/* Floating button for env management - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
+        <button
+          onClick={() => {
+            setIsEnvSidebarOpen(true);
+          }}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
+          title="จัดการตัวแปรสภาพแวดล้อม"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Off-canvas sidebar for env management - Refactored to component */}
+      <PancakeEnvOffSidebar
+        isOpen={isEnvSidebarOpen}
+        onClose={() => setIsEnvSidebarOpen(false)}
+        currentUser={currentUser}
+        onUpdate={() => {
+        }}
+      />
     </div>
   );
 };

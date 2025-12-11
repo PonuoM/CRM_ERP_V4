@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Calendar, Pencil, Download } from "lucide-react";
+import {
+  Search,
+  Download,
+  Filter,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  X,
+} from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
   listPages,
@@ -176,14 +188,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         prev.impressions += Number(row.impressions || 0);
         prev.reach += Number(row.reach || 0);
         prev.clicks += Number(row.clicks || 0);
-
-        // Don't sum Pancake statistics - use the first non-empty Pancake data
-        if (row.pancake_stats && !prev.pancake_stats) {
-          prev.pancake_stats = { ...row.pancake_stats };
-        }
-        if (row.pancake_error && !prev.pancake_error) {
-          prev.pancake_error = row.pancake_error;
-        }
       } else {
         const pancakeStats = row.pancake_stats ? { ...row.pancake_stats } : {};
         map.set(key, {
@@ -196,8 +200,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           impressions: Number(row.impressions || 0),
           reach: Number(row.reach || 0),
           clicks: Number(row.clicks || 0),
-          pancake_error: row.pancake_error,
-          pancake_stats: pancakeStats,
         });
       }
     }
@@ -223,6 +225,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Ads history list
   const [adsLogs, setAdsLogs] = useState<any[]>([]);
   const [adsLogsLoading, setAdsLogsLoading] = useState(false);
+  const [editingLog, setEditingLog] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [adsLogsTotal, setAdsLogsTotal] = useState(0);
   // Server pagination info from API
   const [serverPagination, setServerPagination] = useState({
@@ -375,12 +379,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (data.success) {
         return Array.isArray(data.data.accessible_pages)
           ? data.data.accessible_pages.map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              platform: p.platform,
-              url: p.url ?? undefined,
-              active: Boolean(p.active),
-            }))
+            id: p.id,
+            name: p.name,
+            platform: p.platform,
+            url: p.url ?? undefined,
+            active: Boolean(p.active),
+          }))
           : [];
       }
       return [];
@@ -394,48 +398,67 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-        try {
-          const [pg, plats, promo, userPages] = await Promise.all([
-            listActivePages(currentUser.companyId),
-            listPlatforms(currentUser.companyId, true, currentUser.role),
-            listPromotions(),
-            loadPagesWithUserAccess(),
-          ]);
+      try {
+        const [pg, plats, promo, userPages] = await Promise.all([
+          listActivePages(currentUser.companyId),
+          listPlatforms(currentUser.companyId, true, currentUser.role),
+          listPromotions(),
+          loadPagesWithUserAccess(),
+        ]);
         if (cancelled) return;
         setPages(
           Array.isArray(pg?.data)
             ? pg.data.map((r: any) => ({
-                id: r.id,
-                name: r.name,
-                platform: r.platform,
-                url: r.url ?? undefined,
-                companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
-                active: Boolean(r.active),
-                page_type: r.page_type ?? r.pageType ?? undefined,
-              }))
+              id: r.id,
+              name: r.name,
+              platform: r.platform,
+              url: r.url ?? undefined,
+              companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
+              active: Boolean(r.active),
+              page_type: r.page_type ?? r.pageType ?? undefined,
+            }))
             : [],
         );
         setPlatforms(
           Array.isArray(plats)
             ? plats.map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                displayName: p.display_name,
-                description: p.description,
-                active: p.active,
-                sortOrder: p.sort_order,
-              }))
+              id: p.id,
+              name: p.name,
+              displayName: p.display_name,
+              description: p.description,
+              active: p.active,
+              sortOrder: p.sort_order,
+            }))
             : [],
         );
         setPromotions(Array.isArray(promo) ? promo : []);
         setUserAccessiblePages(userPages);
         // Set default filters for ads history to show all data (active pages only)
+        // Set default filters for ads history to show all data (active pages only)
         setAdsHistoryDateRange({ start: "", end: "" });
-        setAdsHistorySelectedPages(
-          userPages
-            .filter((page: Page) => page.active !== false)
-            .map((page: Page) => page.id),
-        );
+
+        // Setup pages list for logic usage
+        const allPages = Array.isArray(pg?.data)
+          ? pg.data.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            active: Boolean(r.active),
+          }))
+          : [];
+
+        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+          setAdsHistorySelectedPages(
+            allPages
+              .filter((page: any) => page.active !== false)
+              .map((page: any) => page.id)
+          );
+        } else {
+          setAdsHistorySelectedPages(
+            userPages
+              .filter((page: Page) => page.active !== false)
+              .map((page: Page) => page.id),
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -454,12 +477,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       if (cancelled) return;
       const mapped: AdSpend[] = Array.isArray(rows)
         ? rows.map((r: any) => ({
-            id: Number(r.id),
-            pageId: Number(r.page_id),
-            spendDate: r.spend_date,
-            amount: Number(r.amount),
-            notes: r.notes ?? undefined,
-          }))
+          id: Number(r.id),
+          pageId: Number(r.page_id),
+          spendDate: r.spend_date,
+          amount: Number(r.amount),
+          notes: r.notes ?? undefined,
+        }))
         : [];
       setAdSpend(mapped);
     }
@@ -489,13 +512,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       setPages(
         Array.isArray(pg)
           ? pg.map((r: any) => ({
-              id: r.id,
-              name: r.name,
-              platform: r.platform,
-              url: r.url ?? undefined,
-              companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
-              active: Boolean(r.active),
-            }))
+            id: r.id,
+            name: r.name,
+            platform: r.platform,
+            url: r.url ?? undefined,
+            companyId: r.company_id ?? r.companyId ?? currentUser.companyId,
+            active: Boolean(r.active),
+          }))
           : [],
       );
       setNewPage({
@@ -544,12 +567,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       );
       const mapped: AdSpend[] = Array.isArray(rows)
         ? rows.map((r: any) => ({
-            id: Number(r.id),
-            pageId: Number(r.page_id),
-            spendDate: r.spend_date,
-            amount: Number(r.amount),
-            notes: r.notes ?? undefined,
-          }))
+          id: Number(r.id),
+          pageId: Number(r.page_id),
+          spendDate: r.spend_date,
+          amount: Number(r.amount),
+          notes: r.notes ?? undefined,
+        }))
         : [];
       setAdSpend(mapped);
     } catch (e) {
@@ -627,7 +650,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             : undefined,
           adsHistoryDateRange.start || undefined,
           adsHistoryDateRange.end || undefined,
-          currentUser.id,
+          currentUser.role === "Super Admin" ||
+            currentUser.role === "Admin Control"
+            ? undefined
+            : currentUser.id,
           adsHistoryPageSize,
           offset,
         );
@@ -692,11 +718,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const allUsers = await listUsers();
       const marketingRoleUsers = Array.isArray(allUsers)
         ? allUsers.filter(
-            (u: any) =>
-              u.role === "Marketing" &&
-              (u.company_id === currentUser.companyId ||
-                u.companyId === currentUser.companyId),
-          )
+          (u: any) =>
+            u.role === "Marketing" &&
+            (u.company_id === currentUser.companyId ||
+              u.companyId === currentUser.companyId),
+        )
         : [];
       setMarketingUsersList(marketingRoleUsers);
     } catch (e) {
@@ -792,6 +818,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
 
   // Handle save all ads data - ใช้ ads_log_insert.php และ ads_log_update.php
   const handleSaveAllAdsData = async () => {
+    // Validate that if any field is filled, all 4 must be filled
+    for (const row of adsInputData) {
+      const hasAdsCost = row.adsCost !== undefined && row.adsCost !== null && row.adsCost.toString().trim() !== "";
+      const hasImpressions = row.impressions !== undefined && row.impressions !== null && row.impressions.toString().trim() !== "";
+      const hasReach = row.reach !== undefined && row.reach !== null && row.reach.toString().trim() !== "";
+      const hasClicks = row.clicks !== undefined && row.clicks !== null && row.clicks.toString().trim() !== "";
+
+      const filledCount = (hasAdsCost ? 1 : 0) + (hasImpressions ? 1 : 0) + (hasReach ? 1 : 0) + (hasClicks ? 1 : 0);
+
+      if (filledCount > 0 && filledCount < 4) {
+        const pageName = userPages.find(p => p.id.toString() === row.pageId.toString())?.name || "Unknown Page";
+        alert(`กรุณากรอกข้อมูลให้ครบทั้ง 4 ช่องสำหรับเพจ "${pageName}" (ค่า Ads, อิมเพรสชั่น, การเข้าถึง, ทัก/คลิก)`);
+        return;
+      }
+    }
+
     if (adsInputData.length === 0) {
       alert("ไม่มีข้อมูลที่ต้องการบันทึก");
       return;
@@ -920,19 +962,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       }
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
-      // เพิ่มเงื่อนไข user_id ให้แสดงเฉพาะข้อมูลของผู้ใช้ที่ระบุ
       if (userId) {
         params.set("user_id", String(userId));
-      } else {
-        params.set("user_id", String(currentUser.id));
       }
       if (limit) params.set("limit", String(limit));
       if (offset !== undefined) params.set("offset", String(offset));
 
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
         `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
         {
-          headers: { "Content-Type": "application/json" },
+          headers,
         },
       );
       const data = await res.json();
@@ -970,9 +1015,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
   // Update existing ads log
   const updateAdsLog = async (id: number, updates: any) => {
     try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("api/Marketing_DB/ads_log_update.php", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           id,
           user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
@@ -983,6 +1034,42 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     } catch (e) {
       console.error("Failed to update ads log:", e);
       return { success: false, error: "Failed to update" };
+    }
+  };
+
+  // Handle edit log save
+  const handleEditLogSave = async (updatedLog: any) => {
+    // Only send fields that are allowed to be updated
+    const updates = {
+      ads_cost: Number(updatedLog.ads_cost),
+      impressions: Number(updatedLog.impressions),
+      reach: Number(updatedLog.reach),
+      clicks: Number(updatedLog.clicks),
+    };
+
+    const res = await updateAdsLog(updatedLog.id, updates);
+    if (res.success) {
+      alert("แก้ไขข้อมูลเรียบร้อยแล้ว");
+      setIsEditModalOpen(false);
+      setEditingLog(null);
+      // Refresh current page
+      const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+      const result = await loadAdsLogs(
+        adsHistorySelectedPages.length > 0
+          ? adsHistorySelectedPages
+          : undefined,
+        adsHistoryDateRange.start || undefined,
+        adsHistoryDateRange.end || undefined,
+        currentUser.role === "Super Admin" ||
+          currentUser.role === "Admin Control"
+          ? undefined
+          : currentUser.id,
+        adsHistoryPageSize,
+        offset,
+      );
+      setAdsLogs(result.data || []);
+    } else {
+      alert("เกิดข้อผิดพลาด: " + (res.error || "Failed to update"));
     }
   };
 
@@ -1031,6 +1118,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       const existingData = logs.data.reduce((acc: any[], log) => {
         acc.push({
           pageId: log.page_id.toString(),
+          id: log.id, // Store ID to track if it's an existing record
           adsCost: log.ads_cost ? log.ads_cost.toString() : "",
           impressions: log.impressions ? log.impressions.toString() : "",
           reach: log.reach ? log.reach.toString() : "",
@@ -1119,68 +1207,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
         setDashboardData(data.data || []);
         setDashboardTotal(data.pagination?.total || 0);
 
-        // Get unique external page IDs from the response
-        const externalPageIds = [
-          ...new Set(
-            data.data
-              .filter((row: any) => row.external_page_id)
-              .map((row: any) => row.external_page_id),
-          ),
-        ];
-
-        // Fetch Pancake data for each unique external page ID only once
-        if (externalPageIds.length > 0) {
-          const pancakePromises = externalPageIds.map(
-            (externalPageId: string) => getPancakePageData(externalPageId),
-          );
-
-          try {
-            const pancakeResults = await Promise.all(pancakePromises);
-
-            // Create a map of external page ID to pancake data for quick lookup
-            const pancakeDataMap = new Map();
-            pancakeResults.forEach((result, index) => {
-              if (result) {
-                pancakeDataMap.set(externalPageIds[index], result);
-              }
-            });
-
-            // Merge Pancake data with dashboard data
-            const updatedData = data.data.map((row: any) => {
-              if (row.external_page_id) {
-                const pancakeData = pancakeDataMap.get(row.external_page_id);
-
-                if (pancakeData) {
-                  // Check if it's an error response
-                  if (pancakeData.error) {
-                    return {
-                      ...row,
-                      pancake_error: pancakeData.message,
-                    };
-                  }
-
-                  // Check if it's an array of data
-                  if (Array.isArray(pancakeData)) {
-                    const dayData = pancakeData.find(
-                      (item: any) => item.date === row.log_date,
-                    );
-                    if (dayData) {
-                      return {
-                        ...row,
-                        pancake_stats: dayData,
-                      };
-                    }
-                  }
-                }
-              }
-              return row;
-            });
-
-            setDashboardData(updatedData);
-          } catch (error) {
-            console.error("Error fetching Pancake data:", error);
-          }
-        }
       } else {
         setDashboardData([]);
         setDashboardTotal(0);
@@ -1192,172 +1218,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
       setDashboardTotal(0);
     } finally {
       setDashboardLoading(false);
-    }
-  };
-
-  // Function to get Pancake page data
-  const getPancakePageData = async (externalPageId: string) => {
-    try {
-      // Get current user from localStorage
-      const sessionUserStr = localStorage.getItem("sessionUser");
-      if (!sessionUserStr) {
-        console.error("No session user found");
-        return null;
-      }
-
-      const sessionUser = JSON.parse(sessionUserStr);
-      const companyId = sessionUser.company_id;
-
-      // Get access token from env table
-      const tokenKey = `ACCESS_TOKEN_PANCAKE_${companyId}`;
-      const tokenRes = await fetch(
-        `api/Marketing_DB/get_env.php?key=${tokenKey}`,
-        {
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (!tokenRes.ok) {
-        console.error("Failed to get access token from env");
-        return null;
-      }
-
-      const tokenData = await tokenRes.json();
-      if (!tokenData.success || !tokenData.value) {
-        console.error("Access token not found");
-        return null;
-      }
-
-      const accessToken = tokenData.value;
-
-      // API Call 1: Generate page access token
-      const tokenResponse = await fetch(
-        `https://pages.fm/api/v1/pages/${externalPageId}/generate_page_access_token?access_token=${accessToken}`,
-        {
-          method: "POST",
-        },
-      );
-
-      if (!tokenResponse.ok) {
-        console.error("Failed to generate page access token");
-        return null;
-      }
-
-      const tokenResult = await tokenResponse.json();
-      if (!tokenResult.success || !tokenResult.page_access_token) {
-        console.error(
-          "Page access token generation failed:",
-          tokenResult.message ||
-            tokenResult.errors?.[0]?.message ||
-            "Unknown error",
-        );
-        // Return error information instead of null
-        return {
-          error: true,
-          message:
-            tokenResult.message ||
-            tokenResult.errors?.[0]?.message ||
-            "ไม่สามารถสร้าง Access Token ได้",
-        };
-      }
-
-      const pageAccessToken = tokenResult.page_access_token;
-
-      // Convert date range to Unix timestamps using the full selected date range
-      const sinceDateTime = new Date(`${dateRange.start}T00:00:00`);
-      const untilDateTime = new Date(`${dateRange.end}T23:59:59`);
-
-      const since = Math.floor(sinceDateTime.getTime() / 1000);
-      const until = Math.floor(untilDateTime.getTime() / 1000);
-
-      // API Call 2: Get page statistics for the entire date range
-      const selectFields = [
-        "new_customer_count",
-        "phone_number_count",
-        "uniq_phone_number_count",
-        "customer_comment_count",
-        "customer_inbox_count",
-        "page_comment_count",
-        "page_inbox_count",
-        "new_inbox_count",
-        "inbox_interactive_count",
-        "today_uniq_website_referral",
-        "today_website_guest_referral",
-        "order_count",
-        "order_count_per_new_cus",
-        "order_count_per_phone",
-        "new_phone_count_per_new_customer_count",
-      ];
-
-      const statsResponse = await fetch(
-        `https://pages.fm/api/public_api/v1/pages/${externalPageId}/statistics/pages?` +
-          new URLSearchParams({
-            page_access_token: pageAccessToken,
-            page_id: externalPageId,
-            since: since.toString(),
-            until: until.toString(),
-            select_fields: JSON.stringify(selectFields),
-          }),
-      );
-
-      if (!statsResponse.ok) {
-        console.error("Failed to get page statistics");
-        return null;
-      }
-
-      const statsResult = await statsResponse.json();
-
-      if (!statsResult.data || !Array.isArray(statsResult.data)) {
-        console.error("Invalid statistics data format");
-        return {
-          error: true,
-          message: "รูปแบบข้อมูลสถิติไม่ถูกต้อง",
-        };
-      }
-
-      // Group data by date and sum the values
-      const dailyStats: { [date: string]: any } = {};
-
-      statsResult.data.forEach((item: any) => {
-        const date = item.hour.split("T")[0]; // Get date part from ISO datetime
-
-        if (!dailyStats[date]) {
-          dailyStats[date] = {
-            date: date,
-            new_customer_count: 0,
-            customer_inbox_count: 0,
-            customer_comment_count: 0,
-            page_inbox_count: 0,
-            page_comment_count: 0,
-            phone_number_count: 0,
-            inbox_interactive_count: 0,
-            new_inbox_count: 0,
-            today_uniq_website_referral: 0,
-            today_website_guest_referral: 0,
-            uniq_phone_number_count: 0,
-            order_count: 0,
-            order_count_per_new_cus: 0,
-            order_count_per_phone: 0,
-            new_phone_count_per_new_customer_count: 0,
-          };
-        }
-
-        // Sum values for the same date
-        Object.keys(dailyStats[date]).forEach((key) => {
-          if (key !== "date" && typeof item[key] === "number") {
-            dailyStats[date][key] += item[key];
-          }
-        });
-      });
-
-      // Convert to array and sort by date
-      return Object.values(dailyStats).sort(
-        (a: any, b: any) =>
-          new Date(a.date).getTime() - new Date(b.date).getTime(),
-      );
-    } catch (error) {
-      console.error("Error in getPancakePageData:", error);
-      return null;
     }
   };
 
@@ -1427,57 +1287,52 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "dashboard"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "dashboard"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               แดชบอร์ด
             </button>
             <button
               onClick={() => setActiveTab("ads")}
-              className={`hidden py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "ads"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`hidden py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "ads"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               บันทึก Ads
             </button>
             <button
               onClick={() => setActiveTab("adsInput")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "adsInput"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsInput"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               กรอกค่า Ads
             </button>
             <button
               onClick={() => setActiveTab("adsHistory")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "adsHistory"
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsHistory"
+                ? "border-emerald-500 text-emerald-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
             >
               ประวัติการกรอก Ads
             </button>
             {(currentUser.role === "Super Admin" ||
               currentUser.role === "Admin Control") && (
-              <button
-                onClick={() => setActiveTab("userManagement")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "userManagement"
+                <button
+                  onClick={() => setActiveTab("userManagement")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "userManagement"
                     ? "border-emerald-500 text-emerald-600"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                จัดการผู้ใช้การตลาด-เพจ
-              </button>
-            )}
+                    }`}
+                >
+                  จัดการผู้ใช้การตลาด-เพจ
+                </button>
+              )}
           </nav>
         </div>
       )}
@@ -1849,10 +1704,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                                 {marketingPageUsers.filter(
                                   (user) => user.page_id === page.id,
                                 ).length === 0 && (
-                                  <div className="text-gray-500">
-                                    ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
-                                  </div>
-                                )}
+                                    <div className="text-gray-500">
+                                      ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                    </div>
+                                  )}
                               </div>
                             </td>
                           </tr>
@@ -1936,9 +1791,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "adsCost")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1951,9 +1807,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "impressions")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1966,9 +1823,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "reach")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -1981,9 +1839,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              className="w-full p-2 border border-gray-300 rounded"
+                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                               placeholder="0"
                               value={getInputValue(page.id, "clicks")}
+                              disabled={!!getInputValue(page.id, "id")}
                               onChange={(e) =>
                                 handleUserPageInputChange(
                                   page.id,
@@ -2258,22 +2117,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <button
                 type="button"
                 onClick={() => setDashboardView("user")}
-                className={`px-3 py-1.5 text-sm ${
-                  dashboardView === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 text-sm ${dashboardView === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
               >
                 รายบุคคล
               </button>
               <button
                 type="button"
                 onClick={() => setDashboardView("page")}
-                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${
-                  dashboardView === "page"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${dashboardView === "page"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
               >
                 รายเพจ
               </button>
@@ -2300,11 +2157,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
                     <th className="px-3 py-2 text-left">การเข้าถึง</th>
                     <th className="px-3 py-2 text-left">ทัก/คลิก</th>
-                    <th className="px-3 py-2 text-left">ลูกค้าใหม่</th>
-                    <th className="px-3 py-2 text-left">ข้อความ</th>
-                    <th className="px-3 py-2 text-left">คอมเมนต์</th>
-                    <th className="px-3 py-2 text-left">เบอร์โทร</th>
-                    <th className="px-3 py-2 text-left">ออเดอร์</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2346,38 +2198,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                         <td className="px-3 py-2">{row.impressions || 0}</td>
                         <td className="px-3 py-2">{row.reach || 0}</td>
                         <td className="px-3 py-2">{row.clicks || 0}</td>
-                        {row.pancake_error ? (
-                          <td
-                            className="px-3 py-2 text-red-600 text-xs"
-                            colSpan={4}
-                          >
-                            {row.pancake_error}
-                          </td>
-                        ) : (
-                          <>
-                            <td className="px-3 py-2">
-                              {row.pancake_stats?.new_customer_count || 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.pancake_stats?.customer_inbox_count || 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.pancake_stats?.customer_comment_count || 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.pancake_stats?.phone_number_count || 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.pancake_stats?.order_count || 0}
-                            </td>
-                          </>
-                        )}
                       </tr>
                     ))
                   ) : (
                     <tr>
                       <td
-                        colSpan={12}
+                        colSpan={7}
                         className="text-center py-8 text-gray-500"
                       >
                         ไม่มีข้อมูลในช่วงวันที่ที่เลือก
@@ -2793,7 +2619,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
               <div className="flex-1">
                 <label className={labelClass}>เลือกเพจ</label>
                 <MultiSelectPageFilter
-                  pages={userAccessiblePages.map((page) => ({
+                  pages={(currentUser.role === "Super Admin" ||
+                    currentUser.role === "Admin Control"
+                    ? pages
+                    : userAccessiblePages
+                  ).map((page) => ({
                     id: page.id,
                     name: page.name,
                     platform: page.platform,
@@ -2982,11 +2812,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                   <tr>
                     <th className="px-3 py-2 text-left">วันที่</th>
                     <th className="px-3 py-2 text-left">เพจ</th>
+                    <th className="px-3 py-2 text-left">ผู้บันทึก</th>
                     <th className="px-3 py-2 text-left">ค่า Ads</th>
                     <th className="px-3 py-2 text-left">Impressions</th>
                     <th className="px-3 py-2 text-left">Reach</th>
                     <th className="px-3 py-2 text-left">Clicks</th>
-                    <th className="px-3 py-2 text-left">จัดการ</th>
+                    {(currentUser.role === "Super Admin" ||
+                      currentUser.role === "Admin Control") && (
+                        <th className="px-3 py-2 text-left">จัดการ</th>
+                      )}
                   </tr>
                 </thead>
                 <tbody>
@@ -3023,25 +2857,30 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                               })()}
                             </div>
                           </td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {log.user_fullname || log.user_username || "-"}
+                          </td>
                           <td className="px-3 py-2">
                             ฿{Number(log.ads_cost || 0).toFixed(2)}
                           </td>
                           <td className="px-3 py-2">{log.impressions ?? 0}</td>
                           <td className="px-3 py-2">{log.reach ?? 0}</td>
                           <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                          <td className="px-3 py-2">
-                            <button
-                              className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                              title="แก้ไขรายการนี้"
-                              onClick={() => {
-                                const editDate = log.date || log.log_date || "";
-                                if (editDate) setSelectedDate(editDate);
-                                setActiveTab("adsInput");
-                              }}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          </td>
+                          {(currentUser.role === "Super Admin" ||
+                            currentUser.role === "Admin Control") && (
+                              <td className="px-3 py-2">
+                                <button
+                                  className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                                  title="แก้ไขรายการนี้"
+                                  onClick={() => {
+                                    setEditingLog({ ...log });
+                                    setIsEditModalOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
                         </tr>
                       );
                     })
@@ -3049,7 +2888,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                     <tr>
                       <td
                         className="px-3 py-6 text-center text-gray-500"
-                        colSpan={7}
+                        colSpan={
+                          currentUser.role === "Super Admin" ||
+                            currentUser.role === "Admin Control"
+                            ? 8
+                            : 7
+                        }
                       >
                         ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
                       </td>
@@ -3176,6 +3020,139 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
             >
               ยกเลิก
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Ads Log Modal */}
+      {isEditModalOpen && editingLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg mx-4 overflow-hidden">
+            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold text-gray-800">
+                แก้ไขข้อมูล Ads
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    วันที่
+                  </label>
+                  <input
+                    type="text"
+                    value={editingLog.date || ""}
+                    disabled
+                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    เพจ
+                  </label>
+                  <input
+                    type="text"
+                    value={
+                      editingLog.page_name ||
+                      pages.find(
+                        (p) => p.id === Number(editingLog.page_id),
+                      )?.name ||
+                      editingLog.page_id
+                    }
+                    disabled
+                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  ค่า Ads (บาท)
+                </label>
+                <input
+                  type="number"
+                  value={editingLog.ads_cost}
+                  onChange={(e) =>
+                    setEditingLog({
+                      ...editingLog,
+                      ads_cost: e.target.value,
+                    })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Impressions
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.impressions}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        impressions: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Reach
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.reach}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        reach: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Clicks
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.clicks}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        clicks: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleEditLogSave(editingLog)}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                บันทึก
+              </button>
+            </div>
           </div>
         </div>
       )}

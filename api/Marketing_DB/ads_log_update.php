@@ -30,23 +30,68 @@ if (empty($data["id"])) {
   exit();
 }
 
-// Get user_id from session or request (adjust based on your auth system)
-$userId = isset($data["user_id"]) ? $data["user_id"] : null;
-if (!$userId) {
-  // If no user_id in request, you might need to get from session
-  // $userId = $_SESSION['user_id'] ?? null;
-  json_response(
-    [
-      "success" => false,
-      "error" => "User authentication required",
-    ],
-    401,
-  );
-  exit();
+// Authenticate user via Token
+$auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+if (!$auth && function_exists('getallheaders')) {
+    $headers = getallheaders();
+    $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
 }
+
+$currentUser = null;
+$userRole = '';
+$currentUserId = 0;
 
 try {
   $pdo = db_connect();
+
+  if (preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+    $token = $matches[1];
+    $stmt = $pdo->prepare("
+      SELECT u.id, u.role
+      FROM user_tokens ut
+      JOIN users u ON ut.user_id = u.id
+      WHERE ut.token = ? AND ut.expires_at > NOW()
+    ");
+    $stmt->execute([$token]);
+    $currentUser = $stmt->fetch();
+    
+    if ($currentUser) {
+      $currentUserId = $currentUser['id'];
+      $userRole = $currentUser['role'];
+    }
+  }
+
+  // Fallback to request user_id (but verify it matches token if present, or just trust if no token for legacy? No, better secure it)
+  // For now, if token exists, use token user. If not, fallback to passed user_id only if no auth required? 
+  // The system seems to require auth.
+
+  if (!$currentUserId) {
+     // Legacy support or direct call without token?
+     // If $data['user_id'] is sent but no token, we can't verify role.
+     // So we must require token for Admin bypass.
+     // If normal user, maybe they are using session?
+      if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+      }
+      if (isset($_SESSION['user'])) {
+          $currentUserId = $_SESSION['user']['id'];
+          $userRole = $_SESSION['user']['role'];
+      }
+  }
+
+  if (!$currentUserId && isset($data['user_id'])) {
+      // Temporary: trust provided user_id if no other auth (NOT SECURE but matches original code behavior for simple user check)
+      // modifying original behavior: Original code trusted $data['user_id']. 
+      // We will use $data['user_id'] as the "claimed" user, but we need rolw for bypass.
+      $currentUserId = $data['user_id'];
+  }
+
+  if (!$currentUserId) {
+      json_response(["success" => false, "error" => "User authentication required"], 401);
+      exit();
+  }
+
+
 
   // Check if record exists AND belongs to the user
   $checkStmt = $pdo->prepare("
@@ -66,8 +111,13 @@ try {
     exit();
   }
 
-  // Check if the record belongs to the current user
-  if ($record["user_id"] != $userId) {
+  // Check permissions:
+  // 1. Owner can update their own record
+  // 2. Super Admin / Admin Control can update any record
+  $isOwner = ($record["user_id"] == $currentUserId);
+  $isAdmin = in_array($userRole, ['Super Admin', 'Admin Control']);
+
+  if (!$isOwner && !$isAdmin) {
     json_response(
       [
         "success" => false,

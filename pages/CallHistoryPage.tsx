@@ -43,6 +43,9 @@ const formatDate = (dateString: string) => {
   try {
     // Handle the format "2025-10-09 03:23:08" from the API
     const date = new Date(dateString);
+    // Add 7 hours to the date
+    date.setHours(date.getHours() + 7);
+
     // Use timeZone: "Asia/Bangkok" instead of manually adding hours
     return date.toLocaleString("th-TH", {
       timeZone: "Asia/Bangkok",
@@ -1118,12 +1121,12 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
     }
   };
 
-    // Function to download audio file
-    const downloadRecording = async (
-      recordingURL: string,
-      id: number,
-      apiFilename?: string,
-    ) => {
+  // Function to download audio file
+  const downloadRecording = async (
+    recordingURL: string,
+    id: number,
+    apiFilename?: string,
+  ) => {
     if (!accessToken) {
       // Try to authenticate again if we don't have a token
       try {
@@ -1170,25 +1173,25 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       // Create a URL for the blob
       const audioUrl = URL.createObjectURL(blob);
 
-        // Determine download file name
-        let downloadName = `recording_${id}.mp3`;
-        if (apiFilename && typeof apiFilename === "string") {
-          // Use filename from API response; strip any path prefix
-          const parts = apiFilename.split("/");
-          let lastPart = parts[parts.length - 1] || apiFilename;
+      // Determine download file name
+      let downloadName = `recording_${id}.mp3`;
+      if (apiFilename && typeof apiFilename === "string") {
+        // Use filename from API response; strip any path prefix
+        const parts = apiFilename.split("/");
+        let lastPart = parts[parts.length - 1] || apiFilename;
 
-          // Remove trailing .crypt extension if present
-          if (lastPart.toLowerCase().endsWith(".crypt")) {
-            lastPart = lastPart.slice(0, -".crypt".length);
-          }
-
-          downloadName = lastPart;
+        // Remove trailing .crypt extension if present
+        if (lastPart.toLowerCase().endsWith(".crypt")) {
+          lastPart = lastPart.slice(0, -".crypt".length);
         }
 
-        // Create a download link
-        const link = document.createElement("a");
-        link.href = audioUrl;
-        link.setAttribute("download", downloadName);
+        downloadName = lastPart;
+      }
+
+      // Create a download link
+      const link = document.createElement("a");
+      link.href = audioUrl;
+      link.setAttribute("download", downloadName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -2912,9 +2915,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                       setRange((prev) => ({ ...prev, end: "" }));
                     }
                   }}
-                  className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                    !datetimeRange.start ? "bg-gray-100 cursor-not-allowed" : ""
-                  }`}
+                  className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${!datetimeRange.start ? "bg-gray-100 cursor-not-allowed" : ""
+                    }`}
                 />
               </div>
               <div className="space-y-2">
@@ -3367,24 +3369,24 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                                 <div className="min-w-[250px] flex items-center gap-2">
                                   <button
                                     className="inline-flex items-center p-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
-                                      onClick={() =>
-                                        downloadRecording(
-                                          recording.recordingURL,
-                                          recording.id,
-                                          recording.filename,
-                                        )
-                                      }
+                                    onClick={() =>
+                                      downloadRecording(
+                                        recording.recordingURL,
+                                        recording.id,
+                                        recording.filename,
+                                      )
+                                    }
                                     title="ดาวน์โหลดไฟล์เสียง"
                                   >
                                     <Download className="w-4 h-4" />
                                   </button>
                                   <div className="flex-1 min-w-[200px]">
                                     {activeAudios.has(recording.id) ||
-                                    currentPlayingId === recording.id ? (
+                                      currentPlayingId === recording.id ? (
                                       <div className="w-full">
                                         {/* Show loading if this specific audio is loading */}
                                         {currentPlayingId === recording.id &&
-                                        isAudioLoading ? (
+                                          isAudioLoading ? (
                                           <div className="flex items-center justify-center py-2">
                                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
                                             <span className="text-xs text-gray-600">
@@ -3411,7 +3413,7 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                                                     // If another audio is playing, pause it first
                                                     if (
                                                       currentPlayingId !==
-                                                        null &&
+                                                      null &&
                                                       isPlaying
                                                     ) {
                                                       pauseAudio();
@@ -3437,30 +3439,30 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                                                 max={duration || 0}
                                                 value={
                                                   currentPlayingId ===
-                                                  recording.id
+                                                    recording.id
                                                     ? currentTime
                                                     : pausedAudios.get(
-                                                        recording.id,
-                                                      ) || 0
+                                                      recording.id,
+                                                    ) || 0
                                                 }
                                                 onChange={
                                                   currentPlayingId ===
-                                                  recording.id
+                                                    recording.id
                                                     ? handleSliderChange
                                                     : (e) => {
-                                                        // Update paused position for non-currently playing audios
-                                                        const newTime =
-                                                          parseFloat(
-                                                            e.target.value,
-                                                          );
-                                                        setPausedAudios(
-                                                          (prev) =>
-                                                            new Map(prev).set(
-                                                              recording.id,
-                                                              newTime,
-                                                            ),
+                                                      // Update paused position for non-currently playing audios
+                                                      const newTime =
+                                                        parseFloat(
+                                                          e.target.value,
                                                         );
-                                                      }
+                                                      setPausedAudios(
+                                                        (prev) =>
+                                                          new Map(prev).set(
+                                                            recording.id,
+                                                            newTime,
+                                                          ),
+                                                      );
+                                                    }
                                                 }
                                                 className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
                                                 style={{
@@ -3475,8 +3477,8 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                                                     recording.id
                                                     ? currentTime
                                                     : pausedAudios.get(
-                                                        recording.id,
-                                                      ) || 0,
+                                                      recording.id,
+                                                    ) || 0,
                                                 )}
                                               </span>
                                             </div>
@@ -3621,11 +3623,10 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
                               key={pageNum}
                               onClick={() => handlePageChange(pageNum)}
                               disabled={isSearchLoading}
-                              className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
-                                currentPage === pageNum
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed"
-                              }`}
+                              className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${currentPage === pageNum
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed"
+                                }`}
                             >
                               {pageNum}
                             </button>

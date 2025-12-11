@@ -4,7 +4,9 @@ import { Calendar, Download, RefreshCcw, MessageSquare, MessageCircle, Phone, Us
 import StatCard from '@/components/StatCard_EngagementPage';
 import MultiLineChart from '@/components/MultiLineChart';
 import PageIconFront from '@/components/PageIconFront';
+import PancakeEnvOffSidebar from '@/components/PancakeEnvOffSidebar';
 import resolveApiBasePath from '@/utils/apiBasePath';
+import { listPages } from '@/services/api';
 
 interface PageStatsPageProps {
   orders?: Order[];
@@ -52,12 +54,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState<boolean>(false);
   const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [newEnvVar, setNewEnvVar] = useState<EnvVariable>({
-    key: 'ACCESS_TOKEN_PANCAKE_',
-    value: ''
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [pages, setPages] = useState<Array<{id: number, name: string, page_id: string, platform?: string}>>([]);
+
+  const [pages, setPages] = useState<Array<{ id: number, name: string, page_id: string, platform?: string }>>([]);
   const [selectedPage, setSelectedPage] = useState<string>('');
   const [pageStatsData, setPageStatsData] = useState<any[]>([]);
   const [prevPageStatsData, setPrevPageStatsData] = useState<any[]>([]);
@@ -86,7 +84,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   const [isExportRangePopoverOpen, setIsExportRangePopoverOpen] = useState<boolean>(false);
   const [selectedPagesForExport, setSelectedPagesForExport] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [exportProgress, setExportProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
+  const [exportProgress, setExportProgress] = useState<{ current: number, total: number }>({ current: 0, total: 0 });
   const [exportViewMode, setExportViewMode] = useState<'daily' | 'hourly'>('daily');
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
   const [databaseDateRange, setDatabaseDateRange] = useState<string>('');
@@ -100,12 +98,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // No longer need selected pages for database - we'll process all pages
   const [databaseViewMode] = useState<'daily'>('daily'); // Always use daily mode for database updates
   const [isUpdatingDatabase, setIsUpdatingDatabase] = useState<boolean>(false);
-  const [databaseUpdateProgress, setDatabaseUpdateProgress] = useState<{current: number, total: number}>({current: 0, total: 0});
+  const [databaseUpdateProgress, setDatabaseUpdateProgress] = useState<{ current: number, total: number }>({ current: 0, total: 0 });
   const [existingDatesInDatabase, setExistingDatesInDatabase] = useState<Set<string>>(new Set());
   const [batchRecords, setBatchRecords] = useState<any[]>([]);
   const [selectedBatches, setSelectedBatches] = useState<Set<number>>(new Set());
   const [isDeletingBatches, setIsDeletingBatches] = useState<boolean>(false);
-  
+
   // State for access token warning modal
   const [isAccessTokenWarningOpen, setIsAccessTokenWarningOpen] = useState<boolean>(false);
   const [wasEnvSidebarOpened, setWasEnvSidebarOpened] = useState<boolean>(false);
@@ -119,24 +117,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         const session = JSON.parse(sessionData);
         if (session) {
           setCurrentUser(session);
-          setNewEnvVar({
-            key: `ACCESS_TOKEN_PANCAKE_${session.company_id}`,
-            value: ''
-          });
-          
-          // Check if database upload is enabled
-          const checkDbSetting = async () => {
-            try {
-              const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
-              if (envResponse.ok) {
-                const envData = await envResponse.json();
-                const dbSetting = envData.find((env: any) => env.key === 'page_store_db');
-                setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
-              }
-            } catch (error) {
-              console.error('Error checking database setting:', error);
-            }
-          };
+
           checkDbSetting();
         }
       }
@@ -145,15 +126,25 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   }, []);
 
+  const checkDbSetting = async () => {
+    try {
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
+      if (envResponse.ok) {
+        const envData = await envResponse.json();
+        const dbSetting = Array.isArray(envData) ? envData.find((env: any) => env.key === 'page_store_db') : null;
+        setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
+      }
+    } catch (error) {
+      console.error('Error checking database setting:', error);
+    }
+  };
+
   // Fetch pages for filter dropdown
   useEffect(() => {
     const fetchPages = async () => {
       try {
-        const response = await fetch(`${apiBase.replace(/\/$/, '')}/index.php/pages`);
-        if (response.ok) {
-          const data = await response.json();
-          setPages(Array.isArray(data) ? data : []);
-        }
+        const data = await listPages(undefined, 'pancake', 1);
+        setPages(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching pages:', error);
       }
@@ -168,7 +159,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     if (currentUser && !isEnvSidebarOpen && !wasEnvSidebarOpened) {
       const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
       const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
-      
+
       // Only show warning modal if env variables have been loaded and no token is found
       if (envVariables.length > 0 && !hasAccessToken) {
         setIsAccessTokenWarningOpen(true);
@@ -188,14 +179,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const [startPart] = customDateRange.split(' - ');
       if (startPart) {
         const d = new Date(startPart);
-        d.setHours(0,0,0,0);
+        d.setHours(0, 0, 0, 0);
         return d;
       }
     }
-    
+
     const d = new Date();
-    d.setHours(0,0,0,0);
-    
+    d.setHours(0, 0, 0, 0);
+
     if (typeof rangeDays === 'number') {
       d.setDate(d.getDate() - (rangeDays - 1));
     } else {
@@ -221,7 +212,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           break;
       }
     }
-    
+
     return d;
   }, [rangeDays, useCustomDateRange, customDateRange]);
 
@@ -231,11 +222,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const [, endPart] = customDateRange.split(' - ');
       if (endPart) {
         const d = new Date(endPart);
-        d.setHours(23,59,59,999);
+        d.setHours(23, 59, 59, 999);
         return d;
       }
     }
-    
+
     return new Date();
   }, [useCustomDateRange, customDateRange]);
 
@@ -243,13 +234,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     const res: string[] = [];
     const d = new Date(startDate);
     const end = new Date(endDate);
-    
+
     // Calculate days from start to end date
     while (d <= end) {
       res.push(fmtDate(d));
       d.setDate(d.getDate() + 1);
     }
-    
+
     return res;
   }, [startDate, endDate]);
 
@@ -270,7 +261,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const callsOfDay = calls.filter(cl => cl.date.slice(0, 10) === day);
       const newChats = callsOfDay.filter(cl => {
         const cu = customersById[cl.customerId];
-        return cu?.dateRegistered?.slice(0,10) === day;
+        return cu?.dateRegistered?.slice(0, 10) === day;
       });
 
       const row: DailyRow = {
@@ -315,7 +306,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       };
       return totalsData;
     }
-    
+
     // Otherwise use the mock data totals
     return daily.reduce((acc, r) => {
       acc.newCustomers += r.newCustomers;
@@ -357,12 +348,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       };
       return prevTotalsData;
     }
-    
+
     // Previous N days period for trend
     const endPrev = new Date(startDate);
     endPrev.setDate(endPrev.getDate() - 1);
     const startPrev = new Date(endPrev);
-    
+
     let daysToSubtract: number;
     if (typeof rangeDays === 'number') {
       daysToSubtract = rangeDays - 1;
@@ -384,12 +375,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           daysToSubtract = 7;
       }
     }
-    
+
     startPrev.setDate(startPrev.getDate() - daysToSubtract);
     const inPrevRange = (iso: string) => iso >= fmtDate(startPrev) && iso <= fmtDate(endPrev);
-    const newCustomersPrev = customers.filter(c => c.dateRegistered && inPrevRange(c.dateRegistered.slice(0,10))).length;
-    const ordersPrev = orders.filter(o => inPrevRange(o.orderDate.slice(0,10))).length;
-    const callsPrev = calls.filter(cl => inPrevRange(cl.date.slice(0,10))).length;
+    const newCustomersPrev = customers.filter(c => c.dateRegistered && inPrevRange(c.dateRegistered.slice(0, 10))).length;
+    const ordersPrev = orders.filter(o => inPrevRange(o.orderDate.slice(0, 10))).length;
+    const callsPrev = calls.filter(cl => inPrevRange(cl.date.slice(0, 10))).length;
     return { newCustomersPrev, ordersPrev, callsPrev };
   }, [customers, orders, calls, startDate, rangeDays, usePageStats, prevPageStatsData]);
 
@@ -403,15 +394,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     if (usePageStats && pageStatsData.length > 0) {
       // Process data from API
       let processedData = [];
-      
+
       if (viewMode === 'daily') {
         // Aggregate data by day
         const dailyMap = new Map();
-        
+
         pageStatsData.forEach(item => {
           const date = new Date(item.hour);
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-          
+
           if (!dailyMap.has(dateKey)) {
             dailyMap.set(dateKey, {
               date: dateKey,
@@ -419,12 +410,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               totalChats: 0
             });
           }
-          
+
           const dayData = dailyMap.get(dateKey);
           dayData.totalComments += item.customer_comment_count;
           dayData.totalChats += item.customer_inbox_count;
         });
-        
+
         processedData = Array.from(dailyMap.values()).sort((a, b) =>
           new Date(a.date).getTime() - new Date(b.date).getTime()
         );
@@ -439,7 +430,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           };
         }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       }
-      
+
       return {
         labels: processedData.map(d => d.date.slice(5)),
         series: [
@@ -461,7 +452,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
   const exportCSV = () => {
     const headers = [
-      'Page ID','เวลา','ลูกค้าใหม่','เบอร์โทรศัพท์ทั้งหมด','เบอร์โทรใหม่','คอมเม้นจากลูกค้าทั้งหมด','แชทจากลูกค้าทั้งหมด','ความคิดเห็นจากเพจทั้งหมด','แชทจากเพจทั้งหมด','แชทใหม่','แชทจากลูกค้าเก่า','ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)','ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)','ยอดออเดอร์','เปอร์เซ็นต์การสั่งซื้อต่อลูกค้าใหม่','เปอร์เซ็นต์การสั่งซื้อต่อเบอร์โทรศัพท์','สัดส่วนเบอร์โทรศัพท์ใหม่ ต่อ ลูกค้าใหม่'
+      'Page ID', 'เวลา', 'ลูกค้าใหม่', 'เบอร์โทรศัพท์ทั้งหมด', 'เบอร์โทรใหม่', 'คอมเม้นจากลูกค้าทั้งหมด', 'แชทจากลูกค้าทั้งหมด', 'ความคิดเห็นจากเพจทั้งหมด', 'แชทจากเพจทั้งหมด', 'แชทใหม่', 'แชทจากลูกค้าเก่า', 'ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)', 'ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)', 'ยอดออเดอร์', 'เปอร์เซ็นต์การสั่งซื้อต่อลูกค้าใหม่', 'เปอร์เซ็นต์การสั่งซื้อต่อเบอร์โทรศัพท์', 'สัดส่วนเบอร์โทรศัพท์ใหม่ ต่อ ลูกค้าใหม่'
     ];
     const rows = daily.map(r => [
       selectedPage || '', r.date, r.newCustomers, r.totalPhones, r.newPhones, r.totalComments, r.totalChats, r.totalPageComments, r.totalPageChats, r.newChats, r.chatsFromOldCustomers, r.webLoggedIn, r.webGuest, r.ordersCount, r.pctPurchasePerNewCustomer.toFixed(2), r.pctPurchasePerPhone.toFixed(2), r.ratioNewPhonesToNewCustomers.toFixed(2)
@@ -469,12 +460,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     rows.push([
       '', 'รวม', totals.newCustomers, totals.totalPhones, totals.newPhones, totals.totalComments, totals.totalChats, totals.totalPageComments, totals.totalPageChats, totals.newChats, totals.chatsFromOldCustomers, totals.webLoggedIn, totals.webGuest, totals.ordersCount, '', '', ''
     ]);
-    
+
     // Add BOM for UTF-8 to ensure proper Thai character display in Excel
     const BOM = '\uFEFF';
     const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
     const csvWithBOM = BOM + csvContent;
-    
+
     const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -486,8 +477,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
   // Fetch page stats for export
   const fetchPageStatsForExport = async (pageId: string, accessToken: string, since: number, until: number) => {
-    const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
-    
+    const selectFields = ["new_customer_count", "phone_number_count", "uniq_phone_number_count", "customer_comment_count", "customer_inbox_count", "page_comment_count", "page_inbox_count", "new_inbox_count", "inbox_interactive_count", "today_uniq_website_referral", "today_website_guest_referral", "order_count", "order_count_per_new_cus", "order_count_per_phone", "new_phone_count_per_new_customer_count"];
+
     const statsResponse = await fetchWithRetry(
       `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/pages?since=${since}&until=${until}&page_access_token=${accessToken}&page_id=${pageId}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
       { method: 'GET' }
@@ -497,11 +488,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       throw new Error('ไม่สามารถดึงข้อมูลสถิติได้');
     }
     const statsData = await statsResponse.json();
-    
+
     if (!statsData.success || !statsData.data) {
       throw new Error('ไม่สามารถดึงข้อมูลสถิติได้: ' + (statsData.message || 'Unknown error'));
     }
-    
+
     return statsData.data;
   };
 
@@ -533,7 +524,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     const until = Math.floor(e.getTime() / 1000);
 
     setIsExporting(true);
-    setExportProgress({current: 0, total: selectedPagesForExport.size});
+    setExportProgress({ current: 0, total: selectedPagesForExport.size });
 
     try {
       // Get access token
@@ -572,43 +563,43 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
           }
           const tokenData = await tokenResponse.json();
-          
+
           if (!tokenData.success || !tokenData.page_access_token) {
             throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
           }
 
           const pageData = await fetchPageStatsForExport(pageId, tokenData.page_access_token, since, until);
           const pageName = pages.find(p => (p.page_id || p.id.toString()) === pageId)?.name || pageId;
-          
+
           // Add page name to each record
           pageData.forEach((record: any) => {
             record.page_name = pageName;
           });
-          
+
           allData.push(...pageData);
           completedPages++;
-          setExportProgress({current: completedPages, total: selectedPagesForExport.size});
+          setExportProgress({ current: completedPages, total: selectedPagesForExport.size });
         } catch (error) {
           console.error(`Error fetching data for page ${pageId}:`, error);
           completedPages++;
-          setExportProgress({current: completedPages, total: selectedPagesForExport.size});
+          setExportProgress({ current: completedPages, total: selectedPagesForExport.size });
         }
       }
 
       // Process data based on export view mode
       let processedData = [];
-      
+
       if (exportViewMode === 'daily') {
         // Aggregate data by day
         const dailyMap = new Map();
-        
+
         allData.forEach(item => {
           const date = new Date(item.hour);
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
           const pageName = item.page_name;
           const uniqueKey = `${pageId}-${dateKey}`;
-          
+
           if (!dailyMap.has(uniqueKey)) {
             dailyMap.set(uniqueKey, {
               page_id: pageId,
@@ -628,7 +619,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               order_count: 0
             });
           }
-          
+
           const dayData = dailyMap.get(uniqueKey);
           dayData.new_customer_count += item.new_customer_count;
           dayData.uniq_phone_number_count += item.uniq_phone_number_count;
@@ -643,13 +634,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           dayData.today_website_guest_referral += item.today_website_guest_referral;
           dayData.order_count += item.order_count || 0;
         });
-        
+
         processedData = Array.from(dailyMap.values());
       } else {
         // Use hourly data as is
         processedData = allData;
       }
-      
+
       // Sort data by date
       processedData.sort((a, b) => new Date(b.hour || b.date).getTime() - new Date(a.hour || a.date).getTime());
 
@@ -659,20 +650,20 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         'คอมเม้นจากลูกค้าทั้งหมด', 'แชทจากลูกค้าทั้งหมด', 'ความคิดเห็นจากเพจทั้งหมด', 'แชทจากเพจทั้งหมด',
         'แชทใหม่', 'แชทจากลูกค้าเก่า', 'ลูกค้าจากเว็บไซต์ (เข้าสู่ระบบ)', 'ลูกค้าจากเว็บไซต์ (ไม่ได้เข้าสู่ระบบ)', 'ยอดออเดอร์'
       ];
-      
+
       const rows = processedData.map(item => {
         let formattedDate;
-        
+
         if (exportViewMode === 'daily') {
           formattedDate = item.date;
         } else {
           const date = new Date(item.hour);
           formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
         }
-        
+
         // Find the page_id for this item
         const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
-        
+
         return [
           pageId,
           item.page_name,
@@ -691,12 +682,12 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           item.order_count || 0
         ];
       });
-      
+
       // Add BOM for UTF-8 to ensure proper Thai character display in Excel
       const BOM = '\uFEFF';
       const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
       const csvWithBOM = BOM + csvContent;
-      
+
       const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -704,14 +695,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       a.download = `page-stats-export-${s.toISOString().split('T')[0]}-to-${e.toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      
+
       // Close modal after successful export
       setIsExportModalOpen(false);
       alert('ส่งออกข้อมูลเรียบร้อย');
     } catch (error) {
       console.error('Error exporting data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       if (errorMessage.includes('Server internal error')) {
         alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
       } else {
@@ -766,7 +757,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     const until = Math.floor(e.getTime() / 1000);
 
     setIsUpdatingDatabase(true);
-    setDatabaseUpdateProgress({current: 0, total: pages.length});
+    setDatabaseUpdateProgress({ current: 0, total: pages.length });
 
     try {
       // Get access token
@@ -806,7 +797,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
           }
           const tokenData = await tokenResponse.json();
-          
+
           if (!tokenData.success || !tokenData.page_access_token) {
             throw new Error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
           }
@@ -814,15 +805,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           // Fetch data from API 1 (Pages.fm statistics)
           const pageData1 = await fetchPageStatsForExport(pageId, tokenData.page_access_token, since, until);
           const pageName = page.name || pageId;
-          
+
           // Add page name to each record from API 1
           pageData1.forEach((record: any) => {
             record.page_name = pageName;
             record.api_source = 'pages_fm';
           });
-          
+
           allData.push(...pageData1);
-          
+
           // TODO: Fetch data from API 2
           // This is where you would add the second API call
           // For example:
@@ -833,28 +824,28 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           // });
           // allData.push(...pageData2);
           completedPages++;
-          setDatabaseUpdateProgress({current: completedPages, total: pages.length});
+          setDatabaseUpdateProgress({ current: completedPages, total: pages.length });
         } catch (error) {
           console.error(`Error fetching data for page ${pageId}:`, error);
           completedPages++;
-          setDatabaseUpdateProgress({current: completedPages, total: pages.length});
+          setDatabaseUpdateProgress({ current: completedPages, total: pages.length });
         }
       }
 
       // Process data based on database view mode
       let processedData = [];
-      
+
       if (databaseViewMode === 'daily') {
         // Aggregate data by day
         const dailyMap = new Map();
-        
+
         allData.forEach(item => {
           const date = new Date(item.hour);
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const pageId = item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '';
           const pageName = item.page_name;
           const uniqueKey = `${pageId}-${dateKey}`;
-          
+
           if (!dailyMap.has(uniqueKey)) {
             dailyMap.set(uniqueKey, {
               page_id: pageId,
@@ -873,7 +864,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               orders_count: 0
             });
           }
-          
+
           const dayData = dailyMap.get(uniqueKey);
           dayData.new_customers += item.new_customer_count;
           dayData.total_phones += item.uniq_phone_number_count;
@@ -888,14 +879,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           dayData.web_guest += item.today_website_guest_referral;
           dayData.orders_count += item.order_count || 0;
         });
-        
+
         processedData = Array.from(dailyMap.values());
       } else {
         // Use hourly data as is
         processedData = allData.map(item => {
           const date = new Date(item.hour);
           const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
-          
+
           return {
             page_id: item.page_id || pages.find(p => p.name === item.page_name)?.page_id || '',
             time_column: formattedDate,
@@ -916,7 +907,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       }
 
       let response: Response | null = null;
-      
+
       try {
         // Send data to database
         response = await fetch(`${apiBase}/Page_DB/page_stats_import.php`, {
@@ -937,7 +928,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         }
 
         const result = await response.json();
-        
+
         if (result.success) {
           alert(`อัปเดตข้อมูลเรียบร้อย: ${result.message}`);
           setIsDatabaseModalOpen(false);
@@ -947,7 +938,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       } catch (error) {
         console.error('Error updating database:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // Try to get more detailed error information if it's a fetch error
         if (error instanceof TypeError && error.message.includes('JSON') && response) {
           // This might be a JSON parsing error, let's get the raw response
@@ -973,11 +964,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Helper function for retrying API requests
   const fetchWithRetry = async (url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response> => {
     let lastError: Error | null = null;
-    
+
     for (let i = 0; i < maxRetries; i++) {
       try {
         const response = await fetch(url, options);
-        
+
         // Check for server internal error
         if (response.status === 500) {
           const errorText = await response.text();
@@ -985,21 +976,21 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             throw new Error('Server internal error');
           }
         }
-        
+
         return response;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        
+
         // If it's not a server internal error or we've reached max retries, don't retry
         if (!lastError.message.includes('Server internal error') || i === maxRetries - 1) {
           throw lastError;
         }
-        
+
         // Wait before retrying with exponential backoff
         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
       }
     }
-    
+
     throw lastError || new Error('Unknown error');
   };
 
@@ -1035,90 +1026,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     }
   }, [isEnvSidebarOpen]);
 
-  // Save env variable
-  const saveEnvVariable = async (envVar: EnvVariable) => {
-    if (!envVar.key.trim() || !envVar.value.trim()) {
-      alert('กรุณาระบุ key และ value');
-      return;
-    }
 
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          key: envVar.key,
-          value: envVar.value
-        })
-      });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          // Refresh env variables
-          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
-          if (fetchResponse.ok) {
-            const data = await fetchResponse.json();
-            setEnvVariables(Array.isArray(data) ? data : []);
-          }
-          // Reset new env var
-          setNewEnvVar({
-            key: currentUser ? `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}` : 'ACCESS_TOKEN_PANCAKE_',
-            value: ''
-          });
-          alert('บันทึกสำเร็จ');
-        } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-        }
-      } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-      }
-    } catch (error) {
-      console.error('Error saving env variable:', error);
-      alert('เกิดข้อผิดพลาดในการบันทึก');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  // Delete env variable
-  const deleteEnvVariable = async (key: string) => {
-    if (!confirm(`คุณต้องการลบตัวแปร ${key} หรือไม่?`)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${encodeURIComponent(key)}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          // Refresh env variables
-          const fetchResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
-          if (fetchResponse.ok) {
-            const data = await fetchResponse.json();
-            setEnvVariables(Array.isArray(data) ? data : []);
-          }
-          alert('ลบสำเร็จ');
-        } else {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-        }
-      } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-      }
-    } catch (error) {
-      console.error('Error deleting env variable:', error);
-      alert('เกิดข้อผิดพลาดในการลบ');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
 
   // Fetch existing date ranges from database
@@ -1212,10 +1122,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const now = new Date();
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Set to midnight today in local timezone
-      
+
       let untilDate: Date;
       let sinceDate: Date;
-      
+
       if (useCustomDateRange && customDateRange) {
         const [, endPart] = customDateRange.split(' - ');
         if (endPart) {
@@ -1266,7 +1176,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             sinceDate.setDate(sinceDate.getDate() - 7);
         }
       }
-      
+
       const until = Math.floor(untilDate.getTime() / 1000); // Current timestamp in seconds
       const since = Math.floor(sinceDate.getTime() / 1000); // Convert to unix timestamp
 
@@ -1275,24 +1185,24 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       const prevEndDate = new Date(sinceDate);
       prevEndDate.setDate(prevEndDate.getDate() - 1);
       prevEndDate.setHours(23, 59, 59, 999);
-      
+
       const prevStartDate = new Date(prevEndDate);
       prevStartDate.setDate(prevStartDate.getDate() - (prevPeriodDays - 1));
       prevStartDate.setHours(0, 0, 0, 0);
-      
+
       const prevUntil = Math.floor(prevEndDate.getTime() / 1000);
       const prevSince = Math.floor(prevStartDate.getTime() / 1000);
 
       // Fetch page statistics with select_fields parameter
-      const selectFields = ["new_customer_count","phone_number_count","uniq_phone_number_count","customer_comment_count","customer_inbox_count","page_comment_count","page_inbox_count","new_inbox_count","inbox_interactive_count","today_uniq_website_referral","today_website_guest_referral","order_count","order_count_per_new_cus","order_count_per_phone","new_phone_count_per_new_customer_count"];
-      
+      const selectFields = ["new_customer_count", "phone_number_count", "uniq_phone_number_count", "customer_comment_count", "customer_inbox_count", "page_comment_count", "page_inbox_count", "new_inbox_count", "inbox_interactive_count", "today_uniq_website_referral", "today_website_guest_referral", "order_count", "order_count_per_new_cus", "order_count_per_phone", "new_phone_count_per_new_customer_count"];
+
       let allStatsData: any[] = [];
       let allPrevStatsData: any[] = [];
-      
+
       if (selectedPage === 'ALL') {
         // Fetch data for all pages
         const pagesToFetch = pages.filter(page => page.page_id || page.id.toString());
-        
+
         for (const page of pagesToFetch) {
           const pageId = page.page_id || page.id.toString();
           try {
@@ -1311,9 +1221,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId} ได้`);
               continue;
             }
-            
+
             const tokenData = await tokenResponse.json();
-            
+
             if (!tokenData.success || !tokenData.page_access_token) {
               console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${pageId}: ` + (tokenData.message || 'Unknown error'));
               continue;
@@ -1343,7 +1253,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 `https://pages.fm/api/public_api/v1/pages/${pageId}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${pageId}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
                 { method: 'GET' }
               );
-              
+
               if (prevStatsResponse.ok) {
                 const prevStatsData = await prevStatsResponse.json();
                 if (prevStatsData.success && prevStatsData.data) {
@@ -1362,7 +1272,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             console.error(`Error fetching data for page ${pageId}:`, error);
           }
         }
-        
+
         // Sort data from newest to oldest
         const sortedData = allStatsData.sort((a, b) =>
           new Date(b.hour).getTime() - new Date(a.hour).getTime()
@@ -1370,11 +1280,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         const prevSortedData = allPrevStatsData.sort((a, b) =>
           new Date(b.hour).getTime() - new Date(a.hour).getTime()
         );
-        
+
         setPageStatsData(sortedData);
         setPrevPageStatsData(prevSortedData);
         setUsePageStats(true);
-        
+
         if (allStatsData.length === 0) {
           alert('ไม่สามารถดึงข้อมูลสถิติจากเพจใดๆ ได้');
         }
@@ -1395,7 +1305,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           throw new Error('ไม่สามารถสร้าง page access token ได้');
         }
         const tokenData = await tokenResponse.json();
-        
+
         if (!tokenData.success || !tokenData.page_access_token) {
           throw new Error('ไม่สามารถสร้าง page access token ได้: ' + (tokenData.message || 'Unknown error'));
         }
@@ -1410,7 +1320,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           throw new Error('ไม่สามารถดึงข้อมูลสถิติได้');
         }
         const statsData = await statsResponse.json();
-        
+
         if (statsData.success && statsData.data) {
           // Sort data from newest to oldest
           const sortedData = [...statsData.data].sort((a, b) =>
@@ -1418,14 +1328,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           );
           setPageStatsData(sortedData);
           setUsePageStats(true);
-          
+
           // Fetch previous period data for comparison
           try {
             const prevStatsResponse = await fetchWithRetry(
               `https://pages.fm/api/public_api/v1/pages/${selectedPage}/statistics/pages?since=${prevSince}&until=${prevUntil}&page_access_token=${tokenData.page_access_token}&page_id=${selectedPage}&select_fields=${encodeURIComponent(JSON.stringify(selectFields))}`,
               { method: 'GET' }
             );
-            
+
             if (prevStatsResponse.ok) {
               const prevStatsData = await prevStatsResponse.json();
               if (prevStatsData.success && prevStatsData.data) {
@@ -1446,7 +1356,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     } catch (error) {
       console.error('Error fetching page stats:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       // Show a user-friendly message for server internal errors
       if (errorMessage.includes('Server internal error')) {
         alert('เซิร์ฟเวอร์ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลัง');
@@ -1475,7 +1385,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   const today = new Date();
                   const lastWeek = new Date(today);
                   lastWeek.setDate(today.getDate() - 7);
-                  
+
                   // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
                   const formatDateTime = (date: Date) => {
                     const y = date.getFullYear();
@@ -1485,7 +1395,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     const min = String(date.getMinutes()).padStart(2, '0');
                     return `${y}-${m}-${d}T${h}:${min}`;
                   };
-                  
+
                   setCustomDateRange(`${formatDateTime(lastWeek)} - ${formatDateTime(today)}`);
                 } else {
                   setUseCustomDateRange(false);
@@ -1533,9 +1443,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 {isRangePopoverOpen && (
                   <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
                     <div className="flex items-center justify-between mb-3">
-                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                       <div className="text-sm text-gray-600">Select date range</div>
-                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                      <button className="p-1 rounded hover:bg-gray-100" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}><ChevronRight className="w-4 h-4" /></button>
                     </div>
 
                     <div className="flex gap-4">
@@ -1552,9 +1462,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                             days.push(d);
                           }
                           const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-                          const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-                          const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-                          const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                          const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+                          const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+                          const inBetween = (d: Date, s: Date | null, e: Date | null) => s && e ? d.getTime() >= s.getTime() && d.getTime() <= e.getTime() : false;
                           return (
                             <div className="w-[320px]">
                               <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
@@ -1605,7 +1515,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         return (
                           <>
                             {renderMonth(new Date(visibleMonth))}
-                            {renderMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth()+1, 1))}
+                            {renderMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}
                           </>
                         );
                       })()}
@@ -1624,8 +1534,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                           onClick={() => {
                             const s = rangeTempStart ? new Date(rangeTempStart) : new Date(startDate);
                             const e = rangeTempEnd ? new Date(rangeTempEnd) : (rangeTempStart ? new Date(rangeTempStart) : new Date(endDate));
-                            s.setHours(0,0,0,0);
-                            e.setHours(23,59,59,999);
+                            s.setHours(0, 0, 0, 0);
+                            e.setHours(23, 59, 59, 999);
                             setCustomDateRange(`${s.toISOString()} - ${e.toISOString()}`);
                             setIsRangePopoverOpen(false);
                           }}
@@ -1667,10 +1577,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     onMouseDown={() => {
                       setSelectedPage('ALL');
                       setPageSearchTerm('ทั้งหมด');
-                      setNewEnvVar({
-                        ...newEnvVar,
-                        key: `ACCESS_TOKEN_PANCAKE_${currentUser?.company_id || ''}`
-                      });
+
                       setIsSelectOpen(false);
                     }}
                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center gap-2 font-semibold text-blue-600"
@@ -1688,10 +1595,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         onMouseDown={() => {
                           setSelectedPage(page.page_id || page.id.toString());
                           setPageSearchTerm(page.name);
-                          setNewEnvVar({
-                            ...newEnvVar,
-                            key: `ACCESS_TOKEN_PANCAKE_${page.page_id || page.id.toString()}`
-                          });
+
                           setIsSelectOpen(false);
                         }}
                         className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center gap-2"
@@ -1716,13 +1620,13 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               className={`border rounded-md px-3 py-2 text-sm flex items-center gap-1 ${usePageStats ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={usePageStats}
             >
-              <RefreshCcw className="w-4 h-4"/> รีเฟรช
+              <RefreshCcw className="w-4 h-4" /> รีเฟรช
             </button>
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
             >
-              <Download className="w-4 h-4"/> ดาวน์โหลด CSV
+              <Download className="w-4 h-4" /> ดาวน์โหลด CSV
             </button>
             {isStoreDbEnabled && (
               <button
@@ -1732,7 +1636,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 }}
                 className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-green-600 text-white hover:bg-green-700"
               >
-                <Save className="w-4 h-4"/> อัปเดต Database
+                <Save className="w-4 h-4" /> อัปเดต Database
               </button>
             )}
             <button
@@ -1740,7 +1644,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
               className="border rounded-md px-3 py-2 text-sm flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700"
               disabled={isSearching || !selectedPage}
             >
-              <Search className="w-4 h-4"/> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
+              <Search className="w-4 h-4" /> {isSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
             </button>
           </div>
         </div>
@@ -1758,7 +1662,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
           const prevPeriodStart = new Date(startDate);
           const prevPeriodEnd = new Date(startDate);
           let daysToSubtract: number;
-          
+
           if (typeof rangeDays === 'number') {
             daysToSubtract = rangeDays;
           } else {
@@ -1779,7 +1683,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 daysToSubtract = 7;
             }
           }
-          
+
           if (useCustomDateRange && customDateRange) {
             const [sRaw] = customDateRange.split(' - ');
             if (sRaw) {
@@ -1796,16 +1700,16 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
             prevPeriodStart.setHours(0, 0, 0, 0);
             prevPeriodEnd.setHours(23, 59, 59, 999);
           }
-          
+
           const formatDate = (date: Date) => {
             const d = date.getDate();
             const m = date.getMonth() + 1;
             const y = date.getFullYear();
             return `${d}/${m}/${y}`;
           };
-          
+
           const prevPeriodText = `เปรียบเทียบกับช่วง ${formatDate(prevPeriodStart)} - ${formatDate(prevPeriodEnd)}`;
-          
+
           return (
             <>
               <StatCard
@@ -1897,15 +1801,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                 (() => {
                   // Process data based on view mode
                   let displayData = [];
-                  
+
                   if (viewMode === 'daily') {
                     // Aggregate data by day
                     const dailyMap = new Map();
-                    
+
                     pageStatsData.forEach(item => {
                       const date = new Date(item.hour);
                       const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                      
+
                       if (!dailyMap.has(dateKey)) {
                         dailyMap.set(dateKey, {
                           date: dateKey,
@@ -1923,7 +1827,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                           order_count: 0
                         });
                       }
-                      
+
                       const dayData = dailyMap.get(dateKey);
                       dayData.new_customer_count += item.new_customer_count;
                       dayData.uniq_phone_number_count += item.uniq_phone_number_count;
@@ -1938,7 +1842,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       dayData.today_website_guest_referral += item.today_website_guest_referral;
                       dayData.order_count += item.order_count || 0;
                     });
-                    
+
                     displayData = Array.from(dailyMap.values()).sort((a, b) =>
                       new Date(b.date).getTime() - new Date(a.date).getTime()
                     );
@@ -1946,11 +1850,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     // Use hourly data - if ALL pages selected, aggregate by hour
                     if (selectedPage === 'ALL') {
                       const hourlyMap = new Map();
-                      
+
                       pageStatsData.forEach(item => {
                         const date = new Date(item.hour);
                         const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
-                        
+
                         if (!hourlyMap.has(hourKey)) {
                           hourlyMap.set(hourKey, {
                             hour: item.hour,
@@ -1968,7 +1872,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                             order_count: 0
                           });
                         }
-                        
+
                         const hourData = hourlyMap.get(hourKey);
                         hourData.new_customer_count += item.new_customer_count;
                         hourData.uniq_phone_number_count += item.uniq_phone_number_count;
@@ -1983,7 +1887,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         hourData.today_website_guest_referral += item.today_website_guest_referral;
                         hourData.order_count += item.order_count || 0;
                       });
-                      
+
                       displayData = Array.from(hourlyMap.values()).sort((a, b) =>
                         new Date(b.hour).getTime() - new Date(a.hour).getTime()
                       );
@@ -1991,10 +1895,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       displayData = pageStatsData;
                     }
                   }
-                  
+
                   return displayData.map((item, index) => {
                     let formattedDate;
-                    
+
                     if (viewMode === 'daily') {
                       formattedDate = item.date;
                     } else {
@@ -2002,7 +1906,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       const date = new Date(item.hour);
                       formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
                     }
-                    
+
                     return (
                       <tr key={index} className="border-t border-gray-100">
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{formattedDate}</td>
@@ -2070,15 +1974,15 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   (() => {
                     // Calculate totals based on view mode
                     let totalsData;
-                    
+
                     if (viewMode === 'daily') {
                       // Use the same aggregated data as in the table body
                       const dailyMap = new Map();
-                      
+
                       pageStatsData.forEach(item => {
                         const date = new Date(item.hour);
                         const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                        
+
                         if (!dailyMap.has(dateKey)) {
                           dailyMap.set(dateKey, {
                             new_customer_count: 0,
@@ -2095,7 +1999,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                             order_count: 0
                           });
                         }
-                        
+
                         const dayData = dailyMap.get(dateKey);
                         dayData.new_customer_count += item.new_customer_count;
                         dayData.uniq_phone_number_count += item.uniq_phone_number_count;
@@ -2110,7 +2014,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         dayData.today_website_guest_referral += item.today_website_guest_referral;
                         dayData.order_count += item.order_count || 0;
                       });
-                      
+
                       const dailyData = Array.from(dailyMap.values());
                       totalsData = {
                         totalNewCustomers: dailyData.reduce((sum, item) => sum + item.new_customer_count, 0),
@@ -2130,11 +2034,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       // Use hourly data - if ALL pages selected, use aggregated hourly data
                       if (selectedPage === 'ALL') {
                         const hourlyMap = new Map();
-                        
+
                         pageStatsData.forEach(item => {
                           const date = new Date(item.hour);
                           const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
-                          
+
                           if (!hourlyMap.has(hourKey)) {
                             hourlyMap.set(hourKey, {
                               new_customer_count: 0,
@@ -2151,7 +2055,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                               order_count: 0
                             });
                           }
-                          
+
                           const hourData = hourlyMap.get(hourKey);
                           hourData.new_customer_count += item.new_customer_count;
                           hourData.uniq_phone_number_count += item.uniq_phone_number_count;
@@ -2166,7 +2070,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                           hourData.today_website_guest_referral += item.today_website_guest_referral;
                           hourData.order_count += item.order_count || 0;
                         });
-                        
+
                         const hourlyData = Array.from(hourlyMap.values());
                         totalsData = {
                           totalNewCustomers: hourlyData.reduce((sum, item) => sum + item.new_customer_count, 0),
@@ -2199,7 +2103,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                         };
                       }
                     }
-                    
+
                     return (
                       <>
                         <td className="px-3 py-2 text-right whitespace-nowrap">{totalsData.totalNewCustomers}</td>
@@ -2275,143 +2179,8 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         </button>
       )}
 
-      {/* Off-canvas sidebar for env management - Only for Super Admin and Admin Control */}
-      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
-        <div className={`fixed top-0 right-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-50 ${
-          isEnvSidebarOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}>
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-xl font-semibold">จัดการตัวแปรสภาพแวดล้อม</h2>
-              <button
-                onClick={() => {
-                  setIsEnvSidebarOpen(false);
-                  // Reset the flag after a delay to prevent modal from showing immediately
-                  setTimeout(() => setWasEnvSidebarOpened(false), 1000);
-                }}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Off-canvas sidebar for env management - Refactored to component */}
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                {/* Add new env variable */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="text-md font-medium mb-3">เพิ่มตัวแปรใหม่</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Key</label>
-                      <input
-                        type="text"
-                        value={newEnvVar.key}
-                        onChange={(e) => setNewEnvVar({ ...newEnvVar, key: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="ACCESS_TOKEN_PANCAKE_1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-                      <textarea
-                        value={newEnvVar.value}
-                        onChange={(e) => setNewEnvVar({ ...newEnvVar, value: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="ค่าของตัวแปร"
-                        rows={3}
-                      />
-                    </div>
-                    <button
-                      onClick={() => saveEnvVariable(newEnvVar)}
-                      disabled={isLoading}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      <Save className="w-4 h-4" />
-                      {isLoading ? 'กำลังบันทึก...' : 'บันทึก'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* List existing env variables */}
-                <div>
-                  <h3 className="text-md font-medium mb-3">ตัวแปรที่มีอยู่</h3>
-                  {(() => {
-                    // Filter env variables to show only ACCESS_TOKEN_PANCAKE_* for current user's company
-                    const filteredEnvVars = envVariables.filter(envVar =>
-                      envVar.key.startsWith('ACCESS_TOKEN_PANCAKE_') &&
-                      currentUser &&
-                      envVar.key === `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`
-                    );
-                    
-                    return filteredEnvVars.length === 0 ? (
-                      <p className="text-gray-500 text-sm">ไม่มีตัวแปร</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {filteredEnvVars.map((envVar) => (
-                          <div key={envVar.id || envVar.key} className="bg-white border border-gray-200 rounded-lg p-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 mr-2">
-                                <div className="font-medium text-sm text-gray-900">{envVar.key}</div>
-                                <div className="text-sm text-gray-600 mt-1 break-all">{envVar.value}</div>
-                                {envVar.updated_at && (
-                                  <div className="text-xs text-gray-400 mt-1">
-                                    อัพเดต: {new Date(envVar.updated_at).toLocaleString('th-TH')}
-                                  </div>
-                                )}
-                              </div>
-                              <button
-                                onClick={() => deleteEnvVariable(envVar.key)}
-                                disabled={isLoading}
-                                className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                title="ลบตัวแปร"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-                
-                {/* Database Upload Setting */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="text-md font-medium mb-3">การตั้งค่าฐานข้อมูล</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="storeDbEnabled"
-                        checked={isStoreDbEnabled}
-                        onChange={(e) => {
-                          const isEnabled = e.target.checked;
-                          setIsStoreDbEnabled(isEnabled);
-                          
-                          // Save the setting to database
-                          saveEnvVariable({
-                            key: 'page_store_db',
-                            value: isEnabled ? '1' : '0'
-                          });
-                        }}
-                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="storeDbEnabled" className="text-sm text-gray-700">
-                        เปิดใช้งานฟังก์ชันอัปโหลดข้อมูลลงฐานข้อมูล
-                      </label>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      เมื่อปิดใช้งาน ปุ่ม "อัปเดต Database" จะไม่แสดง
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Export Modal */}
       {isExportModalOpen && (
@@ -2457,14 +2226,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       })()}
                     </span>
                   </button>
-                  
+
                   {/* Date Range Popover */}
                   {isExportRangePopoverOpen && (
                     <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
                       <div className="flex items-center justify-between mb-3">
-                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth() - 1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                         <div className="text-sm text-gray-600">Select date range</div>
-                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setExportVisibleMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth() + 1, 1))}><ChevronRight className="w-4 h-4" /></button>
                       </div>
 
                       <div className="flex gap-4">
@@ -2481,9 +2250,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                               days.push(d);
                             }
                             const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-                            const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-                            const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-                            const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                            const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+                            const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+                            const inBetween = (d: Date, s: Date | null, e: Date | null) => s && e ? d.getTime() >= s.getTime() && d.getTime() <= e.getTime() : false;
                             return (
                               <div className="w-[320px]">
                                 <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
@@ -2534,7 +2303,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                           return (
                             <>
                               {renderMonth(new Date(exportVisibleMonth))}
-                              {renderMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth()+1, 1))}
+                              {renderMonth(new Date(exportVisibleMonth.getFullYear(), exportVisibleMonth.getMonth() + 1, 1))}
                             </>
                           );
                         })()}
@@ -2553,9 +2322,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                             onClick={() => {
                               const s = exportRangeTempStart ? new Date(exportRangeTempStart) : new Date(startDate);
                               const e = exportRangeTempEnd ? new Date(exportRangeTempEnd) : (exportRangeTempStart ? new Date(exportRangeTempStart) : new Date(endDate));
-                              s.setHours(0,0,0,0);
-                              e.setHours(23,59,59,999);
-                              
+                              s.setHours(0, 0, 0, 0);
+                              e.setHours(23, 59, 59, 999);
+
                               // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
                               const formatDateTime = (date: Date) => {
                                 const y = date.getFullYear();
@@ -2565,7 +2334,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                 const min = String(date.getMinutes()).padStart(2, '0');
                                 return `${y}-${m}-${d}T${h}:${min}`;
                               };
-                              
+
                               setExportDateRange(`${formatDateTime(s)} - ${formatDateTime(e)}`);
                               setIsExportRangePopoverOpen(false);
                             }}
@@ -2724,7 +2493,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       })() : 'กรุณาเลือกวันที่'}
                     </span>
                   </button>
-                  
+
                   {/* Color legend */}
                   <div className="mt-2 text-xs text-gray-600 flex gap-4">
                     <div className="flex items-center gap-1">
@@ -2736,14 +2505,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                       <span>วันปัจจุบัน</span>
                     </div>
                   </div>
-                  
+
                   {/* Date Range Popover */}
                   {isDatabaseRangePopoverOpen && (
                     <div className="fixed z-[60] mt-2 bg-white rounded-lg shadow-lg border p-4 w-[700px]" style={{ top: 'auto', left: 'auto' }}>
                       <div className="flex items-center justify-between mb-3">
-                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()-1, 1))}><ChevronLeft className="w-4 h-4" /></button>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth() - 1, 1))}><ChevronLeft className="w-4 h-4" /></button>
                         <div className="text-sm text-gray-600">Select date range</div>
-                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()+1, 1))}><ChevronRight className="w-4 h-4" /></button>
+                        <button className="p-1 rounded hover:bg-gray-100" onClick={() => setDatabaseVisibleMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth() + 1, 1))}><ChevronRight className="w-4 h-4" /></button>
                       </div>
 
                       <div className="flex gap-4">
@@ -2760,9 +2529,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                               days.push(d);
                             }
                             const monthLabel = firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-                            const weekDays = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-                            const isSameDay = (a: Date, b: Date) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-                            const inBetween = (d: Date, s: Date|null, e: Date|null) => s && e ? d.getTime()>=s.getTime() && d.getTime()<=e.getTime() : false;
+                            const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+                            const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+                            const inBetween = (d: Date, s: Date | null, e: Date | null) => s && e ? d.getTime() >= s.getTime() && d.getTime() <= e.getTime() : false;
                             return (
                               <div className="w-[320px]">
                                 <div className="text-sm font-medium text-gray-700 text-center mb-2">{monthLabel}</div>
@@ -2775,21 +2544,21 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                     const selectedStart = databaseRangeTempStart && isSameDay(d, databaseRangeTempStart);
                                     const selectedEnd = databaseRangeTempEnd && isSameDay(d, databaseRangeTempEnd);
                                     const between = inBetween(d, databaseRangeTempStart, databaseRangeTempEnd) && !selectedStart && !selectedEnd;
-                                    
+
                                     // Check if this date exists in the database
                                     const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                                     const isDateInDatabase = existingDatesInDatabase.has(dateKey);
-                                    
+
                                     // Check if this date is today
                                     const today = new Date();
                                     const isToday = d.getFullYear() === today.getFullYear() &&
-                                                   d.getMonth() === today.getMonth() &&
-                                                   d.getDate() === today.getDate();
-                                    
+                                      d.getMonth() === today.getMonth() &&
+                                      d.getDate() === today.getDate();
+
                                     const base = `text-sm text-center py-1.5 rounded select-none`;
                                     let tone = '';
                                     let isDisabled = false;
-                                    
+
                                     if (isDateInDatabase) {
                                       // Date exists in database - green and disabled
                                       tone = 'bg-green-500 text-white cursor-not-allowed opacity-75';
@@ -2807,14 +2576,14 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                     } else {
                                       tone = 'text-gray-400 hover:bg-gray-100';
                                     }
-                                    
+
                                     return (
                                       <div
                                         key={idx}
                                         className={`${base} ${tone}`}
                                         onClick={() => {
                                           if (isDisabled) return;
-                                          
+
                                           const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                                           if (!databaseRangeTempStart || (databaseRangeTempStart && databaseRangeTempEnd)) {
                                             setDatabaseRangeTempStart(day);
@@ -2840,7 +2609,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                           return (
                             <>
                               {renderMonth(new Date(databaseVisibleMonth))}
-                              {renderMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth()+1, 1))}
+                              {renderMonth(new Date(databaseVisibleMonth.getFullYear(), databaseVisibleMonth.getMonth() + 1, 1))}
                             </>
                           );
                         })()}
@@ -2859,9 +2628,9 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                             onClick={() => {
                               const s = databaseRangeTempStart ? new Date(databaseRangeTempStart) : new Date(startDate);
                               const e = databaseRangeTempEnd ? new Date(databaseRangeTempEnd) : (databaseRangeTempStart ? new Date(databaseRangeTempStart) : new Date(endDate));
-                              s.setHours(0,0,0,0);
-                              e.setHours(23,59,59,999);
-                              
+                              s.setHours(0, 0, 0, 0);
+                              e.setHours(23, 59, 59, 999);
+
                               // Format as YYYY-MM-DDTHH:mm - YYYY-MM-DDTHH:mm
                               const formatDateTime = (date: Date) => {
                                 const y = date.getFullYear();
@@ -2871,7 +2640,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                                 const min = String(date.getMinutes()).padStart(2, '0');
                                 return `${y}-${m}-${d}T${h}:${min}`;
                               };
-                              
+
                               setDatabaseDateRange(`${formatDateTime(s)} - ${formatDateTime(e)}`);
                               setIsDatabaseRangePopoverOpen(false);
                             }}
@@ -2922,7 +2691,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                   {isUpdatingDatabase ? 'กำลังอัปเดต...' : 'อัปเดต Database'}
                 </button>
               </div>
-              
+
               {/* Batch Records Table */}
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <div className="flex items-center justify-between mb-4">
@@ -2946,7 +2715,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
                     </button>
                   </div>
                 </div>
-                
+
                 {batchRecords.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">ไม่มีข้อมูล batch</p>
                 ) : (
@@ -3013,14 +2782,16 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
         </div>
       )}
 
-      {/* Overlay for sidebar - Only for Super Admin and Admin Control */}
-      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && isEnvSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40"
-          onClick={() => setIsEnvSidebarOpen(false)}
-        />
-      )}
-      
+      {/* Off-canvas sidebar for env management */}
+      <PancakeEnvOffSidebar
+        isOpen={isEnvSidebarOpen}
+        onClose={() => setIsEnvSidebarOpen(false)}
+        currentUser={currentUser}
+        onUpdate={() => {
+          checkDbSetting();
+        }}
+      />
+
       {/* Access Token Warning Modal */}
       {isAccessTokenWarningOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">

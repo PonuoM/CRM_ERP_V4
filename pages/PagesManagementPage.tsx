@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Page, User } from "@/types";
+import { Page, User, UserRole } from "@/types";
 import Modal from "@/components/Modal";
 import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
+import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { Settings } from "lucide-react";
 
 // Function to sync pages from pages.fm API to database
 const syncPagesWithDatabase = async (currentUser?: User) => {
@@ -338,6 +340,11 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [pageTypes, setPageTypes] = useState<{ [key: string]: string }>({});
   const [loadingPageTypes, setLoadingPageTypes] = useState(false);
 
+  // Pancake Show In Create Order Env
+  const [pancakeShowInCreateOrder, setPancakeShowInCreateOrder] = useState(false);
+  const [loadingPancakeEnv, setLoadingPancakeEnv] = useState(false);
+  const [isEnvSidebarOpen, setIsEnvSidebarOpen] = useState(false);
+
   // Fetch page types from env
   const fetchPageTypes = async () => {
     setLoadingPageTypes(true);
@@ -361,6 +368,62 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
       console.error("Error fetching page types:", error);
     } finally {
       setLoadingPageTypes(false);
+    }
+  };
+
+  // Fetch Pancake Env
+  const fetchPancakeEnv = async () => {
+    setLoadingPancakeEnv(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${apiBase}/Page_DB/env_manager.php?key=PANCAKE_SHOW_IN_CREATE_ORDER`,
+        { headers }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        // If data found and value is '1', set true
+        if (data && data.value === "1") {
+          setPancakeShowInCreateOrder(true);
+        } else {
+          setPancakeShowInCreateOrder(false);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching pancake env:", error);
+    } finally {
+      setLoadingPancakeEnv(false);
+    }
+  };
+
+  const handleTogglePancakeEnv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.checked;
+    setPancakeShowInCreateOrder(newValue); // Optimistic update
+
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      await fetch(`${apiBase}/Page_DB/env_manager.php`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          key: "PANCAKE_SHOW_IN_CREATE_ORDER",
+          value: newValue ? "1" : "0",
+        }),
+      });
+    } catch (error) {
+      console.error("Error updating pancake env:", error);
+      setPancakeShowInCreateOrder(!newValue); // Revert on error
+      alert("Failed to update setting");
     }
   };
 
@@ -449,6 +512,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     try {
       // Fetch all pages (not filtered by company_id)
       const allPagesData = await listPages();
+
+      // Sort: Active first, then by Name
+      allPagesData.sort((a: any, b: any) => {
+        if (a.active === b.active) {
+          return a.name.localeCompare(b.name);
+        }
+        return b.active ? 1 : -1;
+      });
+
       setItems(allPagesData);
       console.log("Fetched all pages:", allPagesData);
       console.log(
@@ -466,7 +538,9 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
 
   useEffect(() => {
     fetchPages();
+    fetchPages();
     fetchPageTypes();
+    fetchPancakeEnv();
   }, [currentUser?.companyId]);
 
   // Filter pages based on still_in_list
@@ -515,15 +589,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
         (pageType === "all" || p.page_type === pageType),
     );
 
-    // Sort by active status (active pages first)
-    filteredPages.sort((a, b) => {
-      // If both have the same active status, sort by name
-      if (a.active === b.active) {
-        return a.name.localeCompare(b.name);
-      }
-      // Active pages (true) should come before inactive pages (false)
-      return b.active ? 1 : -1;
-    });
+    // Sort by name (Removed - rely on fetch order to prevent jumping)
+    // filteredPages.sort((a, b) => a.name.localeCompare(b.name));
 
     return filteredPages;
   }, [pagesForCurrentCompany, keyword, status, pageType]);
@@ -584,13 +651,28 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pancakeShowInCreateOrder}
+              onChange={handleTogglePancakeEnv}
+              className="form-checkbox h-4 w-4 text-indigo-600 transition duration-150 ease-in-out"
+              disabled={loadingPancakeEnv}
+            />
+            <span className="text-sm text-gray-700">
+              แสดงเพจจาก Pancake ในหน้าสร้างออเดอร์
+            </span>
+          </label>
+
           <div className="flex items-end space-x-2">
             <button
-              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700"
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm disabled:opacity-50"
               onClick={() => setAddPageModalOpen(true)}
             >
-              <span className="text-lg">+</span>
-              เพิ่มเพจ
+              + เพิ่มเพจ
             </button>
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm disabled:opacity-50"
@@ -636,7 +718,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               }}
               disabled={syncing}
             >
-              {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล"}
+              {syncing ? "กำลังอัปเดต..." : "อัปเดตข้อมูล Pancake"}
             </button>
             <button
               className="px-4 py-2 bg-red-600 text-white rounded-md text-sm disabled:opacity-50"
@@ -746,7 +828,8 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <th className="py-2 px-3 font-medium">ประเภทเพจ</th>
               <th className="py-2 px-3 font-medium">URL</th>
               <th className="py-2 px-3 font-medium">สถานะ</th>
-              <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
+              <th className="py-2 px-3 font-medium">Admin</th>
+              <th className="py-2 px-3 font-medium">Marketing</th>
               <th className="py-2 px-3 font-medium text-center">จัดการ</th>
               <th className="py-2 px-3 font-medium text-center">ลบ</th>
             </tr>
@@ -813,7 +896,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                           );
 
                           // Show success message
-                          alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
+                          // alert(`อัปเดตสถานะเพจ "${p.name}" เรียบร้อยแล้ว`);
                         } catch (error) {
                           console.error("Error updating page status:", error);
                           alert(
@@ -833,6 +916,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   </label>
                 </td>
                 <td className="py-2 px-3">{p.user_count || 0} คน</td>
+                <td className="py-2 px-3">{p.marketing_user_count || 0} คน</td>
                 <td className="py-2 px-3 text-center">
                   <ManagePageButton
                     page={p}
@@ -863,7 +947,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             ))}
             {filtered.length === 0 && (
               <tr className="border-t">
-                <td colSpan={7} className="py-6 text-center text-gray-500">
+                <td colSpan={8} className="py-6 text-center text-gray-500">
                   ไม่พบข้อมูล
                 </td>
               </tr>
@@ -1089,6 +1173,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                     <th className="py-2 px-3 font-medium">URL</th>
                     <th className="py-2 px-3 font-medium">สถานะ</th>
                     <th className="py-2 px-3 font-medium">ผู้ดูแล</th>
+                    <th className="py-2 px-3 font-medium">Marketing</th>
                     <th className="py-2 px-3 font-medium text-center">
                       จัดการ
                     </th>
@@ -1185,6 +1270,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                         </label>
                       </td>
                       <td className="py-2 px-3">{p.user_count || 0} คน</td>
+                      <td className="py-2 px-3">{p.marketing_user_count || 0} คน</td>
                       <td className="py-2 px-3 text-center">
                         <ManagePageButton
                           page={p}
@@ -1218,8 +1304,31 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
             </div>
           </div>
         )}
+
       </div>
-    </div>
+
+      {/* Floating button for env management - Only for Super Admin and Admin Control */}
+      {currentUser && (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) && (
+        <button
+          onClick={() => setIsEnvSidebarOpen(true)}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40 flex items-center justify-center transition-all duration-200 hover:scale-110"
+          title="จัดการตัวแปรสภาพแวดล้อม"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Off-canvas sidebar for env management */}
+      <PancakeEnvOffSidebar
+        isOpen={isEnvSidebarOpen}
+        onClose={() => setIsEnvSidebarOpen(false)}
+        currentUser={currentUser}
+        onUpdate={() => {
+          fetchPageTypes();
+          fetchPancakeEnv();
+        }}
+      />
+    </div >
   );
 };
 
