@@ -672,8 +672,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     const escapeCsvCell = (cellData: any): string => {
       const str = String(cellData ?? '');
-      // Force Excel to treat as text by using ="value" syntax
-      return `="${str.replace(/"/g, '""')}"`;
+      // Use standard CSV escaping: wrap in quotes if contains comma, quote, or newline
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
     };
 
     const rows = selectedOrders.flatMap(order => {
@@ -752,12 +755,19 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             (b: any) =>
               String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
           );
-          const orderIdTotalAmount =
-            order.paymentMethod === PaymentMethod.COD
-              ? (boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
-                ? boxForThisOrder.codAmount
-                : 0)
-              : "";
+
+          let orderIdTotalAmount: string | number = "";
+
+          if (order.paymentMethod === PaymentMethod.COD) {
+            // สำหรับ COD ใช้ค่าจาก box
+            orderIdTotalAmount = boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
+              ? boxForThisOrder.codAmount
+              : 0;
+          } else if (order.paymentMethod === PaymentMethod.Transfer || order.paymentMethod === PaymentMethod.PayAfter) {
+            // สำหรับ Transfer และ PayAfter ใช้ totalAmount หารด้วยจำนวน orderId
+            const totalOrderIds = itemsByOrderId.size;
+            orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
+          }
 
           // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
@@ -827,7 +837,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
             'จำนวน': 1,
-            'ราคาสินค้าต่อหน่วย': item.pricePerUnit,
+            'ราคาสินค้าต่อหน่วย': index === 0 ? orderIdTotalAmount : '',
             'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
             'เวลาส่งสินค้า': '',

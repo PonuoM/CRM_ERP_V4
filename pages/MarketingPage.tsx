@@ -145,22 +145,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // States for dashboard
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [dashboardView, setDashboardView] = useState<"user" | "page">("user");
-  // Pagination for Dashboard
-  const [dashboardPage, setDashboardPage] = useState(1);
-  const [dashboardPageSize, setDashboardPageSize] = useState(10);
-  const [dashboardTotal, setDashboardTotal] = useState(0);
-  const dashboardTotalPages = useMemo(
-    () => Math.max(1, Math.ceil((dashboardTotal || 0) / dashboardPageSize)),
-    [dashboardTotal, dashboardPageSize],
-  );
 
   const [dateRange, setDateRange] = useState<DateRange>({
     start: "",
     end: "",
   });
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
   const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
@@ -256,6 +246,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   >([]);
   const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
     useState(false);
+  const [adsHistorySelectedUsers, setAdsHistorySelectedUsers] = useState<number[]>([]);
   const [adsHistoryDatePickerOpen, setAdsHistoryDatePickerOpen] =
     useState(false);
   const [adsHistoryTempStart, setAdsHistoryTempStart] = useState(
@@ -595,13 +586,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     loadMarketingUsers();
   }, []);
 
-  // Set selectedUsers to all marketing users by default
-  useEffect(() => {
-    if (marketingUsersList.length > 0 && selectedUsers.length === 0) {
-      const allUserIds = marketingUsersList.map((user) => user.id);
-      setSelectedUsers(allUserIds);
-    }
-  }, [marketingUsersList]);
+
 
   // Load user pages from marketing_user_page table
   useEffect(() => {
@@ -652,16 +637,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setAdsLogsLoading(true);
       try {
         const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+
+        // Determine user filter based on role and selection
+        let userFilter: number | number[] | undefined;
+        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+          // For admins: use selected users if any, otherwise show all
+          userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
+        } else {
+          // For non-admins: always filter by their own ID
+          userFilter = currentUser.id;
+        }
+
         const result = await loadAdsLogs(
           adsHistorySelectedPages.length > 0
             ? adsHistorySelectedPages
             : undefined,
           adsHistoryDateRange.start || undefined,
           adsHistoryDateRange.end || undefined,
-          currentUser.role === "Super Admin" ||
-            currentUser.role === "Admin Control"
-            ? undefined
-            : currentUser.id,
+          userFilter,
           adsHistoryPageSize,
           offset,
         );
@@ -692,6 +685,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     adsHistoryPageSize,
     adsHistoryDateRange,
     adsHistorySelectedPages,
+    adsHistorySelectedUsers,
   ]);
 
   // Toggle page expand/collapse
@@ -959,7 +953,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     pageIds?: number[],
     dateFrom?: string,
     dateTo?: string,
-    userId?: number,
+    userId?: number | number[],
     limit?: number,
     offset?: number,
   ) => {
@@ -971,7 +965,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       if (userId) {
-        params.set("user_id", String(userId));
+        // Handle both single user ID and array of user IDs
+        const userIdStr = Array.isArray(userId) ? userId.join(",") : String(userId);
+        params.set("user_id", userIdStr);
       }
       if (limit) params.set("limit", String(limit));
       if (offset !== undefined) params.set("offset", String(offset));
@@ -1062,16 +1058,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setEditingLog(null);
       // Refresh current page
       const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+
+      // Use same user filter logic as main useEffect
+      let userFilter: number | number[] | undefined;
+      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+        userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
+      } else {
+        userFilter = currentUser.id;
+      }
+
       const result = await loadAdsLogs(
         adsHistorySelectedPages.length > 0
           ? adsHistorySelectedPages
           : undefined,
         adsHistoryDateRange.start || undefined,
         adsHistoryDateRange.end || undefined,
-        currentUser.role === "Super Admin" ||
-          currentUser.role === "Admin Control"
-          ? undefined
-          : currentUser.id,
+        userFilter,
         adsHistoryPageSize,
         offset,
       );
@@ -1194,15 +1196,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       if (selectedPages.length > 0) {
         params.set("page_ids", selectedPages.join(","));
       }
-      if (selectedUsers.length > 0) {
-        params.set("user_ids", selectedUsers.join(","));
-      }
 
-      // Add pagination parameters
-      if (dashboardPageSize) {
-        params.set("limit", String(dashboardPageSize));
-        params.set("offset", String((dashboardPage - 1) * dashboardPageSize));
-      }
+      // Add company_id to fetch all pages for this company
+      params.set("company_id", String(currentUser.companyId));
 
       const res = await fetch(
         `api/Marketing_DB/dashboard_data.php?${params.toString()}`,
@@ -1213,17 +1209,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const data = await res.json();
       if (data.success) {
         setDashboardData(data.data || []);
-        setDashboardTotal(data.pagination?.total || 0);
-
       } else {
         setDashboardData([]);
-        setDashboardTotal(0);
         console.error("Failed to load dashboard data:", data.error);
       }
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
       setDashboardData([]);
-      setDashboardTotal(0);
     } finally {
       setDashboardLoading(false);
     }
@@ -1254,10 +1246,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   // Dashboard data loads only when clicking the search button.
 
-  // Reset to first page when data or page size changes
-  useEffect(() => {
-    setDashboardPage(1);
-  }, [dateRange, selectedPages, selectedUsers, dashboardPageSize]);
+  // Removed pagination reset effect
 
   // Load dashboard data when dependencies change
   useEffect(() => {
@@ -1265,8 +1254,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       activeTab === "dashboard" &&
       !!dateRange.start &&
       !!dateRange.end &&
-      selectedPages.length > 0 &&
-      selectedUsers.length > 0;
+      selectedPages.length > 0;
 
     if (ready) {
       loadDashboardData();
@@ -1276,9 +1264,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     dateRange,
     dateRange.end,
     selectedPages,
-    selectedUsers,
-    dashboardPage,
-    dashboardPageSize,
   ]);
 
   const getHeaderTitle = () => {
@@ -1909,20 +1894,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   />
                 </div>
 
-                <div className="flex-1">
-                  <label className={labelClass}>เลือกผู้ใช้</label>
-                  <MultiSelectUserFilter
-                    users={marketingUsersList.map((user) => ({
-                      id: user.id,
-                      firstName: user.first_name,
-                      lastName: user.last_name,
-                      username: user.username,
-                    }))}
-                    selectedUsers={selectedUsers}
-                    onChange={setSelectedUsers}
-                  />
-                </div>
-
                 <div className="">
                   <button
                     onClick={() => loadDashboardData()}
@@ -2084,31 +2055,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               )}
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center justify-end mb-3">
-              <div className="inline-flex rounded-md shadow-sm border border-gray-300 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setDashboardView("user")}
-                  className={`px-3 py-1.5 text-sm ${dashboardView === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                    }`}
-                >
-                  รายบุคคล
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDashboardView("page")}
-                  className={`px-3 py-1.5 text-sm border-l border-gray-300 ${dashboardView === "page"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                    }`}
-                >
-                  รายเพจ
-                </button>
-              </div>
-            </div>
+
 
             {/* Dashboard Table */}
             {dashboardLoading ? (
@@ -2121,30 +2068,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
-                      <th className="px-3 py-2 text-left">วันที่</th>
                       <th className="px-3 py-2 text-left">เพจ</th>
-                      {dashboardView === "user" && (
-                        <th className="px-3 py-2 text-left">ผู้ใช้</th>
-                      )}
                       <th className="px-3 py-2 text-left">ค่า Ads</th>
                       <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
                       <th className="px-3 py-2 text-left">การเข้าถึง</th>
                       <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                      <th className="px-3 py-2 text-left">ยอดขาย</th>
+                      <th className="px-3 py-2 text-left">จำนวน Order</th>
+                      <th className="px-3 py-2 text-left">ลูกค้าใหม่</th>
+                      <th className="px-3 py-2 text-left">รีออเดอร์</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(dashboardView === "user" ? dashboardData : aggregatedByPage)
-                      .length > 0 ? (
-                      (dashboardView === "user"
-                        ? dashboardData
-                        : aggregatedByPage
-                      ).map((row, index) => (
+                    {dashboardData.length > 0 ? (
+                      dashboardData.map((row, index) => (
                         <tr key={index} className="border-b hover:bg-gray-50">
-                          <td className="px-3 py-2">
-                            {dashboardView === "user"
-                              ? row.log_date
-                              : row.log_date || ""}
-                          </td>
+
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
                               <span>{row.page_name}</span>
@@ -2160,23 +2099,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               })()}
                             </div>
                           </td>
-                          {dashboardView === "user" && (
-                            <td className="px-3 py-2">
-                              {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
-                            </td>
-                          )}
                           <td className="px-3 py-2">
-                            ฿{Number(row.ads_cost || 0).toFixed(0)}
+                            ฿{Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
-                          <td className="px-3 py-2">{row.impressions || 0}</td>
-                          <td className="px-3 py-2">{row.reach || 0}</td>
-                          <td className="px-3 py-2">{row.clicks || 0}</td>
+                          <td className="px-3 py-2">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">
+                            ฿{Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3 py-2">{Number(row.total_orders || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.new_customer_orders || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.reorder_customer_orders || 0).toLocaleString('th-TH')}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={9}
                           className="text-center py-8 text-gray-500"
                         >
                           ไม่มีข้อมูลในช่วงวันที่ที่เลือก
@@ -2186,79 +2126,11 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </tbody>
                 </table>
 
-                {/* Dashboard Pagination */}
+                {/* Total count display */}
                 {dashboardData.length > 0 && (
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                  <div className="flex justify-between items-center mt-3">
                     <div className="text-sm text-gray-600">
-                      {(() => {
-                        const start = (dashboardPage - 1) * dashboardPageSize + 1;
-                        const end = Math.min(
-                          start + dashboardPageSize - 1,
-                          dashboardTotal,
-                        );
-                        return dashboardTotal > 0
-                          ? `แสดง ${start}-${end} จาก ${dashboardTotal} รายการ (ทั้งหมด ${dashboardTotalPages} หน้า)`
-                          : "ไม่มีข้อมูล";
-                      })()}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-700">แถวต่อหน้า</label>
-                      <select
-                        className="border rounded px-2 py-1 text-sm bg-white"
-                        value={dashboardPageSize}
-                        onChange={(e) =>
-                          setDashboardPageSize(Number(e.target.value))
-                        }
-                      >
-                        {[10, 20, 50, 100].map((sz) => (
-                          <option key={sz} value={sz}>
-                            {sz}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                        onClick={() =>
-                          setDashboardPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={dashboardPage === 1}
-                      >
-                        ก่อนหน้า
-                      </button>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm text-gray-700">หน้า</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max={dashboardTotalPages}
-                          value={dashboardPage}
-                          onChange={(e) => {
-                            const page = Math.max(
-                              1,
-                              Math.min(
-                                dashboardTotalPages,
-                                Number(e.target.value) || 1,
-                              ),
-                            );
-                            setDashboardPage(page);
-                          }}
-                          className="w-16 px-2 py-1 border rounded text-sm text-center"
-                        />
-                        <span className="text-sm text-gray-700">
-                          / {dashboardTotalPages}
-                        </span>
-                      </div>
-                      <button
-                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                        onClick={() =>
-                          setDashboardPage((p) =>
-                            Math.min(dashboardTotalPages, p + 1),
-                          )
-                        }
-                        disabled={dashboardPage === dashboardTotalPages}
-                      >
-                        ถัดไป
-                      </button>
+                      แสดงทั้งหมด {dashboardData.length} รายการ
                     </div>
                   </div>
                 )}
@@ -2612,6 +2484,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     onToggleInactivePages={setShowInactivePagesAdsHistory}
                   />
                 </div>
+
+                {/* User Filter - Only for Super Admin and Admin Control */}
+                {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                  <div className="flex-1">
+                    <label className={labelClass}>เลือกผู้ใช้</label>
+                    <MultiSelectUserFilter
+                      users={marketingUsersList.map((user) => ({
+                        id: user.id,
+                        firstName: user.first_name,
+                        lastName: user.last_name,
+                        username: user.username,
+                      }))}
+                      selectedUsers={adsHistorySelectedUsers}
+                      onChange={setAdsHistorySelectedUsers}
+                    />
+                  </div>
+                )}
 
                 <div className="">
                   <button

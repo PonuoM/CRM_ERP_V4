@@ -118,7 +118,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   const startDate = useMemo(() => new Date(range.start), [range.start]);
   const endDate = useMemo(() => new Date(range.end), [range.end]);
-  const activePages = useMemo(() => allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)), [allPages, pages]);
+  const activePages = useMemo(() => allPages.filter(p => p.active === 1 || p.active === true), [allPages]);
   const [selectedPageId, setSelectedPageId] = useState<number | 'all'>('all');
 
   // Get current user from localStorage
@@ -476,8 +476,18 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       if (selectedPageId === 'all') {
         // Fetch data from all pages
-        const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
+        const activePagesList = allPages.filter(p => {
+          const isActive = p.active === 1 || p.active === true;
+          return isActive;
+        });
+
+        if (activePagesList.length === 0) {
+          throw new Error('ไม่พบเพจที่เปิดใช้งาน กรุณาตรวจสอบว่ามีเพจที่ active อยู่');
+        }
+
         const allEngagementData: any[] = [];
+        const failedPages: string[] = [];
+        const successPages: string[] = [];
 
         for (const page of activePagesList) {
           const pageId = page.page_id || page.id;
@@ -495,14 +505,14 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             );
 
             if (!tokenResponse.ok) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
+              failedPages.push(`${page.name} (ไม่สามารถสร้าง token)`);
               continue;
             }
 
             const tokenData = await tokenResponse.json();
 
             if (!tokenData.success || !tokenData.page_access_token) {
-              console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
+              failedPages.push(`${page.name} (token ไม่ถูกต้อง)`);
               continue;
             }
 
@@ -513,7 +523,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             );
 
             if (!engagementResponse.ok) {
-              console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
+              failedPages.push(`${page.name} (ไม่สามารถดึงข้อมูล)`);
               continue;
             }
 
@@ -527,6 +537,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 pageName: page.name
               };
               allEngagementData.push(pageData);
+              successPages.push(page.name);
 
               // Collect user engagement data if available
               if (pageEngagementResult.users_engagements) {
@@ -539,15 +550,21 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   });
                 });
               }
+            } else {
+              failedPages.push(`${page.name} (ไม่มีข้อมูล)`);
             }
           } catch (error) {
-            console.error(`Error processing page ${page.name}:`, error);
+            failedPages.push(`${page.name} (${error instanceof Error ? error.message : 'Unknown error'})`);
             // Continue with other pages even if one fails
           }
         }
 
         if (allEngagementData.length === 0) {
-          throw new Error('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+          let errorMessage = `ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้\n\nเพจที่พยายามดึงข้อมูล: ${activePagesList.length} เพจ`;
+          if (failedPages.length > 0) {
+            errorMessage += `\n\nเพจที่ล้มเหลว:\n${failedPages.join('\n')}`;
+          }
+          throw new Error(errorMessage);
         }
 
         // Aggregate data from all pages
@@ -648,7 +665,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         throw new Error('ไม่สามารถดึงข้อมูล engagement ได้: ' + (engagementResult?.message || 'Unknown error'));
       }
     } catch (error) {
-      console.error('Error fetching engagement data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       // Show a user-friendly message for server internal errors
@@ -842,7 +858,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           completedPages++;
           setExportProgress({ current: completedPages, total: selectedPagesForExport.size });
         } catch (error) {
-          console.error(`Error fetching data for page ${pageId}:`, error);
           completedPages++;
           setExportProgress({ current: completedPages, total: selectedPagesForExport.size });
         }
@@ -889,7 +904,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       setIsExportModalOpen(false);
       alert('ส่งออกข้อมูลเรียบร้อย');
     } catch (error) {
-      console.error('Error exporting data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes('Server internal error')) {
@@ -937,7 +951,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
     // Determine which pages to process
     const pagesToProcess = selectedPageId === 'all'
-      ? allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active))
+      ? allPages.filter(p => {
+        const isActive = p.active === 1 || p.active === true;
+        return isActive;
+      })
       : allPages.filter(p => (p.page_id || p.id) === selectedPageId);
 
     if (pagesToProcess.length === 0) {
@@ -1009,14 +1026,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           );
 
           if (!tokenResponse.ok) {
-            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
             continue;
           }
 
           const tokenData = await tokenResponse.json();
 
           if (!tokenData.success || !tokenData.page_access_token) {
-            console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
             continue;
           }
 
@@ -1027,14 +1042,12 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
           );
 
           if (!engagementResponse.ok) {
-            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
             continue;
           }
 
           const engagementResult = await engagementResponse.json();
 
           if (!engagementResult.success || !engagementResult.data) {
-            console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name}: ` + (engagementResult.message || 'Unknown error'));
             continue;
           }
 
@@ -1052,9 +1065,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
             totalRecords += engagementResult.data.categories.length;
           }
 
-          console.log(`Engagement Data for ${page.name}:`, engagementResult);
         } catch (error) {
-          console.error(`Error processing page ${page.name}:`, error);
           // Continue with other pages even if one fails
         }
       }
@@ -1062,9 +1073,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       if (allEngagementData.length === 0) {
         throw new Error('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
       }
-
-      // Log all engagement data to console
-      console.log('All Engagement Data:', allEngagementData);
 
       // First, ensure tables exist
       try {
@@ -1074,13 +1082,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
         });
 
         if (!setupResponse.ok) {
-          console.warn('Table setup failed, but continuing with upload');
         } else {
           const setupResult = await setupResponse.json();
-          console.log('Table setup result:', setupResult);
         }
       } catch (error) {
-        console.warn('Table setup error, but continuing with upload:', error);
       }
 
       // Save data to database
@@ -1123,7 +1128,6 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       alert(`อัปโหลดข้อมูลสำเร็จจาก ${allEngagementData.length} เพจ ทั้งหมด ${saveResult.recordsCount || totalRecords} รายการ`);
     } catch (error) {
-      console.error('Error uploading engagement data:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       // Update batch status to failed
@@ -1155,7 +1159,10 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
       return;
     }
 
-    const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
+    const activePagesList = allPages.filter(p => {
+      const isActive = p.active === 1 || p.active === true;
+      return isActive;
+    });
 
     if (activePagesList.length === 0) {
       alert('ไม่พบเพจที่จะดำเนินการ');
@@ -2008,7 +2015,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     </tr>
                   </thead>
                   <tbody>
-                    {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => {
+                    {allPages.filter(p => p.active === 1 || p.active === true).map(p => {
                       const pageId = p.page_id || p.id;
                       const pageData = allPagesEngagementData[pageId];
 

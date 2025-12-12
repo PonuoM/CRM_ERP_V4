@@ -29,7 +29,7 @@ try {
             mup.created_at as assigned_at
         FROM pages p
         INNER JOIN marketing_user_page mup ON p.id = mup.page_id
-        WHERE mup.user_id = ? AND p.still_in_list = 1
+        WHERE mup.user_id = ? AND p.still_in_list = 1 AND p.active = 1
         ORDER BY p.name ASC
     ");
 

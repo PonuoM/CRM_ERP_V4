@@ -30,11 +30,11 @@ export function formatThaiDateTime(
   options?: Intl.DateTimeFormatOptions
 ): string {
   if (!dateString) return "-";
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
     if (Number.isNaN(date.getTime())) return "-";
-    
+
     return date.toLocaleString("th-TH", {
       timeZone: "Asia/Bangkok",
       dateStyle: options?.dateStyle || "short",
@@ -48,21 +48,28 @@ export function formatThaiDateTime(
 
 /**
  * Format date only for Thailand timezone
+ * Always returns dd/mm/yyyy format for consistency across all browsers
  * @param dateString - ISO date string or date string from API
- * @returns Formatted date string in Thai locale with Asia/Bangkok timezone
+ * @returns Formatted date string in dd/mm/yyyy format
  */
 export function formatThaiDate(
   dateString: string | Date | null | undefined
 ): string {
   if (!dateString) return "-";
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
     if (Number.isNaN(date.getTime())) return "-";
-    
-    return date.toLocaleDateString("th-TH", {
-      timeZone: "Asia/Bangkok",
-    });
+
+    // Convert to Thailand timezone
+    const thaiDate = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+
+    // Format as dd/mm/yyyy
+    const day = String(thaiDate.getDate()).padStart(2, '0');
+    const month = String(thaiDate.getMonth() + 1).padStart(2, '0');
+    const year = thaiDate.getFullYear();
+
+    return `${day}/${month}/${year}`;
   } catch {
     return "-";
   }
@@ -77,11 +84,11 @@ export function formatThaiTime(
   dateString: string | Date | null | undefined
 ): string {
   if (!dateString) return "-";
-  
+
   try {
     const date = dateString instanceof Date ? dateString : new Date(dateString);
     if (Number.isNaN(date.getTime())) return "-";
-    
+
     return date.toLocaleTimeString("th-TH", {
       timeZone: "Asia/Bangkok",
       hour: "2-digit",
