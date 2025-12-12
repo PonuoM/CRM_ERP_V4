@@ -4036,6 +4036,44 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       return;
     }
 
+    // Validate address relationships
+    try {
+      const addressValidationResponse = await fetch(
+        `${resolveApiBasePath()}/Address_DB/check_exist.php`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            province: shippingAddress.province,
+            district: shippingAddress.district,
+            subdistrict: shippingAddress.subdistrict,
+            postalCode: shippingAddress.postalCode,
+          }),
+        },
+      );
+
+      const addressValidationResult = await addressValidationResponse.json();
+
+      if (
+        !addressValidationResult.success ||
+        !addressValidationResult.valid
+      ) {
+        highlightField("shippingAddress");
+        alert(
+          addressValidationResult.message ||
+          "ที่อยู่ไม่สัมพันธ์กัน กรุณาตรวจสอบและระบุที่อยู่อีกครั้ง",
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("Error validating address:", error);
+      alert("เกิดข้อผิดพลาดในการตรวจสอบที่อยู่ กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
+
     // Validate Customer Status
     if (!customerStatus) {
       alert("กรุณาเลือกสถานะลูกค้า");
