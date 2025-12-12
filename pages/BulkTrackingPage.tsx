@@ -381,7 +381,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
     }, { validCount: 0, duplicateCount: 0, errorCount: 0 });
   }, [rows]);
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const updates = rows
       .filter(row => row.status === 'valid')
       .map(({ normalizedOrderId, orderId, trackingNumber, boxNumber }) => ({
@@ -392,10 +392,111 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 
     if (updates.length > 0) {
       if (window.confirm(`คุณต้องการนำเข้าเลข Tracking จำนวน ${updates.length} รายการใช่หรือไม่?`)) {
-        onBulkUpdateTracking(updates);
-        setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
-        setIsVerified(false);
-        alert('นำเข้าข้อมูลสำเร็จ!');
+        try {
+          // Update tracking numbers via callback
+          onBulkUpdateTracking(updates);
+
+          // Update shipping_provider for each order
+          const shippingUpdates = new Map<string, string>(); // orderId -> shipping_provider
+
+          for (const update of updates) {
+            const provider = detectShippingProvider(update.trackingNumber);
+            if (provider && provider !== '-') {
+              // Check if orderId is a sub-order (has -1, -2 suffix)
+              const match = update.orderId.match(/^(.+)-(\d+)$/);
+              let parentOrderId = update.orderId;
+
+              if (match) {
+                // It's a sub-order, need to find parent order from order_boxes
+                const subOrderId = update.orderId;
+                try {
+                  const response = await fetch(`api/Order_DB/get_parent_order.php?sub_order_id=${encodeURIComponent(subOrderId)}`);
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.parent_order_id) {
+                      parentOrderId = data.parent_order_id;
+                    } else {
+                      // Fallback: use base ID (remove suffix)
+                      parentOrderId = match[1];
+                    }
+                  } else {
+                    // Fallback: use base ID
+                    parentOrderId = match[1];
+                  }
+                } catch (error) {
+                  console.error('Error fetching parent order:', error);
+                  // Fallback: use base ID
+                  parentOrderId = match[1];
+                }
+              }
+
+              // Store the provider for this parent order
+              if (!shippingUpdates.has(parentOrderId)) {
+                shippingUpdates.set(parentOrderId, provider);
+              }
+            }
+          }
+
+
+          // Update shipping_provider for each parent order
+          console.log('Shipping updates to process:', Array.from(shippingUpdates.entries()));
+
+          const updatePromises = [];
+          for (const [orderId, provider] of shippingUpdates.entries()) {
+            console.log(`Updating order ${orderId} with provider: ${provider}`);
+
+            // Get auth token from localStorage
+            const token = localStorage.getItem('authToken');
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const updatePromise = fetch(`api/index.php/orders/${encodeURIComponent(orderId)}`, {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({
+                shipping_provider: provider,
+              }),
+            })
+              .then(async (response) => {
+                const data = await response.json();
+                if (response.ok) {
+                  console.log(`Successfully updated order ${orderId}:`, data);
+                } else {
+                  console.error(`Failed to update order ${orderId}:`, response.status, data);
+                }
+                return { orderId, success: response.ok, data };
+              })
+              .catch((error) => {
+                console.error(`Error updating shipping provider for order ${orderId}:`, error);
+                return { orderId, success: false, error };
+              });
+
+            updatePromises.push(updatePromise);
+          }
+
+          // Wait for all updates to complete
+          const results = await Promise.all(updatePromises);
+          const successCount = results.filter(r => r.success).length;
+          const failCount = results.filter(r => !r.success).length;
+
+          console.log(`Shipping provider updates completed: ${successCount} success, ${failCount} failed`);
+
+          setRows(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
+          setIsVerified(false);
+
+          if (failCount > 0) {
+            alert(`นำเข้าข้อมูลสำเร็จ!\nอัพเดท shipping provider: ${successCount} สำเร็จ, ${failCount} ล้มเหลว (ดู console สำหรับรายละเอียด)`);
+          } else {
+            alert('นำเข้าข้อมูลสำเร็จ!');
+          }
+        } catch (error) {
+          console.error('Error during import:', error);
+          alert('เกิดข้อผิดพลาดในการนำเข้าข้อมูล');
+        }
       }
     } else {
       alert('ไม่มีข้อมูลที่พร้อมสำหรับนำเข้า');
