@@ -41,6 +41,28 @@ const parseOrderIdInput = (input: string) => {
   return { baseId: trimmed, boxNumber: null };
 };
 
+const detectShippingProvider = (trackingNumber: string): string => {
+  const trimmed = trackingNumber.trim();
+  if (!trimmed) return '-';
+
+  // Flash Express: starts with TH, ends with A or P
+  if (/^TH.*[AP]$/i.test(trimmed)) {
+    return 'Flash Express';
+  }
+
+  // J&T: 12 digits
+  if (/^\d{12}$/.test(trimmed)) {
+    return 'J&T Express';
+  }
+
+  // Kerry Express: starts with JST, ends with A followed by digit
+  if (/^JST.*A\d$/i.test(trimmed)) {
+    return 'Kerry Express';
+  }
+
+  return '-';
+};
+
 const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdateTracking }) => {
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
   const [isVerified, setIsVerified] = useState(false);
@@ -426,6 +448,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
               <th className="px-2 py-3 w-12 text-center">#</th>
               <th className="px-6 py-3">เลข Order (เช่น ORD-2024-XXX)</th>
               <th className="px-6 py-3">เลข Tracking</th>
+              <th className="px-6 py-3">ขนส่ง</th>
               <th className="px-6 py-3">สถานะ</th>
               <th className="px-2 py-3 w-12"></th>
             </tr>
@@ -455,6 +478,9 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
                     className="w-full p-1 bg-transparent border-none focus:ring-0 focus:outline-none"
                     placeholder="TH123..."
                   />
+                </td>
+                <td className="px-6 py-1 text-sm text-gray-600">
+                  {detectShippingProvider(row.trackingNumber)}
                 </td>
                 <td className="px-6 py-1 text-xs font-medium">
                   {getStatusIndicator(row.status, row.message)}
