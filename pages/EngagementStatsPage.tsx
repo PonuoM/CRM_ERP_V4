@@ -118,7 +118,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
   const startDate = useMemo(() => new Date(range.start), [range.start]);
   const endDate = useMemo(() => new Date(range.end), [range.end]);
-  const activePages = useMemo(() => allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)), [allPages, pages]);
+  const activePages = useMemo(() => allPages.filter(p => p.active === 1 || p.active === true), [allPages]);
   const [selectedPageId, setSelectedPageId] = useState<number | 'all'>('all');
 
   // Get current user from localStorage
@@ -476,13 +476,33 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
       if (selectedPageId === 'all') {
         // Fetch data from all pages
-        const activePagesList = allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active));
+        console.log('All pages:', allPages);
+        console.log('Pages prop:', pages);
+
+        // Filter pages that are active (use active field from allPages directly)
+        const activePagesList = allPages.filter(p => {
+          const isActive = p.active === 1 || p.active === true;
+          console.log(`Page ${p.name} (id: ${p.id}, page_id: ${p.page_id}, active: ${p.active}): ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
+          return isActive;
+        });
+
+        console.log('Active pages list:', activePagesList);
+        console.log('Total active pages:', activePagesList.length);
+
+        if (activePagesList.length === 0) {
+          throw new Error('ไม่พบเพจที่เปิดใช้งาน กรุณาตรวจสอบว่ามีเพจที่ active อยู่');
+        }
+
         const allEngagementData: any[] = [];
+        const failedPages: string[] = [];
+        const successPages: string[] = [];
 
         for (const page of activePagesList) {
           const pageId = page.page_id || page.id;
 
           try {
+            console.log(`Processing page: ${page.name} (ID: ${pageId})`);
+
             // Generate page access token for each page
             const tokenResponse = await fetchWithRetry(
               `https://pages.fm/api/v1/pages/${pageId}/generate_page_access_token?access_token=${encodeURIComponent(accessToken)}`,
@@ -496,6 +516,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
             if (!tokenResponse.ok) {
               console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name} ได้`);
+              failedPages.push(`${page.name} (ไม่สามารถสร้าง token)`);
               continue;
             }
 
@@ -503,6 +524,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
             if (!tokenData.success || !tokenData.page_access_token) {
               console.error(`ไม่สามารถสร้าง page access token สำหรับเพจ ${page.name}: ` + (tokenData.message || 'Unknown error'));
+              failedPages.push(`${page.name} (token ไม่ถูกต้อง)`);
               continue;
             }
 
@@ -514,6 +536,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
 
             if (!engagementResponse.ok) {
               console.error(`ไม่สามารถดึงข้อมูล engagement สำหรับเพจ ${page.name} ได้`);
+              failedPages.push(`${page.name} (ไม่สามารถดึงข้อมูล)`);
               continue;
             }
 
@@ -527,6 +550,8 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                 pageName: page.name
               };
               allEngagementData.push(pageData);
+              successPages.push(page.name);
+              console.log(`Successfully fetched data for page: ${page.name}`);
 
               // Collect user engagement data if available
               if (pageEngagementResult.users_engagements) {
@@ -539,15 +564,25 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                   });
                 });
               }
+            } else {
+              failedPages.push(`${page.name} (ไม่มีข้อมูล)`);
             }
           } catch (error) {
             console.error(`Error processing page ${page.name}:`, error);
+            failedPages.push(`${page.name} (${error instanceof Error ? error.message : 'Unknown error'})`);
             // Continue with other pages even if one fails
           }
         }
 
+        console.log('Success pages:', successPages);
+        console.log('Failed pages:', failedPages);
+
         if (allEngagementData.length === 0) {
-          throw new Error('ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้');
+          let errorMessage = `ไม่สามารถดึงข้อมูลจากเพจใดๆ ได้\n\nเพจที่พยายามดึงข้อมูล: ${activePagesList.length} เพจ`;
+          if (failedPages.length > 0) {
+            errorMessage += `\n\nเพจที่ล้มเหลว:\n${failedPages.join('\n')}`;
+          }
+          throw new Error(errorMessage);
         }
 
         // Aggregate data from all pages
@@ -2008,7 +2043,7 @@ const EngagementStatsPage: React.FC<EngagementStatsPageProps> = ({ orders = [], 
                     </tr>
                   </thead>
                   <tbody>
-                    {allPages.filter(p => pages.some(p2 => p2.id === p.id && p2.active)).map(p => {
+                    {allPages.filter(p => p.active === 1 || p.active === true).map(p => {
                       const pageId = p.page_id || p.id;
                       const pageData = allPagesEngagementData[pageId];
 
