@@ -78,8 +78,26 @@ try {
 
     $logWhereClause = implode(" AND ", $logWhereConditions);
 
-    // Query to get all pages for the company with their ads log data
-    // Use LEFT JOIN with a subquery to properly filter ads log data
+    // Build WHERE conditions for orders
+    $orderWhereConditions = ["1=1"];
+    $orderParams = [];
+
+    if ($dateFrom && $dateTo) {
+      $orderWhereConditions[] = "order_date BETWEEN ? AND ?";
+      $orderParams[] = $dateFrom;
+      $orderParams[] = $dateTo;
+    } elseif ($dateFrom) {
+      $orderWhereConditions[] = "order_date >= ?";
+      $orderParams[] = $dateFrom;
+    } elseif ($dateTo) {
+      $orderWhereConditions[] = "order_date <= ?";
+      $orderParams[] = $dateTo;
+    }
+
+    $orderWhereClause = implode(" AND ", $orderWhereConditions);
+
+    // Query to get all pages for the company with aggregated ads log and order data
+    // Aggregate by page only (not by date)
     $query = "
         SELECT
             p.id as page_id,
@@ -87,27 +105,30 @@ try {
             p.platform,
             p.page_type,
             p.page_id as external_page_id,
-            COALESCE(mal.date, '') as log_date,
-            COALESCE(mal.user_id, 0) as user_id,
-            COALESCE(mal.ads_cost, 0) as ads_cost,
-            COALESCE(mal.impressions, 0) as impressions,
-            COALESCE(mal.reach, 0) as reach,
-            COALESCE(mal.clicks, 0) as clicks,
-            COALESCE(u.first_name, '') as first_name,
-            COALESCE(u.last_name, '') as last_name,
-            COALESCE(u.username, '') as username
+            COALESCE(SUM(mal.ads_cost), 0) as ads_cost,
+            COALESCE(SUM(mal.impressions), 0) as impressions,
+            COALESCE(SUM(mal.reach), 0) as reach,
+            COALESCE(SUM(mal.clicks), 0) as clicks,
+            COALESCE(SUM(o.total_amount), 0) as total_sales,
+            COALESCE(COUNT(DISTINCT o.id), 0) as total_orders,
+            COALESCE(SUM(CASE WHEN o.customer_type = 'New Customer' THEN 1 ELSE 0 END), 0) as new_customer_orders,
+            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN 1 ELSE 0 END), 0) as reorder_customer_orders
         FROM pages p
         LEFT JOIN (
             SELECT * FROM marketing_ads_log
             WHERE $logWhereClause
         ) mal ON p.id = mal.page_id
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN (
+            SELECT * FROM orders
+            WHERE $orderWhereClause
+        ) o ON p.id = o.sales_channel_page_id
         WHERE $pageWhereClause
-        ORDER BY p.name ASC, mal.date DESC
+        GROUP BY p.id, p.name, p.platform, p.page_type, p.page_id
+        ORDER BY p.name ASC
     ";
 
-    // Combine parameters: first logParams (for subquery), then pageParams (for WHERE clause)
-    $allParams = array_merge($logParams, $pageParams);
+    // Combine parameters: logParams, orderParams, then pageParams
+    $allParams = array_merge($logParams, $orderParams, $pageParams);
 
     // Prepare and execute query
     $stmt = $conn->prepare($query);

@@ -2050,21 +2050,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
-                      <th className="px-3 py-2 text-left">วันที่</th>
                       <th className="px-3 py-2 text-left">เพจ</th>
                       <th className="px-3 py-2 text-left">ค่า Ads</th>
                       <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
                       <th className="px-3 py-2 text-left">การเข้าถึง</th>
                       <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                      <th className="px-3 py-2 text-left">ยอดขาย</th>
+                      <th className="px-3 py-2 text-left">จำนวน Order</th>
+                      <th className="px-3 py-2 text-left">ลูกค้าใหม่</th>
+                      <th className="px-3 py-2 text-left">รีออเดอร์</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {aggregatedByPage.length > 0 ? (
-                      aggregatedByPage.map((row, index) => (
+                    {dashboardData.length > 0 ? (
+                      dashboardData.map((row, index) => (
                         <tr key={index} className="border-b hover:bg-gray-50">
-                          <td className="px-3 py-2">
-                            {row.log_date || ""}
-                          </td>
+
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
                               <span>{row.page_name}</span>
@@ -2081,17 +2082,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            ฿{Number(row.ads_cost || 0).toFixed(0)}
+                            ฿{Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
-                          <td className="px-3 py-2">{row.impressions || 0}</td>
-                          <td className="px-3 py-2">{row.reach || 0}</td>
-                          <td className="px-3 py-2">{row.clicks || 0}</td>
+                          <td className="px-3 py-2">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">
+                            ฿{Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3 py-2">{Number(row.total_orders || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.new_customer_orders || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-2">{Number(row.reorder_customer_orders || 0).toLocaleString('th-TH')}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={9}
                           className="text-center py-8 text-gray-500"
                         >
                           ไม่มีข้อมูลในช่วงวันที่ที่เลือก
