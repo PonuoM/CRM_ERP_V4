@@ -210,10 +210,13 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
   const trackingLookup = useMemo(() => {
     const map = new Map<string, { orderId: string; parentOrderId: string; boxNumber?: number; expectedAmount: number }>();
+    // New: Store all sub-orders grouped by parent order
+    const parentOrderSubOrders = new Map<string, Array<{ orderId: string; expectedAmount: number; trackingNumber: string }>>();
+
     orders.forEach((order) => {
       const details = (order as any).trackingDetails ?? (order as any).tracking_details ?? [];
       const boxes = (order as any).boxes ?? [];
-      
+
       // Create map of sub_order_id -> cod_amount from order_boxes
       // This ensures we get the correct COD amount per box
       const subOrderIdToAmountMap = new Map<string, number>();
@@ -225,7 +228,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         const boxNum = boxNumRaw !== undefined && boxNumRaw !== null ? Number(boxNumRaw) : NaN;
         const amt = parseFloat(String(b.codAmount ?? b.cod_amount ?? b.collectionAmount ?? b.collection_amount ?? 0));
         const codAmount = Number.isFinite(amt) ? amt : 0;
-        
+
         if (subOrderId && subOrderId !== '') {
           subOrderIdToAmountMap.set(String(subOrderId), codAmount);
         }
@@ -236,20 +239,20 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           }
         }
       });
-      
+
       const fallbackAmount =
         typeof order.codAmount === 'number'
           ? order.codAmount
           : typeof order.totalAmount === 'number'
             ? order.totalAmount
             : 0;
-      
+
       details.forEach((detail: any) => {
         const tn = detail.tracking_number ?? detail.trackingNumber ?? '';
         const normalized = normalizeTrackingNumber(String(tn));
         if (!normalized) return;
         if (map.has(normalized)) return;
-        
+
         const boxNumber = detail.box_number ?? detail.boxNumber;
         const boxNum = boxNumber !== undefined && boxNumber !== null ? Number(boxNumber) : undefined;
         const detailOrderId = detail.order_id ?? detail.orderId;
@@ -258,10 +261,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
           (detailOrderId && subOrderIdToAmountMap.has(detailOrderId) ? detailOrderId : undefined) ??
           (boxNum !== undefined ? boxNumberToSubOrderIdMap.get(boxNum) : undefined) ??
           (detailOrderId ?? undefined);
-        
+
         // Priority: Use sub_order_id from order_boxes, then box_number, then fallback
         let expectedAmount = fallbackAmount;
-        
+
         // First try: Use sub_order_id to find COD amount from order_boxes
         if (resolvedSubOrderId && subOrderIdToAmountMap.has(resolvedSubOrderId)) {
           expectedAmount = subOrderIdToAmountMap.get(resolvedSubOrderId) || 0;
@@ -270,36 +273,25 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         else if (boxNum !== undefined && boxNumberToAmountMap.has(boxNum)) {
           expectedAmount = boxNumberToAmountMap.get(boxNum) || 0;
         }
-        
-        // Debug log for order 251126-00031telesale17x
-        if (parentOrderId === '251126-00031telesale17x') {
-          console.log('DEBUG trackingLookup:', {
-            tracking: normalized,
-            orderId: resolvedSubOrderId ?? detailOrderId ?? order.id,
-            parentOrderId,
-            boxNum,
-            subOrderIdToAmountMapKeys: Array.from(subOrderIdToAmountMap.keys()),
-            boxNumberToAmountMapKeys: Array.from(boxNumberToAmountMap.keys()),
-            boxNumberToSubOrderIdMapEntries: Array.from(boxNumberToSubOrderIdMap.entries()),
-            expectedAmount,
-            fallbackAmount,
-            boxes: boxes.map((b: any) => ({
-              sub_order_id: b.sub_order_id ?? b.subOrderId,
-              box_number: b.boxNumber ?? b.box_number,
-              collection_amount: b.collectionAmount ?? b.codAmount ?? b.cod_amount,
-            })),
-            detail,
-          });
-        }
-        
+
         map.set(normalized, {
           orderId: resolvedSubOrderId ?? parentOrderId ?? order.id, // Prefer sub order id from order_boxes
           parentOrderId,
           boxNumber: boxNum,
           expectedAmount,
         });
+
+        // Group sub-orders by parent order
+        if (!parentOrderSubOrders.has(parentOrderId)) {
+          parentOrderSubOrders.set(parentOrderId, []);
+        }
+        parentOrderSubOrders.get(parentOrderId)!.push({
+          orderId: resolvedSubOrderId ?? parentOrderId ?? order.id,
+          expectedAmount,
+          trackingNumber: normalized,
+        });
       });
-      
+
       if (details.length === 0 && Array.isArray(order.trackingNumbers)) {
         order.trackingNumbers.forEach((tn) => {
           const normalized = normalizeTrackingNumber(String(tn));
@@ -310,50 +302,140 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
             boxNumber: undefined,
             expectedAmount: fallbackAmount || 0,
           });
+
+          if (!parentOrderSubOrders.has(order.id)) {
+            parentOrderSubOrders.set(order.id, []);
+          }
+          parentOrderSubOrders.get(order.id)!.push({
+            orderId: order.id,
+            expectedAmount: fallbackAmount || 0,
+            trackingNumber: normalized,
+          });
         });
       }
     });
-    return map;
+    return { map, parentOrderSubOrders };
   }, [orders]);
 
   const handleValidate = () => {
-    const validatedRows = rows.map(row => {
+    // First pass: identify all rows and group by parent order
+    const rowsByParentOrder = new Map<string, Array<{ row: RowData; index: number; codAmount: number; normalized: string }>>();
+    const unmatchedRows: Array<{ row: RowData; index: number }> = [];
+
+    rows.forEach((row, index) => {
       const trimmedTracking = row.trackingNumber.trim();
       if (!trimmedTracking && !row.codAmount.trim()) {
-        return { ...row, status: 'unchecked' as ValidationStatus, message: '' };
+        return; // Skip empty rows
       }
       if (!trimmedTracking || !row.codAmount.trim()) {
-        return { ...row, status: 'pending' as ValidationStatus, message: 'กรอกข้อมูลไม่ครบ' };
+        unmatchedRows.push({ row, index });
+        return;
       }
 
       const codAmountValue = parseAmount(row.codAmount);
       if (!codAmountValue || codAmountValue <= 0) {
-        return { ...row, status: 'pending' as ValidationStatus, message: 'จำนวนเงินไม่ถูกต้อง' };
+        unmatchedRows.push({ row, index });
+        return;
       }
 
       const normalized = normalizeTrackingNumber(trimmedTracking);
-      const matched = normalized ? trackingLookup.get(normalized) : undefined;
+      const matched = normalized ? trackingLookup.map.get(normalized) : undefined;
 
-      if (matched) {
-        const orderCodAmount = matched.expectedAmount || 0;
-        const difference = codAmountValue - orderCodAmount;
-        return {
-          ...row,
-          trackingNumber: trimmedTracking,
-          codAmount: row.codAmount,
-          orderId: matched.orderId,
-          orderAmount: orderCodAmount,
-          difference: difference,
-          status: difference === 0 ? ('matched' as ValidationStatus) : ('unmatched' as ValidationStatus),
-          message:
-            difference === 0
-              ? 'ตรงกัน'
-              : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
-        };
+      if (matched && matched.parentOrderId) {
+        if (!rowsByParentOrder.has(matched.parentOrderId)) {
+          rowsByParentOrder.set(matched.parentOrderId, []);
+        }
+        rowsByParentOrder.get(matched.parentOrderId)!.push({
+          row,
+          index,
+          codAmount: codAmountValue,
+          normalized,
+        });
+      } else {
+        unmatchedRows.push({ row, index });
       }
-
-      return { ...row, trackingNumber: trimmedTracking, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบ Tracking' };
     });
+
+    // Second pass: For each parent order, find optimal matching
+    const validatedRows = [...rows];
+
+    // Handle unmatched rows first
+    unmatchedRows.forEach(({ row, index }) => {
+      const trimmedTracking = row.trackingNumber.trim();
+      const codAmountValue = parseAmount(row.codAmount);
+
+      if (!trimmedTracking && !row.codAmount.trim()) {
+        validatedRows[index] = { ...row, status: 'unchecked' as ValidationStatus, message: '' };
+      } else if (!trimmedTracking || !row.codAmount.trim()) {
+        validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'กรอกข้อมูลไม่ครบ' };
+      } else if (!codAmountValue || codAmountValue <= 0) {
+        validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'จำนวนเงินไม่ถูกต้อง' };
+      } else {
+        validatedRows[index] = { ...row, trackingNumber: trimmedTracking, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบ Tracking' };
+      }
+    });
+
+    // Handle matched rows with closest matching
+    rowsByParentOrder.forEach((groupRows, parentOrderId) => {
+      const subOrders = trackingLookup.parentOrderSubOrders.get(parentOrderId) || [];
+
+      // Create a list of available sub-orders (can be matched multiple times if needed)
+      const availableSubOrders = [...subOrders];
+      const usedSubOrders = new Set<string>();
+
+      // Sort rows by COD amount for greedy matching
+      const sortedRows = [...groupRows].sort((a, b) => a.codAmount - b.codAmount);
+
+      // For each row, find the closest matching sub-order
+      sortedRows.forEach(({ row, index, codAmount, normalized }) => {
+        // Find closest match among unused sub-orders first, then used ones
+        let bestMatch: typeof subOrders[0] | undefined;
+        let bestDiff = Infinity;
+
+        availableSubOrders.forEach((subOrder) => {
+          const diff = Math.abs(codAmount - subOrder.expectedAmount);
+          const isUsed = usedSubOrders.has(subOrder.trackingNumber);
+
+          // Prefer unused sub-orders, but allow reuse if necessary
+          if (diff < bestDiff || (diff === bestDiff && !isUsed)) {
+            bestMatch = subOrder;
+            bestDiff = diff;
+          }
+        });
+
+        if (bestMatch) {
+          const orderCodAmount = bestMatch.expectedAmount || 0;
+          const difference = codAmount - orderCodAmount;
+
+          validatedRows[index] = {
+            ...row,
+            trackingNumber: row.trackingNumber.trim(),
+            codAmount: row.codAmount,
+            orderId: bestMatch.orderId,
+            orderAmount: orderCodAmount,
+            difference: difference,
+            status: difference === 0 ? ('matched' as ValidationStatus) : ('unmatched' as ValidationStatus),
+            message:
+              difference === 0
+                ? 'ตรงกัน'
+                : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
+          };
+
+          // Mark this sub-order as used
+          usedSubOrders.add(bestMatch.trackingNumber);
+        } else {
+          // Fallback if no match found
+          validatedRows[index] = {
+            ...row,
+            trackingNumber: row.trackingNumber.trim(),
+            codAmount: row.codAmount,
+            status: 'pending' as ValidationStatus,
+            message: 'ไม่พบ Sub-order ที่ตรงกัน'
+          };
+        }
+      });
+    });
+
     setRows(validatedRows);
     setIsVerified(true);
   };
