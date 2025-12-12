@@ -50,6 +50,7 @@ async function listActivePages(companyId?: number) {
 
 interface MarketingPageProps {
   currentUser: User;
+  view?: "dashboard" | "adsInput" | "adsHistory" | "userManagement";
 }
 
 // Types are now imported from @/services/api
@@ -122,10 +123,17 @@ const getPageTypeBadgeClasses = (rawType?: string | null): { label: string; clas
   }
 };
 
-const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
+const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [activeTab, setActiveTab] = useState<
     "ads" | "userManagement" | "adsInput" | "dashboard" | "adsHistory"
-  >("dashboard");
+  >(view || "dashboard");
+
+  useEffect(() => {
+    if (view) {
+      setActiveTab(view);
+    }
+  }, [view]);
+
   const [pages, setPages] = useState<Page[]>([]);
   const [platforms, setPlatforms] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -1273,1217 +1281,619 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
     dashboardPageSize,
   ]);
 
+  const getHeaderTitle = () => {
+    switch (activeTab) {
+      case "dashboard":
+        return "Marketing Dashboard (แดชบอร์ด)";
+      case "adsInput":
+        return "Ads Input (กรอกค่า Ads)";
+      case "adsHistory":
+        return "Ads History (ประวัติการกรอก Ads)";
+      case "userManagement":
+        return "Marketing User Management (จัดการผู้ใช้การตลาด-เพจ)";
+      default:
+        return "Marketing";
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">Marketing</h2>
-        <p className="text-gray-600">
-          จัดการเพจ ช่องทางการขาย โปรโมชัน และค่าโฆษณารายวัน
-        </p>
+        <h2 className="text-2xl font-bold text-gray-800">{getHeaderTitle()}</h2>
       </div>
-      {/* Admin Tabs */}
-      {hasAdminAccess(currentUser) && (
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab("dashboard")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "dashboard"
-                ? "border-emerald-500 text-emerald-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-            >
-              แดชบอร์ด
-            </button>
-            <button
-              onClick={() => setActiveTab("ads")}
-              className={`hidden py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "ads"
-                ? "border-emerald-500 text-emerald-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-            >
-              บันทึก Ads
-            </button>
-            <button
-              onClick={() => setActiveTab("adsInput")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsInput"
-                ? "border-emerald-500 text-emerald-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-            >
-              กรอกค่า Ads
-            </button>
-            <button
-              onClick={() => setActiveTab("adsHistory")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "adsHistory"
-                ? "border-emerald-500 text-emerald-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-            >
-              ประวัติการกรอก Ads
-            </button>
-            {(currentUser.role === "Super Admin" ||
-              currentUser.role === "Admin Control") && (
-                <button
-                  onClick={() => setActiveTab("userManagement")}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === "userManagement"
-                    ? "border-emerald-500 text-emerald-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
-                >
-                  จัดการผู้ใช้การตลาด-เพจ
-                </button>
-              )}
-          </nav>
-        </div>
-      )}
+
 
       {/* Content based on active tab */}
-      {(!hasAdminAccess(currentUser) || activeTab === "ads") && (
-        <>
-          {/* Pages management */}
-          <section className="bg-white rounded-lg shadow p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">
-                เพจ (Facebook/TikTok)
-              </h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-              <div>
-                <label className={labelClass}>ชื่อเพจ</label>
-                <input
-                  className={inputClass}
-                  value={newPage.name}
-                  onChange={(e) =>
-                    setNewPage((v) => ({ ...v, name: e.target.value }))
-                  }
-                />
+      {
+        (!hasAdminAccess(currentUser) || activeTab === "ads") && (
+          <>
+            {/* Pages management */}
+            <section className="bg-white rounded-lg shadow p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  เพจ (Facebook/TikTok)
+                </h3>
               </div>
-              <div>
-                <label className={labelClass}>แพลตฟอร์ม</label>
-                <select
-                  className={inputClass}
-                  value={newPage.platform}
-                  onChange={(e) =>
-                    setNewPage((v) => ({ ...v, platform: e.target.value }))
-                  }
-                >
-                  {platforms
-                    .filter((p) => p.active)
-                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-                    .map((platform) => (
-                      <option key={platform.id} value={platform.name}>
-                        {platform.displayName || platform.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>URL (ถ้ามี)</label>
-                <input
-                  className={inputClass}
-                  value={newPage.url || ""}
-                  onChange={(e) =>
-                    setNewPage((v) => ({ ...v, url: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={handleAddPage}
-                  className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  เพิ่มเพจ
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left">ID</th>
-                    <th className="px-3 py-2 text-left">ชื่อ</th>
-                    <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                    <th className="px-3 py-2 text-left">URL</th>
-                    <th className="px-3 py-2 text-left">ใช้งาน</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pages.map((p) => (
-                    <tr key={p.id} className="border-b">
-                      <td className="px-3 py-2">{p.id}</td>
-                      <td className="px-3 py-2">{p.name}</td>
-                      <td className="px-3 py-2">{p.platform}</td>
-                      <td className="px-3 py-2 truncate max-w-xs">
-                        <a
-                          className="text-blue-600 hover:underline"
-                          href={p.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {p.url || "-"}
-                        </a>
-                      </td>
-                      <td className="px-3 py-2">{p.active ? "Yes" : "No"}</td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={() => togglePageActive(p)}
-                          className="px-3 py-1 border rounded-md"
-                        >
-                          {p.active ? "ปิดการใช้งาน" : "เปิดการใช้งาน"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {pages.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-3 py-6 text-center text-gray-500"
-                        colSpan={6}
-                      >
-                        ยังไม่มีเพจ
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* Ad spend management */}
-          <section className="bg-white rounded-lg shadow p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">
-                ค่าโฆษณารายวัน
-              </h3>
-              <div className="text-sm text-gray-600">
-                รวม: ฿{totalSpend.toFixed(2)}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
-              <div>
-                <label className={labelClass}>เลือกเพจ (กรอง/บันทึก)</label>
-                <select
-                  className={inputClass}
-                  value={filterPageId}
-                  onChange={(e) =>
-                    setFilterPageId(
-                      e.target.value ? Number(e.target.value) : "",
-                    )
-                  }
-                >
-                  <option value="">ทุกเพจ</option>
-                  {pages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>วันที่</label>
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={newSpend.date}
-                  onChange={(e) =>
-                    setNewSpend((v) => ({ ...v, date: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <label className={labelClass}>จำนวนเงิน (บาท)</label>
-                <input
-                  type="number"
-                  className={inputClass}
-                  value={newSpend.amount}
-                  onChange={(e) =>
-                    setNewSpend((v) => ({ ...v, amount: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <label className={labelClass}>หมายเหตุ</label>
-                <input
-                  className={inputClass}
-                  value={newSpend.notes}
-                  onChange={(e) =>
-                    setNewSpend((v) => ({ ...v, notes: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    if (typeof filterPageId === "number")
-                      setNewSpend((v) => ({ ...v, pageId: filterPageId }));
-                    handleAddSpend();
-                  }}
-                  className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left">วันที่</th>
-                    <th className="px-3 py-2 text-left">เพจ</th>
-                    <th className="px-3 py-2 text-left">จำนวนเงิน</th>
-                    <th className="px-3 py-2 text-left">หมายเหตุ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adSpend.map((row) => {
-                    const p = pages.find((x) => x.id === row.pageId);
-                    return (
-                      <tr key={row.id} className="border-b">
-                        <td className="px-3 py-2">{row.spendDate}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <span>{p?.name || row.pageId}</span>
-                            {isPageInactive(p) && (
-                              <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                Inactive
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">฿{row.amount.toFixed(2)}</td>
-                        <td className="px-3 py-2">{row.notes || "-"}</td>
-                      </tr>
-                    );
-                  })}
-                  {adSpend.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-3 py-6 text-center text-gray-500"
-                        colSpan={4}
-                      >
-                        ยังไม่มีรายการ
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* Promotions list (read-only) */}
-          <section className="bg-white rounded-lg shadow p-5">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              โปรโมชัน
-            </h3>
-            <div className="grid md:grid-cols-2 gap-3">
-              {promotions.map((pr) => (
-                <div key={pr.id} className="border rounded p-3">
-                  <div className="font-medium text-gray-800">{pr.name}</div>
-                  <div className="text-gray-600 text-sm">
-                    สถานะ: {pr.active ? "Active" : "Inactive"}
-                  </div>
-                  {pr.sku && (
-                    <div className="text-gray-600 text-sm">SKU: {pr.sku}</div>
-                  )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                <div>
+                  <label className={labelClass}>ชื่อเพจ</label>
+                  <input
+                    className={inputClass}
+                    value={newPage.name}
+                    onChange={(e) =>
+                      setNewPage((v) => ({ ...v, name: e.target.value }))
+                    }
+                  />
                 </div>
-              ))}
-              {promotions.length === 0 && (
-                <div className="text-gray-500">ยังไม่มีโปรโมชัน</div>
-              )}
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* User Management Tab - Admin Only */}
-      {hasAdminAccess(currentUser) && activeTab === "userManagement" && (
-        <>
-          {/* Active Pages List */}
-          <section className="bg-white rounded-lg shadow p-5">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              รายการเพจที่ใช้งานอยู่ (Active Pages)
-            </h3>
-            {loading ? (
-              <div className="text-center py-4">กำลังโหลด...</div>
-            ) : pages.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                ไม่มีเพจที่ใช้งานอยู่
+                <div>
+                  <label className={labelClass}>แพลตฟอร์ม</label>
+                  <select
+                    className={inputClass}
+                    value={newPage.platform}
+                    onChange={(e) =>
+                      setNewPage((v) => ({ ...v, platform: e.target.value }))
+                    }
+                  >
+                    {platforms
+                      .filter((p) => p.active)
+                      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                      .map((platform) => (
+                        <option key={platform.id} value={platform.name}>
+                          {platform.displayName || platform.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>URL (ถ้ามี)</label>
+                  <input
+                    className={inputClass}
+                    value={newPage.url || ""}
+                    onChange={(e) =>
+                      setNewPage((v) => ({ ...v, url: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleAddPage}
+                    className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    เพิ่มเพจ
+                  </button>
+                </div>
               </div>
-            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
                       <th className="px-3 py-2 text-left">ID</th>
-                      <th className="px-3 py-2 text-left">ประเภทเพจ</th>
-                      <th className="px-3 py-2 text-left">ชื่อเพจ</th>
+                      <th className="px-3 py-2 text-left">ชื่อ</th>
                       <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                      <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                      <th className="px-3 py-2 text-left">จัดการ</th>
+                      <th className="px-3 py-2 text-left">URL</th>
+                      <th className="px-3 py-2 text-left">ใช้งาน</th>
+                      <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pages.map((page) => (
-                      <React.Fragment key={page.id}>
-                        <tr
-                          className="border-b cursor-pointer hover:bg-gray-50"
-                          onClick={() => togglePageExpand(page.id)}
-                        >
-                          <td className="px-3 py-2">{page.id}</td>
-                          <td className="px-3 py-2">
-                            {(() => {
-                              const { label, className } = getPageTypeBadgeClasses(
-                                page.page_type ?? page.pageType ?? null,
-                              );
-                              return (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-3 py-2 font-medium">{page.name}</td>
-                          <td className="px-3 py-2">{page.platform}</td>
-                          <td className="px-3 py-2">
-                            {
-                              marketingPageUsers.filter(
-                                (user) => user.page_id === page.id,
-                              ).length
-                            }
-                          </td>
-                          <td className="px-3 py-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddUser(page.id);
-                              }}
-                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                            >
-                              +เพิ่มผู้ใช้
-                            </button>
-                          </td>
-                        </tr>
-                        {expandedPages.has(page.id) && (
-                          <tr>
-                            <td colSpan={6} className="px-3 py-4 bg-gray-50">
-                              <div className="space-y-2">
-                                <h4 className="font-medium text-gray-700">
-                                  ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
-                                </h4>
-                                {marketingPageUsers
-                                  .filter((user) => user.page_id === page.id)
-                                  .map((user) => (
-                                    <div
-                                      key={user.id}
-                                      className="flex items-center justify-between bg-white p-3 rounded border"
-                                    >
-                                      <div>
-                                        <span className="font-medium">
-                                          {user.first_name} {user.last_name}
-                                        </span>
-                                        <span className="text-sm text-gray-600 ml-2">
-                                          ({user.username})
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          handleRemoveUser(
-                                            user.user_id,
-                                            page.id,
-                                          )
-                                        }
-                                        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                                      >
-                                        ลบ
-                                      </button>
-                                    </div>
-                                  ))}
-                                {marketingPageUsers.filter(
-                                  (user) => user.page_id === page.id,
-                                ).length === 0 && (
-                                    <div className="text-gray-500">
-                                      ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
-                                    </div>
-                                  )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                    {pages.map((p) => (
+                      <tr key={p.id} className="border-b">
+                        <td className="px-3 py-2">{p.id}</td>
+                        <td className="px-3 py-2">{p.name}</td>
+                        <td className="px-3 py-2">{p.platform}</td>
+                        <td className="px-3 py-2 truncate max-w-xs">
+                          <a
+                            className="text-blue-600 hover:underline"
+                            href={p.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {p.url || "-"}
+                          </a>
+                        </td>
+                        <td className="px-3 py-2">{p.active ? "Yes" : "No"}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => togglePageActive(p)}
+                            className="px-3 py-1 border rounded-md"
+                          >
+                            {p.active ? "ปิดการใช้งาน" : "เปิดการใช้งาน"}
+                          </button>
+                        </td>
+                      </tr>
                     ))}
+                    {pages.length === 0 && (
+                      <tr>
+                        <td
+                          className="px-3 py-6 text-center text-gray-500"
+                          colSpan={6}
+                        >
+                          ยังไม่มีเพจ
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
-            )}
-          </section>
-        </>
-      )}
+            </section>
 
-      {/* Ads Input Tab */}
-      {hasAdminAccess(currentUser) && activeTab === "adsInput" && (
-        <>
-          <section className="bg-white rounded-lg shadow p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">
-                กรอกค่า Ads
-              </h3>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                />
-                <button
-                  onClick={() => loadExistingAdsData()}
-                  disabled={isLoadingData}
-                  className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  title="โหลดข้อมูลที่มีอยู่แล้ว"
-                >
-                  {isLoadingData ? "กำลังโหลด..." : "โหลดข้อมูล"}
-                </button>
-                <button
-                  onClick={handleSaveAllAdsData}
-                  disabled={isSaving}
-                  className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
-                </button>
+            {/* Ad spend management */}
+            <section className="bg-white rounded-lg shadow p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  ค่าโฆษณารายวัน
+                </h3>
+                <div className="text-sm text-gray-600">
+                  รวม: ฿{totalSpend.toFixed(2)}
+                </div>
               </div>
-            </div>
-            {isLoadingData ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+                <div>
+                  <label className={labelClass}>เลือกเพจ (กรอง/บันทึก)</label>
+                  <select
+                    className={inputClass}
+                    value={filterPageId}
+                    onChange={(e) =>
+                      setFilterPageId(
+                        e.target.value ? Number(e.target.value) : "",
+                      )
+                    }
+                  >
+                    <option value="">ทุกเพจ</option>
+                    {pages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>วันที่</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={newSpend.date}
+                    onChange={(e) =>
+                      setNewSpend((v) => ({ ...v, date: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>จำนวนเงิน (บาท)</label>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    value={newSpend.amount}
+                    onChange={(e) =>
+                      setNewSpend((v) => ({ ...v, amount: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>หมายเหตุ</label>
+                  <input
+                    className={inputClass}
+                    value={newSpend.notes}
+                    onChange={(e) =>
+                      setNewSpend((v) => ({ ...v, notes: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      if (typeof filterPageId === "number")
+                        setNewSpend((v) => ({ ...v, pageId: filterPageId }));
+                      handleAddSpend();
+                    }}
+                    className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    บันทึก
+                  </button>
+                </div>
               </div>
-            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
+                      <th className="px-3 py-2 text-left">วันที่</th>
                       <th className="px-3 py-2 text-left">เพจ</th>
-                      <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                      <th className="px-3 py-2 text-left">ค่า Ads</th>
-                      <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                      <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                      <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                      <th className="px-3 py-2 text-left">จำนวนเงิน</th>
+                      <th className="px-3 py-2 text-left">หมายเหตุ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Display all user pages */}
-                    {userPages.length > 0 &&
-                      userPages.map((page, index) => (
-                        <tr key={page.id} className="border-b">
-                          <td className="px-3 py-2 font-medium">
+                    {adSpend.map((row) => {
+                      const p = pages.find((x) => x.id === row.pageId);
+                      return (
+                        <tr key={row.id} className="border-b">
+                          <td className="px-3 py-2">{row.spendDate}</td>
+                          <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <span>{page.name}</span>
-                              {isPageInactive(page) && (
+                              <span>{p?.name || row.pageId}</span>
+                              {isPageInactive(p) && (
                                 <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
                                   Inactive
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2">{page.platform}</td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                              placeholder="0"
-                              value={getInputValue(page.id, "adsCost")}
-                              disabled={!!getInputValue(page.id, "id")}
-                              onChange={(e) =>
-                                handleUserPageInputChange(
-                                  page.id,
-                                  "adsCost",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                              placeholder="0"
-                              value={getInputValue(page.id, "impressions")}
-                              disabled={!!getInputValue(page.id, "id")}
-                              onChange={(e) =>
-                                handleUserPageInputChange(
-                                  page.id,
-                                  "impressions",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                              placeholder="0"
-                              value={getInputValue(page.id, "reach")}
-                              disabled={!!getInputValue(page.id, "id")}
-                              onChange={(e) =>
-                                handleUserPageInputChange(
-                                  page.id,
-                                  "reach",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                              placeholder="0"
-                              value={getInputValue(page.id, "clicks")}
-                              disabled={!!getInputValue(page.id, "id")}
-                              onChange={(e) =>
-                                handleUserPageInputChange(
-                                  page.id,
-                                  "clicks",
-                                  e.target.value,
-                                )
-                              }
-                            />
-                          </td>
+                          <td className="px-3 py-2">฿{row.amount.toFixed(2)}</td>
+                          <td className="px-3 py-2">{row.notes || "-"}</td>
                         </tr>
-                      ))}
-                    {userPages.length === 0 && (
+                      );
+                    })}
+                    {adSpend.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
-                          className="text-center py-8 text-gray-500"
+                          className="px-3 py-6 text-center text-gray-500"
+                          colSpan={4}
                         >
-                          ไม่มีเพจที่คุณมีสิทธิ์จัดการ
+                          ยังไม่มีรายการ
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            )}
-          </section>
-        </>
-      )}
+            </section>
 
-      {/* Dashboard Tab */}
-      {hasAdminAccess(currentUser) && activeTab === "dashboard" && (
-        <section className="bg-white rounded-lg shadow p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">
-                แดชบอร์ดข้อมูล Ads
+            {/* Promotions list (read-only) */}
+            <section className="bg-white rounded-lg shadow p-5">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                โปรโมชัน
               </h3>
-            </div>
-            <button
-              onClick={() => {
-                setExportModalOpen(true);
-                setExportDateRange(dateRange);
-                setExportSelectedPages(selectedPages);
-                setExportTempStart(dateRange.start);
-                setExportTempEnd(dateRange.end);
-              }}
-              className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              ส่งออก CSV
-            </button>
-          </div>
-
-          {/* Marketing Date Range Picker and Page Filter */}
-          <div className="mb-4">
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label className={labelClass}>เลือกช่วงวันที่</label>
-                <button
-                  onClick={() => setDatePickerOpen(!datePickerOpen)}
-                  className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
-                >
-                  <span
-                    className={
-                      dateRange.start && dateRange.end
-                        ? "text-gray-900"
-                        : "text-gray-500"
-                    }
-                  >
-                    {dateRange.start && dateRange.end
-                      ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                      : "ทั้งหมด"}
-                  </span>
-                  <Calendar className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
-
-              <div className="flex-1">
-                <label className={labelClass}>เลือกเพจ</label>
-                <MultiSelectPageFilter
-                  pages={pages.map((page) => ({
-                    id: page.id,
-                    name: page.name,
-                    platform: page.platform,
-                    active: page.active,
-                  }))}
-                  selectedPages={selectedPages}
-                  onChange={setSelectedPages}
-                  showInactivePages={showInactivePages}
-                  onToggleInactivePages={setShowInactivePages}
-                />
-              </div>
-
-              <div className="flex-1">
-                <label className={labelClass}>เลือกผู้ใช้</label>
-                <MultiSelectUserFilter
-                  users={marketingUsersList.map((user) => ({
-                    id: user.id,
-                    firstName: user.first_name,
-                    lastName: user.last_name,
-                    username: user.username,
-                  }))}
-                  selectedUsers={selectedUsers}
-                  onChange={setSelectedUsers}
-                />
-              </div>
-
-              <div className="">
-                <button
-                  onClick={() => loadDashboardData()}
-                  disabled={dashboardLoading}
-                  className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
-                >
-                  {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
-                </button>
-              </div>
-            </div>
-
-            {/* Date Picker Dropdown */}
-            {datePickerOpen && (
-              <div
-                className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
-                ref={datePickerRef}
-              >
-                <div className="p-4">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">
-                        วันที่เริ่มต้น
-                      </label>
-                      <input
-                        type="date"
-                        value={tempStart}
-                        onChange={(e) => setTempStart(e.target.value)}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
+              <div className="grid md:grid-cols-2 gap-3">
+                {promotions.map((pr) => (
+                  <div key={pr.id} className="border rounded p-3">
+                    <div className="font-medium text-gray-800">{pr.name}</div>
+                    <div className="text-gray-600 text-sm">
+                      สถานะ: {pr.active ? "Active" : "Inactive"}
                     </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">
-                        วันที่สิ้นสุด
-                      </label>
-                      <input
-                        type="date"
-                        value={tempEnd}
-                        onChange={(e) => setTempEnd(e.target.value)}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="text-xs font-medium text-gray-700 mb-2">
-                      เลือกช่วงเวลาด่วน:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => {
-                          const newRange = { start: "", end: "" };
-                          setTempStart("");
-                          setTempEnd("");
-                          setDateRange(newRange);
-                          setDatePickerOpen(false);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        ทั้งหมด
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const dayOfWeek = now.getDay();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - dayOfWeek);
-                          const endDate = new Date(startDate);
-                          endDate.setDate(startDate.getDate() + 6);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setTempStart(newRange.start);
-                          setTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                        อาทิตย์นี้
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(
-                            now.getFullYear(),
-                            now.getMonth(),
-                            1,
-                          );
-                          const endDate = new Date(
-                            now.getFullYear(),
-                            now.getMonth() + 1,
-                            0,
-                          );
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setTempStart(newRange.start);
-                          setTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        เดือนนี้
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - 6);
-                          const endDate = new Date(now);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setTempStart(newRange.start);
-                          setTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                        7 วันล่าสุด
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - 29);
-                          const endDate = new Date(now);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setTempStart(newRange.start);
-                          setTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                        30 วันล่าสุด
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
-                    <button
-                      onClick={() => {
-                        setDateRange({ start: tempStart, end: tempEnd });
-                        setDatePickerOpen(false);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                    >
-                      ตกลง
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* View Mode Toggle */}
-          <div className="flex items-center justify-end mb-3">
-            <div className="inline-flex rounded-md shadow-sm border border-gray-300 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setDashboardView("user")}
-                className={`px-3 py-1.5 text-sm ${dashboardView === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-              >
-                รายบุคคล
-              </button>
-              <button
-                type="button"
-                onClick={() => setDashboardView("page")}
-                className={`px-3 py-1.5 text-sm border-l border-gray-300 ${dashboardView === "page"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-              >
-                รายเพจ
-              </button>
-            </div>
-          </div>
-
-          {/* Dashboard Table */}
-          {dashboardLoading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left">วันที่</th>
-                    <th className="px-3 py-2 text-left">เพจ</th>
-                    {dashboardView === "user" && (
-                      <th className="px-3 py-2 text-left">ผู้ใช้</th>
+                    {pr.sku && (
+                      <div className="text-gray-600 text-sm">SKU: {pr.sku}</div>
                     )}
-                    <th className="px-3 py-2 text-left">ค่า Ads</th>
-                    <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                    <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                    <th className="px-3 py-2 text-left">ทัก/คลิก</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(dashboardView === "user" ? dashboardData : aggregatedByPage)
-                    .length > 0 ? (
-                    (dashboardView === "user"
-                      ? dashboardData
-                      : aggregatedByPage
-                    ).map((row, index) => (
-                      <tr key={index} className="border-b hover:bg-gray-50">
-                        <td className="px-3 py-2">
-                          {dashboardView === "user"
-                            ? row.log_date
-                            : row.log_date || ""}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <span>{row.page_name}</span>
-                            {(() => {
-                              const page = pages.find(
-                                (p) => p.name === row.page_name,
-                              );
-                              return isPageInactive(page) ? (
-                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                  Inactive
-                                </span>
-                              ) : null;
-                            })()}
-                          </div>
-                        </td>
-                        {dashboardView === "user" && (
-                          <td className="px-3 py-2">
-                            {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
-                          </td>
-                        )}
-                        <td className="px-3 py-2">
-                          ฿{Number(row.ads_cost || 0).toFixed(0)}
-                        </td>
-                        <td className="px-3 py-2">{row.impressions || 0}</td>
-                        <td className="px-3 py-2">{row.reach || 0}</td>
-                        <td className="px-3 py-2">{row.clicks || 0}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="text-center py-8 text-gray-500"
-                      >
-                        ไม่มีข้อมูลในช่วงวันที่ที่เลือก
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </div>
+                ))}
+                {promotions.length === 0 && (
+                  <div className="text-gray-500">ยังไม่มีโปรโมชัน</div>
+                )}
+              </div>
+            </section>
+          </>
+        )
+      }
 
-              {/* Dashboard Pagination */}
-              {dashboardData.length > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                  <div className="text-sm text-gray-600">
-                    {(() => {
-                      const start = (dashboardPage - 1) * dashboardPageSize + 1;
-                      const end = Math.min(
-                        start + dashboardPageSize - 1,
-                        dashboardTotal,
-                      );
-                      return dashboardTotal > 0
-                        ? `แสดง ${start}-${end} จาก ${dashboardTotal} รายการ (ทั้งหมด ${dashboardTotalPages} หน้า)`
-                        : "ไม่มีข้อมูล";
-                    })()}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-700">แถวต่อหน้า</label>
-                    <select
-                      className="border rounded px-2 py-1 text-sm bg-white"
-                      value={dashboardPageSize}
-                      onChange={(e) =>
-                        setDashboardPageSize(Number(e.target.value))
-                      }
-                    >
-                      {[10, 20, 50, 100].map((sz) => (
-                        <option key={sz} value={sz}>
-                          {sz}
-                        </option>
+      {/* User Management Tab - Admin Only */}
+      {
+        hasAdminAccess(currentUser) && activeTab === "userManagement" && (
+          <>
+            {/* Active Pages List */}
+            <section className="bg-white rounded-lg shadow p-5">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                รายการเพจที่ใช้งานอยู่ (Active Pages)
+              </h3>
+              {loading ? (
+                <div className="text-center py-4">กำลังโหลด...</div>
+              ) : pages.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  ไม่มีเพจที่ใช้งานอยู่
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left">ID</th>
+                        <th className="px-3 py-2 text-left">ประเภทเพจ</th>
+                        <th className="px-3 py-2 text-left">ชื่อเพจ</th>
+                        <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                        <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
+                        <th className="px-3 py-2 text-left">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pages.map((page) => (
+                        <React.Fragment key={page.id}>
+                          <tr
+                            className="border-b cursor-pointer hover:bg-gray-50"
+                            onClick={() => togglePageExpand(page.id)}
+                          >
+                            <td className="px-3 py-2">{page.id}</td>
+                            <td className="px-3 py-2">
+                              {(() => {
+                                const { label, className } = getPageTypeBadgeClasses(
+                                  page.page_type ?? page.pageType ?? null,
+                                );
+                                return (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-3 py-2 font-medium">{page.name}</td>
+                            <td className="px-3 py-2">{page.platform}</td>
+                            <td className="px-3 py-2">
+                              {
+                                marketingPageUsers.filter(
+                                  (user) => user.page_id === page.id,
+                                ).length
+                              }
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddUser(page.id);
+                                }}
+                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                              >
+                                +เพิ่มผู้ใช้
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedPages.has(page.id) && (
+                            <tr>
+                              <td colSpan={6} className="px-3 py-4 bg-gray-50">
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-gray-700">
+                                    ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
+                                  </h4>
+                                  {marketingPageUsers
+                                    .filter((user) => user.page_id === page.id)
+                                    .map((user) => (
+                                      <div
+                                        key={user.id}
+                                        className="flex items-center justify-between bg-white p-3 rounded border"
+                                      >
+                                        <div>
+                                          <span className="font-medium">
+                                            {user.first_name} {user.last_name}
+                                          </span>
+                                          <span className="text-sm text-gray-600 ml-2">
+                                            ({user.username})
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            handleRemoveUser(
+                                              user.user_id,
+                                              page.id,
+                                            )
+                                          }
+                                          className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                        >
+                                          ลบ
+                                        </button>
+                                      </div>
+                                    ))}
+                                  {marketingPageUsers.filter(
+                                    (user) => user.page_id === page.id,
+                                  ).length === 0 && (
+                                      <div className="text-gray-500">
+                                        ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                      </div>
+                                    )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
-                    </select>
-                    <button
-                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() =>
-                        setDashboardPage((p) => Math.max(1, p - 1))
-                      }
-                      disabled={dashboardPage === 1}
-                    >
-                      ก่อนหน้า
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm text-gray-700">หน้า</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max={dashboardTotalPages}
-                        value={dashboardPage}
-                        onChange={(e) => {
-                          const page = Math.max(
-                            1,
-                            Math.min(
-                              dashboardTotalPages,
-                              Number(e.target.value) || 1,
-                            ),
-                          );
-                          setDashboardPage(page);
-                        }}
-                        className="w-16 px-2 py-1 border rounded text-sm text-center"
-                      />
-                      <span className="text-sm text-gray-700">
-                        / {dashboardTotalPages}
-                      </span>
-                    </div>
-                    <button
-                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() =>
-                        setDashboardPage((p) =>
-                          Math.min(dashboardTotalPages, p + 1),
-                        )
-                      }
-                      disabled={dashboardPage === dashboardTotalPages}
-                    >
-                      ถัดไป
-                    </button>
-                  </div>
+                    </tbody>
+                  </table>
                 </div>
               )}
+            </section>
+          </>
+        )
+      }
+
+      {/* Ads Input Tab */}
+      {
+        hasAdminAccess(currentUser) && activeTab === "adsInput" && (
+          <>
+            <section className="bg-white rounded-lg shadow p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  กรอกค่า Ads
+                </h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                  />
+                  <button
+                    onClick={() => loadExistingAdsData()}
+                    disabled={isLoadingData}
+                    className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    title="โหลดข้อมูลที่มีอยู่แล้ว"
+                  >
+                    {isLoadingData ? "กำลังโหลด..." : "โหลดข้อมูล"}
+                  </button>
+                  <button
+                    onClick={handleSaveAllAdsData}
+                    disabled={isSaving}
+                    className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
+                  </button>
+                </div>
+              </div>
+              {isLoadingData ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                  <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left">เพจ</th>
+                        <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                        <th className="px-3 py-2 text-left">ค่า Ads</th>
+                        <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                        <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                        <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Display all user pages */}
+                      {userPages.length > 0 &&
+                        userPages.map((page, index) => (
+                          <tr key={page.id} className="border-b">
+                            <td className="px-3 py-2 font-medium">
+                              <div className="flex items-center gap-2">
+                                <span>{page.name}</span>
+                                {isPageInactive(page) && (
+                                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                    Inactive
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">{page.platform}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                placeholder="0"
+                                value={getInputValue(page.id, "adsCost")}
+                                disabled={!!getInputValue(page.id, "id")}
+                                onChange={(e) =>
+                                  handleUserPageInputChange(
+                                    page.id,
+                                    "adsCost",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                placeholder="0"
+                                value={getInputValue(page.id, "impressions")}
+                                disabled={!!getInputValue(page.id, "id")}
+                                onChange={(e) =>
+                                  handleUserPageInputChange(
+                                    page.id,
+                                    "impressions",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                placeholder="0"
+                                value={getInputValue(page.id, "reach")}
+                                disabled={!!getInputValue(page.id, "id")}
+                                onChange={(e) =>
+                                  handleUserPageInputChange(
+                                    page.id,
+                                    "reach",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                placeholder="0"
+                                value={getInputValue(page.id, "clicks")}
+                                disabled={!!getInputValue(page.id, "id")}
+                                onChange={(e) =>
+                                  handleUserPageInputChange(
+                                    page.id,
+                                    "clicks",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      {userPages.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="text-center py-8 text-gray-500"
+                          >
+                            ไม่มีเพจที่คุณมีสิทธิ์จัดการ
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </>
+        )
+      }
+
+      {/* Dashboard Tab */}
+      {
+        hasAdminAccess(currentUser) && activeTab === "dashboard" && (
+          <section className="bg-white rounded-lg shadow p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">
+                  แดชบอร์ดข้อมูล Ads
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setExportModalOpen(true);
+                  setExportDateRange(dateRange);
+                  setExportSelectedPages(selectedPages);
+                  setExportTempStart(dateRange.start);
+                  setExportTempEnd(dateRange.end);
+                }}
+                className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md shadow-sm flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                ส่งออก CSV
+              </button>
             </div>
-          )}
-        </section>
-      )}
 
-      {/* Export CSV Modal */}
-      {exportModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                ส่งออกข้อมูล CSV
-              </h3>
-
-              <div className="space-y-4">
-                <div>
+            {/* Marketing Date Range Picker and Page Filter */}
+            <div className="mb-4">
+              <div className="flex gap-4 items-end">
+                <div className="flex-1">
                   <label className={labelClass}>เลือกช่วงวันที่</label>
-                  <div className="relative">
-                    <button
-                      onClick={() =>
-                        setExportDatePickerOpen(!exportDatePickerOpen)
+                  <button
+                    onClick={() => setDatePickerOpen(!datePickerOpen)}
+                    className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                  >
+                    <span
+                      className={
+                        dateRange.start && dateRange.end
+                          ? "text-gray-900"
+                          : "text-gray-500"
                       }
-                      className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
                     >
-                      <span
-                        className={
-                          exportTempStart && exportTempEnd
-                            ? "text-gray-900"
-                            : "text-gray-500"
-                        }
-                      >
-                        {exportTempStart && exportTempEnd
-                          ? `${new Date(exportTempStart + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(exportTempEnd + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                          : "ทั้งหมด"}
-                      </span>
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                    </button>
-
-                    {/* Export Date Picker Dropdown */}
-                    {exportDatePickerOpen && (
-                      <div
-                        className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
-                        ref={exportDatePickerRef}
-                      >
-                        <div className="p-4">
-                          <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
-                                วันที่เริ่มต้น
-                              </label>
-                              <input
-                                type="date"
-                                value={exportTempStart}
-                                onChange={(e) =>
-                                  setExportTempStart(e.target.value)
-                                }
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
-                                วันที่สิ้นสุด
-                              </label>
-                              <input
-                                type="date"
-                                value={exportTempEnd}
-                                onChange={(e) =>
-                                  setExportTempEnd(e.target.value)
-                                }
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="border-t border-gray-100 pt-3">
-                            <p className="text-xs font-medium text-gray-700 mb-2">
-                              เลือกช่วงเวลาด่วน:
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => {
-                                  setExportTempStart("");
-                                  setExportTempEnd("");
-                                  setExportDatePickerOpen(false);
-                                }}
-                                className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
-                              >
-                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                                ทั้งหมด
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const now = new Date();
-                                  const dayOfWeek = now.getDay();
-                                  const startDate = new Date(now);
-                                  startDate.setDate(now.getDate() - dayOfWeek);
-                                  const endDate = new Date(startDate);
-                                  endDate.setDate(startDate.getDate() + 6);
-                                  setExportTempStart(
-                                    startDate.toISOString().slice(0, 10),
-                                  );
-                                  setExportTempEnd(
-                                    endDate.toISOString().slice(0, 10),
-                                  );
-                                }}
-                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                              >
-                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                                อาทิตย์นี้
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const now = new Date();
-                                  const startDate = new Date(
-                                    now.getFullYear(),
-                                    now.getMonth(),
-                                    1,
-                                  );
-                                  const endDate = new Date(
-                                    now.getFullYear(),
-                                    now.getMonth() + 1,
-                                    0,
-                                  );
-                                  setExportTempStart(
-                                    startDate.toISOString().slice(0, 10),
-                                  );
-                                  setExportTempEnd(
-                                    endDate.toISOString().slice(0, 10),
-                                  );
-                                }}
-                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                              >
-                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                                เดือนนี้
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const now = new Date();
-                                  const startDate = new Date(now);
-                                  startDate.setDate(now.getDate() - 6);
-                                  const endDate = new Date(now);
-                                  setExportTempStart(
-                                    startDate.toISOString().slice(0, 10),
-                                  );
-                                  setExportTempEnd(
-                                    endDate.toISOString().slice(0, 10),
-                                  );
-                                }}
-                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                              >
-                                <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                                7 วันล่าสุด
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const now = new Date();
-                                  const startDate = new Date(now);
-                                  startDate.setDate(now.getDate() - 29);
-                                  const endDate = new Date(now);
-                                  setExportTempStart(
-                                    startDate.toISOString().slice(0, 10),
-                                  );
-                                  setExportTempEnd(
-                                    endDate.toISOString().slice(0, 10),
-                                  );
-                                }}
-                                className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                              >
-                                <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                                30 วันล่าสุด
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
-                            <button
-                              onClick={() => {
-                                setExportDateRange({
-                                  start: exportTempStart,
-                                  end: exportTempEnd,
-                                });
-                                setExportDatePickerOpen(false);
-                              }}
-                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                            >
-                              ตกลง
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                      {dateRange.start && dateRange.end
+                        ? `${new Date(dateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(dateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                        : "ทั้งหมด"}
+                    </span>
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                  </button>
                 </div>
 
-                <div>
+                <div className="flex-1">
                   <label className={labelClass}>เลือกเพจ</label>
                   <MultiSelectPageFilter
                     pages={pages.map((page) => ({
@@ -2492,362 +1902,255 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                       platform: page.platform,
                       active: page.active,
                     }))}
-                    selectedPages={exportSelectedPages}
-                    onChange={setExportSelectedPages}
+                    selectedPages={selectedPages}
+                    onChange={setSelectedPages}
                     showInactivePages={showInactivePages}
                     onToggleInactivePages={setShowInactivePages}
                   />
                 </div>
-              </div>
 
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setExportModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                  disabled={exporting}
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={async () => {
-                    setExporting(true);
-                    try {
-                      const params = new URLSearchParams();
-                      if (exportTempStart)
-                        params.set("date_from", exportTempStart);
-                      if (exportTempEnd) params.set("date_to", exportTempEnd);
-                      if (exportSelectedPages.length > 0) {
-                        params.set("page_ids", exportSelectedPages.join(","));
-                      }
+                <div className="flex-1">
+                  <label className={labelClass}>เลือกผู้ใช้</label>
+                  <MultiSelectUserFilter
+                    users={marketingUsersList.map((user) => ({
+                      id: user.id,
+                      firstName: user.first_name,
+                      lastName: user.last_name,
+                      username: user.username,
+                    }))}
+                    selectedUsers={selectedUsers}
+                    onChange={setSelectedUsers}
+                  />
+                </div>
 
-                      const response = await fetch(
-                        `api/Marketing_DB/ads_log_export_csv.php?${params}`,
-                      );
-
-                      if (!response.ok) {
-                        throw new Error("Export failed");
-                      }
-
-                      // Get the filename from the response headers or create a default one
-                      const contentDisposition = response.headers.get(
-                        "content-disposition",
-                      );
-                      let filename = "marketing_ads_log.csv";
-                      if (contentDisposition) {
-                        const filenameMatch =
-                          contentDisposition.match(/filename="?([^"]+)"?/);
-                        if (filenameMatch) {
-                          filename = filenameMatch[1];
-                        }
-                      }
-
-                      // Create blob and download
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = filename;
-                      document.body.appendChild(a);
-                      a.click();
-                      a.remove();
-                      window.URL.revokeObjectURL(url);
-
-                      setExportModalOpen(false);
-                    } catch (error) {
-                      console.error("Export error:", error);
-                      alert("การส่งออกข้อมูลล้มเหลว กรุณาลองใหม่");
-                    } finally {
-                      setExporting(false);
-                    }
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                  disabled={exporting}
-                >
-                  <Download className="w-4 h-4" />
-                  {exporting ? "กำลังส่งออก..." : "ยืนยันและดาวน์โหลด"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Ads History Tab */}
-      {hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
-        <section className="bg-white rounded-lg shadow p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">
-              ประวัติการกรอก Ads
-            </h3>
-            <div className="text-sm text-gray-600">
-              ผู้ใช้:{" "}
-              {currentUser.firstName && currentUser.lastName
-                ? `${currentUser.firstName} ${currentUser.lastName}`
-                : currentUser.username}
-            </div>
-            <div className="text-sm text-gray-500">
-              สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
-            </div>
-          </div>
-
-          {/* Ads History Filters */}
-          <div className="mb-4">
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label className={labelClass}>เลือกช่วงวันที่</label>
-                <button
-                  onClick={() =>
-                    setAdsHistoryDatePickerOpen(!adsHistoryDatePickerOpen)
-                  }
-                  className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
-                >
-                  <span
-                    className={
-                      adsHistoryDateRange.start && adsHistoryDateRange.end
-                        ? "text-gray-900"
-                        : "text-gray-900 font-medium"
-                    }
+                <div className="">
+                  <button
+                    onClick={() => loadDashboardData()}
+                    disabled={dashboardLoading}
+                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
                   >
-                    {adsHistoryDateRange.start && adsHistoryDateRange.end
-                      ? `${new Date(adsHistoryDateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(adsHistoryDateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
-                      : "ทั้งหมด"}
-                  </span>
-                  <Calendar className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
-
-              <div className="flex-1">
-                <label className={labelClass}>เลือกเพจ</label>
-                <MultiSelectPageFilter
-                  pages={(currentUser.role === "Super Admin" ||
-                    currentUser.role === "Admin Control"
-                    ? pages
-                    : userAccessiblePages
-                  ).map((page) => ({
-                    id: page.id,
-                    name: page.name,
-                    platform: page.platform,
-                    active: page.active,
-                  }))}
-                  selectedPages={adsHistorySelectedPages}
-                  onChange={setAdsHistorySelectedPages}
-                  showInactivePages={showInactivePagesAdsHistory}
-                  onToggleInactivePages={setShowInactivePagesAdsHistory}
-                />
-              </div>
-
-              <div className="">
-                <button
-                  onClick={() => setAdsHistoryPage(1)}
-                  disabled={adsLogsLoading}
-                  className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
-                >
-                  {adsLogsLoading ? "กำลังโหลด..." : "ค้นหา"}
-                </button>
-              </div>
-            </div>
-
-            {/* Ads History Date Picker Dropdown */}
-            {adsHistoryDatePickerOpen && (
-              <div
-                className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
-                ref={adsHistoryDatePickerRef}
-              >
-                <div className="p-4">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">
-                        วันที่เริ่มต้น
-                      </label>
-                      <input
-                        type="date"
-                        value={adsHistoryTempStart}
-                        onChange={(e) => setAdsHistoryTempStart(e.target.value)}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">
-                        วันที่สิ้นสุด
-                      </label>
-                      <input
-                        type="date"
-                        value={adsHistoryTempEnd}
-                        onChange={(e) => setAdsHistoryTempEnd(e.target.value)}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="text-xs font-medium text-gray-700 mb-2">
-                      เลือกช่วงเวลาด่วน:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => {
-                          const newRange = { start: "", end: "" };
-                          setAdsHistoryTempStart("");
-                          setAdsHistoryTempEnd("");
-                          setAdsHistoryDateRange(newRange);
-                          setAdsHistoryDatePickerOpen(false);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        ทั้งหมด
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const dayOfWeek = now.getDay();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - dayOfWeek);
-                          const endDate = new Date(startDate);
-                          endDate.setDate(startDate.getDate() + 6);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setAdsHistoryTempStart(newRange.start);
-                          setAdsHistoryTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                        อาทิตย์นี้
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(
-                            now.getFullYear(),
-                            now.getMonth(),
-                            1,
-                          );
-                          const endDate = new Date(
-                            now.getFullYear(),
-                            now.getMonth() + 1,
-                            0,
-                          );
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setAdsHistoryTempStart(newRange.start);
-                          setAdsHistoryTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        เดือนนี้
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - 6);
-                          const endDate = new Date(now);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setAdsHistoryTempStart(newRange.start);
-                          setAdsHistoryTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
-                        7 วันล่าสุด
-                      </button>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const startDate = new Date(now);
-                          startDate.setDate(now.getDate() - 29);
-                          const endDate = new Date(now);
-                          const newRange = {
-                            start: startDate.toISOString().slice(0, 10),
-                            end: endDate.toISOString().slice(0, 10),
-                          };
-                          setAdsHistoryTempStart(newRange.start);
-                          setAdsHistoryTempEnd(newRange.end);
-                        }}
-                        className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
-                      >
-                        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                        30 วันล่าสุด
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
-                    <button
-                      onClick={() => {
-                        setAdsHistoryDateRange({
-                          start: adsHistoryTempStart,
-                          end: adsHistoryTempEnd,
-                        });
-                        setAdsHistoryDatePickerOpen(false);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                    >
-                      ตกลง
-                    </button>
-                  </div>
+                    {dashboardLoading ? "กำลังโหลด..." : "ค้นหา"}
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {adsLogsLoading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-              <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left">วันที่</th>
-                    <th className="px-3 py-2 text-left">เพจ</th>
-                    <th className="px-3 py-2 text-left">ผู้บันทึก</th>
-                    <th className="px-3 py-2 text-left">ค่า Ads</th>
-                    <th className="px-3 py-2 text-left">Impressions</th>
-                    <th className="px-3 py-2 text-left">Reach</th>
-                    <th className="px-3 py-2 text-left">Clicks</th>
-                    {(currentUser.role === "Super Admin" ||
-                      currentUser.role === "Admin Control") && (
-                        <th className="px-3 py-2 text-left">จัดการ</th>
-                      )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {adsLogs.length > 0 ? (
-                    adsLogs.map((log: any) => {
-                      const d = log.date || log.log_date || "";
-                      const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
-                      return (
-                        <tr
-                          key={log.id}
-                          className={`border-b ${bg} ${getHoverColor(bg)}`}
+              {/* Date Picker Dropdown */}
+              {datePickerOpen && (
+                <div
+                  className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                  ref={datePickerRef}
+                >
+                  <div className="p-4">
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">
+                          วันที่เริ่มต้น
+                        </label>
+                        <input
+                          type="date"
+                          value={tempStart}
+                          onChange={(e) => setTempStart(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">
+                          วันที่สิ้นสุด
+                        </label>
+                        <input
+                          type="date"
+                          value={tempEnd}
+                          onChange={(e) => setTempEnd(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-3">
+                      <p className="text-xs font-medium text-gray-700 mb-2">
+                        เลือกช่วงเวลาด่วน:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const newRange = { start: "", end: "" };
+                            setTempStart("");
+                            setTempEnd("");
+                            setDateRange(newRange);
+                            setDatePickerOpen(false);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
                         >
-                          <td className="px-3 py-2">{d}</td>
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          ทั้งหมด
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const dayOfWeek = now.getDay();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - dayOfWeek);
+                            const endDate = new Date(startDate);
+                            endDate.setDate(startDate.getDate() + 6);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setTempStart(newRange.start);
+                            setTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                          อาทิตย์นี้
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(
+                              now.getFullYear(),
+                              now.getMonth(),
+                              1,
+                            );
+                            const endDate = new Date(
+                              now.getFullYear(),
+                              now.getMonth() + 1,
+                              0,
+                            );
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setTempStart(newRange.start);
+                            setTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          เดือนนี้
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - 6);
+                            const endDate = new Date(now);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setTempStart(newRange.start);
+                            setTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                          7 วันล่าสุด
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - 29);
+                            const endDate = new Date(now);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setTempStart(newRange.start);
+                            setTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                          30 วันล่าสุด
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={() => {
+                          setDateRange({ start: tempStart, end: tempEnd });
+                          setDatePickerOpen(false);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                      >
+                        ตกลง
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-end mb-3">
+              <div className="inline-flex rounded-md shadow-sm border border-gray-300 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("user")}
+                  className={`px-3 py-1.5 text-sm ${dashboardView === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                >
+                  รายบุคคล
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDashboardView("page")}
+                  className={`px-3 py-1.5 text-sm border-l border-gray-300 ${dashboardView === "page"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                >
+                  รายเพจ
+                </button>
+              </div>
+            </div>
+
+            {/* Dashboard Table */}
+            {dashboardLoading ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">วันที่</th>
+                      <th className="px-3 py-2 text-left">เพจ</th>
+                      {dashboardView === "user" && (
+                        <th className="px-3 py-2 text-left">ผู้ใช้</th>
+                      )}
+                      <th className="px-3 py-2 text-left">ค่า Ads</th>
+                      <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                      <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                      <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(dashboardView === "user" ? dashboardData : aggregatedByPage)
+                      .length > 0 ? (
+                      (dashboardView === "user"
+                        ? dashboardData
+                        : aggregatedByPage
+                      ).map((row, index) => (
+                        <tr key={index} className="border-b hover:bg-gray-50">
+                          <td className="px-3 py-2">
+                            {dashboardView === "user"
+                              ? row.log_date
+                              : row.log_date || ""}
+                          </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <span>
-                                {log.page_name ||
-                                  pages.find(
-                                    (p) => p.id === Number(log.page_id),
-                                  )?.name ||
-                                  log.page_id}
-                              </span>
+                              <span>{row.page_name}</span>
                               {(() => {
                                 const page = pages.find(
-                                  (p) =>
-                                    p.name === log.page_name ||
-                                    p.id === Number(log.page_id),
+                                  (p) => p.name === row.page_name,
                                 );
                                 return isPageInactive(page) ? (
                                   <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
@@ -2857,306 +2160,985 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser }) => {
                               })()}
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-gray-600">
-                            {log.user_fullname || log.user_username || "-"}
-                          </td>
+                          {dashboardView === "user" && (
+                            <td className="px-3 py-2">
+                              {`${row.first_name ?? ""} ${row.last_name ?? ""}`.trim()}
+                            </td>
+                          )}
                           <td className="px-3 py-2">
-                            ฿{Number(log.ads_cost || 0).toFixed(2)}
+                            ฿{Number(row.ads_cost || 0).toFixed(0)}
                           </td>
-                          <td className="px-3 py-2">{log.impressions ?? 0}</td>
-                          <td className="px-3 py-2">{log.reach ?? 0}</td>
-                          <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                          {(currentUser.role === "Super Admin" ||
-                            currentUser.role === "Admin Control") && (
-                              <td className="px-3 py-2">
-                                <button
-                                  className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                                  title="แก้ไขรายการนี้"
-                                  onClick={() => {
-                                    setEditingLog({ ...log });
-                                    setIsEditModalOpen(true);
-                                  }}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                              </td>
-                            )}
+                          <td className="px-3 py-2">{row.impressions || 0}</td>
+                          <td className="px-3 py-2">{row.reach || 0}</td>
+                          <td className="px-3 py-2">{row.clicks || 0}</td>
                         </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td
-                        className="px-3 py-6 text-center text-gray-500"
-                        colSpan={
-                          currentUser.role === "Super Admin" ||
-                            currentUser.role === "Admin Control"
-                            ? 8
-                            : 7
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="text-center py-8 text-gray-500"
+                        >
+                          ไม่มีข้อมูลในช่วงวันที่ที่เลือก
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Dashboard Pagination */}
+                {dashboardData.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                    <div className="text-sm text-gray-600">
+                      {(() => {
+                        const start = (dashboardPage - 1) * dashboardPageSize + 1;
+                        const end = Math.min(
+                          start + dashboardPageSize - 1,
+                          dashboardTotal,
+                        );
+                        return dashboardTotal > 0
+                          ? `แสดง ${start}-${end} จาก ${dashboardTotal} รายการ (ทั้งหมด ${dashboardTotalPages} หน้า)`
+                          : "ไม่มีข้อมูล";
+                      })()}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-700">แถวต่อหน้า</label>
+                      <select
+                        className="border rounded px-2 py-1 text-sm bg-white"
+                        value={dashboardPageSize}
+                        onChange={(e) =>
+                          setDashboardPageSize(Number(e.target.value))
                         }
                       >
-                        ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              {adsLogs.length > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                  <div className="text-sm text-gray-600">
-                    {(() => {
-                      const start =
-                        (adsHistoryPage - 1) * adsHistoryPageSize + 1;
-                      const end = Math.min(
-                        start + adsHistoryPageSize - 1,
-                        adsLogsTotal,
-                      );
-                      return adsLogsTotal > 0
-                        ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
-                        : "ไม่มีข้อมูล";
-                    })()}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-700">แถวต่อหน้า</label>
-                    <select
-                      className="border rounded px-2 py-1 text-sm bg-white"
-                      value={adsHistoryPageSize}
-                      onChange={(e) =>
-                        setAdsHistoryPageSize(Number(e.target.value))
-                      }
-                    >
-                      {[10, 20, 50, 100].map((sz) => (
-                        <option key={sz} value={sz}>
-                          {sz}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() =>
-                        setAdsHistoryPage((p) => Math.max(1, p - 1))
-                      }
-                      disabled={
-                        !serverPagination.hasPrevious || adsHistoryPage === 1
-                      }
-                    >
-                      ก่อนหน้า
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm text-gray-700">หน้า</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max={serverPagination.totalPages}
-                        value={adsHistoryPage}
-                        onChange={(e) => {
-                          const page = Math.max(
-                            1,
-                            Math.min(
-                              serverPagination.totalPages,
-                              Number(e.target.value) || 1,
-                            ),
-                          );
-                          setAdsHistoryPage(page);
-                        }}
-                        className="w-16 px-2 py-1 border rounded text-sm text-center"
-                      />
-                      <span className="text-sm text-gray-700">
-                        / {serverPagination.totalPages}
-                      </span>
+                        {[10, 20, 50, 100].map((sz) => (
+                          <option key={sz} value={sz}>
+                            {sz}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                        onClick={() =>
+                          setDashboardPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={dashboardPage === 1}
+                      >
+                        ก่อนหน้า
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm text-gray-700">หน้า</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={dashboardTotalPages}
+                          value={dashboardPage}
+                          onChange={(e) => {
+                            const page = Math.max(
+                              1,
+                              Math.min(
+                                dashboardTotalPages,
+                                Number(e.target.value) || 1,
+                              ),
+                            );
+                            setDashboardPage(page);
+                          }}
+                          className="w-16 px-2 py-1 border rounded text-sm text-center"
+                        />
+                        <span className="text-sm text-gray-700">
+                          / {dashboardTotalPages}
+                        </span>
+                      </div>
+                      <button
+                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                        onClick={() =>
+                          setDashboardPage((p) =>
+                            Math.min(dashboardTotalPages, p + 1),
+                          )
+                        }
+                        disabled={dashboardPage === dashboardTotalPages}
+                      >
+                        ถัดไป
+                      </button>
                     </div>
-                    <button
-                      className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                      onClick={() =>
-                        setAdsHistoryPage((p) =>
-                          Math.min(serverPagination.totalPages, p + 1),
-                        )
-                      }
-                      disabled={
-                        !serverPagination.hasMore ||
-                        adsHistoryPage === serverPagination.totalPages
-                      }
-                    >
-                      ถัดไป
-                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )
+      }
+
+      {/* Export CSV Modal */}
+      {
+        exportModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  ส่งออกข้อมูล CSV
+                </h3>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className={labelClass}>เลือกช่วงวันที่</label>
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setExportDatePickerOpen(!exportDatePickerOpen)
+                        }
+                        className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                      >
+                        <span
+                          className={
+                            exportTempStart && exportTempEnd
+                              ? "text-gray-900"
+                              : "text-gray-500"
+                          }
+                        >
+                          {exportTempStart && exportTempEnd
+                            ? `${new Date(exportTempStart + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(exportTempEnd + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                            : "ทั้งหมด"}
+                        </span>
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                      </button>
+
+                      {/* Export Date Picker Dropdown */}
+                      {exportDatePickerOpen && (
+                        <div
+                          className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                          ref={exportDatePickerRef}
+                        >
+                          <div className="p-4">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="text-xs text-gray-500 mb-1 block">
+                                  วันที่เริ่มต้น
+                                </label>
+                                <input
+                                  type="date"
+                                  value={exportTempStart}
+                                  onChange={(e) =>
+                                    setExportTempStart(e.target.value)
+                                  }
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 mb-1 block">
+                                  วันที่สิ้นสุด
+                                </label>
+                                <input
+                                  type="date"
+                                  value={exportTempEnd}
+                                  onChange={(e) =>
+                                    setExportTempEnd(e.target.value)
+                                  }
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="border-t border-gray-100 pt-3">
+                              <p className="text-xs font-medium text-gray-700 mb-2">
+                                เลือกช่วงเวลาด่วน:
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => {
+                                    setExportTempStart("");
+                                    setExportTempEnd("");
+                                    setExportDatePickerOpen(false);
+                                  }}
+                                  className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
+                                >
+                                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                  ทั้งหมด
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const dayOfWeek = now.getDay();
+                                    const startDate = new Date(now);
+                                    startDate.setDate(now.getDate() - dayOfWeek);
+                                    const endDate = new Date(startDate);
+                                    endDate.setDate(startDate.getDate() + 6);
+                                    setExportTempStart(
+                                      startDate.toISOString().slice(0, 10),
+                                    );
+                                    setExportTempEnd(
+                                      endDate.toISOString().slice(0, 10),
+                                    );
+                                  }}
+                                  className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                >
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                  อาทิตย์นี้
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const startDate = new Date(
+                                      now.getFullYear(),
+                                      now.getMonth(),
+                                      1,
+                                    );
+                                    const endDate = new Date(
+                                      now.getFullYear(),
+                                      now.getMonth() + 1,
+                                      0,
+                                    );
+                                    setExportTempStart(
+                                      startDate.toISOString().slice(0, 10),
+                                    );
+                                    setExportTempEnd(
+                                      endDate.toISOString().slice(0, 10),
+                                    );
+                                  }}
+                                  className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                >
+                                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                  เดือนนี้
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const startDate = new Date(now);
+                                    startDate.setDate(now.getDate() - 6);
+                                    const endDate = new Date(now);
+                                    setExportTempStart(
+                                      startDate.toISOString().slice(0, 10),
+                                    );
+                                    setExportTempEnd(
+                                      endDate.toISOString().slice(0, 10),
+                                    );
+                                  }}
+                                  className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                >
+                                  <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                                  7 วันล่าสุด
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const startDate = new Date(now);
+                                    startDate.setDate(now.getDate() - 29);
+                                    const endDate = new Date(now);
+                                    setExportTempStart(
+                                      startDate.toISOString().slice(0, 10),
+                                    );
+                                    setExportTempEnd(
+                                      endDate.toISOString().slice(0, 10),
+                                    );
+                                  }}
+                                  className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                                >
+                                  <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                                  30 วันล่าสุด
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                              <button
+                                onClick={() => {
+                                  setExportDateRange({
+                                    start: exportTempStart,
+                                    end: exportTempEnd,
+                                  });
+                                  setExportDatePickerOpen(false);
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                              >
+                                ตกลง
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>เลือกเพจ</label>
+                    <MultiSelectPageFilter
+                      pages={pages.map((page) => ({
+                        id: page.id,
+                        name: page.name,
+                        platform: page.platform,
+                        active: page.active,
+                      }))}
+                      selectedPages={exportSelectedPages}
+                      onChange={setExportSelectedPages}
+                      showInactivePages={showInactivePages}
+                      onToggleInactivePages={setShowInactivePages}
+                    />
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-        </section>
-      )}
 
-      {/* Add User Modal */}
-      {selectedPageForUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {marketingUsersList.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                  onClick={() => handleSubmitUserToPage(user.id)}
-                >
-                  <div>
-                    <div className="font-medium">
-                      {user.first_name} {user.last_name}
-                    </div>
-                    <div className="text-sm text-gray-600">{user.username}</div>
-                  </div>
-                  <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
-                    เลือก
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setExportModalOpen(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    disabled={exporting}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setExporting(true);
+                      try {
+                        const params = new URLSearchParams();
+                        if (exportTempStart)
+                          params.set("date_from", exportTempStart);
+                        if (exportTempEnd) params.set("date_to", exportTempEnd);
+                        if (exportSelectedPages.length > 0) {
+                          params.set("page_ids", exportSelectedPages.join(","));
+                        }
+
+                        const response = await fetch(
+                          `api/Marketing_DB/ads_log_export_csv.php?${params}`,
+                        );
+
+                        if (!response.ok) {
+                          throw new Error("Export failed");
+                        }
+
+                        // Get the filename from the response headers or create a default one
+                        const contentDisposition = response.headers.get(
+                          "content-disposition",
+                        );
+                        let filename = "marketing_ads_log.csv";
+                        if (contentDisposition) {
+                          const filenameMatch =
+                            contentDisposition.match(/filename="?([^"]+)"?/);
+                          if (filenameMatch) {
+                            filename = filenameMatch[1];
+                          }
+                        }
+
+                        // Create blob and download
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+
+                        setExportModalOpen(false);
+                      } catch (error) {
+                        console.error("Export error:", error);
+                        alert("การส่งออกข้อมูลล้มเหลว กรุณาลองใหม่");
+                      } finally {
+                        setExporting(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    disabled={exporting}
+                  >
+                    <Download className="w-4 h-4" />
+                    {exporting ? "กำลังส่งออก..." : "ยืนยันและดาวน์โหลด"}
                   </button>
                 </div>
-              ))}
-              {marketingUsersList.length === 0 && (
-                <div className="text-gray-500">ไม่มีผู้ใช้ Marketing</div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Ads History Tab */}
+      {
+        hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
+          <section className="bg-white rounded-lg shadow p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">
+                ประวัติการกรอก Ads
+              </h3>
+              <div className="text-sm text-gray-600">
+                ผู้ใช้:{" "}
+                {currentUser.firstName && currentUser.lastName
+                  ? `${currentUser.firstName} ${currentUser.lastName}`
+                  : currentUser.username}
+              </div>
+              <div className="text-sm text-gray-500">
+                สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
+              </div>
+            </div>
+
+            {/* Ads History Filters */}
+            <div className="mb-4">
+              <div className="flex gap-4 items-end">
+                <div className="flex-1">
+                  <label className={labelClass}>เลือกช่วงวันที่</label>
+                  <button
+                    onClick={() =>
+                      setAdsHistoryDatePickerOpen(!adsHistoryDatePickerOpen)
+                    }
+                    className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+                  >
+                    <span
+                      className={
+                        adsHistoryDateRange.start && adsHistoryDateRange.end
+                          ? "text-gray-900"
+                          : "text-gray-900 font-medium"
+                      }
+                    >
+                      {adsHistoryDateRange.start && adsHistoryDateRange.end
+                        ? `${new Date(adsHistoryDateRange.start + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(adsHistoryDateRange.end + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}`
+                        : "ทั้งหมด"}
+                    </span>
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                  </button>
+                </div>
+
+                <div className="flex-1">
+                  <label className={labelClass}>เลือกเพจ</label>
+                  <MultiSelectPageFilter
+                    pages={(currentUser.role === "Super Admin" ||
+                      currentUser.role === "Admin Control"
+                      ? pages
+                      : userAccessiblePages
+                    ).map((page) => ({
+                      id: page.id,
+                      name: page.name,
+                      platform: page.platform,
+                      active: page.active,
+                    }))}
+                    selectedPages={adsHistorySelectedPages}
+                    onChange={setAdsHistorySelectedPages}
+                    showInactivePages={showInactivePagesAdsHistory}
+                    onToggleInactivePages={setShowInactivePagesAdsHistory}
+                  />
+                </div>
+
+                <div className="">
+                  <button
+                    onClick={() => setAdsHistoryPage(1)}
+                    disabled={adsLogsLoading}
+                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
+                  >
+                    {adsLogsLoading ? "กำลังโหลด..." : "ค้นหา"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Ads History Date Picker Dropdown */}
+              {adsHistoryDatePickerOpen && (
+                <div
+                  className="absolute z-50 w-80 mt-2 bg-white rounded-lg shadow-xl border border-gray-200"
+                  ref={adsHistoryDatePickerRef}
+                >
+                  <div className="p-4">
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">
+                          วันที่เริ่มต้น
+                        </label>
+                        <input
+                          type="date"
+                          value={adsHistoryTempStart}
+                          onChange={(e) => setAdsHistoryTempStart(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">
+                          วันที่สิ้นสุด
+                        </label>
+                        <input
+                          type="date"
+                          value={adsHistoryTempEnd}
+                          onChange={(e) => setAdsHistoryTempEnd(e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-3">
+                      <p className="text-xs font-medium text-gray-700 mb-2">
+                        เลือกช่วงเวลาด่วน:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            const newRange = { start: "", end: "" };
+                            setAdsHistoryTempStart("");
+                            setAdsHistoryTempEnd("");
+                            setAdsHistoryDateRange(newRange);
+                            setAdsHistoryDatePickerOpen(false);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          ทั้งหมด
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const dayOfWeek = now.getDay();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - dayOfWeek);
+                            const endDate = new Date(startDate);
+                            endDate.setDate(startDate.getDate() + 6);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setAdsHistoryTempStart(newRange.start);
+                            setAdsHistoryTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                          อาทิตย์นี้
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(
+                              now.getFullYear(),
+                              now.getMonth(),
+                              1,
+                            );
+                            const endDate = new Date(
+                              now.getFullYear(),
+                              now.getMonth() + 1,
+                              0,
+                            );
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setAdsHistoryTempStart(newRange.start);
+                            setAdsHistoryTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          เดือนนี้
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - 6);
+                            const endDate = new Date(now);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setAdsHistoryTempStart(newRange.start);
+                            setAdsHistoryTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                          7 วันล่าสุด
+                        </button>
+                        <button
+                          onClick={() => {
+                            const now = new Date();
+                            const startDate = new Date(now);
+                            startDate.setDate(now.getDate() - 29);
+                            const endDate = new Date(now);
+                            const newRange = {
+                              start: startDate.toISOString().slice(0, 10),
+                              end: endDate.toISOString().slice(0, 10),
+                            };
+                            setAdsHistoryTempStart(newRange.start);
+                            setAdsHistoryTempEnd(newRange.end);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                          30 วันล่าสุด
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end mt-4 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={() => {
+                          setAdsHistoryDateRange({
+                            start: adsHistoryTempStart,
+                            end: adsHistoryTempEnd,
+                          });
+                          setAdsHistoryDatePickerOpen(false);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                      >
+                        ตกลง
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <button
-              onClick={() => setSelectedPageForUser(null)}
-              className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-            >
-              ยกเลิก
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* Edit Ads Log Modal */}
-      {isEditModalOpen && editingLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg mx-4 overflow-hidden">
-            <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-800">
-                แก้ไขข้อมูล Ads
-              </h3>
+            {adsLogsLoading ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">วันที่</th>
+                      <th className="px-3 py-2 text-left">เพจ</th>
+                      <th className="px-3 py-2 text-left">ผู้บันทึก</th>
+                      <th className="px-3 py-2 text-left">ค่า Ads</th>
+                      <th className="px-3 py-2 text-left">Impressions</th>
+                      <th className="px-3 py-2 text-left">Reach</th>
+                      <th className="px-3 py-2 text-left">Clicks</th>
+                      {(currentUser.role === "Super Admin" ||
+                        currentUser.role === "Admin Control") && (
+                          <th className="px-3 py-2 text-left">จัดการ</th>
+                        )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adsLogs.length > 0 ? (
+                      adsLogs.map((log: any) => {
+                        const d = log.date || log.log_date || "";
+                        const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
+                        return (
+                          <tr
+                            key={log.id}
+                            className={`border-b ${bg} ${getHoverColor(bg)}`}
+                          >
+                            <td className="px-3 py-2">{d}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span>
+                                  {log.page_name ||
+                                    pages.find(
+                                      (p) => p.id === Number(log.page_id),
+                                    )?.name ||
+                                    log.page_id}
+                                </span>
+                                {(() => {
+                                  const page = pages.find(
+                                    (p) =>
+                                      p.name === log.page_name ||
+                                      p.id === Number(log.page_id),
+                                  );
+                                  return isPageInactive(page) ? (
+                                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                      Inactive
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">
+                              {log.user_fullname || log.user_username || "-"}
+                            </td>
+                            <td className="px-3 py-2">
+                              ฿{Number(log.ads_cost || 0).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2">{log.impressions ?? 0}</td>
+                            <td className="px-3 py-2">{log.reach ?? 0}</td>
+                            <td className="px-3 py-2">{log.clicks ?? 0}</td>
+                            {(currentUser.role === "Super Admin" ||
+                              currentUser.role === "Admin Control") && (
+                                <td className="px-3 py-2">
+                                  <button
+                                    className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                                    title="แก้ไขรายการนี้"
+                                    onClick={() => {
+                                      setEditingLog({ ...log });
+                                      setIsEditModalOpen(true);
+                                    }}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              )}
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td
+                          className="px-3 py-6 text-center text-gray-500"
+                          colSpan={
+                            currentUser.role === "Super Admin" ||
+                              currentUser.role === "Admin Control"
+                              ? 8
+                              : 7
+                          }
+                        >
+                          ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {adsLogs.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                    <div className="text-sm text-gray-600">
+                      {(() => {
+                        const start =
+                          (adsHistoryPage - 1) * adsHistoryPageSize + 1;
+                        const end = Math.min(
+                          start + adsHistoryPageSize - 1,
+                          adsLogsTotal,
+                        );
+                        return adsLogsTotal > 0
+                          ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
+                          : "ไม่มีข้อมูล";
+                      })()}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-700">แถวต่อหน้า</label>
+                      <select
+                        className="border rounded px-2 py-1 text-sm bg-white"
+                        value={adsHistoryPageSize}
+                        onChange={(e) =>
+                          setAdsHistoryPageSize(Number(e.target.value))
+                        }
+                      >
+                        {[10, 20, 50, 100].map((sz) => (
+                          <option key={sz} value={sz}>
+                            {sz}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                        onClick={() =>
+                          setAdsHistoryPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={
+                          !serverPagination.hasPrevious || adsHistoryPage === 1
+                        }
+                      >
+                        ก่อนหน้า
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm text-gray-700">หน้า</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={serverPagination.totalPages}
+                          value={adsHistoryPage}
+                          onChange={(e) => {
+                            const page = Math.max(
+                              1,
+                              Math.min(
+                                serverPagination.totalPages,
+                                Number(e.target.value) || 1,
+                              ),
+                            );
+                            setAdsHistoryPage(page);
+                          }}
+                          className="w-16 px-2 py-1 border rounded text-sm text-center"
+                        />
+                        <span className="text-sm text-gray-700">
+                          / {serverPagination.totalPages}
+                        </span>
+                      </div>
+                      <button
+                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                        onClick={() =>
+                          setAdsHistoryPage((p) =>
+                            Math.min(serverPagination.totalPages, p + 1),
+                          )
+                        }
+                        disabled={
+                          !serverPagination.hasMore ||
+                          adsHistoryPage === serverPagination.totalPages
+                        }
+                      >
+                        ถัดไป
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )
+      }
+
+      {/* Add User Modal */}
+      {
+        selectedPageForUser && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {marketingUsersList.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                    onClick={() => handleSubmitUserToPage(user.id)}
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {user.first_name} {user.last_name}
+                      </div>
+                      <div className="text-sm text-gray-600">{user.username}</div>
+                    </div>
+                    <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                      เลือก
+                    </button>
+                  </div>
+                ))}
+                {marketingUsersList.length === 0 && (
+                  <div className="text-gray-500">ไม่มีผู้ใช้ Marketing</div>
+                )}
+              </div>
               <button
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    วันที่
-                  </label>
-                  <input
-                    type="text"
-                    value={editingLog.date || ""}
-                    disabled
-                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    เพจ
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      editingLog.page_name ||
-                      pages.find(
-                        (p) => p.id === Number(editingLog.page_id),
-                      )?.name ||
-                      editingLog.page_id
-                    }
-                    disabled
-                    className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  ค่า Ads (บาท)
-                </label>
-                <input
-                  type="number"
-                  value={editingLog.ads_cost}
-                  onChange={(e) =>
-                    setEditingLog({
-                      ...editingLog,
-                      ads_cost: e.target.value,
-                    })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Impressions
-                  </label>
-                  <input
-                    type="number"
-                    value={editingLog.impressions}
-                    onChange={(e) =>
-                      setEditingLog({
-                        ...editingLog,
-                        impressions: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Reach
-                  </label>
-                  <input
-                    type="number"
-                    value={editingLog.reach}
-                    onChange={(e) =>
-                      setEditingLog({
-                        ...editingLog,
-                        reach: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Clicks
-                  </label>
-                  <input
-                    type="number"
-                    value={editingLog.clicks}
-                    onChange={(e) =>
-                      setEditingLog({
-                        ...editingLog,
-                        clicks: e.target.value,
-                      })
-                    }
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
-              <button
-                onClick={() => setIsEditModalOpen(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => setSelectedPageForUser(null)}
+                className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
               >
                 ยกเลิก
               </button>
-              <button
-                onClick={() => handleEditLogSave(editingLog)}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                บันทึก
-              </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+
+      {/* Edit Ads Log Modal */}
+      {
+        isEditModalOpen && editingLog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-lg mx-4 overflow-hidden">
+              <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  แก้ไขข้อมูล Ads
+                </h3>
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      วันที่
+                    </label>
+                    <input
+                      type="text"
+                      value={editingLog.date || ""}
+                      disabled
+                      className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      เพจ
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        editingLog.page_name ||
+                        pages.find(
+                          (p) => p.id === Number(editingLog.page_id),
+                        )?.name ||
+                        editingLog.page_id
+                      }
+                      disabled
+                      className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    ค่า Ads (บาท)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingLog.ads_cost}
+                    onChange={(e) =>
+                      setEditingLog({
+                        ...editingLog,
+                        ads_cost: e.target.value,
+                      })
+                    }
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Impressions
+                    </label>
+                    <input
+                      type="number"
+                      value={editingLog.impressions}
+                      onChange={(e) =>
+                        setEditingLog({
+                          ...editingLog,
+                          impressions: e.target.value,
+                        })
+                      }
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Reach
+                    </label>
+                    <input
+                      type="number"
+                      value={editingLog.reach}
+                      onChange={(e) =>
+                        setEditingLog({
+                          ...editingLog,
+                          reach: e.target.value,
+                        })
+                      }
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Clicks
+                    </label>
+                    <input
+                      type="number"
+                      value={editingLog.clicks}
+                      onChange={(e) =>
+                        setEditingLog({
+                          ...editingLog,
+                          clicks: e.target.value,
+                        })
+                      }
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={() => handleEditLogSave(editingLog)}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  บันทึก
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

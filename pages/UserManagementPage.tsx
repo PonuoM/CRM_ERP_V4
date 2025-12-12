@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { User, UserRole, Company, UserStatus } from '../types';
+import { listRoles, Role } from '../services/roleApi';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
 
 interface UserManagementPageProps {
@@ -20,6 +21,15 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [companyFilter, setCompanyFilter] = useState<string>("");
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
+
+  React.useEffect(() => {
+    listRoles().then(data => {
+      if (data && data.roles) {
+        setAvailableRoles(data.roles);
+      }
+    });
+  }, []);
 
   const handleDelete = (user: User) => {
     openModal("confirmDelete", {
@@ -77,7 +87,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
       <div className="bg-white p-4 rounded-lg shadow mb-6 flex items-center space-x-4">
         <div className="flex-1">
           <label htmlFor="role-filter" className="block text-sm font-medium text-gray-700 mb-1">กรองตามตำแหน่ง</label>
-          <select 
+          <select
             id="role-filter"
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -85,8 +95,8 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({
             style={{ colorScheme: 'light' }}
           >
             <option value="">ทุกตำแหน่ง</option>
-            {Object.values(UserRole).map(role => (
-              <option key={role} value={role}>{role}</option>
+            {availableRoles.map(role => (
+              <option key={role.id} value={role.name}>{role.name}</option>
             ))}
           </select>
         </div>

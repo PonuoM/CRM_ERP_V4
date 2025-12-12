@@ -129,6 +129,8 @@ import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
+import RoleManagementPage from "./pages/RoleManagementPage";
+import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
 const FULL_THRESHOLD_SECONDS = 4 * 3600;
@@ -1630,6 +1632,40 @@ const App: React.FC = () => {
     );
     return () => window.clearInterval(interval);
   }, [currentUser?.id, refreshAttendance]);
+
+  const [menuOrder, setMenuOrder] = useState<string[] | undefined>(undefined);
+
+  // Fetch effective permissions
+  useEffect(() => {
+    async function loadPermissions() {
+      if (!currentUser?.id) {
+        setRolePermissions(null);
+        setMenuOrder(undefined);
+        return;
+      }
+      try {
+        const { getUserEffectivePermissions } = await import("./services/roleApi");
+        const data = await getUserEffectivePermissions(currentUser.id);
+        setRolePermissions(data.permissions || {});
+        setMenuOrder(data.menu_order);
+      } catch (err) {
+        console.error("Failed to load permissions:", err);
+      }
+    }
+
+    loadPermissions();
+
+    const handlePermissionsUpdated = () => {
+      loadPermissions();
+    };
+
+    window.addEventListener('role-permissions-updated', handlePermissionsUpdated);
+    return () => {
+      window.removeEventListener('role-permissions-updated', handlePermissionsUpdated);
+    };
+  }, [currentUser?.id]);
+
+
 
   const handleCheckIn = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -6088,412 +6124,311 @@ const App: React.FC = () => {
       ) : null;
     }
 
-    switch (currentUser.role) {
-      case UserRole.SuperAdmin:
-      case UserRole.AdminControl:
-        switch (activePage) {
-          case "แดชบอร์ด":
-            return (
-              <AdminDashboard
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openCreateOrderModal={() => setActivePage("CreateOrder")}
-              />
-            );
-          case "CreateOrder":
-            return (
-              <CreateOrderPage
-                customers={companyCustomers}
-                products={companyProducts}
-                promotions={promotions}
-                pages={pages}
-                platforms={platforms}
-                warehouses={warehouses}
-                currentUser={currentUser}
-                users={companyUsers}
-                onSave={handleCreateOrder}
-                onCancel={() => {
-                  setActivePage(previousPage || "Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onSuccess={() => {
-                  // On success, go to Dashboard
-                  setActivePage("Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onUpsellSuccess={handleUpsellSuccess}
-                initialData={createOrderInitialData}
-              />
-            );
-          case "UpsellOrder":
-            return null;
-          case "เพิ่มลูกค้า":
-            return (
-              <AddCustomerPage
-                companyUsers={companyUsers}
-                onCancel={() => setActivePage("Dashboard")}
-                onSave={(customerData, andCreateOrder) => {
-                  const newCustomer = handleSaveCustomer(customerData);
-                  if (andCreateOrder) {
-                    setActivePage("CreateOrder");
-                  } else {
-                    setActivePage("Dashboard");
-                  }
-                }}
-              />
-            );
-          case "แจกจ่าย":
-            return (
-              <CustomerDistributionPage
-                allCustomers={companyCustomers}
-                allUsers={companyUsers}
-                setCustomers={setCustomers}
-              />
-            );
-          case "จัดการผู้ใช้":
-            return (
-              <UserManagementPage
-                users={companyUsers}
-                openModal={openModal}
-                onToggleStatus={handleToggleUserStatus}
-                currentUser={currentUser}
-                allCompanies={companies}
-              />
-            );
-          case "จัดการสินค้า":
-            return (
-              <ProductManagementPage
-                products={companyProducts}
-                openModal={openModal}
-                currentUser={currentUser}
-                allCompanies={companies}
-              />
-            );
-          case "ค้นหาลูกค้า":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={users}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
-          case "Search":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={companyUsers}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
-          case "à¸™à¸³à¹€à¸‚à¹‰à¸²/à¸ªà¹ˆà¸‡à¸­à¸­à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥":
-            return (
-              <ImportExportPage
-                allUsers={companyUsers}
-                allCustomers={companyCustomers}
-                allOrders={companyOrders}
-                onImportSales={handleImportSales}
-                onImportCustomers={handleImportCustomers}
-              />
-            );
-          case "Import Export":
-          case "Import":
-            return (
-              <ImportExportPage
-                allUsers={companyUsers}
-                allCustomers={companyCustomers}
-                allOrders={companyOrders}
-                onImportSales={handleImportSales}
-                onImportCustomers={handleImportCustomers}
-              />
-            );
-          case "Export History":
-            return <ExportHistoryPage />;
-          case "Manage Customers":
-            return (
-              <ManageCustomersPage
-                allUsers={companyUsers}
-                allCustomers={companyCustomers}
-                allOrders={companyOrders}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-                openModal={openModal}
-                onViewCustomer={handleViewCustomer}
-                onUpsellClick={(customer) => {
-                  setPreviousPage(activePage);
-                  setCreateOrderInitialData({ customer, upsell: true });
-                  setActivePage("CreateOrder");
-                }}
-              />
-            );
-          case "Customer Pools":
-            return (
-              <CustomerPoolsPage
-                users={companyUsers}
-                customers={companyCustomers}
-                currentUser={currentUser}
-                onViewCustomer={handleViewCustomer}
-                openModal={openModal}
-              />
-            );
-
-          case "Marketing":
-            return <MarketingPage currentUser={currentUser} />;
-          case "Slip Upload":
-          case "Upload": // สำหรับ backward compatibility
-            return <SlipUpload />;
-          case "All Slips":
-          case SLIP_ALL_LABEL:
-            return <SlipAll />;
-
-          default:
-            return (
-              <AdminDashboard
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openCreateOrderModal={() => setActivePage("CreateOrder")}
-              />
-            );
-        }
-
-      case UserRole.Admin:
-        switch (activePage) {
-          case "แดชบอร์ด":
-            return (
-              <AdminDashboard
-                user={currentUser}
-                orders={companyOrders.filter(
-                  (o) => o.creatorId === currentUser.id,
-                )}
-                customers={companyCustomers.filter(
-                  (c) => c.assignedTo === currentUser.id,
-                )}
-                openCreateOrderModal={() => setActivePage("CreateOrder")}
-              />
-            );
-          case "CreateOrder":
-            return (
-              <CreateOrderPage
-                customers={companyCustomers}
-                products={companyProducts}
-                promotions={promotions}
-                pages={pages}
-                platforms={platforms}
-                warehouses={warehouses}
-                currentUser={currentUser}
-                users={companyUsers}
-                onSave={handleCreateOrder}
-                onCancel={() => {
-                  setActivePage(previousPage || "Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onSuccess={() => {
-                  // On success, go to Dashboard
-                  setActivePage("Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onUpsellSuccess={handleUpsellSuccess}
-                initialData={createOrderInitialData}
-              />
-            );
-          case "รายการคำสั่งซื้อ":
-            return (
-              <TelesaleOrdersPage
-                users={companyUsers}
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openModal={openModal}
-                title="คำสั่งซื้อ"
-                onCancelOrder={handleCancelOrder}
-              />
-            );
-          case "ค้นหาลูกค้า":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={users}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
-          case "Slip Upload":
-          case "Upload": // สำหรับ backward compatibility
-            return <SlipUpload />;
-          case "All Slips":
-          case SLIP_ALL_LABEL:
-            return <SlipAll />;
-
-          default:
-            return (
-              <AdminDashboard
-                user={currentUser}
-                orders={companyOrders.filter(
-                  (o) => o.creatorId === currentUser.id,
-                )}
-                customers={companyCustomers.filter(
-                  (c) => c.assignedTo === currentUser.id,
-                )}
-                openCreateOrderModal={() => setActivePage("CreateOrder")}
-              />
-            );
-        }
-
-      case UserRole.Telesale:
-      case UserRole.Supervisor:
-        switch (activePage) {
-          case "แดชบอร์ด":
-            return (
-              <TelesaleSummaryDashboard
-                user={currentUser}
-                customers={companyCustomers}
-                orders={companyOrders}
-                activities={activities}
-                openModal={() => setActivePage("CreateOrder")}
-              />
-            );
-          case "CreateOrder":
-            return (
-              <CreateOrderPage
-                customers={companyCustomers}
-                products={companyProducts}
-                promotions={promotions}
-                pages={pages}
-                platforms={platforms}
-                warehouses={warehouses}
-                currentUser={currentUser}
-                users={companyUsers}
-                onSave={handleCreateOrder}
-                onCancel={() => {
-                  setActivePage(previousPage || "Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onSuccess={() => {
-                  // On success, go to Dashboard
-                  setActivePage("Dashboard");
-                  setPreviousPage(null);
-                  setCreateOrderInitialData(null);
-                }}
-                onUpsellSuccess={handleUpsellSuccess}
-                initialData={createOrderInitialData}
-              />
-            );
-          case "แดชบอร์ดการขาย":
-            return (
-              <TelesaleDashboard
-                user={currentUser}
-                customers={companyCustomers}
-                appointments={appointments}
-                activities={activities}
-                calls={callHistory}
-                orders={companyOrders}
-                onViewCustomer={handleViewCustomer}
-                openModal={openModal}
-                setActivePage={setActivePage}
-                onUpsellClick={(customer) => {
-                  setPreviousPage(activePage);
-                  setCreateOrderInitialData({ customer, upsell: true });
-                  setActivePage("CreateOrder");
-                }}
-                systemTags={systemTags}
-              />
-            );
-          case "คำสั่งซื้อทั้งหมด":
-            return (
-              <TelesaleOrdersPage
-                users={companyUsers}
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openModal={openModal}
-                onCancelOrder={handleCancelOrder}
-              />
-            );
-          case "ค้นหาลูกค้า":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={companyUsers}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
-          case "สต็อก":
-            return currentUser.role === UserRole.Supervisor ? (
-              <SupervisorTeamPage
-                user={currentUser}
-                allUsers={users}
-                allCustomers={companyCustomers}
-                allOrders={companyOrders}
-              />
-            ) : (
-              <TelesaleDashboard
-                user={currentUser}
-                customers={companyCustomers}
-                appointments={appointments}
-                activities={activities}
-                calls={callHistory}
-                orders={companyOrders}
-                onViewCustomer={handleViewCustomer}
-                openModal={openModal}
-                systemTags={systemTags}
-                onUpsellClick={(customer) => {
-                  setPreviousPage(activePage);
-                  setCreateOrderInitialData({ customer, upsell: true });
-                  setActivePage("CreateOrder");
-                }}
-              />
-            );
-
-          case "Slip Upload":
-          case "Upload": // สำหรับ backward compatibility
-            return <SlipUpload />;
-          case "All Slips":
-          case SLIP_ALL_LABEL:
-            return <SlipAll />;
-
-
-          default:
-            return (
-              <TelesaleSummaryDashboard
-                user={currentUser}
-                customers={companyCustomers}
-                orders={companyOrders}
-                activities={activities}
-                openModal={() => setActivePage("CreateOrder")}
-              />
-            );
-        }
-
-      case UserRole.Marketing:
-        // Dedicated marketing management page
-        return <MarketingPage currentUser={currentUser} />;
-
-      case UserRole.Finance:
-        if (activePage === "Finance Approval") {
+    // Unified Routing - Switch by Page Name instead of Role
+    switch (activePage) {
+      // PROCESSED: Dashboard (Role-Dependent)
+      case "Dashboard":
+      case "แดชบอร์ด":
+        // Admin
+        if (currentUser.role === UserRole.SuperAdmin || currentUser.role === UserRole.AdminControl) {
           return (
-            <FinanceApprovalPage
+            <AdminDashboard
+              user={currentUser}
+              orders={companyOrders} // SuperAdmin sees all
+              customers={companyCustomers}
+              openCreateOrderModal={() => setActivePage("CreateOrder")}
+            />
+          );
+        }
+        if (currentUser.role === UserRole.Admin) {
+          return (
+            <AdminDashboard
+              user={currentUser}
+              orders={companyOrders.filter(o => o.creatorId === currentUser.id)}
+              customers={companyCustomers.filter(c => c.assignedTo === currentUser.id)}
+              openCreateOrderModal={() => setActivePage("CreateOrder")}
+            />
+          );
+        }
+        // Telesale / Supervisor
+        if (currentUser.role === UserRole.Telesale || currentUser.role === UserRole.Supervisor) {
+          return (
+            <TelesaleSummaryDashboard
+              user={currentUser}
+              customers={companyCustomers}
+              orders={companyOrders}
+              activities={activities}
+              openModal={() => setActivePage("CreateOrder")}
+            />
+          );
+        }
+        // Backoffice
+        if (currentUser.role === UserRole.Backoffice) {
+          return (
+            <BackofficeDashboard
               user={currentUser}
               orders={companyOrders}
               customers={companyCustomers}
-              users={companyUsers}
               openModal={openModal}
             />
           );
         }
-        // Default to Finance Approval page
+        // Finance / Default
+        return (
+          <AdminDashboard
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            openCreateOrderModal={() => setActivePage("CreateOrder")}
+          />
+        );
+
+      // PROCESSED: Sales Dashboard
+      case "Sales Overview":
+      case "แดชบอร์ดการขาย":
+        return (
+          <TelesaleDashboard
+            user={currentUser}
+            customers={companyCustomers}
+            appointments={appointments}
+            activities={activities}
+            calls={callHistory}
+            orders={companyOrders}
+            onViewCustomer={handleViewCustomer}
+            openModal={openModal}
+            setActivePage={setActivePage}
+            onUpsellClick={(customer) => {
+              setPreviousPage(activePage);
+              setCreateOrderInitialData({ customer, upsell: true });
+              setActivePage("CreateOrder");
+            }}
+            systemTags={systemTags}
+          />
+        );
+
+      // PROCESSED: Orders
+      case "CreateOrder":
+        return (
+          <CreateOrderPage
+            customers={companyCustomers}
+            products={companyProducts}
+            promotions={promotions}
+            pages={pages}
+            platforms={platforms}
+            warehouses={warehouses}
+            currentUser={currentUser}
+            users={companyUsers}
+            onSave={handleCreateOrder}
+            onCancel={() => {
+              setActivePage(previousPage || "Dashboard");
+              setPreviousPage(null);
+              setCreateOrderInitialData(null);
+            }}
+            onSuccess={() => {
+              setActivePage("Dashboard");
+              setPreviousPage(null);
+              setCreateOrderInitialData(null);
+            }}
+            onUpsellSuccess={handleUpsellSuccess}
+            initialData={createOrderInitialData}
+          />
+        );
+
+      // PROCESSED: Order Lists
+      case "Orders":
+      case "รายการคำสั่งซื้อ":
+      case "คำสั่งซื้อทั้งหมด":
+        if (currentUser.role === UserRole.Backoffice) {
+          // Backoffice View
+          return (
+            <ManageOrdersPage
+              user={currentUser}
+              orders={companyOrders}
+              customers={companyCustomers}
+              users={companyUsers}
+              products={companyProducts}
+              openModal={openModal}
+              onProcessOrders={handleProcessOrders}
+              onCancelOrders={handleCancelOrdersBulk}
+              onUpdateShippingProvider={handleUpdateShippingProvider}
+            />
+          );
+        }
+        // Default / Telesale View
+        return (
+          <TelesaleOrdersPage
+            users={companyUsers}
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            openModal={openModal}
+            onCancelOrder={handleCancelOrder}
+            title="รายการคำสั่งซื้อ"
+          />
+        );
+
+      case "Manage Orders":
+      case "จัดการคำสั่งซื้อ":
+        return (
+          <ManageOrdersPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+            products={companyProducts}
+            openModal={openModal}
+            onProcessOrders={handleProcessOrders}
+            onCancelOrders={handleCancelOrdersBulk}
+            onUpdateShippingProvider={handleUpdateShippingProvider}
+          />
+        );
+
+      // PROCESSED: Customers
+      case "Add Customer":
+      case "เพิ่มลูกค้า":
+        return (
+          <AddCustomerPage
+            companyUsers={companyUsers}
+            onCancel={() => setActivePage("Dashboard")}
+            onSave={(customerData, andCreateOrder) => {
+              const newCustomer = handleSaveCustomer(customerData);
+              if (andCreateOrder) {
+                setActivePage("CreateOrder");
+              } else {
+                setActivePage("Dashboard");
+              }
+            }}
+          />
+        );
+
+      case "Distribute":
+      case "แจกจ่าย":
+        return (
+          <CustomerDistributionPage
+            allCustomers={companyCustomers}
+            allUsers={companyUsers}
+            setCustomers={setCustomers}
+          />
+        );
+
+      case "Search":
+      case "ค้นหาลูกค้า":
+        return (
+          <CustomerSearchPage
+            customers={companyCustomers}
+            orders={companyOrders}
+            users={users}
+            currentUser={currentUser}
+            onTakeCustomer={handleTakeCustomer}
+          />
+        );
+
+      case "Customers":
+      case "Manage Customers":
+      case "จัดการลูกค้า":
+        return (
+          <ManageCustomersPage
+            allUsers={companyUsers}
+            allCustomers={companyCustomers}
+            allOrders={companyOrders}
+            currentUser={currentUser}
+            onTakeCustomer={handleTakeCustomer}
+            openModal={openModal}
+            onViewCustomer={handleViewCustomer}
+            onUpsellClick={(customer) => {
+              setPreviousPage(activePage);
+              setCreateOrderInitialData({ customer, upsell: true });
+              setActivePage("CreateOrder");
+            }}
+          />
+        );
+
+      case "Customer Pools":
+      case "กลุ่มลูกค้า":
+        return (
+          <CustomerPoolsPage
+            users={companyUsers}
+            customers={companyCustomers}
+            currentUser={currentUser}
+            onViewCustomer={handleViewCustomer}
+            openModal={openModal}
+          />
+        );
+
+      // PROCESSED: Management Pages
+      case "Users":
+      case "จัดการผู้ใช้":
+        return (
+          <UserManagementPage
+            users={companyUsers}
+            openModal={openModal}
+            onToggleStatus={handleToggleUserStatus}
+            currentUser={currentUser}
+            allCompanies={companies}
+          />
+        );
+
+      case "Products":
+      case "จัดการสินค้า":
+        return (
+          <ProductManagementPage
+            products={companyProducts}
+            openModal={openModal}
+            currentUser={currentUser}
+            allCompanies={companies}
+          />
+        );
+
+      case "Teams":
+      case "Team":
+      case "สต็อก": // Legacy mapping for Supervisor
+        // If it's Supervisor clicking "Stock", show Team Page
+        if (activePage === "สต็อก" && currentUser.role === UserRole.Supervisor) {
+          return (
+            <SupervisorTeamPage
+              user={currentUser}
+              allUsers={users}
+              allCustomers={companyCustomers}
+              allOrders={companyOrders}
+            />
+          );
+        }
+        // Else default to Telesale Dashboard? Or just SupervisorPage? 
+        // Let's assume standard "Teams" page for now if exists, or SupervisorPage logic
+        return (
+          <SupervisorTeamPage
+            user={currentUser}
+            allUsers={users}
+            allCustomers={companyCustomers}
+            allOrders={companyOrders}
+          />
+        );
+
+
+      // PROCESSED: Inventory
+      case "Warehouses":
+      case "คลังสินค้า":
+        return (
+          <WarehouseManagementPage
+            warehouses={warehouses}
+            companies={companies}
+            currentUser={currentUser}
+            onWarehouseChange={setWarehouses}
+          />
+        );
+      case "Warehouse Stock":
+      case "สต็อกคลัง":
+        return <WarehouseStockViewPage currentUser={currentUser} />;
+      case "Lot Tracking":
+      case "ติดตามล๊อต":
+        return <LotTrackingPage currentUser={currentUser} />;
+      case "Warehouse Allocation":
+      case "จัดสรรคลังสินค้า":
+        return <OrderAllocationPage />;
+
+      // PROCESSED: Finance
+      case "Finance Approval":
+      case "ตรวจสอบยอดเงิน":
         return (
           <FinanceApprovalPage
             user={currentUser}
@@ -6503,126 +6438,160 @@ const App: React.FC = () => {
             openModal={openModal}
           />
         );
+      case "Statement Management":
+      case "จัดการ Statement":
+        return (
+          <StatementManagementPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+          />
+        );
 
-      case UserRole.Backoffice:
-        if (activePage === "Export History") {
-          return <ExportHistoryPage />;
-        }
-        if (activePage === "Warehouses") {
-          return (
-            <WarehouseManagementPage
-              warehouses={warehouses}
-              companies={companies}
-              currentUser={currentUser}
-              onWarehouseChange={setWarehouses}
-            />
-          );
-        }
-        if (activePage === "Warehouse Stock") {
-          return <WarehouseStockViewPage currentUser={currentUser} />;
-        }
-        if (activePage === "Lot Tracking") {
-          return <LotTrackingPage currentUser={currentUser} />;
-        }
-        if (activePage === "Warehouse Allocation") {
-          return <OrderAllocationPage />;
-        }
-        switch (activePage) {
-          case "แดชบอร์ด":
-            return (
-              <BackofficeDashboard
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                openModal={openModal}
-              />
-            );
-          case "รายการคำสั่งซื้อ":
-            return (
-              <ManageOrdersPage
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                users={companyUsers}
-                products={companyProducts}
-                openModal={openModal}
-                onProcessOrders={handleProcessOrders}
-                onCancelOrders={handleCancelOrdersBulk}
-                onUpdateShippingProvider={handleUpdateShippingProvider}
-              />
-            );
-          case "เพิ่ม Tracking":
-            return (
-              <BulkTrackingPage
-                orders={companyOrders}
-                onBulkUpdateTracking={handleBulkUpdateTracking}
-              />
-            );
-          case "โปรโมชั่น":
-            return (
-              <DebtCollectionPage
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                users={companyUsers}
-                openModal={openModal}
-              />
-            );
-          case "ยกเลิกออเดอร์":
-            return (
-              <ReportsPage
-                orders={companyOrders}
-                customers={companyCustomers}
-                products={products}
-                warehouseStock={warehouseStocks}
-                stockMovements={stockMovements}
-                productLots={productLots}
-              />
-            );
-          case "ค้นหาลูกค้า":
-            return (
-              <CustomerSearchPage
-                customers={companyCustomers}
-                orders={companyOrders}
-                users={users}
-                currentUser={currentUser}
-                onTakeCustomer={handleTakeCustomer}
-              />
-            );
-          case "Slip Upload":
-          case "Upload": // สำหรับ backward compatibility
-            return <SlipUpload />;
-          case "All Slips":
-          case SLIP_ALL_LABEL:
-            return <SlipAll />;
+      // PROCESSED: Accounting Audit
+      case "Bank Account Audit":
+      case "ตรวจสอบบัญชีธนาคาร":
+      case "accounting.audit.bank":
+        return <BankAccountAuditPage currentUser={currentUser} />;
 
-          case "COD Management":
-          case "COD Record":
-            return (
-              <CODManagementPage
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                users={companyUsers}
-              />
-            );
-          case "Statement Management":
-            return (
-              <StatementManagementPage
-                user={currentUser}
-                orders={companyOrders}
-                customers={companyCustomers}
-                users={companyUsers}
-              />
-            );
-          default:
-            return (
-              <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>
-            );
-        }
+      case "Slip Upload":
+      case "Upload":
+      case "อัปโหลดสลิป":
+        return <SlipUpload />;
+
+      // PROCESSED: Promotions
+      case "Active Promotions":
+      case "โปรโมชั่นที่กำลังใช้งาน":
+      case "Promo Active":
+      case "promo.active":
+        return <PromotionsPage key="active" view="active" />;
+      case "Promotion History":
+      case "ประวัติโปรโมชั่น":
+      case "Promo History":
+      case "promo.history":
+        return <PromotionsPage key="history" view="history" />;
+      case "Create Promotion":
+      case "สร้างโปรโมชั่นใหม่":
+      case "Promo Create":
+      case "promo.create":
+        return <PromotionsPage key="create" view="create" />;
+
+      case "All Slips":
+      case SLIP_ALL_LABEL:
+      case "สลิปทั้งหมด":
+        return <SlipAll />;
+
+      case "COD Management":
+      case "COD Record":
+      case "จัดการยอด COD":
+        return (
+          <CODManagementPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+          />
+        );
+      case "Debt":
+      case "ติดตามหนี้":
+      case "โปรโมชั่น": // Fix legacy mapping where 'โปรโมชั่น' pointed to DebtCollectionPage in Backoffice
+        return (
+          <DebtCollectionPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+            openModal={openModal}
+          />
+        );
+
+
+      // PROCESSED: Reports / Import Export
+      case "Reports":
+      case "รายงาน":
+      case "ยกเลิกออเดอร์": // Legacy mapping?
+        return (
+          <ReportsPage
+            orders={companyOrders}
+            customers={companyCustomers}
+            products={products}
+            warehouseStock={warehouseStocks}
+            stockMovements={stockMovements}
+            productLots={productLots}
+          />
+        );
+      case "Export History":
+      case "ประวัติการส่งออก":
+        return <ExportHistoryPage />;
+      case "Import Export":
+      case "Import":
+      case "นำเข้า/ส่งออก":
+        return (
+          <ImportExportPage
+            allUsers={companyUsers}
+            allCustomers={companyCustomers}
+            allOrders={companyOrders}
+            onImportSales={handleImportSales}
+            onImportCustomers={handleImportCustomers}
+          />
+        );
+      case "Bulk Tracking":
+      case "เพิ่ม Tracking":
+        return (
+          <BulkTrackingPage
+            orders={companyOrders}
+            onBulkUpdateTracking={handleBulkUpdateTracking}
+          />
+        );
+
+      // PROCESSED: System / Roles
+      case "Role Management":
+      case "จัดการ Roles":
+        return (
+          <RoleManagementPage
+            onClose={() => setActivePage("Dashboard")}
+          />
+        );
+      case "Marketing Dashboard":
+      case "แดชบอร์ด (มาร์เก็ตติ้ง)":
+        return <MarketingPage currentUser={currentUser} view="dashboard" />;
+      case "Ads Input":
+      case "กรอกค่า Ads":
+        return <MarketingPage currentUser={currentUser} view="adsInput" />;
+      case "Ads History":
+      case "ประวัติการกรอก Ads":
+        return <MarketingPage currentUser={currentUser} view="adsHistory" />;
+      case "Marketing User Management":
+      case "จัดการผู้ใช้การตลาด-เพจ":
+        return <MarketingPage currentUser={currentUser} view="userManagement" />;
+      case "Companies":
+      case "บริษัท":
+        return <CompanyManagementPage />; // Assuming existence or similar
+      case "Tags":
+      case "แท็ก":
+        return <DataManagementPage />; // Or dedicated Tag page? Revert to DataManagementPage if no dedicated
+      case "Pages":
+      case "หน้า":
+      case "Platforms":
+      case "แพลตฟอร์ม":
+      case "Bank Accounts":
+      case "จัดการธนาคาร":
+        return <DataManagementPage />; // Consolidated Data Mgmt
+
+      case "UpsellOrder":
+        return null;
 
       default:
-        return <div className="p-6">หน้าที่ไม่พบหรือไม่สามารถเข้าถึงได้</div>;
+        // Fallback or 404
+        return (
+          <div className="flex h-full items-center justify-center text-gray-400">
+            <div className="text-center">
+              <p className="text-xl font-semibold">Page Not Found</p>
+              <p className="text-sm">Cannot find page: {activePage}</p>
+            </div>
+          </div>
+        );
     }
   };
 
@@ -6855,6 +6824,7 @@ const App: React.FC = () => {
             ...(rolePermissions || {}),
             onChangePassword: () => setIsChangePasswordModalOpen(true),
           }}
+          menuOrder={menuOrder}
         />
       )}
       <div

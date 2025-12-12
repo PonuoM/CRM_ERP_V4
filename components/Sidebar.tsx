@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { User as UserType, UserRole } from "../types";
 import {
   LayoutDashboard,
@@ -8,21 +8,22 @@ import {
   FileText,
   Briefcase,
   Settings,
-  LogOut,
   Share2,
   Package,
   BarChart2,
   FileUp,
-  UserPlus,
   Database,
   Menu,
   Home,
   ChevronDown,
   Phone,
   CheckCircle,
-  DollarSign,
   Key,
   ChevronRight,
+  Layers,
+  Truck,
+  Pencil,
+  Calendar,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -33,25 +34,17 @@ interface SidebarProps {
   setIsCollapsed: (collapsed: boolean) => void;
   onLogout: () => void;
   permissions?: Record<string, { view?: boolean; use?: boolean }> & { onChangePassword?: () => void };
+  menuOrder?: string[];
 }
 
-type NavItem = { icon: React.ElementType; label: string; children?: NavItem[] };
-
-const HOME_GROUP = "Home";
-const SALES_OVERVIEW = "Sales Overview";
-const CALLS_OVERVIEW = "Calls Overview";
-const DATA_MGMT = "Data Management";
-const INVENTORY_MGMT = "Inventory Management";
-const REPORTS_MGMT = "Reports Management";
-const PAGE_STATS = "Page Stats";
-const PAGE_STATS_OVERVIEW = "Page Performance";
-const PAGE_ENGAGEMENT_STATS = "Engagement Insights";
-const CALL_MGMT = "Call Management";
-const PROMO_MGMT = "Promotions";
-const PAYMENT_SLIP_MGMT = "Slip Uploads";
-const PAYMENT_SLIP_UPLOAD = "Slip Upload";
-const PAYMENT_SLIP_ALL = "All Slips";
-
+type NavItem = {
+  icon: React.ElementType;
+  label: string;
+  key?: string; // Permission key
+  children?: NavItem[];
+  allowRule?: (user: UserType) => boolean; // Optional code-level override
+  group?: string; // For sorting
+};
 
 const Sidebar: React.FC<SidebarProps> = ({
   user,
@@ -61,19 +54,25 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
   onLogout,
   permissions,
+  menuOrder,
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    [HOME_GROUP]: true,
+    "Home": true,
   });
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  const canView = (key: string) => {
+  // Permission Check: Default to FALSE (Deny All) unless explicitly allowed
+  const canView = (key?: string) => {
+    if (!key) return true; // Items without key are always visible (unless parent hidden)
     const perm = permissions?.[key];
-    if (perm && perm.view === false) return false;
-    return true;
+    // If permission exists, use its view value. If not, default to false (secure by default).
+    // EXCEPTION: Super Admin always sees everything (optional, but good for safety)
+    if (user.role === UserRole.SuperAdmin) return true;
+
+    return !!perm?.view;
   };
 
-  // Thai translations (UTF-8)
+  // Thai translations
   const TH: Record<string, string> = {
     Home: "หน้าแรก",
     "Data Management": "จัดการข้อมูล",
@@ -87,6 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     Marketing: "การตลาด",
     Users: "ผู้ใช้งาน",
     Permissions: "สิทธิ์การใช้งาน",
+    "Role Management": "จัดการ Roles",
     Products: "สินค้า",
     Teams: "ทีม",
     Team: "ทีม",
@@ -127,358 +127,237 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Customer Pools": "กลุ่มลูกค้า",
     "Slip Uploads": "Upload สลิปโอนเงิน",
     "Slip Upload": "Upload",
-    Upload: "Upload",
     "All Slips": "สลิปทั้งหมด",
+    "Finance Approval": "ตรวจสอบยอดเงิน",
+    "Statement Management": "จัดการ Statement",
+    "Orders & Customers": "คำสั่งซื้อและลูกค้า",
+    "COD Management": "จัดการยอด COD",
+    "Finance": "การเงิน",
+    "Accounting Audit": "ตรวจสอบจากบัญชี",
+    "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
+    "System": "ระบบ",
+    "Tracking & Transport": "การติดตามและจัดการขนส่ง",
+    "Change Password": "เปลี่ยนรหัสผ่าน",
+    "Marketing Dashboard": "แดชบอร์ด (มาร์เก็ตติ้ง)",
+    "Ads Input": "กรอกค่า Ads",
+    "Ads History": "ประวัติการกรอก Ads",
+    "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
   };
 
   const t = (s: string): string => TH[s] ?? s;
 
-  const homeChildren: NavItem[] = [
-    ...(canView("home.dashboard")
-      ? ([{ icon: LayoutDashboard, label: "Dashboard" }] as NavItem[])
-      : []),
-    ...(canView("home.sales_overview")
-      ? ([{ icon: LayoutDashboard, label: SALES_OVERVIEW }] as NavItem[])
-      : []),
+  // MASTER MENU DEFINITION
+  const MASTER_MENU: NavItem[] = [
+    {
+      label: "Home",
+      icon: Home,
+      children: [
+        { label: "Dashboard", icon: LayoutDashboard, key: "home.dashboard" },
+        { label: "Sales Overview", icon: LayoutDashboard, key: "home.sales_overview" },
+      ]
+    },
+    {
+      label: "Call Management",
+      icon: Phone,
+      children: [
+        { label: "Calls Overview", icon: Phone, key: "calls.overview" },
+        { label: "Call Details", icon: Phone, key: "calls.details" },
+        { label: "Dtac Onecall", icon: Phone, key: "calls.dtac" },
+      ]
+    },
+    {
+      label: "Promotions",
+      icon: BarChart2,
+      children: [
+        { label: "Active Promotions", icon: BarChart2, key: "promo.active" },
+        { label: "Promotion History", icon: FileText, key: "promo.history" },
+        { label: "Create Promotion", icon: FileUp, key: "promo.create" },
+      ]
+    },
+    // Independent Items (Not in Group) - mapped to top level if permissible
+    {
+      label: "Orders & Customers",
+      icon: Users,
+      children: [
+        { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
+        { label: "Customers", icon: Users, key: "nav.customers" },
+        { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
+        { label: "Search", icon: Search, key: "nav.search" },
+      ]
+    },
+    {
+      label: "Tracking & Transport",
+      icon: Truck,
+      children: [
+        { label: "Debt", icon: FileText, key: "nav.debt" },
+        { label: "Bulk Tracking", icon: FileUp, key: "nav.bulk_tracking" },
+        { label: "COD Management", icon: FileText, key: "nav.cod_management" },
+      ]
+    },
+
+    {
+      label: "Inventory Management",
+      icon: Package,
+      children: [
+        { label: "Warehouses", icon: Database, key: "inventory.warehouses" },
+        { label: "Warehouse Stock", icon: Database, key: "inventory.stock" },
+        { label: "Lot Tracking", icon: FileText, key: "inventory.lot" },
+        { label: "Warehouse Allocation", icon: FileText, key: "inventory.allocations" },
+        { label: "Active Promotions", icon: BarChart2, key: "inventory.promotions" }, // Reused label but distinct key
+      ]
+    },
+    {
+      label: "Slip Uploads",
+      icon: FileUp,
+      children: [
+        { label: "Slip Upload", icon: FileUp, key: "payment_slip.upload" },
+        { label: "All Slips", icon: FileText, key: "payment_slip.all" },
+      ]
+    },
+    {
+      label: "Reports Management",
+      icon: BarChart2,
+      children: [
+        { label: "Reports", icon: BarChart2, key: "reports.reports" }, // Or nav.reports
+        { label: "Export History", icon: FileUp, key: "reports.export_history" },
+        { label: "Import Export", icon: FileUp, key: "reports.import_export" },
+      ]
+    },
+    {
+      label: "Finance",
+      icon: CheckCircle,
+      children: [
+        { label: "Finance Approval", icon: CheckCircle, key: "nav.finance_approval" },
+        { label: "Statement Management", icon: FileText, key: "nav.statement_management" },
+      ]
+    },
+    {
+      label: "Accounting Audit",
+      icon: FileText,
+      children: [
+        { label: "Bank Account Audit", icon: FileText, key: "accounting.audit.bank" },
+      ]
+    },
+    {
+      label: "Data Management",
+      icon: Database,
+      children: [
+        { label: "Users", icon: Users, key: "data.users" },
+        { label: "Products", icon: Package, key: "data.products" },
+        { label: "Pages", icon: Share2, key: "data.pages" },
+        { label: "Platforms", icon: Share2, key: "data.platforms" },
+        { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
+        { label: "Tags", icon: FileText, key: "data.tags" },
+        { label: "Companies", icon: Briefcase, key: "data.companies" },
+        { label: "Role Management", icon: Key, key: "data.roles" },
+      ]
+    },
+    // Page Stats - Special Group for Marketing/Admins
+    {
+      label: "Page Stats",
+      icon: BarChart2,
+      children: [
+        { label: "Page Performance", icon: FileText, key: "home.dashboard" }, // Using existing key for now or add specific
+        { label: "Engagement Insights", icon: FileText, key: "home.dashboard" },
+        { label: "Pancake User Mapping", icon: Users, key: "data.users" }
+      ],
+      // Allow if any child is visible or special logic
+      allowRule: () => user.role === UserRole.SuperAdmin || user.role === UserRole.AdminControl || user.role === UserRole.Marketing
+    },
+    {
+      label: "Marketing",
+      icon: BarChart2,
+      children: [
+        { label: "Marketing Dashboard", icon: BarChart2, key: "marketing.dashboard" },
+        { label: "Ads Input", icon: Pencil, key: "marketing.ads_input" },
+        { label: "Ads History", icon: Calendar, key: "marketing.ads_history" },
+        { label: "Marketing User Management", icon: Users, key: "marketing.user_management" },
+      ]
+    },
   ];
-  const homeGroup: NavItem = {
-    icon: Home,
-    label: HOME_GROUP,
-    children: homeChildren,
-  };
 
-  // Call Management group (dropdown)
-  const callChildren: NavItem[] = [
-    ...(canView("calls.overview")
-      ? ([{ icon: Phone, label: CALLS_OVERVIEW }] as NavItem[])
-      : []),
-    ...(canView("calls.details")
-      ? ([{ icon: Phone, label: "Call Details" }] as NavItem[])
-      : []),
-    ...(canView("calls.dtac")
-      ? ([{ icon: Phone, label: "Dtac Onecall" }] as NavItem[])
-      : []),
-  ];
-  const callGroup: NavItem = {
-    icon: Phone,
-    label: CALL_MGMT,
-    children: callChildren,
-  };
-
-  // Promotions Management group
-  const promoChildren: NavItem[] = [
-    ...(canView("promo.active")
-      ? ([{ icon: BarChart2, label: "Active Promotions" }] as NavItem[])
-      : []),
-    ...(canView("promo.history")
-      ? ([{ icon: FileText, label: "Promotion History" }] as NavItem[])
-      : []),
-    ...(canView("promo.create")
-      ? ([{ icon: FileUp, label: "Create Promotion" }] as NavItem[])
-      : []),
-  ];
-  const promoGroup: NavItem = {
-    icon: BarChart2,
-    label: PROMO_MGMT,
-    children: promoChildren,
-  };
-
-  // Payment Slip Upload group
-  const paymentSlipChildren: NavItem[] = [
-    ...(canView("payment_slip.upload")
-      ? ([{ icon: FileUp, label: PAYMENT_SLIP_UPLOAD }] as NavItem[])
-      : []),
-    ...(canView("payment_slip.all")
-      ? ([{ icon: FileText, label: PAYMENT_SLIP_ALL }] as NavItem[])
-      : []),
-
-  ];
-  const paymentSlipGroup: NavItem = {
-    icon: FileUp,
-    label: PAYMENT_SLIP_MGMT,
-    children: paymentSlipChildren,
-  };
-
-  const allowDataItem = (key: string) => {
-    if (user.role === UserRole.AdminControl) {
-      return (
-        key === "data.users" ||
-        key === "data.products" ||
-        key === "data.pages" ||
-        key === "data.platforms" ||
-        key === "data.bank_accounts" ||
-        key === "data.tags"
-      );
-    }
-    return true;
-  };
-
-  const dataChildren: NavItem[] = [
-    ...(allowDataItem("data.users") && canView("data.users")
-      ? ([{ icon: Users, label: "Users" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.products") && canView("data.products")
-      ? ([{ icon: Package, label: "Products" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.permissions") && canView("data.permissions")
-      ? ([{ icon: Settings, label: "Permissions" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.teams") && canView("data.teams")
-      ? ([{ icon: Briefcase, label: "Teams" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.pages") && canView("data.pages")
-      ? ([{ icon: Share2, label: "Pages" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.platforms") && canView("data.platforms")
-      ? ([{ icon: Share2, label: "Platforms" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.bank_accounts") && canView("data.bank_accounts")
-      ? ([{ icon: Database, label: "Bank Accounts" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.tags") && canView("data.tags")
-      ? ([{ icon: FileText, label: "Tags" }] as NavItem[])
-      : []),
-    ...(allowDataItem("data.companies") && canView("data.companies")
-      ? ([{ icon: Briefcase, label: "Companies" }] as NavItem[])
-      : []),
-  ];
-  const dataGroup: NavItem = {
-    icon: Database,
-    label: DATA_MGMT,
-    children: dataChildren,
-  };
-
-  const inventoryChildren: NavItem[] = [
-    ...(canView("inventory.warehouses")
-      ? ([{ icon: Database, label: "Warehouses" }] as NavItem[])
-      : []),
-    ...(canView("inventory.stock")
-      ? ([{ icon: Database, label: "Warehouse Stock" }] as NavItem[])
-      : []),
-    ...(canView("inventory.lot")
-      ? ([{ icon: FileText, label: "Lot Tracking" }] as NavItem[])
-      : []),
-    ...(canView("inventory.allocations")
-      ? ([{ icon: FileText, label: "Warehouse Allocation" }] as NavItem[])
-      : []),
-    ...(canView("inventory.promotions")
-      ? ([{ icon: BarChart2, label: "Active Promotions" }] as NavItem[])
-      : []),
-  ];
-  const inventoryGroup: NavItem = {
-    icon: Package,
-    label: INVENTORY_MGMT,
-    children: inventoryChildren,
-  };
-
-  const reportsChildren: NavItem[] = [
-    ...(canView("reports.export_history")
-      ? ([{ icon: FileUp, label: "Export History" }] as NavItem[])
-      : []),
-    ...(canView("reports.import_export")
-      ? ([{ icon: FileUp, label: "Import Export" }] as NavItem[])
-      : []),
-    ...(canView("reports.reports")
-      ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
-      : []),
-  ];
-  const reportsGroup: NavItem = {
-    icon: BarChart2,
-    label: REPORTS_MGMT,
-    children: reportsChildren,
-  };
-
-  // Reports group for Backoffice
-  const backofficeReportsChildren: NavItem[] = [
-    ...(canView("nav.reports")
-      ? ([{ icon: BarChart2, label: "Reports" }] as NavItem[])
-      : []),
-    ...(canView("reports.export_history")
-      ? ([{ icon: FileUp, label: "Export History" }] as NavItem[])
-      : []),
-  ];
-  const backofficeReportsGroup: NavItem = {
-    icon: BarChart2,
-    label: REPORTS_MGMT,
-    children: backofficeReportsChildren,
-  };
-
-  // Customers group (dropdown)
-  const customersGroup: NavItem = {
-    icon: Users,
-    label: "Customer Management",
+  // System menu for Change Password (always available if allowed)
+  const systemMenu: NavItem = {
+    label: "System",
+    icon: Settings,
     children: [
-      { icon: Users, label: "Customers" },
-      { icon: Users, label: "Manage Customers" },
-      { icon: Share2, label: "Share" },
-    ],
+      { label: "Change Password", icon: Key, key: "nav.change_password" }
+    ]
   };
-  // Fixed customers submenu with clear labels that route correctly
-  const customersGroupFixed = {
-    icon: Users,
-    label: "Customer Management",
-    children: [
-      { icon: Users, label: "Customers" },
-      { icon: Users, label: "Manage Customers" },
-      { icon: Share2, label: "Share" },
-    ],
-  } as NavItem;
 
   const getNavItems = (): NavItem[] => {
-    switch (user.role) {
-      case UserRole.Marketing:
-        return [homeGroup, { icon: BarChart2, label: "Marketing" }];
-      case UserRole.SuperAdmin:
-        return [
-          homeGroup,
-          dataGroup,
-          inventoryGroup,
-          reportsGroup,
-          {
-            icon: BarChart2,
-            label: PAGE_STATS,
-            children: [
-              { icon: FileText, label: PAGE_STATS_OVERVIEW },
-              { icon: FileText, label: PAGE_ENGAGEMENT_STATS },
-            ],
-          },
-          { icon: BarChart2, label: "Marketing" },
-          customersGroupFixed,
-          callGroup,
-          paymentSlipGroup,
-          { icon: Settings, label: "Settings" },
-        ];
-      case UserRole.AdminControl:
-        return [
-          homeGroup,
-          dataGroup,
-          inventoryGroup,
-          reportsGroup,
-          {
-            icon: BarChart2,
-            label: PAGE_STATS,
-            children: [
-              { icon: FileText, label: PAGE_STATS_OVERVIEW },
-              { icon: FileText, label: PAGE_ENGAGEMENT_STATS },
-            ],
-          },
-          customersGroupFixed,
-          callGroup,
-          paymentSlipGroup,
-          { icon: Settings, label: "Settings" },
-          { icon: BarChart2, label: "Marketing" },
-        ];
-      case UserRole.Admin:
-        return [
-          homeGroup,
-          ...(canView("nav.orders")
-            ? ([{ icon: ShoppingCart, label: "Orders" }] as NavItem[])
-            : []),
-          ...(canView("nav.search")
-            ? ([{ icon: Search, label: "Search" }] as NavItem[])
-            : []),
-          paymentSlipGroup,
-        ];
-      case UserRole.Telesale:
-      case UserRole.Supervisor: {
-        const telesaleItems: NavItem[] = [
-          homeGroup,
-          ...(canView("nav.customers")
-            ? ([{ icon: Users, label: "Customers" }] as NavItem[])
-            : []),
-          ...(canView("nav.orders")
-            ? ([{ icon: ShoppingCart, label: "Orders" }] as NavItem[])
-            : []),
-          ...(canView("nav.search")
-            ? ([{ icon: Search, label: "Search" }] as NavItem[])
-            : []),
-          paymentSlipGroup,
-          callGroup,
-        ];
-        if (user.role === UserRole.Supervisor) {
-          telesaleItems.push({ icon: Briefcase, label: "Team" });
-        }
-        return telesaleItems;
+    const items = MASTER_MENU.reduce<NavItem[]>((acc, item) => {
+      // 1. Check Item Level Permission
+      if (item.key && !canView(item.key)) {
+        // If it's a direct item and denied, skip
+        return acc;
       }
-      case UserRole.Backoffice:
-        return [
-          homeGroup,
-          ...(canView("nav.manage_orders")
-            ? ([{ icon: ShoppingCart, label: "Manage Orders" }] as NavItem[])
-            : []),
-          ...(canView("nav.debt")
-            ? ([{ icon: FileText, label: "Debt" }] as NavItem[])
-            : []),
-          inventoryGroup,
-          ...(canView("nav.search")
-            ? ([{ icon: Search, label: "Search" }] as NavItem[])
-            : []),
-          ...(canView("nav.reports") || canView("reports.export_history")
-            ? ([backofficeReportsGroup] as NavItem[])
-            : []),
-          ...(canView("nav.bulk_tracking")
-            ? ([{ icon: FileUp, label: "Bulk Tracking" }] as NavItem[])
-            : []),
-          ...(canView("nav.cod_management")
-            ? ([{ icon: FileText, label: "COD Management" }] as NavItem[])
-            : []),
-          ...(user.role === UserRole.Backoffice && canView("nav.statement_management")
-            ? ([{ icon: FileText, label: "Statement Management" }] as NavItem[])
-            : []),
-          paymentSlipGroup,
-        ];
-      case UserRole.Finance:
-        return [
-          homeGroup,
-          { icon: CheckCircle, label: "Finance Approval" },
-          ...(canView("nav.search")
-            ? ([{ icon: Search, label: "Search" }] as NavItem[])
-            : []),
-        ];
-      default:
-        return [homeGroup];
+
+      // 2. Check AllowRule Override
+      if (item.allowRule && !item.allowRule(user)) {
+        return acc;
+      }
+
+      // 3. Handle Group/Children
+      if (item.children) {
+        const visibleChildren = item.children.filter(child => {
+          if (child.key && !canView(child.key)) return false;
+          // Additional check for legacy specific roles not having keys mapped yet? 
+          // For now, rely on keys.
+          return true;
+        });
+
+        if (visibleChildren.length > 0) {
+          acc.push({
+            ...item,
+            children: visibleChildren
+          });
+        }
+      } else {
+        // No children, simple item
+        acc.push(item);
+      }
+
+      return acc;
+    }, []);
+
+    // 4. Sort if menuOrder is provided
+    if (menuOrder && menuOrder.length > 0) {
+      return items.sort((a, b) => {
+        const indexA = menuOrder.indexOf(a.label);
+        const indexB = menuOrder.indexOf(b.label);
+
+        // Items in order list come first, sorted by index
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        // Items in order list come before items not in list
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        // Both not in list? Keep original order (stable sort mostly)
+        return 0;
+      });
     }
+
+    return items;
   };
 
   const navItems = getNavItems();
-  // Ensure 'Pancake User Mapping' appears under the single 'PAGE_STATS' group only
-  try {
-    const statsGroup = navItems.find(
-      (it) => it.label === PAGE_STATS && Array.isArray((it as any).children),
-    ) as any;
-    if (statsGroup && Array.isArray(statsGroup.children)) {
-      const exists = statsGroup.children.some(
-        (c: any) => c && c.label === "Pancake User Mapping",
-      );
-      if (!exists) {
-        statsGroup.children.push({
-          icon: Users,
-          label: "Pancake User Mapping",
-        });
-      }
-    }
-  } catch { }
 
   const renderNavItem = (item: NavItem) => {
-    const isGroup = Array.isArray(item.children);
-    const isOpen = !!openGroups[item.label];
-    // Check if this group is active (either the group itself or any of its children)
+    const isGroup = Array.isArray(item.children) && item.children.length > 0;
+    const key = item.label;
+    const isOpen = !!openGroups[key];
+
+    // Check if active page is this item or inside this group
     const isActive = isGroup
       ? item.children?.some((c) => c.label === activePage)
       : activePage === item.label;
 
     if (isGroup) {
       return (
-        <div key={item.label}>
+        <div key={key}>
           <button
             onClick={() => {
-              // Close all other groups and open only this one
-              const newOpenState: Record<string, boolean> = {};
-              newOpenState[item.label] = !openGroups[item.label];
-              setOpenGroups(newOpenState);
-
-              // Don't set active page to this main menu - only highlight it visually
-              // setActivePage(item.label);
+              setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
             }}
             className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start ${isCollapsed ? "px-3" : "px-4"
               } ${isActive ? "bg-[#2E7D32] text-white shadow" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`}
@@ -505,7 +384,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {item.children!.map((child) => (
                   <button
                     key={child.label}
-                    onClick={() => setActivePage(child.label)}
+                    onClick={() => {
+                      if (child.key && child.key.startsWith('promo.')) {
+                        setActivePage(child.key);
+                      } else {
+                        setActivePage(child.label);
+                      }
+                    }}
                     className={`w-full flex items-center py-2 text-sm rounded-md text-left justify-start transition-colors ${activePage === child.label
                       ? "bg-green-50 text-green-700"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -529,7 +414,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     return (
       <button
-        key={item.label}
+        key={key}
         onClick={() => setActivePage(item.label)}
         className={`w-full flex items-center py-2.5 text-sm font-medium rounded-lg transition-colors text-left justify-start
               ${isCollapsed ? "px-3" : "px-4"}
@@ -566,7 +451,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="text-xs text-gray-400 uppercase tracking-wider px-4 mt-2 mb-2">
         {isCollapsed ? "" : "หน้าหลัก"}
       </div>
-      <nav className="flex-1 px-4 py-2 space-y-1">
+      <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
         {navItems.map(renderNavItem)}
       </nav>
       <div className="border-t border-gray-200 mt-auto relative">
@@ -594,32 +479,23 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
-          {/* Popover Menu */}
-          {isUserMenuOpen && (
-            <div
-              className={`absolute bottom-0 left-full ml-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50`}
-            >
-              <div className="py-1">
-                {permissions?.onChangePassword && (
-                  <button
-                    onClick={() => {
-                      setIsUserMenuOpen(false);
-                      permissions.onChangePassword?.();
-                    }}
-                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <Key className="w-4 h-4 mr-3" />
-                    เปลี่ยนรหัสผ่าน
-                  </button>
-                )}
+          {/* User Dropdown */}
+          {!isCollapsed && isUserMenuOpen && (
+            <div className="absolute bottom-full left-0 w-full mb-1 px-2">
+              <div className="bg-white rounded-lg shadow-lg border border-gray-200 py-1">
                 <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    onLogout();
-                  }}
-                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  onClick={() => { permissions?.onChangePassword?.(); setIsUserMenuOpen(false); }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                 >
-                  <LogOut className="w-4 h-4 mr-3" />
+                  <Key className="w-4 h-4" /> เปลี่ยนรหัสผ่าน
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
                   ออกจากระบบ
                 </button>
               </div>

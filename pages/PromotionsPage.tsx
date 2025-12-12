@@ -7,11 +7,22 @@ import CreatePromotionPage from './CreatePromotionPage';
 
 type PromotionsView = 'active' | 'history' | 'create';
 
-const PromotionsPage: React.FC = () => {
-  const [currentView, setCurrentView] = useState<PromotionsView>('active');
+
+interface PromotionsPageProps {
+  view?: PromotionsView;
+}
+
+const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
+  const [currentView, setCurrentView] = useState<PromotionsView>(view || 'active');
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (view) {
+      setCurrentView(view);
+    }
+  }, [view]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -45,21 +56,21 @@ const PromotionsPage: React.FC = () => {
   const isPromotionExpired = (promotion: Promotion) => {
     const endDate = promotion.end_date || promotion.endDate;
     if (!endDate || endDate === '0000-00-00 00:00:00' || endDate === '0000-00-00') return false;
-    
+
     // Parse the end date and compare with current date
     const endDateObj = new Date(endDate);
     const currentDate = new Date();
-    
+
     // Set time to end of day for end date to allow full day usage
     endDateObj.setHours(23, 59, 59, 999);
-    
+
     console.log(`Checking expiration for promotion ${promotion.id}:`, {
       endDate: endDate,
       endDateObj: endDateObj,
       currentDate: currentDate,
       isExpired: endDateObj < currentDate
     });
-    
+
     return endDateObj < currentDate;
   };
 
@@ -68,14 +79,14 @@ const PromotionsPage: React.FC = () => {
     const expired = isPromotionExpired(promotion);
     const active = promotion.active;
     const result = active && !expired;
-    
+
     console.log(`Promotion ${promotion.id} (${promotion.name}):`, {
       active: active,
       endDate: promotion.end_date || promotion.endDate,
       expired: expired,
       result: result
     });
-    
+
     return result;
   };
 
@@ -116,6 +127,19 @@ const PromotionsPage: React.FC = () => {
     }
   };
 
+  const getHeaderTitle = () => {
+    switch (currentView) {
+      case 'active':
+        return 'โปรโมชั่นที่กำลังใช้งาน';
+      case 'history':
+        return 'ประวัติโปรโมชั่น';
+      case 'create':
+        return 'สร้างโปรโมชั่นใหม่';
+      default:
+        return 'จัดการโปรโมชั่น';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -127,39 +151,7 @@ const PromotionsPage: React.FC = () => {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">จัดการโปรโมชั่น</h1>
-        <div className="flex space-x-4 border-b">
-          <button
-            className={`pb-2 px-1 ${
-              currentView === 'active'
-                ? 'border-b-2 border-green-600 text-green-600 font-medium'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setCurrentView('active')}
-          >
-            โปรโมชั่นที่กำลังใช้งาน
-          </button>
-          <button
-            className={`pb-2 px-1 ${
-              currentView === 'history'
-                ? 'border-b-2 border-green-600 text-green-600 font-medium'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setCurrentView('history')}
-          >
-            ประวัติโปรโมชั่น
-          </button>
-          <button
-            className={`pb-2 px-1 ${
-              currentView === 'create'
-                ? 'border-b-2 border-green-600 text-green-600 font-medium'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setCurrentView('create')}
-          >
-            สร้างโปรโมชั่นใหม่
-          </button>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-4">{getHeaderTitle()}</h1>
       </div>
 
       {renderView()}

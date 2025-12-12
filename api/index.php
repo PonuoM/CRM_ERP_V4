@@ -74,11 +74,19 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
     case 'companies':
         handle_companies($pdo, $id);
         break;
+    case 'roles':
+        require_once __DIR__ . '/roles.php';
+        handle_roles($pdo, $id, $action);
+        break;
+    case 'user_permissions':
+        handle_user_permissions($pdo, $id, $action);
+        break;
     case 'permissions':
         handle_permissions($pdo);
         break;
         case 'users':
-            handle_users($pdo, $id);
+            $subAction = $parts[3] ?? null;
+            handle_users($pdo, $id, $action, $subAction);
             break;
         case 'customer_blocks':
             handle_customer_blocks($pdo, $id);
@@ -355,7 +363,12 @@ function handle_auth(PDO $pdo, ?string $id): void {
     json_response(['error' => 'NOT_FOUND'], 404);
 }
 
-function handle_users(PDO $pdo, ?string $id): void {
+function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $subAction = null): void {
+    if ($id && $action === 'permissions') {
+        handle_user_permissions($pdo, $id, $subAction);
+        return;
+    }
+
     switch (method()) {
         case 'GET':
             if ($id) {
@@ -6528,6 +6541,137 @@ function handle_upsell(PDO $pdo, ?string $id, ?string $action): void {
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
     }
+}
+
+// ==================== User Permission Overrides Handler ====================
+function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): void {
+    if (!$userId) {
+        json_response(['error' => 'USER_ID_REQUIRED'], 400);
+    }
+    
+    // GET /api/user_permissions/{userId}/effective - Get effective permissions (Role + Overrides)
+    if (method() === 'GET' && $action === 'effective') {
+        // Get role permissions
+        // FIX: Join by role_id OR role name (for legacy/mixed support)
+        $stmt = $pdo->prepare('
+            SELECT rp.data as role_permissions, r.code as role_code
+            FROM users u
+            LEFT JOIN roles r ON (u.role_id = r.id OR u.role = r.name OR u.role = r.code)
+            LEFT JOIN role_permissions rp ON rp.role = r.code
+            WHERE u.id = ?
+        ');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $rolePermissions = $row && $row['role_permissions'] 
+            ? json_decode($row['role_permissions'], true) 
+            : [];
+        
+        // Get user overrides
+        $stmt = $pdo->prepare('
+            SELECT permission_key, permission_value 
+            FROM user_permission_overrides 
+            WHERE user_id = ?
+        ');
+        $stmt->execute([$userId]);
+        $overrides = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Merge: Override ทับ Role Permission
+        // Normalize Role Data: Check if it's new structure (with keys 'permissions', 'menu_order') or legacy (direct map)
+        $basePermissions = [];
+        $menuOrder = [];
+        
+        if (isset($rolePermissions['permissions']) && is_array($rolePermissions['permissions'])) {
+            $basePermissions = $rolePermissions['permissions'];
+            $menuOrder = $rolePermissions['menu_order'] ?? [];
+        } else {
+            $basePermissions = $rolePermissions; // Legacy structure
+            // Optional: Default menu order (empty implies default system order)
+        }
+
+        $effectivePermissions = $basePermissions;
+        foreach ($overrides as $override) {
+            $key = $override['permission_key'];
+            $value = json_decode($override['permission_value'], true);
+            $effectivePermissions[$key] = $value;
+        }
+        
+        json_response([
+            'permissions' => $effectivePermissions,
+            'menu_order' => $menuOrder,
+            'roleCode' => $row['role_code'] ?? null
+        ]);
+    }
+    
+    // GET /api/user_permissions/{userId}/overrides - Get user overrides only
+    if (method() === 'GET' && $action === 'overrides') {
+        $stmt = $pdo->prepare('
+            SELECT id, permission_key, permission_value, notes, created_by, created_at, updated_at
+            FROM user_permission_overrides 
+            WHERE user_id = ?
+            ORDER BY permission_key
+        ');
+        $stmt->execute([$userId]);
+        $overrides = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Decode JSON values
+        foreach ($overrides as &$override) {
+            $override['permission_value'] = json_decode($override['permission_value'], true);
+        }
+        unset($override);
+        
+        json_response(['overrides' => $overrides]);
+    }
+    
+    // POST /api/user_permissions/{userId}/overrides - Add/Update override
+    if (method() === 'POST' && $action === 'overrides') {
+        $input = json_input();
+        $permissionKey = $input['permission_key'] ?? '';
+        $permissionValue = $input['permission_value'] ?? [];
+        $notes = $input['notes'] ?? null;
+        
+        if (!$permissionKey) {
+            json_response(['error' => 'PERMISSION_KEY_REQUIRED'], 400);
+        }
+        
+        $stmt = $pdo->prepare('
+            INSERT INTO user_permission_overrides 
+            (user_id, permission_key, permission_value, notes, created_by) 
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+                permission_value = VALUES(permission_value),
+                notes = VALUES(notes),
+                updated_at = CURRENT_TIMESTAMP
+        ');
+        $stmt->execute([
+            $userId,
+            $permissionKey,
+            json_encode($permissionValue),
+            $notes,
+            $_SESSION['user_id'] ?? null
+        ]);
+        
+        json_response(['message' => 'Override saved successfully']);
+    }
+    
+    // DELETE /api/user_permissions/{userId}/overrides?key={key} - Delete override
+    if (method() === 'DELETE' && $action === 'overrides') {
+        $permissionKey = $_GET['key'] ?? '';
+        
+        if (!$permissionKey) {
+            json_response(['error' => 'PERMISSION_KEY_REQUIRED'], 400);
+        }
+        
+        $stmt = $pdo->prepare('
+            DELETE FROM user_permission_overrides 
+            WHERE user_id = ? AND permission_key = ?
+        ');
+        $stmt->execute([$userId, $permissionKey]);
+        
+        json_response(['message' => 'Override deleted successfully']);
+    }
+    
+    json_response(['error' => 'NOT_FOUND'], 404);
 }
 
 ?>
