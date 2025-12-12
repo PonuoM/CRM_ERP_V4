@@ -246,6 +246,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   >([]);
   const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
     useState(false);
+  const [adsHistorySelectedUsers, setAdsHistorySelectedUsers] = useState<number[]>([]);
   const [adsHistoryDatePickerOpen, setAdsHistoryDatePickerOpen] =
     useState(false);
   const [adsHistoryTempStart, setAdsHistoryTempStart] = useState(
@@ -636,16 +637,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setAdsLogsLoading(true);
       try {
         const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+
+        // Determine user filter based on role and selection
+        let userFilter: number | number[] | undefined;
+        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+          // For admins: use selected users if any, otherwise show all
+          userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
+        } else {
+          // For non-admins: always filter by their own ID
+          userFilter = currentUser.id;
+        }
+
         const result = await loadAdsLogs(
           adsHistorySelectedPages.length > 0
             ? adsHistorySelectedPages
             : undefined,
           adsHistoryDateRange.start || undefined,
           adsHistoryDateRange.end || undefined,
-          currentUser.role === "Super Admin" ||
-            currentUser.role === "Admin Control"
-            ? undefined
-            : currentUser.id,
+          userFilter,
           adsHistoryPageSize,
           offset,
         );
@@ -676,6 +685,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     adsHistoryPageSize,
     adsHistoryDateRange,
     adsHistorySelectedPages,
+    adsHistorySelectedUsers,
   ]);
 
   // Toggle page expand/collapse
@@ -943,7 +953,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     pageIds?: number[],
     dateFrom?: string,
     dateTo?: string,
-    userId?: number,
+    userId?: number | number[],
     limit?: number,
     offset?: number,
   ) => {
@@ -955,7 +965,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       if (userId) {
-        params.set("user_id", String(userId));
+        // Handle both single user ID and array of user IDs
+        const userIdStr = Array.isArray(userId) ? userId.join(",") : String(userId);
+        params.set("user_id", userIdStr);
       }
       if (limit) params.set("limit", String(limit));
       if (offset !== undefined) params.set("offset", String(offset));
@@ -1046,16 +1058,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setEditingLog(null);
       // Refresh current page
       const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
+
+      // Use same user filter logic as main useEffect
+      let userFilter: number | number[] | undefined;
+      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+        userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
+      } else {
+        userFilter = currentUser.id;
+      }
+
       const result = await loadAdsLogs(
         adsHistorySelectedPages.length > 0
           ? adsHistorySelectedPages
           : undefined,
         adsHistoryDateRange.start || undefined,
         adsHistoryDateRange.end || undefined,
-        currentUser.role === "Super Admin" ||
-          currentUser.role === "Admin Control"
-          ? undefined
-          : currentUser.id,
+        userFilter,
         adsHistoryPageSize,
         offset,
       );
@@ -2466,6 +2484,23 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     onToggleInactivePages={setShowInactivePagesAdsHistory}
                   />
                 </div>
+
+                {/* User Filter - Only for Super Admin and Admin Control */}
+                {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                  <div className="flex-1">
+                    <label className={labelClass}>เลือกผู้ใช้</label>
+                    <MultiSelectUserFilter
+                      users={marketingUsersList.map((user) => ({
+                        id: user.id,
+                        firstName: user.first_name,
+                        lastName: user.last_name,
+                        username: user.username,
+                      }))}
+                      selectedUsers={adsHistorySelectedUsers}
+                      onChange={setAdsHistorySelectedUsers}
+                    />
+                  </div>
+                )}
 
                 <div className="">
                   <button
