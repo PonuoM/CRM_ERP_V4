@@ -5,6 +5,9 @@
   # The app is deployed under /mini_erp
   RewriteBase /mini_erp/
 
+  # Ensure Authorization header is passed to PHP
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
   # Set CORS headers for onecall proxy
   <IfModule mod_headers.c>
     <FilesMatch "^onecall/">

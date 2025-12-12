@@ -90,6 +90,7 @@ const PERMISSION_GROUPS_DEF = {
         items: [
             { key: 'nav.finance_approval', label: 'Finance Approval (ตรวจสอบยอดเงิน)' },
             { key: 'nav.statement_management', label: 'Statement Management (จัดการ Statement)' },
+            { key: 'finance-commission', label: 'Commission Menu (เมนูคำนวณค่าคอม)' },
         ]
     },
     'Accounting Audit': {

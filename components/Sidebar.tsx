@@ -24,6 +24,7 @@ import {
   Truck,
   Pencil,
   Calendar,
+  DollarSign,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -135,6 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
+    "Calculate Commission": "คำนวณค่าคอมมิชชัน",
     "System": "ระบบ",
     "Tracking & Transport": "การติดตามและจัดการขนส่ง",
     "Change Password": "เปลี่ยนรหัสผ่าน",
@@ -225,10 +227,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       label: "Finance",
-      icon: CheckCircle,
+      icon: DollarSign,
       children: [
         { label: "Finance Approval", icon: CheckCircle, key: "nav.finance_approval" },
         { label: "Statement Management", icon: FileText, key: "nav.statement_management" },
+        { label: "Calculate Commission", icon: BarChart2, key: "finance-commission" },
       ]
     },
     {

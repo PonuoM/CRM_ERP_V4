@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -14,10 +14,10 @@ interface ModalProps {
   closeOnBackdropClick?: boolean;
 }
 
-const Modal: React.FC<ModalProps> = ({ 
-  title, 
-  onClose, 
-  children, 
+const Modal: React.FC<ModalProps> = ({
+  title,
+  onClose,
+  children,
   size = 'md',
   requireConfirmation = false,
   confirmationMessage = 'คุณต้องการปิดหน้าต่างนี้หรือไม่? ข้อมูลที่ยังไม่ได้บันทึกจะหายไป',
@@ -54,22 +54,31 @@ const Modal: React.FC<ModalProps> = ({
   })();
   const heightClass = size === 'fullscreen' ? 'h-[90vh]' : 'max-h-[90vh]';
 
+  // Prevent background scroll while modal is open
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   return (
     <>
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center" 
-        aria-modal="true" 
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start md:pt-8 pt-4 pb-4"
+        aria-modal="true"
         role="dialog"
         onClick={closeOnBackdropClick ? handleClose : undefined}
       >
-        <div 
+        <div
           className={`bg-white rounded-lg shadow-xl w-full ${sizeClass} ${heightClass} flex flex-col`}
           onClick={e => e.stopPropagation()}
         >
           <header className="flex items-center justify-between p-4 border-b">
             <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-            <button 
-              onClick={handleClose} 
+            <button
+              onClick={handleClose}
               className="p-2 rounded-full text-gray-500 hover:bg-gray-100"
               aria-label="Close modal"
             >

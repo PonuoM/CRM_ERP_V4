@@ -351,7 +351,17 @@ const normalizeDateInputValue = (value?: string | null) => {
 
 
 
-const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, customers, activities, onSave, onClose, currentUser, users: propUsers = [], onEditCustomer, products = [] }) => {
+const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
+  order,
+  customers = [],
+  activities = [],
+  onSave,
+  onClose,
+  currentUser,
+  users: propUsers = [],
+  onEditCustomer,
+  products = [],
+}) => {
 
 
 
@@ -4767,7 +4777,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-                        ) : `฿${item.pricePerUnit.toLocaleString()} `}
+                        ) : `฿${Number(item.pricePerUnit ?? 0).toLocaleString()} `}
 
 
 
@@ -4807,7 +4817,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ order, cust
 
 
 
-                        ) : `-฿${item.discount.toLocaleString()} `}
+                        ) : `-฿${Number(item.discount ?? 0).toLocaleString()} `}
 
 
 

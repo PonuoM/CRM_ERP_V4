@@ -108,6 +108,7 @@ function validate_auth(PDO $pdo): void
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: No Bearer token found in header: '$auth'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Missing or invalid token'], 401);
   }
   $token = $matches[1];
@@ -117,10 +118,12 @@ function validate_auth(PDO $pdo): void
   $t = $stmt->fetch();
 
   if (!$t) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token not found in DB: '$token'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Invalid token'], 401);
   }
 
   if (strtotime($t['expires_at']) < time()) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token expired. Expires: '{$t['expires_at']}', Now: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Token expired'], 401);
   }
 }

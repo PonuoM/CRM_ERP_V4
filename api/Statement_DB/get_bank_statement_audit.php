@@ -9,7 +9,8 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
   exit();
 }
 
-require_once "../config.php";
+// Use API config (same file already loaded by index.php; require_once keeps it safe)
+require_once __DIR__ . "/../config.php";
 
 try {
   $input = json_decode(file_get_contents("php://input"), true);
@@ -42,7 +43,12 @@ try {
       srl.order_id,
       srl.confirmed_amount,
       o.total_amount as order_amount,
-      o.payment_method
+      o.payment_method,
+      srl.id as reconcile_id,
+      srl.confirmed_at,
+      srl.confirmed_action,
+      -- Use row_number to disambiguate multiple matches for the same order (box-level)
+      ROW_NUMBER() OVER (PARTITION BY srl.order_id ORDER BY sl.transfer_at, sl.id) AS order_match_no
     FROM statement_logs sl
     INNER JOIN statement_batchs sb ON sl.batch_id = sb.id
     LEFT JOIN statement_reconcile_logs srl ON sl.id = srl.statement_log_id
@@ -71,29 +77,44 @@ try {
     
     if ($row['order_id']) {
         $stmtAmt = (float)$row['statement_amount'];
-        $orderAmt = (float)$row['order_amount'];
-        // Use confirmed_amount if available (reconciled amount), otherwise statement amount
-        // But usually audit compares Statement vs Order
-        
-        $diff = $stmtAmt - $orderAmt;
-        
-        if (abs($diff) < 0.01) {
-            $status = 'Exact'; // พอดี
-        } elseif ($diff > 0) {
-            $status = 'Over'; // เกิน
-        } else {
-            $status = 'Short'; // ขาด
+        // Prefer per-row confirmed amount to avoid using full order total
+        $orderAmt = $row['confirmed_amount'] !== null
+            ? (float)$row['confirmed_amount']
+            : ($row['order_amount'] !== null ? (float)$row['order_amount'] : null);
+
+        if ($orderAmt !== null) {
+            $diff = $stmtAmt - $orderAmt;
+
+            if (abs($diff) < 0.01) {
+                $status = 'Exact'; // พอดี
+            } elseif ($diff > 0) {
+                $status = 'Over'; // เกิน
+            } else {
+                $status = 'Short'; // ขาด
+            }
         }
     }
     
+    $orderMatchNo = isset($row['order_match_no']) ? (int)$row['order_match_no'] : null;
+    $orderDisplay = $row['order_id'] ?? null;
+    if ($orderDisplay && $orderMatchNo && $orderMatchNo > 1) {
+        // Append -N to indicate box-level match when there are multiple matches for the order
+        $orderDisplay = $orderDisplay . '-' . $orderMatchNo;
+    }
+
     $results[] = [
         'id' => $row['id'],
+        'reconcile_id' => $row['reconcile_id'],
+        'confirmed_at' => $row['confirmed_at'],
+        'confirmed_action' => $row['confirmed_action'],
         'transfer_at' => $row['transfer_at'],
         'statement_amount' => $row['statement_amount'],
         'channel' => $row['channel'],
         'description' => $row['description'],
         'order_id' => $row['order_id'],
-        'order_amount' => $row['order_amount'],
+        'order_display' => $orderDisplay,
+        // Show box-level confirmed amount when available; otherwise full order amount
+        'order_amount' => $row['confirmed_amount'] !== null ? $row['confirmed_amount'] : $row['order_amount'],
         'payment_method' => $row['payment_method'],
         'status' => $status,
         'diff' => $diff

@@ -148,6 +148,16 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
     case 'call_history':
         handle_calls($pdo, $id);
         break;
+    case 'Statement_DB':
+        // Safe inclusion of Statement_DB scripts
+        $script = basename($id);
+        if (file_exists(__DIR__ . '/Statement_DB/' . $script)) {
+             require __DIR__ . '/Statement_DB/' . $script;
+        } else {
+             http_response_code(404);
+             echo json_encode(['error' => 'Not Found', 'script' => $script]);
+        }
+        break;
     case 'cod_documents':
         handle_cod_documents($pdo, $id);
         break;
@@ -6552,13 +6562,18 @@ function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): vo
     // GET /api/user_permissions/{userId}/effective - Get effective permissions (Role + Overrides)
     if (method() === 'GET' && $action === 'effective') {
         // Get role permissions
-        // FIX: Join by role_id OR role name (for legacy/mixed support)
+        // FIX: Join by role_id first, fallback to role name (for legacy/mixed support)
+        // Use COALESCE to prioritize role_id, prevent multiple matches
         $stmt = $pdo->prepare('
             SELECT rp.data as role_permissions, r.code as role_code
             FROM users u
-            LEFT JOIN roles r ON (u.role_id = r.id OR u.role = r.name OR u.role = r.code)
+            LEFT JOIN roles r ON (
+                (u.role_id IS NOT NULL AND r.id = u.role_id) OR
+                (u.role_id IS NULL AND (r.name = u.role OR r.code = u.role))
+            )
             LEFT JOIN role_permissions rp ON rp.role = r.code
             WHERE u.id = ?
+            LIMIT 1
         ');
         $stmt->execute([$userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);

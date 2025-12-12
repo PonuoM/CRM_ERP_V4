@@ -30,8 +30,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
   }
 
   const res = await fetch(`${base}${path}`, {
-    headers,
     ...init,
+    headers,
   });
 
   const text = await res.text();
@@ -45,12 +45,13 @@ export async function apiFetch(path: string, init?: RequestInit) {
   if (!res.ok) {
     if (res.status === 401) {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("sessionUser");
-        localStorage.removeItem("authToken");
+        console.error("!!! 401 UNAUTHORIZED DETECTED - Auto-logout disabled for debugging !!!");
+        // localStorage.removeItem("sessionUser");
+        // localStorage.removeItem("authToken");
         // Force reload to trigger index.tsx check
-        if (!window.location.search.includes('login')) {
-          window.location.reload();
-        }
+        // if (!window.location.search.includes('login')) {
+        //   window.location.reload();
+        // }
       }
     }
     const errMsg =

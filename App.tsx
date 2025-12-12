@@ -131,6 +131,7 @@ import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
+import CommissionPage from "./pages/Finance/CommissionPage";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
 const FULL_THRESHOLD_SECONDS = 4 * 3600;
@@ -360,6 +361,10 @@ const App: React.FC = () => {
       if (loginDate !== today) {
         localStorage.removeItem("sessionUser");
         return null;
+      }
+      // Map DB fields (snake_case) to Frontend types (camelCase)
+      if (parsed.company_id && !parsed.companyId) {
+        parsed.companyId = parsed.company_id;
       }
       return parsed;
     } catch {
@@ -6410,7 +6415,6 @@ const App: React.FC = () => {
       case "คลังสินค้า":
         return (
           <WarehouseManagementPage
-            warehouses={warehouses}
             companies={companies}
             currentUser={currentUser}
             onWarehouseChange={setWarehouses}
@@ -6422,11 +6426,10 @@ const App: React.FC = () => {
       case "Lot Tracking":
       case "ติดตามล๊อต":
         return <LotTrackingPage currentUser={currentUser} />;
-      case "Warehouse Allocation":
-      case "จัดสรรคลังสินค้า":
-        return <OrderAllocationPage />;
 
       // PROCESSED: Finance
+      case "nav.finance_approval":
+      case "payment_slip.manage":
       case "Finance Approval":
       case "ตรวจสอบยอดเงิน":
         return (
@@ -6438,8 +6441,24 @@ const App: React.FC = () => {
             openModal={openModal}
           />
         );
+
+      case "nav.statement_management":
+      case "statement.management":
       case "Statement Management":
       case "จัดการ Statement":
+        return (
+          <StatementManagementPage
+            user={currentUser}
+            orders={companyOrders}
+            customers={companyCustomers}
+            users={companyUsers}
+          />
+        );
+
+      case "finance-commission":
+      case "Calculate Commission":
+      case "คำนวณค่าคอมมิชชัน":
+        return <CommissionPage currentUser={currentUser} />;
         return (
           <StatementManagementPage
             user={currentUser}

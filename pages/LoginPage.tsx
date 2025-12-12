@@ -430,10 +430,8 @@ export default function LoginPage() {
       localStorage.removeItem('checkinPromptSeenDate');
 
       setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('login');
-        url.searchParams.delete('api');
-        window.location.replace(url.toString());
+        // Always redirect to home page after login to avoid redirect loops
+        window.location.replace('/');
       }, 800);
     } catch (e: any) {
       const message =
