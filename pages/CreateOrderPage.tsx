@@ -4023,15 +4023,29 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
 
   const handleSave = async () => {
-    const isAddressIncomplete = Object.entries(shippingAddress).some(
-      ([key, val]) =>
-        key !== "recipientLastName" && (val as string).trim() === "",
-    );
+    // Check for incomplete address fields and list missing ones
+    const fieldLabels: Record<string, string> = {
+      recipientFirstName: "ชื่อผู้รับ",
+      street: "บ้านเลขที่, ถนน",
+      subdistrict: "ตำบล/แขวง",
+      district: "อำเภอ/เขต",
+      province: "จังหวัด",
+      postalCode: "รหัสไปรษณีย์",
+    };
 
-    if (isAddressIncomplete) {
+    const missingFields = Object.entries(shippingAddress)
+      .filter(
+        ([key, val]) =>
+          key !== "recipientLastName" && (val as string).trim() === "",
+      )
+      .map(([key]) => fieldLabels[key] || key);
+
+    if (missingFields.length > 0) {
       highlightField("shippingAddress");
 
-      alert("กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน");
+      alert(
+        `กรุณากรอกที่อยู่จัดส่งให้ครบถ้วน\nช่องที่ยังไม่ได้กรอก: ${missingFields.join(", ")}`,
+      );
 
       return;
     }
