@@ -1985,7 +1985,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($hasTransferDate) {
                     $values[] = isset($in['transferDate']) && $in['transferDate'] !== null && $in['transferDate'] !== '' ? $in['transferDate'] : null;
                 }
-                $values[] = $in['customerType'] ?? null;
+                $values[] = $in['customerStatus'] ?? $in['customerType'] ?? null;
 
                 try {
                     $stmt->execute($values);
