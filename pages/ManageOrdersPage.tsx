@@ -767,6 +767,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             // สำหรับ Transfer และ PayAfter ใช้ totalAmount หารด้วยจำนวน orderId
             const totalOrderIds = itemsByOrderId.size;
             orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
+          } else {
+            // สำหรับ payment method อื่นๆ ใช้ totalAmount หารด้วยจำนวน orderId
+            const totalOrderIds = itemsByOrderId.size;
+            orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
           }
 
           // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
@@ -819,7 +823,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ข้อความจากร้านค้า': '',
             'ค่าขนส่ง': '', // ว่างเปล่า
             // แสดงข้อมูลที่อยู่เฉพาะแถวแรกของแต่ละ orderId
-            'จำนวนเงินที่ต้องชำระ': index === 0 ? orderIdTotalAmount : '',
+            // แสดงจำนวนเงินเฉพาะเมื่อ COD = "ใช่"
+            'จำนวนเงินที่ต้องชำระ': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
             'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
             'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
@@ -837,7 +842,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
             'จำนวน': 1,
-            'ราคาสินค้าต่อหน่วย': index === 0 ? orderIdTotalAmount : '',
+            // แสดงราคาสินค้าต่อหน่วยเฉพาะเมื่อ COD = "ใช่"
+            'ราคาสินค้าต่อหน่วย': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
             'เวลาส่งสินค้า': '',

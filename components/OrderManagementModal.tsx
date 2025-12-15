@@ -361,6 +361,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   users: propUsers = [],
   onEditCustomer,
   products = [],
+  backdropClassName,
 }) => {
 
 
@@ -3487,7 +3488,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   return (
 
-    <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl">
+    <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl" backdropClassName={backdropClassName}>\n
 
 
 

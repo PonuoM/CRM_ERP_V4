@@ -345,6 +345,8 @@ export enum OrderStatus {
   Delivered = "Delivered",
   Returned = "Returned",
   Cancelled = "Cancelled",
+  Claiming = "Claiming",
+  BadDebt = "BadDebt",
 }
 
 export enum PaymentStatus {

@@ -52,16 +52,17 @@ function ensure_reconcile_tables(PDO $pdo): void
       order_id VARCHAR(32) NOT NULL,
       statement_amount DECIMAL(12,2) NOT NULL,
       confirmed_amount DECIMAL(12,2) DEFAULT NULL,
+      reconcile_type VARCHAR(20) NOT NULL DEFAULT 'Order',
       auto_matched TINYINT(1) NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       UNIQUE KEY uniq_statement_log (statement_log_id),
       KEY idx_statement_reconcile_order (order_id),
       KEY idx_statement_reconcile_batch (batch_id),
+      KEY idx_statement_reconcile_type (reconcile_type),
       KEY idx_statement_reconcile_order_statement (order_id, statement_log_id),
       CONSTRAINT fk_statement_reconcile_batch FOREIGN KEY (batch_id) REFERENCES statement_reconcile_batches(id) ON DELETE CASCADE ON UPDATE NO ACTION,
-      CONSTRAINT fk_statement_reconcile_statement FOREIGN KEY (statement_log_id) REFERENCES statement_logs(id) ON DELETE CASCADE ON UPDATE NO ACTION,
-      CONSTRAINT fk_statement_reconcile_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE ON UPDATE NO ACTION
+      CONSTRAINT fk_statement_reconcile_statement FOREIGN KEY (statement_log_id) REFERENCES statement_logs(id) ON DELETE CASCADE ON UPDATE NO ACTION
     ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation};
   ");
 
@@ -213,9 +214,9 @@ try {
 
   $insertLogStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, auto_matched)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched)
     VALUES
-      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :autoMatched)
+      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched)
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -239,61 +240,32 @@ try {
   $existingReconCache = [];
   foreach ($items as $item) {
     $statementId = isset($item["statement_id"]) ? (int) $item["statement_id"] : 0;
-    $orderId = isset($item["order_id"]) ? $item["order_id"] : "";
-    $confirmedAmount = isset($item["confirmed_amount"]) ? (float) $item["confirmed_amount"] : null;
-    $autoMatched = !empty($item["auto_matched"]) ? 1 : 0;
-
-    if ($statementId <= 0 || $orderId === "") {
-      throw new RuntimeException("Invalid item payload");
-    }
-
-    // Validate statement ownership and bank
-    $stmtInfoStmt = $pdo->prepare("
-      SELECT sl.id, sl.amount, sl.bank_account_id, sl.transfer_at, sb.company_id
-      FROM statement_logs sl
-      INNER JOIN statement_batchs sb ON sb.id = sl.batch_id
-      WHERE sl.id = :id
-    ");
-    $stmtInfoStmt->execute([":id" => $statementId]);
-    $stmtInfo = $stmtInfoStmt->fetch(PDO::FETCH_ASSOC);
-    if (!$stmtInfo) {
-      throw new RuntimeException("Statement log not found: {$statementId}");
-    }
-    if ((int) $stmtInfo["company_id"] !== $companyId) {
-      throw new RuntimeException("Statement log does not belong to this company");
-    }
-    if ($stmtInfo["bank_account_id"] !== null && (int) $stmtInfo["bank_account_id"] !== $bankAccountId) {
-      throw new RuntimeException("Statement log bank mismatch");
-    }
-
-    // Prevent duplicate reconciliation
-    $existsStmt = $pdo->prepare("
-      SELECT COUNT(*) FROM statement_reconcile_logs srl
-      INNER JOIN statement_reconcile_batches srb ON srb.id = srl.batch_id
-      WHERE srl.statement_log_id = :sid AND srb.company_id = :companyId
-    ");
-    $existsStmt->execute([
-      ":sid" => $statementId,
-      ":companyId" => $companyId,
-    ]);
-    if ((int) $existsStmt->fetchColumn() > 0) {
-      throw new RuntimeException("Statement log {$statementId} already reconciled");
-    }
-
-    // Validate order
-    $orderStmt = $pdo->prepare("
-      SELECT id, total_amount, amount_paid, payment_method, payment_status, order_status
-      FROM orders
-      WHERE id = :id AND company_id = :companyId AND payment_method = 'Transfer'
-      FOR UPDATE
-    ");
-    $orderStmt->execute([
-      ":id" => $orderId,
-      ":companyId" => $companyId,
-    ]);
-    $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
-    if (!$order) {
-      throw new RuntimeException("Order not found or not a transfer order: {$orderId}");
+    $reconcileType = isset($item["reconcile_type"]) ? $item["reconcile_type"] : "Order";
+    if ($reconcileType === "Suspense") {
+      // For Suspense, orderId can be empty/null
+      $orderId = null; 
+      $order = null;
+    } else {
+      // For Order type, validate Order ID
+      if ($orderId === "") {
+        throw new RuntimeException("Invalid item payload: Order ID required for Order reconciliation");
+      }
+      
+      // Validate order
+      $orderStmt = $pdo->prepare("
+        SELECT id, total_amount, amount_paid, payment_method, payment_status, order_status
+        FROM orders
+        WHERE id = :id AND company_id = :companyId AND payment_method = 'Transfer'
+        FOR UPDATE
+      ");
+      $orderStmt->execute([
+        ":id" => $orderId,
+        ":companyId" => $companyId,
+      ]);
+      $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
+      if (!$order) {
+        throw new RuntimeException("Order not found or not a transfer order: {$orderId}");
+      }
     }
 
     $statementAmount = (float) $stmtInfo["amount"];
@@ -304,22 +276,25 @@ try {
       $confirmedAmount = 0;
     }
 
-    if (!array_key_exists($orderId, $existingReconCache)) {
-      $orderReconSumStmt->execute([
-        ":orderId" => $orderId,
-        ":companyId" => $companyId,
-      ]);
-      $existingReconCache[$orderId] = (float) $orderReconSumStmt->fetchColumn();
+    // Only check existing reconciled amounts for Orders, not Suspense
+    if ($reconcileType === "Order" && $order) {
+      if (!array_key_exists($orderId, $existingReconCache)) {
+        $orderReconSumStmt->execute([
+          ":orderId" => $orderId,
+          ":companyId" => $companyId,
+        ]);
+        $existingReconCache[$orderId] = (float) $orderReconSumStmt->fetchColumn();
+      }
+      $existingReconciled = $existingReconCache[$orderId];
+  
+      $running = $batchRunningTotals[$orderId] ?? 0.0;
+      $proposedTotal = $existingReconciled + $running + $confirmedAmount;
+      if ($proposedTotal > (float) $order["total_amount"] + 0.01) {
+        throw new RuntimeException("Order {$orderId} would exceed total amount with this statement");
+      }
+      $runningAfter = $running + $confirmedAmount;
+      $batchRunningTotals[$orderId] = $runningAfter;
     }
-    $existingReconciled = $existingReconCache[$orderId];
-
-    $running = $batchRunningTotals[$orderId] ?? 0.0;
-    $proposedTotal = $existingReconciled + $running + $confirmedAmount;
-    if ($proposedTotal > (float) $order["total_amount"] + 0.01) {
-      throw new RuntimeException("Order {$orderId} would exceed total amount with this statement");
-    }
-    $runningAfter = $running + $confirmedAmount;
-    $batchRunningTotals[$orderId] = $runningAfter;
 
     try {
       // Ensure order_id is treated as string with correct collation
@@ -328,9 +303,10 @@ try {
       $insertLogStmt->execute([
         ":batchId" => $batchId,
         ":statementId" => $statementId,
-        ":orderId" => $orderIdStr,
+        ":orderId" => $orderId, // Can be null for Suspense
         ":statementAmount" => $statementAmount,
         ":confirmedAmount" => $confirmedAmount,
+        ":reconcileType" => $reconcileType,
         ":autoMatched" => $autoMatched,
       ]);
       $saved += 1;
@@ -381,27 +357,30 @@ try {
     }
     
     // Determine order status based on payment status
-    // If payment is Approved/Paid, set order status to Delivered (เสร็จสิ้น)
-    // Otherwise, follow the same logic as before
+    // STOP AUTO-DELIVERY: Payment received implies Deposit/PreApproved, NOT Delivered.
     $currentStatus = $order["order_status"];
     if ($targetStatus === "Approved" || $targetStatus === "Paid") {
-      // Payment approved - set to Delivered (เสร็จสิ้น)
-      $nextOrderStatus = "Delivered";
+      // Payment approved - set to PreApproved (Approved by finance, ready to move to Picking/Shipping)
+      // Do NOT set to Delivered here. Delivered implies shipment completion.
+      $nextOrderStatus = "PreApproved";
     } else if (in_array($currentStatus, ["Pending", "AwaitingVerification", "Confirmed"], true)) {
-      // Payment not fully approved yet - set to Preparing
-      $nextOrderStatus = "Preparing";
+      // Payment not fully approved yet - set to Preparing/Confirmed
+      $nextOrderStatus = "Confirmed";
     } else {
-      // Keep current status
+      // Keep current status if it's already further along (e.g. Picking, Shipping)
       $nextOrderStatus = $currentStatus;
     }
 
-    $orderUpdateStmt->execute([
-      ":amountPaid" => $amountToSave,
-      ":paymentStatus" => (string) $targetStatus,
-      ":orderStatus" => (string) $nextOrderStatus,
-      ":orderId" => (string) $orderId,
-      ":companyId" => $companyId,
-    ]);
+    // Only update order if it's an Order reconciliation
+    if ($reconcileType === "Order" && $orderId) {
+      $orderUpdateStmt->execute([
+        ":amountPaid" => $amountToSave,
+        ":paymentStatus" => (string) $targetStatus,
+        ":orderStatus" => (string) $nextOrderStatus,
+        ":orderId" => (string) $orderId,
+        ":companyId" => $companyId,
+      ]);
+    }
   }
 
   $pdo->commit();

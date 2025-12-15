@@ -103,6 +103,34 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
     case 'orders':
         handle_orders($pdo, $id);
         break;
+    case 'accounting_orders_sent':
+        require_once __DIR__ . '/Accounting/sent_orders.php';
+        handle_sent_orders($pdo);
+        break;
+    case 'accounting_orders_approved':
+        require_once __DIR__ . '/Accounting/approved_orders.php';
+        handle_approved_orders($pdo);
+        break;
+
+    case 'accounting_statement_report':
+        require_once __DIR__ . '/Accounting/statement_report.php';
+        handle_statement_report($pdo);
+        break;
+
+    case 'accounting_dashboard_stats':
+        require_once __DIR__ . '/Accounting/dashboard_stats.php';
+        handle_dashboard_stats($pdo);
+        break;
+
+    case 'accounting_outstanding_orders':
+        require_once __DIR__ . '/Accounting/outstanding_orders.php';
+        handle_outstanding_orders($pdo);
+        break;
+
+    case 'accounting_update_order_status':
+        require_once __DIR__ . '/Orders/update_order_status.php';
+        handle_update_order_status($pdo);
+        break;
     case 'upsell':
         handle_upsell($pdo, $id, $action);
         break;
@@ -203,6 +231,11 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
         break;
     case 'call_overview':
         handle_call_overview($pdo);
+        break;
+    case 'import_google_sheet':
+        require_once __DIR__ . '/GoogleSheet/import.php';
+        // import.php handles GET/POST internally
+        exit;
         break;
     case 'notifications':
         // handled separately below to support nested actions like settings/get
@@ -3898,6 +3931,19 @@ function get_order(PDO $pdo, string $id): ?array {
     $stmt->execute([$mainOrderId]);
     $o = $stmt->fetch();
     if (!$o) return null;
+    
+    // Fetch customer phone if available
+    if (!empty($o['customer_id'])) {
+        try {
+            $custStmt = $pdo->prepare('SELECT phone, backup_phone FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
+            $custStmt->execute([$o['customer_id'], $o['customer_id']]);
+            $cust = $custStmt->fetch();
+            if ($cust) {
+                $o['customer_phone'] = $cust['phone'];
+                $o['customer_backup_phone'] = $cust['backup_phone'];
+            }
+        } catch (Throwable $e) { /* ignore */ }
+    }
     
     // Fetch items from main order and all sub orders
     // Use parent_order_id to find all items for this order group

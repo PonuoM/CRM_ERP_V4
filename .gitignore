@@ -25,7 +25,8 @@ dist-ssr
 .env
 
 api/uploads/slips/*
-
+api/vendor/*
+api/google-credentials.json
 /src/generated/prisma
 
 host
