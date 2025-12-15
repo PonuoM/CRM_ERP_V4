@@ -133,6 +133,37 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
     };
 
+    const handleDelete = async (periodId: number, status: string) => {
+        if (status === 'Paid') {
+            alert('ไม่สามารถลบรอบที่จ่ายเงินแล้ว');
+            return;
+        }
+
+        if (!window.confirm('ยืนยันการลบรอบนี้? การลบจะไม่สามารถกู้คืนได้')) {
+            return;
+        }
+
+        try {
+            const res = await fetch('api/Commission/delete_period.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period_id: periodId
+                })
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                alert('ลบสำเร็จ!');
+                fetchPeriods();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error: any) {
+            alert('Error: ' + error.message);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('th-TH', {
             style: 'currency',
@@ -165,7 +196,8 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         { value: 12, label: 'ธันวาคม' }
     ];
 
-    const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+    const currentYear = new Date().getFullYear();
+    const years = [currentYear + 1, ...Array.from({ length: 5 }, (_, i) => currentYear - i)];
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -301,6 +333,14 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                                             >
                                                 รายละเอียด
                                             </button>
+                                            {period.status !== 'Paid' && (
+                                                <button
+                                                    onClick={() => handleDelete(period.id, period.status)}
+                                                    className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                                                >
+                                                    ลบ
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))

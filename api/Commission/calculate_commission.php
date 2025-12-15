@@ -1,7 +1,8 @@
 <?php
 /**
- * Calculate Commission for a specific period (REVISED VERSION)
- * Uses statement_reconcile_logs confirmation instead of order approval
+ * Calculate Commission for a specific period
+ * Uses orders table with payment_status='Approved' and order_status='Delivered'
+ * REQUIRES statement_reconcile_logs.confirmed_amount (orders without reconcile log are excluded)
  * 
  * POST /api/Commission/calculate_commission.php
  * 
@@ -12,6 +13,9 @@
  *   "period_year": 2024,
  *   "commission_rate": 5.0  // % ค่าคอมเริ่มต้น (optional)
  * }
+ * 
+ * Logic: Selects orders with order_date BEFORE the selected month
+ * Example: period_month=12 (Dec) => selects orders with order_date < 2024-12-01
  */
 
 require_once __DIR__ . "/../config.php";
@@ -38,8 +42,11 @@ try {
         exit;
     }
     
-    // Calculate order_month and cutoff_date based on period
-    // Period Dec 2024 => orders from Nov 2024, cutoff Dec 20, 2024
+    // Calculate period_start_date for filtering
+    // Period Dec 2024 => orders before Dec 1, 2024 (Nov 30 and earlier)
+    $period_start_date = sprintf('%04d-%02d-01', $period_year, $period_month);
+    
+    // Keep order_month/order_year for display purposes
     $order_month = $period_month - 1;
     $order_year = $period_year;
     if ($order_month < 1) {
@@ -74,32 +81,36 @@ try {
         $pdo->prepare("DELETE FROM commission_periods WHERE id = ?")->execute([$existing['id']]);
     }
     
-    // Get eligible orders FROM RECONCILE CONFIRMATION
-    // Orders from order_month/order_year that were CONFIRMED before cutoff_date
-    $orderStartDate = sprintf('%04d-%02d-01', $order_year, $order_month);
-    $orderEndDate = date('Y-m-d', strtotime('+1 month', strtotime($orderStartDate)));
-    
+    // Get eligible orders from ORDERS table with reconcile amount
+    // Orders with payment_status='Approved', order_status='Delivered', and order_date before period_start
+    // MUST have reconcile log with confirmed_amount
+    // EXCLUDE orders already used in commission_order_lines
     $ordersStmt = $pdo->prepare("
-        SELECT DISTINCT
+        SELECT 
             o.id,
             o.creator_id,
             o.order_date,
-            srl.confirmed_at,
-            srl.confirmed_order_amount as order_amount
+            srl.confirmed_amount as order_amount
         FROM orders o
         INNER JOIN statement_reconcile_logs srl 
-            ON srl.confirmed_order_id = o.id
+            ON srl.order_id = o.id
+        LEFT JOIN commission_order_lines col
+            ON col.order_id = o.id
         WHERE 
-            -- ออเดอร์จากเดือนที่กำหนด
-            o.order_date >= :order_start
-            AND o.order_date < :order_end
+            -- Payment status = Approved
+            o.payment_status = 'Approved'
             
-            -- ผ่านการ Reconcile Confirm แล้ว
-            AND srl.confirmed_at IS NOT NULL
-            AND srl.confirmed_action IS NOT NULL
+            -- Order status = Delivered
+            AND o.order_status = 'Delivered'
             
-            -- Confirm ก่อนวันตัดรอบ
-            AND srl.confirmed_at < :cutoff
+            -- Order date BEFORE selected month
+            AND o.order_date < :period_start
+            
+            -- Must have confirmed amount
+            AND srl.confirmed_amount IS NOT NULL
+            
+            -- NOT already used in commission calculation
+            AND col.id IS NULL
             
             -- Company filter
             AND o.company_id = :company_id
@@ -108,9 +119,7 @@ try {
     ");
     
     $ordersStmt->execute([
-        'order_start' => $orderStartDate,
-        'order_end' => $orderEndDate,
-        'cutoff' => $cutoff_date . ' 23:59:59',
+        'period_start' => $period_start_date,
         'company_id' => $company_id
     ]);
     
@@ -187,7 +196,7 @@ try {
                 $record_id,
                 $order['id'],
                 date('Y-m-d', strtotime($order['order_date'])),
-                $order['confirmed_at'],
+                date('Y-m-d H:i:s', strtotime($order['order_date'])), // Use order_date as confirmed_at
                 $order['order_amount'],
                 $orderCommission
             ]);
