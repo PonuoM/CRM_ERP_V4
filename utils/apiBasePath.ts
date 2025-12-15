@@ -3,8 +3,8 @@ import APP_BASE_PATH from '@/appBasePath';
 const resolveApiBasePath = (): string => {
   const envBase =
     typeof import.meta !== 'undefined' &&
-    (import.meta as any)?.env &&
-    (import.meta as any).env.BASE_URL
+      (import.meta as any)?.env &&
+      (import.meta as any).env.BASE_URL
       ? (import.meta as any).env.BASE_URL
       : undefined;
 

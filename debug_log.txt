@@ -1,0 +1,13 @@
+Entered handle_update_order_status
+Entered handle_update_order_status
+Entered handle_update_order_status
+Data: Array
+(
+    [orderId] => 251121-00005telesale1yx
+    [status] => BadDebt
+    [note] => Marked as BadDebt from Dashboard
+)
+
+OrderId: 251121-00005telesale1yx, Status: BadDebt
+Preparing update...
+Execute success. RowCount: 1

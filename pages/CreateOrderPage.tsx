@@ -28,7 +28,7 @@ import {
   createOrderSlip,
   listOrderSlips,
 } from "../services/api";
-import { formatThaiDateTime } from "../utils/time";
+import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
 
 import resolveApiBasePath from "../utils/apiBasePath";
 
@@ -534,7 +534,7 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     billDiscount: 0,
 
-    deliveryDate: new Date(Date.now() + 864e5).toISOString().split("T")[0],
+    deliveryDate: toThaiIsoString(new Date(Date.now() + 864e5)).split("T")[0],
 
     customerId: initialData?.customer?.id,
 
@@ -4107,11 +4107,11 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     // ตรวจสอบวันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป
 
     const getMaxDeliveryDate = (): string => {
-      const now = new Date();
-
+      const now = new Date(); // Use local system time as base
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 7);
 
-      return nextMonth.toISOString().split("T")[0];
+      // Use toThaiIsoString to get the date in Thai timezone context
+      return toThaiIsoString(nextMonth).split("T")[0];
     };
 
     const maxDeliveryDate = getMaxDeliveryDate();

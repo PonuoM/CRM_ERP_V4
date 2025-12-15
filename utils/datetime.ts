@@ -108,3 +108,26 @@ export function getCurrentLocalDatetime(): string {
 
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
+
+/**
+ * Convert a Date object to an ISO-like string in Thailand timezone (UTC+7)
+ * Used for sending dates to backend which expects Thai time in datetime fields
+ * @param date optional Date object (default: now)
+ * @returns string in format "YYYY-MM-DDTHH:mm:ss.sss" (Thai time)
+ */
+export function toThaiIsoString(date?: Date): string {
+    const d = date ? new Date(date) : new Date();
+    // Offset for Thailand is +7 hours = +25200000 ms
+    // We want the string to represent Thai time, so we add 7 hours to UTC
+    const thaiValues = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+
+    const year = thaiValues.getFullYear();
+    const month = String(thaiValues.getMonth() + 1).padStart(2, '0');
+    const day = String(thaiValues.getDate()).padStart(2, '0');
+    const hours = String(thaiValues.getHours()).padStart(2, '0');
+    const minutes = String(thaiValues.getMinutes()).padStart(2, '0');
+    const seconds = String(thaiValues.getSeconds()).padStart(2, '0');
+    const ms = String(thaiValues.getMilliseconds()).padStart(3, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}

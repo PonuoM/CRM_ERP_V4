@@ -1188,6 +1188,89 @@ export async function addUpsellItems(orderId: string, creatorId: number, items: 
   });
 }
 
+export async function listSentOrders(params: {
+  month?: number;
+  year?: number;
+  startDate?: string;
+  endDate?: string;
+  bankId?: number;
+  q?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params.month) qs.set("month", String(params.month));
+  if (params.year) qs.set("year", String(params.year));
+  if (params.startDate) qs.set("startDate", params.startDate);
+  if (params.endDate) qs.set("endDate", params.endDate);
+  if (params.bankId) qs.set("bankId", String(params.bankId));
+  if (params.q) qs.set("q", params.q);
+  return apiFetch(`accounting_orders_sent?${qs.toString()}`);
+}
+
+export async function listApprovedOrders(params: {
+  month: number;
+  year: number;
+  bankId?: number;
+  q?: string;
+}) {
+  const qs = new URLSearchParams({
+    month: String(params.month),
+    year: String(params.year),
+  });
+  if (params.bankId) qs.set("bankId", String(params.bankId));
+  if (params.q) qs.set("q", params.q);
+  return apiFetch(`accounting_orders_approved?${qs.toString()}`);
+}
+
+export async function listStatementReport(params: {
+  month: number;
+  year: number;
+  bankId?: number;
+  q?: string;
+}) {
+  const qs = new URLSearchParams({
+    month: String(params.month),
+    year: String(params.year),
+  });
+  if (params.bankId) qs.set("bankId", String(params.bankId));
+  if (params.q) qs.set("q", params.q);
+  return apiFetch(`accounting_statement_report?${qs.toString()}`);
+}
+
+export async function getDashboardStats(params: {
+  month: number;
+  year: number;
+}) {
+  const qs = new URLSearchParams({
+    month: String(params.month),
+    year: String(params.year),
+  });
+  return apiFetch(`accounting_dashboard_stats?${qs.toString()}`);
+  return apiFetch(`accounting_dashboard_stats?${qs.toString()}`);
+}
+
+export async function listOutstandingOrders(params: {
+  month: number;
+  year: number;
+}) {
+  const qs = new URLSearchParams({
+    month: String(params.month),
+    year: String(params.year),
+  });
+  return apiFetch(`accounting_outstanding_orders?${qs.toString()}`);
+}
+
+export async function updateOrderStatus(payload: {
+  orderId: string | number;
+  status: string;
+  note?: string;
+}) {
+  return apiFetch(`accounting_update_order_status`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+
 export async function updateOrderSlip(payload: {
   id: number;
   amount?: number;

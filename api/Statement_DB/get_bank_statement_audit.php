@@ -47,6 +47,7 @@ try {
       srl.id as reconcile_id,
       srl.confirmed_at,
       srl.confirmed_action,
+      srl.reconcile_type, 
       -- Use row_number to disambiguate multiple matches for the same order (box-level)
       ROW_NUMBER() OVER (PARTITION BY srl.order_id ORDER BY sl.transfer_at, sl.id) AS order_match_no
     FROM statement_logs sl
@@ -75,7 +76,12 @@ try {
     $status = 'Unmatched';
     $diff = 0;
     
-    if ($row['order_id']) {
+    // Check reconcile_type first
+    $reconcileType = $row['reconcile_type'] ?? null;
+
+    if ($reconcileType === 'Suspense') {
+        $status = 'Suspense';
+    } elseif ($row['order_id']) {
         $stmtAmt = (float)$row['statement_amount'];
         // Prefer per-row confirmed amount to avoid using full order total
         $orderAmt = $row['confirmed_amount'] !== null
@@ -107,6 +113,7 @@ try {
         'reconcile_id' => $row['reconcile_id'],
         'confirmed_at' => $row['confirmed_at'],
         'confirmed_action' => $row['confirmed_action'],
+        'reconcile_type' => $reconcileType,
         'transfer_at' => $row['transfer_at'],
         'statement_amount' => $row['statement_amount'],
         'channel' => $row['channel'],

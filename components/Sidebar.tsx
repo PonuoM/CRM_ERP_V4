@@ -144,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Ads Input": "กรอกค่า Ads",
     "Ads History": "ประวัติการกรอก Ads",
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
+    "Google Sheet Import": "นำเข้าจาก Google Sheet",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -156,6 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Dashboard", icon: LayoutDashboard, key: "home.dashboard" },
         { label: "Sales Overview", icon: LayoutDashboard, key: "home.sales_overview" },
+        { label: "Accounting Report", icon: FileText, key: "accounting.report" },
       ]
     },
     {
@@ -194,6 +196,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Debt", icon: FileText, key: "nav.debt" },
         { label: "Bulk Tracking", icon: FileUp, key: "nav.bulk_tracking" },
         { label: "COD Management", icon: FileText, key: "nav.cod_management" },
+        { label: "Google Sheet Import", icon: FileUp, key: "nav.google_sheet_import" },
       ]
     },
 
@@ -239,6 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: FileText,
       children: [
         { label: "Bank Account Audit", icon: FileText, key: "accounting.audit.bank" },
+        { label: "All Orders (Sent/Billed)", icon: FileText, key: "accounting.audit.all_orders_sent" },
       ]
     },
     {
@@ -434,7 +438,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div
-      className={`bg-[#FFFFFF] text-gray-700 flex flex-col transition-all duration-300 ease-in-out border-r border-gray-200 ${isCollapsed ? "w-20" : "w-64"}`}
+      className={`bg-[#FFFFFF] text-gray-700 h-full flex flex-col border-r border-gray-200 ${isCollapsed ? "w-20" : "w-64"}`}
     >
       <div className="flex items-center justify-between h-16 border-b border-gray-200 flex-shrink-0 px-4">
         <h1

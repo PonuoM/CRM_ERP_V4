@@ -97,6 +97,8 @@ import PancakeUserIntegrationPage from "./pages/PancakeUserIntegrationPage";
 import ManageOrdersPage from "./pages/ManageOrdersPage";
 import DebtCollectionPage from "./pages/DebtCollectionPage";
 import UserManagementModal from "./components/UserManagementModal";
+import AllOrdersSentPage from "./pages/Accounting/AllOrdersSentPage";
+import AccountingReportPage from "./pages/AccountingReportPage";
 import { deleteProductWithLots } from "./services/productApi";
 import ProductManagementModal from "./components/ProductManagementModal";
 import ConfirmDeleteModal from "./components/ConfirmDeleteModal";
@@ -111,6 +113,7 @@ import {
   LogOut,
   ChevronDown,
 } from "lucide-react";
+import { toThaiIsoString } from "./utils/datetime";
 import LogCallModal from "./components/LogCallModal";
 import AppointmentModal from "./components/AppointmentModal";
 import EditCustomerModal from "./components/EditCustomerModal";
@@ -208,6 +211,7 @@ import SlipAll from "./pages/SlipAll";
 
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
+import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
@@ -2686,7 +2690,7 @@ const App: React.FC = () => {
         companyId: currentUser.companyId,
         assignedTo:
           currentUser.role === UserRole.Admin ? (null as any) : currentUser.id,
-        dateAssigned: new Date().toISOString(),
+        dateAssigned: toThaiIsoString(new Date()),
         totalPurchases: 0,
         totalCalls: 0,
         tags: [],
@@ -2713,11 +2717,9 @@ const App: React.FC = () => {
           assignedTo:
             currentUser.role === UserRole.Admin ? null : currentUser.id,
           dateAssigned: newCustomer.dateAssigned,
-          dateRegistered: new Date().toISOString(),
+          dateRegistered: toThaiIsoString(new Date()),
           followUpDate: null,
-          ownershipExpires: new Date(
-            Date.now() + 30 * 24 * 3600 * 1000,
-          ).toISOString(),
+          ownershipExpires: toThaiIsoString(new Date(Date.now() + 30 * 24 * 3600 * 1000)),
           lifecycleStatus:
             newCustomer.lifecycleStatus ?? CustomerLifecycleStatus.New,
           behavioralStatus:
@@ -2838,7 +2840,7 @@ const App: React.FC = () => {
         customerId: customerIdForOrder,
         companyId: currentUser.companyId,
         creatorId: currentUser.id,
-        orderDate: new Date().toISOString(),
+        orderDate: toThaiIsoString(new Date()),
         bankAccountId: bankAccountId,
         transferDate: transferDate,
       };
@@ -2863,7 +2865,7 @@ const App: React.FC = () => {
             const newActivity: Activity = {
               id: Date.now() + Math.random(),
               customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-              timestamp: new Date().toISOString(),
+              timestamp: toThaiIsoString(new Date()),
               type: ActivityType.OrderCreated,
               description: `สร้างคำสั่งซื้อ ${createdOrderId} สำหรับลูกค้า "${customer.firstName} ${customer.lastName}"`,
               actorName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -3621,8 +3623,8 @@ const App: React.FC = () => {
       totalPurchases: 0,
       totalCalls: 0,
       tags: [],
-      dateAssigned: new Date().toISOString(),
-      ownershipExpires: ownershipExpires.toISOString(),
+      dateAssigned: toThaiIsoString(new Date()),
+      ownershipExpires: toThaiIsoString(ownershipExpires),
       behavioralStatus: CustomerBehavioralStatus.Warm,
       grade: calculateCustomerGrade(0),
     };
@@ -6444,6 +6446,14 @@ const App: React.FC = () => {
 
       case "nav.statement_management":
       case "statement.management":
+      case "Accounting Report":
+      case "accounting.report":
+        return <AccountingReportPage />;
+
+      case "All Orders (Sent/Billed)":
+      case "accounting.audit.all_orders_sent":
+        return <AllOrdersSentPage />;
+
       case "Statement Management":
       case "จัดการ Statement":
         return (
@@ -6510,6 +6520,15 @@ const App: React.FC = () => {
             orders={companyOrders}
             customers={companyCustomers}
             users={companyUsers}
+          />
+        );
+
+      case "Google Sheet Import":
+      case "นำเข้าจาก Google Sheet":
+        return (
+          <GoogleSheetImportPage
+            apiBaseUrl={resolveApiBasePath()}
+            authToken={sessionUser?.token || localStorage.getItem('authToken') || ''}
           />
         );
       case "Debt":
@@ -6807,7 +6826,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-[#F5F5F5]">
+    <div className="h-screen bg-[#F5F5F5] relative">
       {showCheckInPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
@@ -6831,23 +6850,32 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Fixed Sidebar */}
       {!viewingCustomer && !hideSidebar && (
-        <Sidebar
-          user={currentUser}
-          activePage={activePage}
-          setActivePage={setActivePage}
-          isCollapsed={isSidebarCollapsed}
-          setIsCollapsed={setIsSidebarCollapsed}
-          onLogout={handleLogout}
-          permissions={{
-            ...(rolePermissions || {}),
-            onChangePassword: () => setIsChangePasswordModalOpen(true),
-          }}
-          menuOrder={menuOrder}
-        />
+        <div className="fixed left-0 top-0 h-screen z-10">
+          <Sidebar
+            user={currentUser}
+            activePage={activePage}
+            setActivePage={setActivePage}
+            isCollapsed={isSidebarCollapsed}
+            setIsCollapsed={setIsSidebarCollapsed}
+            onLogout={handleLogout}
+            permissions={{
+              ...(rolePermissions || {}),
+              onChangePassword: () => setIsChangePasswordModalOpen(true),
+            }}
+            menuOrder={menuOrder}
+          />
+        </div>
       )}
+      {/* Main Content with proper margin */}
       <div
-        className={`flex-1 flex flex-col overflow-hidden ${hideSidebar ? "w-full" : ""}`}
+        className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar
+          ? ""
+          : isSidebarCollapsed
+            ? "ml-20"
+            : "ml-64"
+          }`}
       >
         {!viewingCustomer && !hideSidebar && (
           <header className="flex items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
@@ -6891,8 +6919,10 @@ const App: React.FC = () => {
             </div>
           </header>
         )}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#F5F5F5] relative">
-          {renderPage()}
+        <main className="flex-1 overflow-x-auto overflow-y-auto bg-[#F5F5F5] relative">
+          <div className="max-w-full">
+            {renderPage()}
+          </div>
         </main>
       </div>
 
