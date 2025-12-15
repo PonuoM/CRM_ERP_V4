@@ -208,10 +208,22 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
     setRows(rows.filter((_, i) => i !== index).map((row, i) => ({ ...row, id: i + 1 })));
   };
 
+
   const trackingLookup = useMemo(() => {
     const map = new Map<string, { orderId: string; parentOrderId: string; boxNumber?: number; expectedAmount: number }>();
     // New: Store all sub-orders grouped by parent order
     const parentOrderSubOrders = new Map<string, Array<{ orderId: string; expectedAmount: number; trackingNumber: string }>>();
+
+    // Debug: Log first order to see structure
+    if (orders.length > 0) {
+      console.log('🔍 COD Debug - First order structure:', {
+        id: orders[0].id,
+        trackingNumbers: (orders[0] as any).trackingNumbers,
+        trackingDetails: (orders[0] as any).trackingDetails,
+        tracking_details: (orders[0] as any).tracking_details,
+        boxes: (orders[0] as any).boxes,
+      });
+    }
 
     orders.forEach((order) => {
       const details = (order as any).trackingDetails ?? (order as any).tracking_details ?? [];
@@ -292,7 +304,10 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         });
       });
 
-      if (details.length === 0 && Array.isArray(order.trackingNumbers)) {
+
+      // Also include tracking numbers from order_tracking_numbers table
+      // (not just when details.length === 0)
+      if (Array.isArray(order.trackingNumbers)) {
         order.trackingNumbers.forEach((tn) => {
           const normalized = normalizeTrackingNumber(String(tn));
           if (!normalized || map.has(normalized)) return;
@@ -332,14 +347,26 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         return;
       }
 
+
       const codAmountValue = parseAmount(row.codAmount);
-      if (!codAmountValue || codAmountValue <= 0) {
+      if (!Number.isFinite(codAmountValue) || codAmountValue < 0) {
         unmatchedRows.push({ row, index });
         return;
       }
 
+
+
       const normalized = normalizeTrackingNumber(trimmedTracking);
       const matched = normalized ? trackingLookup.map.get(normalized) : undefined;
+
+      // Debug: Log lookup attempt
+      console.log('🔍 COD Validate Debug:', {
+        input: trimmedTracking,
+        normalized,
+        matched,
+        mapSize: trackingLookup.map.size,
+        mapKeys: Array.from(trackingLookup.map.keys()).slice(0, 5), // Show first 5 keys
+      });
 
       if (matched && matched.parentOrderId) {
         if (!rowsByParentOrder.has(matched.parentOrderId)) {
@@ -368,7 +395,7 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
         validatedRows[index] = { ...row, status: 'unchecked' as ValidationStatus, message: '' };
       } else if (!trimmedTracking || !row.codAmount.trim()) {
         validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'กรอกข้อมูลไม่ครบ' };
-      } else if (!codAmountValue || codAmountValue <= 0) {
+      } else if (!Number.isFinite(codAmountValue) || codAmountValue < 0) {
         validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'จำนวนเงินไม่ถูกต้อง' };
       } else {
         validatedRows[index] = { ...row, trackingNumber: trimmedTracking, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบ Tracking' };

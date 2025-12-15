@@ -38,9 +38,10 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
     const fetchPeriods = async () => {
         try {
-            const res = await apiFetch(`Commission/get_periods.php?company_id=${currentUser.companyId || currentUser.company_id}`);
-            if (res.ok) {
-                setPeriods(res.data || []);
+            const res = await fetch(`api/Commission/get_periods.php?company_id=${currentUser.companyId || currentUser.company_id}`);
+            const data = await res.json();
+            if (data.ok) {
+                setPeriods(data.data || []);
             }
         } catch (error) {
             console.error('Failed to fetch periods', error);
@@ -54,8 +55,9 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
         setLoading(true);
         try {
-            const res = await apiFetch('Commission/calculate_commission.php', {
+            const res = await fetch('api/Commission/calculate_commission.php', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     company_id: currentUser.companyId || currentUser.company_id,
                     period_month: selectedMonth,
@@ -63,12 +65,13 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                     commission_rate: commissionRate
                 })
             });
+            const data = await res.json();
 
-            if (res.ok) {
-                alert(`คำนวณสำเร็จ!\nยอดขายรวม: ${formatCurrency(res.data.total_sales)}\nค่าคอมรวม: ${formatCurrency(res.data.total_commission)}\nจำนวนออเดอร์: ${res.data.total_orders} รายการ`);
+            if (data.ok) {
+                alert(`คำนวณสำเร็จ!\nยอดขายรวม: ${formatCurrency(data.data.total_sales)}\nค่าคอมรวม: ${formatCurrency(data.data.total_commission)}\nจำนวนออเดอร์: ${data.data.total_orders} รายการ`);
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
+                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
             alert('Error: ' + error.message);
@@ -83,19 +86,21 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
 
         try {
-            const res = await apiFetch('Commission/approve_period.php', {
+            const res = await fetch('api/Commission/approve_period.php', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     period_id: periodId,
                     approved_by: currentUser.id
                 })
             });
+            const data = await res.json();
 
-            if (res.ok) {
+            if (data.ok) {
                 alert('อนุมัติสำเร็จ!');
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
+                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
             alert('Error: ' + error.message);
@@ -108,18 +113,20 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
 
         try {
-            const res = await apiFetch('Commission/mark_paid.php', {
+            const res = await fetch('api/Commission/mark_paid.php', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     period_id: periodId
                 })
             });
+            const data = await res.json();
 
-            if (res.ok) {
+            if (data.ok) {
                 alert('บันทึกสำเร็จ!');
                 fetchPeriods();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown error'));
+                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
         } catch (error: any) {
             alert('Error: ' + error.message);

@@ -140,16 +140,16 @@ const formatDate = (value?: string | null) =>
 const formatTime = (value?: string | null) =>
   value
     ? new Date(value).toLocaleTimeString("th-TH", {
-        hour12: false,
-      })
+      hour12: false,
+    })
     : "-";
 
 const formatDocumentDateTime = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("th-TH", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
     : "-";
 
 const secondsDiff = (a: string, b?: string | null) => {
@@ -208,17 +208,17 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<
     | {
-        type: "success" | "error";
-        text: string;
-      }
+      type: "success" | "error";
+      text: string;
+    }
     | null
   >(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [codStatusMessage, setCodStatusMessage] = useState<
     | {
-        type: "success" | "error";
-        text: string;
-      }
+      type: "success" | "error";
+      text: string;
+    }
     | null
   >(null);
   const [codDocuments, setCodDocuments] = useState<CodDocument[]>([]);
@@ -274,9 +274,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             ? customerMap.get(order.customerId)
             : null;
         if (customer) {
-          customerName = `${customer.firstName || ""} ${
-            customer.lastName || ""
-          }`.trim();
+          customerName = `${customer.firstName || ""} ${customer.lastName || ""
+            }`.trim();
         } else if (order.customer_name) {
           customerName = order.customer_name;
         }
@@ -313,7 +312,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           : null,
       slip_bank_account_id:
         o.slip_bank_account_id !== undefined &&
-        o.slip_bank_account_id !== null
+          o.slip_bank_account_id !== null
           ? Number(o.slip_bank_account_id)
           : null,
       order_status: o.order_status ?? o.orderStatus,
@@ -329,16 +328,16 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
       recipient_last_name: o.recipient_last_name ?? o.recipientLastName,
       slips: Array.isArray(o.slips)
         ? o.slips.map((s: any) => ({
-            amount:
-              s.amount !== undefined && s.amount !== null
-                ? Number(s.amount)
-                : null,
-            transfer_date: s.transfer_date ?? null,
-            bank_account_id:
-              s.bank_account_id !== undefined && s.bank_account_id !== null
-                ? Number(s.bank_account_id)
-                : null,
-          }))
+          amount:
+            s.amount !== undefined && s.amount !== null
+              ? Number(s.amount)
+              : null,
+          transfer_date: s.transfer_date ?? null,
+          bank_account_id:
+            s.bank_account_id !== undefined && s.bank_account_id !== null
+              ? Number(s.bank_account_id)
+              : null,
+        }))
         : undefined,
     }));
   }, []);
@@ -373,8 +372,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             o.slip_total && o.slip_total > 0
               ? o.slip_total
               : o.amount_paid && o.amount_paid > 0
-              ? o.amount_paid
-              : o.total_amount;
+                ? o.amount_paid
+                : o.total_amount;
           const fallbackTransferDate =
             o.slip_transfer_date && o.slip_transfer_date !== "null"
               ? o.slip_transfer_date
@@ -401,8 +400,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             );
             const bankPenalty =
               statement.bank_account_id &&
-              basis.bankId &&
-              statement.bank_account_id !== basis.bankId
+                basis.bankId &&
+                statement.bank_account_id !== basis.bankId
                 ? 1
                 : 0;
             const alreadyUsed = used.has(o.id) ? 1 : 0;
@@ -466,8 +465,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             o.slip_total && o.slip_total > 0
               ? o.slip_total
               : o.amount_paid && o.amount_paid > 0
-              ? o.amount_paid
-              : o.total_amount;
+                ? o.amount_paid
+                : o.total_amount;
           const matchTransferDate =
             o.slip_transfer_date && o.slip_transfer_date !== "null"
               ? o.slip_transfer_date
@@ -514,8 +513,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             amountDiff <= 1 && timeDiff <= 300
               ? "exact"
               : amountDiff <= 50 || timeDiff <= 1200
-              ? "close"
-              : "suggestion";
+                ? "close"
+                : "suggestion";
           const score = amountDiff * 100 + Math.min(timeDiff, 3600);
           return {
             statement,
@@ -532,7 +531,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const fetchStatementsForDoc = useCallback(
     async (doc: CodDocument | null) => {
-      if (!doc || !doc.document_datetime) {        setStatementCandidates([]);
+      if (!doc || !doc.document_datetime) {
+        setStatementCandidates([]);
         setSelectedStatementCandidate(null);
         return;
       }
@@ -560,30 +560,30 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         }
         const statements: StatementLog[] = Array.isArray(data.statements)
           ? data.statements.map((s: any) => ({
-              id: Number(s.id),
-              transfer_at: s.transfer_at,
-              amount: Number(s.amount),
-              bank_account_id:
-                s.bank_account_id !== undefined && s.bank_account_id !== null
-                  ? Number(s.bank_account_id)
-                  : null,
-              bank_display_name: s.bank_display_name,
-              channel: s.channel,
-              description: s.description,
-            }))
+            id: Number(s.id),
+            transfer_at: s.transfer_at,
+            amount: Number(s.amount),
+            bank_account_id:
+              s.bank_account_id !== undefined && s.bank_account_id !== null
+                ? Number(s.bank_account_id)
+                : null,
+            bank_display_name: s.bank_display_name,
+            channel: s.channel,
+            description: s.description,
+          }))
           : [];
         const candidates = buildStatementCandidates(statements, doc);
         setStatementCandidates(candidates);
         const preselected = doc.matched_statement_log_id
           ? candidates.find(
-              (c) => c.statement.id === doc.matched_statement_log_id,
-            ) ?? candidates[0] ?? null
+            (c) => c.statement.id === doc.matched_statement_log_id,
+          ) ?? candidates[0] ?? null
           : candidates[0] ?? null;
         setSelectedStatementCandidate(preselected);
       } catch (err: any) {
         setCodDocError(
           err?.message || "เกิดข้อผิดพลาดระหว่างดึงรายการ statement",
-        );        setStatementCandidates([]);
+        ); setStatementCandidates([]);
         setSelectedStatementCandidate(null);
       }
     },
@@ -620,7 +620,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           status: doc.status ?? null,
           matched_statement_log_id:
             doc.matched_statement_log_id !== undefined &&
-            doc.matched_statement_log_id !== null
+              doc.matched_statement_log_id !== null
               ? Number(doc.matched_statement_log_id)
               : null,
           verified_at: doc.verified_at ?? null,
@@ -643,7 +643,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
       setSelectedStatementCandidate(null);
       if (!docId) {
         setSelectedCodDocument(null);
-        setCodDocumentOrders([]);        setStatementCandidates([]);
+        setCodDocumentOrders([]); setStatementCandidates([]);
         return;
       }
       setCodDocError(null);
@@ -667,7 +667,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           status: doc.status ?? null,
           matched_statement_log_id:
             doc.matched_statement_log_id !== undefined &&
-            doc.matched_statement_log_id !== null
+              doc.matched_statement_log_id !== null
               ? Number(doc.matched_statement_log_id)
               : null,
           verified_at: doc.verified_at ?? null,
@@ -680,21 +680,21 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         setSelectedCodDocument(normalized);
         const items: CodRecord[] = Array.isArray(doc.items)
           ? doc.items.map((item: any) => ({
-              id: Number(item.id),
-              document_id: Number(item.document_id),
-              tracking_number: item.tracking_number ?? "",
-              order_id: item.order_id ?? null,
-              cod_amount: Number(item.cod_amount ?? 0),
-              order_amount: Number(item.order_amount ?? 0),
-              status: item.status ?? "pending",
-            }))
+            id: Number(item.id),
+            document_id: Number(item.document_id),
+            tracking_number: item.tracking_number ?? "",
+            order_id: item.order_id ?? null,
+            cod_amount: Number(item.cod_amount ?? 0),
+            order_amount: Number(item.order_amount ?? 0),
+            status: item.status ?? "pending",
+          }))
           : [];
         setCodDocumentOrders(items);
         await fetchStatementsForDoc(normalized);
       } catch (err: any) {
         setCodDocError(err?.message || "ไม่สามารถดึงรายละเอียดเอกสาร COD ได้");
         setSelectedCodDocument(null);
-        setCodDocumentOrders([]);        setStatementCandidates([]);
+        setCodDocumentOrders([]); setStatementCandidates([]);
         setSelectedStatementCandidate(null);
       } finally {
         setCodDocLoading(false);
@@ -737,7 +737,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     if (activeTab !== "transfers") {
       setSelectedCodDocId("");
       setSelectedCodDocument(null);
-      setCodDocumentOrders([]);      setStatementCandidates([]);
+      setCodDocumentOrders([]); setStatementCandidates([]);
       setSelectedStatementCandidate(null);
       setCodStatusMessage(null);
     }
@@ -766,17 +766,17 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
       }
       const statements: StatementLog[] = Array.isArray(data.statements)
         ? data.statements.map((s: any) => ({
-            id: Number(s.id),
-            transfer_at: s.transfer_at,
-            amount: Number(s.amount),
-            bank_account_id:
-              s.bank_account_id !== undefined && s.bank_account_id !== null
-                ? Number(s.bank_account_id)
-                : null,
-            bank_display_name: s.bank_display_name,
-            channel: s.channel,
-            description: s.description,
-          }))
+          id: Number(s.id),
+          transfer_at: s.transfer_at,
+          amount: Number(s.amount),
+          bank_account_id:
+            s.bank_account_id !== undefined && s.bank_account_id !== null
+              ? Number(s.bank_account_id)
+              : null,
+          bank_display_name: s.bank_display_name,
+          channel: s.channel,
+          description: s.description,
+        }))
         : [];
       const normalizedOrders = normalizeOrders(data.orders || []);
       setAvailableOrders(normalizedOrders);
@@ -851,7 +851,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           }),
         },
       );
-      
+
       // Check if response is ok
       if (!res.ok) {
         const text = await res.text();
@@ -872,13 +872,13 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         }
         throw new Error(errorMsg);
       }
-      
+
       // Get response text first to check if it's valid JSON
       const text = await res.text();
       if (!text || text.trim() === "") {
         throw new Error("Empty response from server");
       }
-      
+
       let data;
       try {
         data = JSON.parse(text);
@@ -886,15 +886,15 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         console.error("Failed to parse JSON:", text);
         throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`);
       }
-      
+
       if (!data?.ok) {
         throw new Error(data?.error || "ไม่สามารถบันทึกการตรวจสอบ COD ได้");
       }
-      
+
       // Show success popup
       const successMessage = `บันทึกสำเร็จ!\n\nเอกสาร: ${selectedCodDocument.document_number}\nจับคู่กับ Statement #${selectedStatementCandidate.statement.id}\nเลขที่เอกสาร: ${data.document_no || "-"}`;
       alert(successMessage);
-      
+
       // Reload page to clear old data but stay on Finance Approval page
       const currentUrl = new URL(window.location.href);
       currentUrl.searchParams.set("page", "Finance Approval");
@@ -1214,11 +1214,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           </div>
           {statusMessage && (
             <div
-              className={`mt-3 px-3 py-2 rounded-md text-sm ${
-                statusMessage.type === "error"
+              className={`mt-3 px-3 py-2 rounded-md text-sm ${statusMessage.type === "error"
                   ? "bg-red-50 text-red-700 border border-red-200"
                   : "bg-green-50 text-green-700 border border-green-200"
-              }`}
+                }`}
             >
               {statusMessage.text}
             </div>
@@ -1266,7 +1265,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                     ) || fullOrdersMap.get(row.selectedOrderId);
                   const selectedMatchAmount = selectedOrder
                     ? selectedOrder.slip_total &&
-                        selectedOrder.slip_total > 0
+                      selectedOrder.slip_total > 0
                       ? selectedOrder.slip_total
                       : selectedOrder.total_amount
                     : null;
@@ -1355,9 +1354,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                                 c.order.slip_total && c.order.slip_total > 0
                                   ? c.order.slip_total
                                   : c.order.total_amount,
-                              )} | ${
-                                c.order.customer_name || "-"
-                              }`}</option>
+                              )} | ${c.order.customer_name || "-"
+                                }`}</option>
                             ))}
                           </datalist>
                           {row.autoMatched && (
@@ -1371,27 +1369,26 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                       <td className="px-4 py-3 text-right">
                         {selectedOrder
                           ? formatCurrency(
-                              selectedMatchAmount ?? selectedOrder.total_amount,
-                            )
+                            selectedMatchAmount ?? selectedOrder.total_amount,
+                          )
                           : "-"}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">
                         {selectedOrder
                           ? formatCurrency(
-                              (selectedOrder as ReconcileOrder)
-                                .reconciled_amount ??
-                                selectedOrder.amount_paid,
-                            )
+                            (selectedOrder as ReconcileOrder)
+                              .reconciled_amount ??
+                            selectedOrder.amount_paid,
+                          )
                           : "-"}
                       </td>
                       <td
-                        className={`px-4 py-3 text-right font-medium ${
-                          outstanding > 0
+                        className={`px-4 py-3 text-right font-medium ${outstanding > 0
                             ? "text-red-600"
                             : outstanding < 0
-                            ? "text-purple-600"
-                            : "text-green-600"
-                        }`}
+                              ? "text-purple-600"
+                              : "text-green-600"
+                          }`}
                       >
                         {selectedOrder
                           ? formatCurrency(outstanding)
@@ -1455,9 +1452,9 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
             </table>
           </div>
         </div>
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
   const renderCodTab = () => {
     const doc = selectedCodDocument;
@@ -1535,9 +1532,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                     <span className="text-xs font-light">ธนาคาร</span>
                     <span className="text-gray-900">
                       {doc.bank
-                        ? `${doc.bank} ${
-                            doc.bank_number ? `(${doc.bank_number})` : ""
-                          }`
+                        ? `${doc.bank} ${doc.bank_number ? `(${doc.bank_number})` : ""
+                        }`
                         : "-"}
                     </span>
                   </div>
@@ -1579,11 +1575,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               </div>
               {codStatusMessage && (
                 <div
-                  className={`rounded-md border px-3 py-2 text-xs mb-3 ${
-                    codStatusMessage.type === "success"
+                  className={`rounded-md border px-3 py-2 text-xs mb-3 ${codStatusMessage.type === "success"
                       ? "border-green-200 bg-green-50 text-green-700"
                       : "border-red-200 bg-red-50 text-red-700"
-                  }`}
+                    }`}
                 >
                   {codStatusMessage.text}
                 </div>
@@ -1614,11 +1609,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                   <div className="flex justify-between">
                     <span className="text-xs font-light">เงินต่าง</span>
                     <span
-                      className={`font-medium ${
-                        selectedStatementCandidate.amountDiff === 0
+                      className={`font-medium ${selectedStatementCandidate.amountDiff === 0
                           ? "text-green-600"
                           : "text-orange-600"
-                      }`}
+                        }`}
                     >
                       {formatCurrency(selectedStatementCandidate.amountDiff)}
                     </span>
@@ -1626,15 +1620,14 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                   <div className="flex justify-between">
                     <span className="text-xs font-light">ระดับความตรงกัน</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        levelBadges[selectedStatementCandidate.level]
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${levelBadges[selectedStatementCandidate.level]
+                        }`}
                     >
                       {selectedStatementCandidate.level === "exact"
                         ? "ตรงกัน"
                         : selectedStatementCandidate.level === "close"
-                        ? "ใกล้เคียง"
-                        : "แนะนำ"}
+                          ? "ใกล้เคียง"
+                          : "แนะนำ"}
                     </span>
                   </div>
                 </div>
@@ -1651,12 +1644,11 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                     {statementCandidates.map((candidate) => (
                       <div
                         key={candidate.statement.id}
-                        className={`rounded-lg border px-3 py-2 text-xs transition cursor-pointer ${
-                          selectedStatementCandidate?.statement.id ===
-                          candidate.statement.id
+                        className={`rounded-lg border px-3 py-2 text-xs transition cursor-pointer ${selectedStatementCandidate?.statement.id ===
+                            candidate.statement.id
                             ? "border-blue-500 bg-blue-50"
                             : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
-                        }`}
+                          }`}
                         onClick={() => {
                           setSelectedStatementCandidate(candidate);
                           setCodStatusMessage(null);
@@ -1673,8 +1665,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                             {candidate.level === "exact"
                               ? "ตรงกัน"
                               : candidate.level === "close"
-                              ? "ใกล้เคียง"
-                              : "แนะนำ"}
+                                ? "ใกล้เคียง"
+                                : "แนะนำ"}
                           </span>
                         </div>
                         <div className="text-gray-600 text-[11px]">
@@ -1741,13 +1733,12 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                       {formatCurrency(record.order_amount)}
                     </td>
                     <td
-                      className={`px-3 py-2 text-right font-medium ${
-                        record.cod_amount - record.order_amount > 0
+                      className={`px-3 py-2 text-right font-medium ${record.cod_amount - record.order_amount > 0
                           ? "text-red-600"
                           : record.cod_amount - record.order_amount < 0
-                          ? "text-purple-600"
-                          : "text-green-600"
-                      }`}
+                            ? "text-purple-600"
+                            : "text-green-600"
+                        }`}
                     >
                       {formatCurrency(record.cod_amount - record.order_amount)}
                     </td>
@@ -1808,418 +1799,421 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         </div>
       )}
       <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Finance Approval</h2>
-          <p className="text-gray-600">
-            ตรวจสอบและจับคู่รายการโอนจาก statement กับออเดอร์ พร้อมบันทึกเอกสารอ้างอิง
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {activeTab === "slips" ? (
-            <button
-              onClick={handleSaveReconcile}
-              disabled={
-                saving ||
-                statementRows.filter(
-                  (r) => r.checked && r.selectedOrderId,
-                ).length === 0
-              }
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  กำลังบันทึก...
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={16} className="mr-2" />
-                  บันทึกการตรวจสอบ
-                </>
-              )}
-            </button>
-          ) : null}
-          {activeTab === "transfers" && (
-            <button
-              onClick={handleConfirmCodMatch}
-              disabled={!selectedCodDocument || !selectedStatementCandidate}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <CheckCircle size={16} className="mr-2" />
-              บันทึกตรวจสอบ COD
-            </button>
-          )}
-          {activeTab === "payafter" && (
-            <button
-              onClick={handleApprovePayAfter}
-              disabled={selectedIds.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <CheckCircle size={16} className="mr-2" />
-              Approve PayAfter ({selectedIds.length})
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex border-b border-gray-200 mb-6">
-        <button
-          onClick={() => {
-            setActiveTab("slips");
-            setSelectedIds([]);
-          }}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === "slips"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <FileText size={16} />
-          <span>Approve สลิป</span>
-          <span
-            className={`px-2 py-0.5 rounded-full text-xs ${
-              activeTab === "slips"
-                ? "bg-blue-100 text-blue-600"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {statementRows.length}
-          </span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("transfers");
-            setSelectedIds([]);
-          }}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === "transfers"
-              ? "border-b-2 border-green-600 text-green-600"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <CheckCircle size={16} />
-          <span>Approve COD</span>
-          <span
-            className={`px-2 py-0.5 rounded-full text-xs ${
-              activeTab === "transfers"
-                ? "bg-green-100 text-green-600"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {
-              orders.filter(
-                (o) =>
-                  o.paymentMethod === PaymentMethod.Transfer &&
-                  o.paymentStatus === PaymentStatus.PreApproved,
-              ).length
-            }
-          </span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("payafter");
-            setSelectedIds([]);
-          }}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === "payafter"
-              ? "border-b-2 border-purple-600 text-purple-600"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <FileText size={16} />
-          <span>Approve PayAfter</span>
-          <span
-            className={`px-2 py-0.5 rounded-full text-xs ${
-              activeTab === "payafter"
-                ? "bg-purple-100 text-purple-600"
-                : "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {
-              orders.filter(
-                (o) =>
-                  o.paymentMethod === PaymentMethod.PayAfter &&
-                  (o.paymentStatus === PaymentStatus.PreApproved ||
-                    o.orderStatus === OrderStatus.Delivered),
-              ).length
-            }
-          </span>
-        </button>
-      </div>
-
-      {activeTab === "slips" ? (
-        renderSlipTab()
-      ) : activeTab === "transfers" ? (
-        renderCodTab()
-      ) : (
-        <>
-          <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="ค้นหาออเดอร์หรือชื่อลูกค้า..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <div className="w-48">
-                <select
-                  value={filterPaymentStatus}
-                  onChange={(e) =>
-                    setFilterPaymentStatus(
-                      e.target.value as PaymentStatus | "",
-                    )
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">สถานะการชำระเงินทั้งหมด</option>
-                  <option value={PaymentStatus.Verified}>Verified</option>
-                  <option value={PaymentStatus.PreApproved}>Pre Approved</option>
-                  <option value={PaymentStatus.Approved}>Approved</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700 whitespace-nowrap">
-                  แสดงต่อหน้า:
-                </label>
-                <select
-                  value={safeItemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size} รายการ
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Finance Approval</h2>
+            <p className="text-gray-600">
+              ตรวจสอบและจับคู่รายการโอนจาก statement กับออเดอร์ พร้อมบันทึกเอกสารอ้างอิง
+            </p>
           </div>
-
-          <div className="bg-white rounded-lg shadow">
-            <OrderTable
-              orders={paginatedOrders}
-              customers={customers}
-              openModal={openModal}
-              users={users}
-              selectable={true}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              allOrders={orders}
-            />
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                <div className="text-sm text-gray-700">
-                  แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    disabled={effectivePage === 1}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="text-sm text-gray-700">
-                    Page {effectivePage} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((prev) =>
-                        Math.min(totalPages, prev + 1),
-                      )
-                    }
-                    disabled={effectivePage === totalPages}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
+          <div className="flex items-center gap-2">
+            {activeTab === "slips" ? (
+              <button
+                onClick={handleSaveReconcile}
+                disabled={
+                  saving ||
+                  statementRows.filter(
+                    (r) => r.checked && r.selectedOrderId,
+                  ).length === 0
+                }
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} className="mr-2" />
+                    บันทึกการตรวจสอบ
+                  </>
+                )}
+              </button>
+            ) : null}
+            {activeTab === "transfers" && (
+              <button
+                onClick={handleConfirmCodMatch}
+                disabled={!selectedCodDocument || !selectedStatementCandidate || savingCod}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingCod ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} className="mr-2" />
+                    บันทึกตรวจสอบ COD
+                  </>
+                )}
+              </button>
+            )}
+            {activeTab === "payafter" && (
+              <button
+                onClick={handleApprovePayAfter}
+                disabled={selectedIds.length === 0}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCircle size={16} className="mr-2" />
+                Approve PayAfter ({selectedIds.length})
+              </button>
             )}
           </div>
-        </>
-      )}
+        </div>
 
-      {detailContext && detailOrder && (
-        <Modal
-          title={`Order details ${detailContext.orderId}`}
-          onClose={() => setDetailContext(null)}
-          size="xl"
-        >
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Seller</p>
-                <p className="font-medium text-gray-900">
-                  {detailSeller
-                    ? `${detailSeller.firstName} ${detailSeller.lastName}`
-                    : (detailOrder as any).seller_name || "-"}
-                </p>
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => {
+              setActiveTab("slips");
+              setSelectedIds([]);
+            }}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "slips"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            <FileText size={16} />
+            <span>Approve สลิป</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "slips"
+                  ? "bg-blue-100 text-blue-600"
+                  : "bg-gray-100 text-gray-600"
+                }`}
+            >
+              {statementRows.length}
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("transfers");
+              setSelectedIds([]);
+            }}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "transfers"
+                ? "border-b-2 border-green-600 text-green-600"
+                : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            <CheckCircle size={16} />
+            <span>Approve COD</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "transfers"
+                  ? "bg-green-100 text-green-600"
+                  : "bg-gray-100 text-gray-600"
+                }`}
+            >
+              {
+                orders.filter(
+                  (o) =>
+                    o.paymentMethod === PaymentMethod.Transfer &&
+                    o.paymentStatus === PaymentStatus.PreApproved,
+                ).length
+              }
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("payafter");
+              setSelectedIds([]);
+            }}
+            className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "payafter"
+                ? "border-b-2 border-purple-600 text-purple-600"
+                : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            <FileText size={16} />
+            <span>Approve PayAfter</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "payafter"
+                  ? "bg-purple-100 text-purple-600"
+                  : "bg-gray-100 text-gray-600"
+                }`}
+            >
+              {
+                orders.filter(
+                  (o) =>
+                    o.paymentMethod === PaymentMethod.PayAfter &&
+                    (o.paymentStatus === PaymentStatus.PreApproved ||
+                      o.orderStatus === OrderStatus.Delivered),
+                ).length
+              }
+            </span>
+          </button>
+        </div>
+
+        {activeTab === "slips" ? (
+          renderSlipTab()
+        ) : activeTab === "transfers" ? (
+          renderCodTab()
+        ) : (
+          <>
+            <div className="bg-white p-4 rounded-lg shadow-sm border mb-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input
+                      type="text"
+                      placeholder="ค้นหาออเดอร์หรือชื่อลูกค้า..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="w-48">
+                  <select
+                    value={filterPaymentStatus}
+                    onChange={(e) =>
+                      setFilterPaymentStatus(
+                        e.target.value as PaymentStatus | "",
+                      )
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">สถานะการชำระเงินทั้งหมด</option>
+                    <option value={PaymentStatus.Verified}>Verified</option>
+                    <option value={PaymentStatus.PreApproved}>Pre Approved</option>
+                    <option value={PaymentStatus.Approved}>Approved</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700 whitespace-nowrap">
+                    แสดงต่อหน้า:
+                  </label>
+                  <select
+                    value={safeItemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size} รายการ
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Sale date</p>
-                <p className="font-medium text-gray-900">
-                  {formatDate(
-                    (detailOrder as any).orderDate ||
+            </div>
+
+            <div className="bg-white rounded-lg shadow">
+              <OrderTable
+                orders={paginatedOrders}
+                customers={customers}
+                openModal={openModal}
+                users={users}
+                selectable={true}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                allOrders={orders}
+              />
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                  <div className="text-sm text-gray-700">
+                    แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={effectivePage === 1}
+                      className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-sm text-gray-700">
+                      Page {effectivePage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setCurrentPage((prev) =>
+                          Math.min(totalPages, prev + 1),
+                        )
+                      }
+                      disabled={effectivePage === totalPages}
+                      className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {detailContext && detailOrder && (
+          <Modal
+            title={`Order details ${detailContext.orderId}`}
+            onClose={() => setDetailContext(null)}
+            size="xl"
+          >
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Seller</p>
+                  <p className="font-medium text-gray-900">
+                    {detailSeller
+                      ? `${detailSeller.firstName} ${detailSeller.lastName}`
+                      : (detailOrder as any).seller_name || "-"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Sale date</p>
+                  <p className="font-medium text-gray-900">
+                    {formatDate(
+                      (detailOrder as any).orderDate ||
                       (detailOrder as any).order_date,
-                  )}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Delivery date</p>
-                <p className="font-medium text-gray-900">
-                  {formatDate(
-                    (detailOrder as any).deliveryDate ||
-                      (detailOrder as any).delivery_date,
-                  )}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Tracking No</p>
-                <p className="font-medium text-gray-900">
-                  {(detailOrder as Order).trackingNumbers
-                    ? (detailOrder as Order).trackingNumbers.join(", ")
-                    : "-"}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Customer type</p>
-                <p className="font-medium text-gray-900">
-                  {detailCustomer?.lifecycleStatus || "-"}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Channel</p>
-                <p className="font-medium text-gray-900">
-                  {(detailOrder as any).salesChannel ||
-                    (detailOrder as any).sales_channel ||
-                    "-"}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Customer name</p>
-                <p className="font-medium text-gray-900">
-                  {detailCustomer
-                    ? `${detailCustomer.firstName} ${detailCustomer.lastName}`
-                    : (detailOrder as any).customer_name || "-"}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Phone</p>
-                <p className="font-medium text-gray-900">
-                  {detailCustomer?.phone ||
-                    (detailOrder as any).customer_phone ||
-                    "-"}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-3 rounded-md">
-              <p className="text-gray-500 text-xs mb-1">Notes</p>
-              <p className="text-gray-900">
-                {(detailOrder as any).notes || "-"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-gray-700 font-medium mb-2">Items</p>
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-100 text-gray-600">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Item</th>
-                      <th className="px-3 py-2 text-center">Qty</th>
-                      <th className="px-3 py-2 text-right">Net</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(detailOrder as Order).items?.map((item, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="px-3 py-2">{item.productName}</td>
-                        <td className="px-3 py-2 text-center">
-                          {item.quantity}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {formatCurrency(
-                            item.pricePerUnit * item.quantity -
-                              (item.discount || 0),
-                          )}
-                        </td>
-                      </tr>
-                    )) || (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="px-3 py-2 text-center text-gray-500"
-                        >
-                          No items found
-                        </td>
-                      </tr>
                     )}
-                  </tbody>
-                </table>
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Delivery date</p>
+                  <p className="font-medium text-gray-900">
+                    {formatDate(
+                      (detailOrder as any).deliveryDate ||
+                      (detailOrder as any).delivery_date,
+                    )}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Tracking No</p>
+                  <p className="font-medium text-gray-900">
+                    {(detailOrder as Order).trackingNumbers
+                      ? (detailOrder as Order).trackingNumbers.join(", ")
+                      : "-"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Customer type</p>
+                  <p className="font-medium text-gray-900">
+                    {detailCustomer?.lifecycleStatus || "-"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Channel</p>
+                  <p className="font-medium text-gray-900">
+                    {(detailOrder as any).salesChannel ||
+                      (detailOrder as any).sales_channel ||
+                      "-"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Customer name</p>
+                  <p className="font-medium text-gray-900">
+                    {detailCustomer
+                      ? `${detailCustomer.firstName} ${detailCustomer.lastName}`
+                      : (detailOrder as any).customer_name || "-"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Phone</p>
+                  <p className="font-medium text-gray-900">
+                    {detailCustomer?.phone ||
+                      (detailOrder as any).customer_phone ||
+                      "-"}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Amount received</p>
-                <p className="font-medium text-gray-900">
-                  {formatCurrency(
-                    detailStatement?.confirmedAmount ||
+                <p className="text-gray-500 text-xs mb-1">Notes</p>
+                <p className="text-gray-900">
+                  {(detailOrder as any).notes || "-"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-gray-700 font-medium mb-2">Items</p>
+                <div className="border rounded-md overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-100 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Item</th>
+                        <th className="px-3 py-2 text-center">Qty</th>
+                        <th className="px-3 py-2 text-right">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(detailOrder as Order).items?.map((item, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-3 py-2">{item.productName}</td>
+                          <td className="px-3 py-2 text-center">
+                            {item.quantity}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatCurrency(
+                              item.pricePerUnit * item.quantity -
+                              (item.discount || 0),
+                            )}
+                          </td>
+                        </tr>
+                      )) || (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-3 py-2 text-center text-gray-500"
+                            >
+                              No items found
+                            </td>
+                          </tr>
+                        )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Amount received</p>
+                  <p className="font-medium text-gray-900">
+                    {formatCurrency(
+                      detailStatement?.confirmedAmount ||
                       (detailOrder as any).amount_paid ||
                       0,
+                    )}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs">Proof of transfer</p>
+                  {(detailOrder as Order).slips &&
+                    (detailOrder as Order).slips!.length > 0 ? (
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {(detailOrder as Order).slips!.map((slip) => (
+                        <a
+                          key={slip.id}
+                          href={slip.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 underline text-xs"
+                        >
+                          Slip #{slip.id}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (detailOrder as any).slipUrl ? (
+                    <a
+                      href={(detailOrder as any).slipUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 underline text-xs"
+                    >
+                      Open slip
+                    </a>
+                  ) : (
+                    <p className="text-gray-700">-</p>
                   )}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs">Proof of transfer</p>
-                {(detailOrder as Order).slips &&
-                (detailOrder as Order).slips!.length > 0 ? (
-                  <div className="flex gap-2 flex-wrap mt-2">
-                    {(detailOrder as Order).slips!.map((slip) => (
-                      <a
-                        key={slip.id}
-                        href={slip.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 underline text-xs"
-                      >
-                        Slip #{slip.id}
-                      </a>
-                    ))}
-                  </div>
-                ) : (detailOrder as any).slipUrl ? (
-                  <a
-                    href={(detailOrder as any).slipUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 underline text-xs"
-                  >
-                    Open slip
-                  </a>
-                ) : (
-                  <p className="text-gray-700">-</p>
-                )}
+                </div>
               </div>
             </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  </>
+          </Modal>
+        )}
+      </div>
+    </>
   );
 };
 
