@@ -237,35 +237,25 @@ const formatISODate = (date: Date) => date.toISOString().slice(0, 10);
 
 const computeOrderTotal = (order: Order) => {
 
+  // Filter out freebie items before calculating total
+  const nonFreebieItems = (order.items || []).filter((item: any) => {
+    const isFreebie = item.isFreebie || item.is_freebie;
+    return !isFreebie;
+  });
 
-
-  const itemsTotal = (order.items || []).reduce((sum, item) => {
-
-
+  const itemsTotal = nonFreebieItems.reduce((sum, item) => {
 
     const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
 
-
-
     return sum + (Number.isFinite(net) ? net : 0);
-
-
 
   }, 0);
 
-
-
   const shipping = Number(order.shippingCost || 0);
-
-
 
   const billDiscount = Number(order.billDiscount || 0);
 
-
-
   return Math.max(0, itemsTotal - billDiscount + shipping);
-
-
 
 };
 
@@ -3356,35 +3346,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   const calculatedTotals = useMemo(() => {
 
+    // Filter out freebie items before calculating totals
+    const nonFreebieItems = currentOrder.items.filter((item: any) => {
+      const isFreebie = item.isFreebie || item.is_freebie;
+      return !isFreebie;
+    });
 
-
-    const itemsSubtotal = currentOrder.items.reduce((sum, item) => {
-
-
+    const itemsSubtotal = nonFreebieItems.reduce((sum, item) => {
 
       const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
 
-
-
       return sum + itemTotal;
-
-
 
     }, 0);
 
-
-
-    const itemsDiscount = currentOrder.items.reduce((sum, item) => sum + item.discount, 0);
-
-
+    const itemsDiscount = nonFreebieItems.reduce((sum, item) => sum + item.discount, 0);
 
     const shippingCost = currentOrder.shippingCost || 0;
 
-
-
     const billDiscount = currentOrder.billDiscount || 0;
-
-
 
     const totalAmount = itemsSubtotal - billDiscount + shippingCost;
 
@@ -4633,7 +4613,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  const itemTotal = (item.pricePerUnit * item.quantity) - item.discount;
+                  const isFreebie = (item as any).isFreebie || (item as any).is_freebie;
+                  const itemTotal = isFreebie ? 0 : ((item.pricePerUnit * item.quantity) - item.discount);
 
 
 
@@ -4778,7 +4759,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                        ) : `฿${Number(item.pricePerUnit ?? 0).toLocaleString()} `}
+                        ) : `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `}
 
 
 
@@ -4826,7 +4807,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{itemTotal.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
+                        {isFreebie ? (
+                          <span className="inline-flex items-center">
+                            ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
+                          </span>
+                        ) : (
+                          `฿${itemTotal.toLocaleString()}`
+                        )}
+                      </td>
 
 
 
@@ -6498,11 +6487,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
 
-
-
-                        ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0).toLocaleString()}
-
-
+                        ฿{calculatedTotals.totalAmount.toLocaleString()}
 
                       </td>
 
@@ -6510,11 +6495,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
 
+                        ฿{(() => {
+                          const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
 
-
-                        ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0).toLocaleString()}
-
-
+                          if (hasAnyCollected) {
+                            // If any box has collectedAmount, sum them up
+                            return currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
+                          } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                            // If no collectedAmount but amountPaid exists, use amountPaid
+                            return currentOrder.amountPaid ?? 0;
+                          }
+                          return 0;
+                        })().toLocaleString()}
 
                       </td>
 
@@ -6534,31 +6526,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
 
+                        ฿{(() => {
+                          const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
+                          let totalCollected = 0;
 
+                          if (hasAnyCollected) {
+                            totalCollected = currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
+                          } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                            totalCollected = currentOrder.amountPaid ?? 0;
+                          }
 
-                        ฿{currentOrder.boxes.reduce((sum, b) => {
-
-
-
-                          const collection = b.collectionAmount ?? b.codAmount ?? 0;
-
-
-
-                          const paid = b.collectedAmount ?? 0;
-
-
-
-                          const waived = b.waivedAmount ?? 0;
-
-
-
-                          return sum + Math.max(0, collection - paid - waived);
-
-
-
-                        }, 0).toLocaleString()}
-
-
+                          const totalWaived = currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0);
+                          return Math.max(0, calculatedTotals.totalAmount - totalCollected - totalWaived);
+                        })().toLocaleString()}
 
                       </td>
 

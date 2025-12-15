@@ -230,41 +230,41 @@ const OrderTable: React.FC<OrderTableProps> = ({
     if (!order.creatorId || !order.customerId) {
       return [];
     }
-    
+
     // Use allOrders if provided, otherwise fallback to orders prop
     const searchOrders = allOrders || orders;
-    
+
     const orderDate = new Date(order.orderDate);
     const orderCreatorId = typeof order.creatorId === 'number' ? order.creatorId : Number(order.creatorId);
     const orderAmountPaid = order.amountPaid || 0;
     const mainOrderTotal = order.totalAmount || 0;
-    
+
     // Find orders for the same customer with different creator_id within 12 hours
     const candidates = searchOrders.filter((o) => {
       if (o.id === order.id) return false; // Exclude self
       if (String(o.customerId) !== String(order.customerId)) return false; // Must be same customer
-      
+
       const oCreatorId = typeof o.creatorId === 'number' ? o.creatorId : Number(o.creatorId);
       if (oCreatorId === orderCreatorId) return false; // Must have different creator
-      
+
       const oDate = new Date(o.orderDate);
       const timeDiff = Math.abs(orderDate.getTime() - oDate.getTime());
       const hoursDiff = timeDiff / (1000 * 60 * 60);
-      
+
       // Within 24 hours window
       return hoursDiff <= 24;
     });
-    
+
     // If no candidates, return empty
     if (candidates.length === 0) {
       return [];
     }
-    
+
     // If main order has amount_paid, try to find the best matching combination
     if (orderAmountPaid > 0 && candidates.length > 0) {
       // Try to find a combination that makes sense with the amount_paid
       // Priority: find candidates whose total + main order total is close to amount_paid
-      
+
       // Sort candidates by time proximity (closer = better)
       const sortedCandidates = [...candidates].sort((a, b) => {
         const aDate = new Date(a.orderDate);
@@ -273,43 +273,43 @@ const OrderTable: React.FC<OrderTableProps> = ({
         const bDiff = Math.abs(orderDate.getTime() - bDate.getTime());
         return aDiff - bDiff;
       });
-      
+
       // Find the best matching candidate(s) based on amount_paid
       // Try to find combination that makes combined total close to amount_paid
-      
+
       let bestMatch: Order[] = [];
       let bestDiff = Infinity;
-      
+
       // Try single candidates
       for (const candidate of sortedCandidates) {
         const candidateTotal = candidate.totalAmount || 0;
         const combinedTotal = mainOrderTotal + candidateTotal;
         const diff = Math.abs(combinedTotal - orderAmountPaid);
-        
+
         // If this is a better match, use it
         if (diff < bestDiff) {
           bestDiff = diff;
           bestMatch = [candidate];
         }
       }
-      
+
       // If amount_paid is significantly larger than main order total,
       // it's likely that there's an upsell order involved
       // Use the best match we found (even if not perfect)
       if (orderAmountPaid > mainOrderTotal * 1.5 && bestMatch.length > 0) {
         return bestMatch;
       }
-      
+
       // If we found a reasonable match (within 500 tolerance), use it
       if (bestDiff <= 500) {
         return bestMatch;
       }
-      
+
       // If no good match found, don't include any upsell orders
       // This means the amount_paid doesn't match any combination
       return [];
     }
-    
+
     // If no amount_paid, return the closest candidate
     const sortedCandidates = [...candidates].sort((a, b) => {
       const aDate = new Date(a.orderDate);
@@ -318,13 +318,19 @@ const OrderTable: React.FC<OrderTableProps> = ({
       const bDiff = Math.abs(orderDate.getTime() - bDate.getTime());
       return aDiff - bDiff;
     });
-    
+
     return [sortedCandidates[0]];
   };
 
   // Compute order total from items (more accurate than order.totalAmount)
   const computeOrderTotal = (order: Order): number => {
-    const itemsTotal = (order.items || []).reduce((sum, item) => {
+    // Filter out freebie items before calculating total
+    const nonFreebieItems = (order.items || []).filter((item: any) => {
+      const isFreebie = item.isFreebie || item.is_freebie;
+      return !isFreebie;
+    });
+
+    const itemsTotal = nonFreebieItems.reduce((sum, item) => {
       const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
       return sum + (Number.isFinite(net) ? net : 0);
     }, 0);
@@ -340,13 +346,13 @@ const OrderTable: React.FC<OrderTableProps> = ({
     // First compute the actual total from items
     const actualTotal = computeOrderTotal(order);
     const orderAmountPaid = order.amountPaid || 0;
-    
+
     // If actualTotal already matches amount_paid (within small tolerance),
     // it means all items are in this order, no need to add upsell orders
     if (orderAmountPaid > 0 && Math.abs(actualTotal - orderAmountPaid) < 10) {
       return actualTotal;
     }
-    
+
     // Only look for upsell orders if actualTotal doesn't match amount_paid
     // This means there might be related orders that share the payment
     const relatedOrders = findRelatedUpsellOrders(order);
@@ -361,7 +367,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
       const oComputed = Math.max(0, oItemsTotal - oBillDiscount + oShipping);
       return sum + ((o.items && o.items.length > 0) ? oComputed : (o.totalAmount || 0));
     }, 0);
-    
+
     return actualTotal + relatedTotal;
   };
 
