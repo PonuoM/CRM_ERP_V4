@@ -102,7 +102,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Manage Orders": "จัดการคำสั่งซื้อ",
     Debt: "การติดตามหนี้",
     Reports: "รายงาน",
-    "Bulk Tracking": "การติดตามล็อตใหญ่",
+    "Tracking & Transport": "จัดการขนส่ง",
+    "Bulk Tracking": "จัดการ Tracking",
     "Export History": "ประวัติการส่งออก",
     "Import Export": "นำเข้า/ส่งออก",
     Share: "แชร์",
@@ -136,15 +137,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
+    "Revenue Recognition": "ปิดบัญชีลูกหนี้",
     "Calculate Commission": "คำนวณค่าคอมมิชชัน",
     "System": "ระบบ",
-    "Tracking & Transport": "การติดตามและจัดการขนส่ง",
     "Change Password": "เปลี่ยนรหัสผ่าน",
     "Marketing Dashboard": "แดชบอร์ด (มาร์เก็ตติ้ง)",
     "Ads Input": "กรอกค่า Ads",
     "Ads History": "ประวัติการกรอก Ads",
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
-    "Google Sheet Import": "นำเข้าจาก Google Sheet",
+    "Google Sheet Import": "อัพสถานะ Aiport",
   };
 
   const t = (s: string): string => TH[s] ?? s;
@@ -242,6 +243,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: FileText,
       children: [
         { label: "Bank Account Audit", icon: FileText, key: "accounting.audit.bank" },
+        { label: "Revenue Recognition", icon: CheckCircle, key: "revenue_recognition" },
         { label: "All Orders (Sent/Billed)", icon: FileText, key: "accounting.audit.all_orders_sent" },
       ]
     },

@@ -134,6 +134,7 @@ import CallsDashboard from "./pages/CallsDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
+import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -6483,6 +6484,11 @@ const App: React.FC = () => {
       case "ตรวจสอบบัญชีธนาคาร":
       case "accounting.audit.bank":
         return <BankAccountAuditPage currentUser={currentUser} />;
+
+      case "Revenue Recognition":
+      case "รับรู้รายได้":
+      case "revenue_recognition":
+        return <RevenueRecognitionPage />;
 
       case "Slip Upload":
       case "Upload":

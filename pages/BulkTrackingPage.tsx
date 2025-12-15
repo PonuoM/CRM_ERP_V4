@@ -518,7 +518,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">นำเข้า Tracking Number</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-2">จัดการ Tracking</h2>
       <p className="text-gray-600 mb-6">คัดลอกข้อมูลจากไฟล์ Excel/CSV (2 คอลัมน์: Order ID, Tracking) แล้ววางลงในตารางด้านล่าง</p>
 
       <div className="bg-white p-4 rounded-lg shadow mb-4">

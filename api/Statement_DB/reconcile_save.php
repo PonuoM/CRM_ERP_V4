@@ -9,7 +9,14 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
   exit();
 }
 
-require_once "../config.php";
+require_once dirname(__DIR__) . "/config.php";
+
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && $error['type'] === E_ERROR) {
+        file_put_contents(__DIR__ . "/debug_reconcile.txt", "FATAL ERROR: " . print_r($error, true) . "\n", FILE_APPEND);
+    }
+});
 
 if (!defined("RECONCILE_CHARSET")) {
   define("RECONCILE_CHARSET", "utf8mb4");
@@ -129,6 +136,9 @@ $endDateRaw = $payload["end_date"] ?? null;
 $items = isset($payload["items"]) && is_array($payload["items"]) ? $payload["items"] : [];
 $pdo = null;
 
+file_put_contents(__DIR__ . "/debug_reconcile.txt", "Start " . date("Y-m-d H:i:s") . "\n", FILE_APPEND);
+file_put_contents(__DIR__ . "/debug_reconcile.txt", "Payload: " . print_r($payload, true) . "\n", FILE_APPEND);
+
 if ($companyId <= 0 || $userId <= 0 || $bankAccountId <= 0 || !$startDateRaw || !$endDateRaw) {
   echo json_encode(
     [
@@ -238,9 +248,26 @@ try {
   $saved = 0;
   $batchRunningTotals = [];
   $existingReconCache = [];
+  
+  // Prepare statement fetch query
+  $stmtFetchSql = $pdo->prepare("SELECT amount FROM statement_logs WHERE id = :id");
+
   foreach ($items as $item) {
     $statementId = isset($item["statement_id"]) ? (int) $item["statement_id"] : 0;
     $reconcileType = isset($item["reconcile_type"]) ? $item["reconcile_type"] : "Order";
+    $confirmedAmount = isset($item["confirmed_amount"]) ? (float) $item["confirmed_amount"] : null;
+    $autoMatched = isset($item["auto_matched"]) ? (int) $item["auto_matched"] : 0;
+
+    // Fetch statement details
+    $stmtFetchSql->execute([':id' => $statementId]);
+    $stmtInfo = $stmtFetchSql->fetch(PDO::FETCH_ASSOC);
+    if (!$stmtInfo) {
+        file_put_contents(__DIR__ . "/debug_reconcile.txt", "Error: Statement not found $statementId\n", FILE_APPEND);
+        throw new RuntimeException("Statement log not found for ID: " . $statementId);
+    }
+    $statementAmount = (float) $stmtInfo['amount'];
+    file_put_contents(__DIR__ . "/debug_reconcile.txt", "Process Item: StmtId=$statementId, Type=$reconcileType, Amount=$statementAmount\n", FILE_APPEND);
+
     if ($reconcileType === "Suspense") {
       // For Suspense, orderId can be empty/null
       $orderId = null; 
@@ -268,7 +295,8 @@ try {
       }
     }
 
-    $statementAmount = (float) $stmtInfo["amount"];
+    // $statementAmount already set above
+    // $statementAmount = (float) $stmtInfo["amount"];
     if ($confirmedAmount === null) {
       $confirmedAmount = $statementAmount;
     }
@@ -398,6 +426,7 @@ try {
   if ($pdo && $pdo->inTransaction()) {
     $pdo->rollBack();
   }
+  file_put_contents(__DIR__ . "/debug_reconcile.txt", "PDOException: " . $e->getMessage() . "\n", FILE_APPEND);
   // Log the full error for debugging
   error_log("reconcile_save.php PDOException: " . $e->getMessage());
   error_log("SQL State: " . $e->getCode());
@@ -421,6 +450,7 @@ try {
   if ($pdo && $pdo->inTransaction()) {
     $pdo->rollBack();
   }
+  file_put_contents(__DIR__ . "/debug_reconcile.txt", "Exception: " . $e->getMessage() . "\n", FILE_APPEND);
   // Log the full error for debugging
   error_log("reconcile_save.php Exception: " . $e->getMessage());
   error_log("Trace: " . $e->getTraceAsString());

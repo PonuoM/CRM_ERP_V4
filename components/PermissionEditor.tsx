@@ -28,12 +28,12 @@ const PERMISSION_GROUPS_DEF = {
         ]
     },
     'Tracking & Transport': {
-        label: 'การติดตามและจัดการขนส่ง (Tracking & Transport)',
+        label: 'จัดการขนส่ง (Tracking & Transport)',
         items: [
             { key: 'nav.debt', label: 'เมนู Debt (ติดตามหนี้)' },
-            { key: 'nav.bulk_tracking', label: 'เมนู Bulk Tracking (อัปเดต Tracking ล็อตใหญ่)' },
+            { key: 'nav.bulk_tracking', label: 'เมนู Bulk Tracking (จัดการ Tracking)' },
             { key: 'nav.cod_management', label: 'เมนู COD Management (จัดการยอด COD)' },
-            { key: 'nav.google_sheet_import', label: 'เมนู Google Sheet Import (นำเข้าจาก Google Sheet)' },
+            { key: 'nav.google_sheet_import', label: 'เมนู Google Sheet Import (อัพสถานะ Aiport)' },
         ]
     },
     'Call Management': {
@@ -99,6 +99,7 @@ const PERMISSION_GROUPS_DEF = {
         label: 'ตรวจสอบจากบัญชี (Accounting Audit)',
         items: [
             { key: 'accounting.audit.bank', label: 'Bank Account Audit (ตรวจสอบบัญชีธนาคาร)' },
+            { key: 'revenue_recognition', label: 'Revenue Recognition (ปิดบัญชีลูกหนี้)' },
             { key: 'accounting.audit.all_orders_sent', label: 'All Orders Sent (รายการส่งของ/บิล)' },
         ]
     },

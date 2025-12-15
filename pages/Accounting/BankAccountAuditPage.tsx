@@ -32,7 +32,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const [startDate, setStartDate] = useState<string>(() => {
         const today = new Date();
         const firstOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        return firstOfCurrentMonth.toISOString().split('T')[0];
+        // Adjust for timezone offset to ensure we get the correct local date part
+        const offset = today.getTimezoneOffset();
+        const adjustedDate = new Date(firstOfCurrentMonth.getTime() - (offset * 60 * 1000));
+        return adjustedDate.toISOString().split('T')[0];
     });
     const [endDate, setEndDate] = useState<string>(
         new Date().toISOString().split('T')[0]
@@ -125,7 +128,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     };
 
     const handleMarkAsSuspense = async (log: AuditLog) => {
-        if (!window.confirm('ยืนยันตั้งรายการนี้เป็น ยอดพัก (Suspense/Held Funds)?')) {
+        if (!window.confirm('ยืนยันตั้งรายการนี้เป็น พักรับ (Suspense/Held Funds)?')) {
             return;
         }
 
@@ -150,6 +153,31 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 fetchAuditLogs();
             } else {
                 alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    const handleUnpause = async (log: AuditLog) => {
+        if (!log.reconcile_id) return;
+        if (!window.confirm('ยืนยันยกเลิกการพักรับ? รายการจะกลับไปสถานะ Unmatched')) {
+            return;
+        }
+
+        try {
+            const res = await apiFetch('Statement_DB/reconcile_cancel.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: log.reconcile_id,
+                    company_id: currentUser.company_id || (currentUser as any).companyId
+                })
+            });
+
+            if (res.ok) {
+                fetchAuditLogs();
+            } else {
+                alert('ยกเลิกไม่สำเร็จ: ' + (res.error || 'Server error'));
             }
         } catch (e: any) {
             alert('Error: ' + e.message);
@@ -349,7 +377,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                 {/* Order Info */}
                                                 <td className="px-4 py-3 whitespace-nowrap">
                                                     {log.status === 'Suspense' ? (
-                                                        <span className="text-orange-500 italic font-medium">ยอดพัก (Suspense)</span>
+                                                        <span className="text-orange-500 italic font-medium">พักรับ (Suspense)</span>
                                                     ) : log.order_id ? (
                                                         <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!)}>
                                                             {log.order_display || log.order_id}
@@ -367,25 +395,34 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
                                                 {/* Status */}
                                                 <td className="px-4 py-3 text-center">
-                                                    <span className={getStatusColor(log.status)}>
-                                                        {log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
-                                                            log.status === 'Exact' ? 'พอดี' :
-                                                                log.status === 'Over' ? `เกิน (+${log.diff.toLocaleString()})` :
-                                                                    log.status === 'Short' ? `ขาด (${log.diff.toLocaleString()})` :
-                                                                        log.status === 'Suspense' ? 'พักยอด' :
-                                                                            'รอจับคู่'}
-                                                    </span>
-                                                    {log.status === 'Unmatched' && (
-                                                        <div className="mt-1">
+                                                    <div className="flex flex-row gap-2 justify-center items-center">
+                                                        <span className={`${getStatusColor(log.status)} shadow-sm`}>
+                                                            {log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
+                                                                log.status === 'Exact' ? 'พอดี' :
+                                                                    log.status === 'Over' ? `เกิน (+${log.diff.toLocaleString()})` :
+                                                                        log.status === 'Short' ? `ขาด (${log.diff.toLocaleString()})` :
+                                                                            log.status === 'Suspense' ? 'พักรับ' :
+                                                                                'รอจับคู่'}
+                                                        </span>
+                                                        {log.status === 'Unmatched' && (
                                                             <button
                                                                 onClick={() => handleMarkAsSuspense(log)}
-                                                                className="text-[10px] text-orange-600 hover:text-orange-800 underline bg-orange-50 px-2 py-0.5 rounded border border-orange-200"
+                                                                className="text-xs text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-3 py-1 rounded-full transition-all shadow-sm font-medium"
                                                                 title="Mark as Suspense"
                                                             >
-                                                                พักยอด
+                                                                พักรับ
                                                             </button>
-                                                        </div>
-                                                    )}
+                                                        )}
+                                                        {log.status === 'Suspense' && (
+                                                            <button
+                                                                onClick={() => handleUnpause(log)}
+                                                                className="text-xs text-red-600 hover:text-white hover:bg-red-500 bg-white border border-red-200 px-3 py-1 rounded-full transition-all shadow-sm font-medium"
+                                                                title="Unpause"
+                                                            >
+                                                                ยกเลิกพักรับ
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
 
                                                 <td className="px-4 py-3 text-center">

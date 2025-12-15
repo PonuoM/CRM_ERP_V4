@@ -180,7 +180,7 @@ const GoogleSheetImportPage: React.FC<GoogleSheetImportPageProps> = ({ apiBaseUr
                             <FileSpreadsheet className="w-6 h-6 text-green-600" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-gray-800">นำเข้าข้อมูลจาก Google Sheet</h2>
+                            <h2 className="text-xl font-bold text-gray-800">อัพสถานะ Aiport (From Google Sheet)</h2>
                             <p className="text-sm text-gray-500">ดึงข้อมูลการจัดส่งจาก Google Sheet และบันทึกลงฐานข้อมูล</p>
                         </div>
                     </div>

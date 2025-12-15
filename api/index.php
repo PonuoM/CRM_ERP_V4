@@ -131,6 +131,10 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
         require_once __DIR__ . '/Orders/update_order_status.php';
         handle_update_order_status($pdo);
         break;
+    case 'accounting_revenue_recognition':
+        require_once __DIR__ . '/Accounting/get_revenue_recognition.php';
+        handle_revenue_recognition($pdo);
+        break;
     case 'upsell':
         handle_upsell($pdo, $id, $action);
         break;
