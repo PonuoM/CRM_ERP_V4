@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User } from '../../types';
-import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText } from 'lucide-react';
+import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText, X } from 'lucide-react';
 
 interface Period {
     id: number;
@@ -31,6 +31,8 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [commissionRate, setCommissionRate] = useState(5.0);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [detailData, setDetailData] = useState<any>(null);
 
     useEffect(() => {
         fetchPeriods();
@@ -156,6 +158,22 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
             if (data.ok) {
                 alert('ลบสำเร็จ!');
                 fetchPeriods();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error: any) {
+            alert('Error: ' + error.message);
+        }
+    };
+
+    const handleViewDetail = async (periodId: number) => {
+        try {
+            const res = await fetch(`api/Commission/get_period_detail.php?period_id=${periodId}`);
+            const data = await res.json();
+
+            if (data.ok) {
+                setDetailData(data.data);
+                setShowDetailModal(true);
             } else {
                 alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
             }
@@ -328,7 +346,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                                                 </button>
                                             )}
                                             <button
-                                                onClick={() => {/* TODO: Open detail modal */ }}
+                                                onClick={() => handleViewDetail(period.id)}
                                                 className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                             >
                                                 รายละเอียด
@@ -349,6 +367,81 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                     </table>
                 </div>
             </div>
+
+            {/* Detail Modal */}
+            {showDetailModal && detailData && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b flex justify-between items-center">
+                            <h2 className="text-xl font-semibold">
+                                รายละเอียดค่าคอม - {detailData.period.period_display}
+                            </h2>
+                            <button
+                                onClick={() => setShowDetailModal(false)}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto">
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div className="bg-blue-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-600">ยอดขายรวม</p>
+                                    <p className="text-2xl font-bold text-blue-600">
+                                        {formatCurrency(Number(detailData.period.total_sales))}
+                                    </p>
+                                </div>
+                                <div className="bg-green-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-600">ค่าคอมรวม</p>
+                                    <p className="text-2xl font-bold text-green-600">
+                                        {formatCurrency(Number(detailData.period.total_commission))}
+                                    </p>
+                                </div>
+                                <div className="bg-purple-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-600">จำนวนออเดอร์</p>
+                                    <p className="text-2xl font-bold text-purple-600">
+                                        {detailData.period.total_orders}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <h3 className="text-lg font-semibold mb-4">รายละเอียดตามผู้ขาย</h3>
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-100 text-gray-700 font-semibold">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">ผู้ขาย</th>
+                                        <th className="px-4 py-3 text-center">จำนวนออเดอร์</th>
+                                        <th className="px-4 py-3 text-right">ยอดขาย</th>
+                                        <th className="px-4 py-3 text-right">ค่าคอม</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {detailData.records.map((record: any) => (
+                                        <tr key={record.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3">
+                                                {record.first_name} {record.last_name}
+                                                <span className="text-xs text-gray-500 block">
+                                                    @{record.username}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                {record.order_count}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-medium">
+                                                {formatCurrency(Number(record.total_sales))}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-semibold text-green-600">
+                                                {formatCurrency(Number(record.commission_amount))}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
