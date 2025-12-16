@@ -542,6 +542,22 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
 
+  const [expandedPromotions, setExpandedPromotions] = useState<Set<number>>(
+    new Set(),
+  );
+
+  const togglePromotion = (itemId: number) => {
+    setExpandedPromotions((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
   const [transferSlipUploads, setTransferSlipUploads] = useState<
     TransferSlipUpload[]
   >([]);
@@ -5067,6 +5083,8 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       parentItemId: undefined, // Parent has no parent
 
       isPromotionParent: true,
+
+      sku: promo.sku, // Add SKU for parent item
     };
 
     // รวมราคาชุดจากชิ้นย่อยที่ต้องจ่าย แล้วค่อยตั้งราคาให้ parent
@@ -5129,6 +5147,10 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         parentItemId: parentId, // Link to parent
 
         isPromotionParent: false,
+
+        originalQuantity: qty, // Store base ratio
+
+        sku: part.sku || part.product_sku || (part.product as any)?.sku || prod.sku,
       };
 
       newItemsToAdd.push(productLineItem);
@@ -8397,132 +8419,151 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
                   )}
 
-                  {orderData.paymentMethod === PaymentMethod.COD && (
-                    <div
-                      ref={codSectionRef}
-                      className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
-                    >
-                      <h4 className="font-semibold text-[#0e141b]">
-                        รายละเอียดการเก็บเงินปลายทาง
-                      </h4>
-                      <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
-                        โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
-                        <strong>฿{totalAmount.toFixed(2)}</strong>
-                        <span className="ml-2">
-                          (ยอดรวมปัจจุบัน:{" "}
-                          <span
-                            className={
-                              !isCodValid
-                                ? "text-red-600 font-bold"
-                                : "text-green-700 font-bold"
-                            }
-                          >
-                            ฿{codTotal.toFixed(2)}
-                          </span>
-                          )
-                        </span>
-                        <span className="block mt-1">
-                          {codRemaining === 0 ? (
-                            <span className="text-green-700 font-medium">
-                              ครบถ้วนแล้ว
+                  {(orderData.paymentMethod === PaymentMethod.COD ||
+                    orderData.paymentMethod === PaymentMethod.Transfer) && (
+                      <div
+                        ref={codSectionRef}
+                        className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
+                      >
+                        <h4 className="font-semibold text-[#0e141b]">
+                          {orderData.paymentMethod === PaymentMethod.COD
+                            ? "รายละเอียดการเก็บเงินปลายทาง"
+                            : "รายละเอียดการจัดส่ง (จำนวนกล่อง)"}
+                        </h4>
+
+                        {orderData.paymentMethod === PaymentMethod.COD && (
+                          <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
+                            โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
+                            <strong>฿{totalAmount.toFixed(2)}</strong>
+                            <span className="ml-2">
+                              (ยอดรวมปัจจุบัน:{" "}
+                              <span
+                                className={
+                                  !isCodValid
+                                    ? "text-red-600 font-bold"
+                                    : "text-green-700 font-bold"
+                                }
+                              >
+                                ฿{codTotal.toFixed(2)}
+                              </span>
+                              )
                             </span>
-                          ) : codRemaining > 0 ? (
-                            <span className="text-orange-600 font-medium">
-                              คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                            <span className="block mt-1">
+                              {codRemaining === 0 ? (
+                                <span className="text-green-700 font-medium">
+                                  ครบถ้วนแล้ว
+                                </span>
+                              ) : codRemaining > 0 ? (
+                                <span className="text-orange-600 font-medium">
+                                  คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-red-600 font-medium">
+                                  เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
+                                </span>
+                              )}
                             </span>
-                          ) : (
-                            <span className="text-red-600 font-medium">
-                              เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div>
-                        <label className={commonLabelClass}>จำนวนกล่อง</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max={(() => {
-                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
-                            const parentItems = (orderData.items || []).filter(
-                              (it) => !it.parentItemId,
-                            );
-                            return parentItems.length || 1;
-                          })()}
-                          value={numBoxes}
-                          onChange={(e) => {
-                            clearValidationErrorFor("cod");
-                            const newValue = Math.max(
-                              1,
-                              Number(e.target.value),
-                            );
-                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                          </div>
+                        )}
+
+                        <div>
+                          <label className={commonLabelClass}>จำนวนกล่อง</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max={(() => {
+                              // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                              const parentItems = (orderData.items || []).filter(
+                                (it) => !it.parentItemId,
+                              );
+                              return parentItems.length || 1;
+                            })()}
+                            value={numBoxes}
+                            onChange={(e) => {
+                              clearValidationErrorFor("cod");
+                              const newValue = Math.max(1, Number(e.target.value));
+
+                              // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                              const parentItems = (orderData.items || []).filter(
+                                (it) => !it.parentItemId,
+                              );
+                              const maxBoxes = parentItems.length || 1;
+
+                              if (newValue > maxBoxes) {
+                                alert(
+                                  `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
+                                );
+                                return;
+                              }
+
+                              setNumBoxes(newValue);
+                            }}
+                            onFocus={onFocusSelectAll}
+                            className={commonInputClass}
+                          />
+                          {(() => {
                             const parentItems = (orderData.items || []).filter(
                               (it) => !it.parentItemId,
                             );
                             const maxBoxes = parentItems.length || 1;
-                            if (newValue > maxBoxes) {
-                              alert(
-                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
+
+                            if (numBoxes > maxBoxes) {
+                              return (
+                                <p className="text-red-600 text-xs mt-1">
+                                  จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด {maxBoxes}{" "}
+                                  กล่อง)
+                                </p>
                               );
-                              return;
                             }
-                            setNumBoxes(newValue);
-                          }}
-                          onFocus={onFocusSelectAll}
-                          className={commonInputClass}
-                        />
-                        {(() => {
-                          const parentItems = (orderData.items || []).filter(
-                            (it) => !it.parentItemId,
-                          );
-                          const maxBoxes = parentItems.length || 1;
-                          if (numBoxes > maxBoxes) {
-                            return (
-                              <p className="text-red-600 text-xs mt-1">
-                                จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด{" "}
-                                {maxBoxes} กล่อง)
-                              </p>
-                            );
-                          }
-                          return null;
-                        })()}
+                            return null;
+                          })()}
+                        </div>
+
+                        {orderData.paymentMethod === PaymentMethod.COD && (
+                          <button
+                            onClick={divideCodEqually}
+                            className="text-sm text-blue-600 font-medium hover:underline"
+                          >
+                            แบ่งยอดเท่าๆ กัน
+                          </button>
+                        )}
+
+                        <div className="space-y-2">
+                          {orderData.boxes?.map((box, index) => (
+                            <div key={index} className="flex items-center gap-4">
+                              <label className="font-medium text-[#0e141b] w-24">
+                                กล่อง #{box.boxNumber}:
+                              </label>
+                              {orderData.paymentMethod === PaymentMethod.COD ? (
+                                <input
+                                  type="number"
+                                  placeholder="ยอด COD"
+                                  value={box.codAmount}
+                                  onChange={(e) =>
+                                    handleCodBoxAmountChange(
+                                      index,
+                                      Number(e.target.value),
+                                    )
+                                  }
+                                  onFocus={onFocusSelectAll}
+                                  className={commonInputClass}
+                                />
+                              ) : (
+                                <span className="text-sm text-gray-500 italic">
+                                  (ระบุสินค้าในกล่องที่ตารางสินค้า)
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {orderData.paymentMethod === PaymentMethod.COD && !isCodValid && (
+                          <p className="text-red-600 text-sm font-medium">
+                            ยอดรวม COD ไม่ถูกต้อง
+                          </p>
+                        )}
                       </div>
-                      <button
-                        onClick={divideCodEqually}
-                        className="text-sm text-blue-600 font-medium hover:underline"
-                      >
-                        แบ่งยอดเท่าๆ กัน
-                      </button>
-                      <div className="space-y-2">
-                        {orderData.boxes?.map((box, index) => (
-                          <div key={index} className="flex items-center gap-4">
-                            <label className="font-medium text-[#0e141b] w-24">
-                              กล่อง #{box.boxNumber}:
-                            </label>
-                            <input
-                              type="number"
-                              placeholder="ยอด COD"
-                              value={box.codAmount}
-                              onChange={(e) =>
-                                handleCodBoxAmountChange(
-                                  index,
-                                  Number(e.target.value),
-                                )
-                              }
-                              onFocus={onFocusSelectAll}
-                              className={commonInputClass}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      {!isCodValid && (
-                        <p className="text-red-600 text-sm font-medium">
-                          ยอดรวม COD ไม่ถูกต้อง
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    )}
                 </div>
               </div>
             )}
@@ -8631,542 +8672,491 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   })()}
                 </div>
 
-                <div className="space-y-3">
-                  {(orderData.items || [])
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
+                          ลำดับ
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
+                          Sku
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
+                          ชื่อรายการ
+                        </th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
+                          จำนวน
+                        </th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
+                          ราคาต่อหน่วย
+                        </th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
+                          ส่วนลด
+                        </th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
+                          รวม
+                        </th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700"></th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
+                          กล่องที่
+                        </th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
+                          แถม
+                        </th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
+                          จัดการ
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        let rowNumber = 0;
+                        return (orderData.items || []).map((item, index) => {
+                          if (!item.parentItemId) {
+                            rowNumber++;
+                          }
+                          const displayRowNumber = item.parentItemId
+                            ? ""
+                            : rowNumber;
 
-                    .filter((it) => !it.parentItemId)
+                          const isChild = !!item.parentItemId;
+                          const isParent = item.isPromotionParent;
 
-                    .map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="grid gap-2 items-start p-3 border border-gray-200 rounded-md bg-slate-50"
-                        style={{
-                          gridTemplateColumns: "repeat(17, minmax(0, 1fr))",
-                        }}
-                      >
-                        <div className="col-span-1 flex flex-col items-center justify-center">
-                          <label className="text-xs text-[#4e7397] mb-1 block text-center">
-                            ลำดับ
-                          </label>
-                          <span className="text-sm font-medium text-gray-600 text-center">
-                            {index + 1}
-                          </span>
-                        </div>
-                        <div className="col-span-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            SKU
-                          </label>
+                          // Check visibility: if child, parent must be expanded.
+                          // Default: parent is NOT expanded => child hidden.
+                          // But wait, initially let's say we want them expanded or collapsed?
+                          // Let's stick to collapsed by default (empty set).
+                          // If item.parentItemId is X, checking expandedPromotions.has(X)
 
-                          <input
-                            type="text"
-                            placeholder="SKU"
-                            value={(() => {
-                              if (item.productId) {
-                                const product = products.find(
-                                  (p) => p.id === item.productId,
-                                );
+                          if (isChild && item.parentItemId && !expandedPromotions.has(item.parentItemId)) {
+                            return null;
+                          }
 
-                                return product?.sku || "";
-                              }
+                          const itemTotal = item.isFreebie
+                            ? 0
+                            : (item.quantity || 0) * (item.pricePerUnit || 0) -
+                            (item.discount || 0);
 
-                              return "";
-                            })()}
-                            readOnly
-                            className="w-full p-2 border border-gray-300 rounded-md bg-slate-100 text-[#0e141b] text-sm"
-                            disabled={true}
-                          />
-                        </div>
-
-                        <div className="col-span-3">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            ชื่อสินค้า
-                          </label>
-
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="ชื่อสินค้า"
-                              value={item.productName}
-                              onChange={(e) =>
-                                updateOrderData(
-                                  "items",
-
-                                  orderData.items?.map((it) =>
-                                    it.id === item.id
-                                      ? { ...it, productName: e.target.value }
-                                      : it,
-                                  ),
-                                )
-                              }
-                              className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                              disabled={item.isPromotionParent}
-                            />
-
-                            {/* button to open product selector */}
-
-                            <button
-                              onClick={() =>
-                                openProductSelector(selectorTab, item.id)
-                              }
-                              className="px-2 py-1 bg-white border rounded text-sm"
+                          return (
+                            <tr
+                              key={item.id}
+                              className="border-b hover:bg-gray-50"
                             >
-                              เลือก
-                            </button>
-                          </div>
-                        </div>
+                              <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">
+                                {displayRowNumber}
+                              </td>
 
-                        <div className="col-span-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            จำนวน
-                          </label>
+                              <td className="px-3 py-2 text-xs text-gray-600 font-mono">
+                                {item.sku || (item.productId ? (
+                                  products.find((p) => p.id === item.productId)
+                                    ?.sku || "-"
+                                ) : (
+                                  "-"
+                                ))}
+                              </td>
 
-                          <input
-                            type="number"
-                            placeholder="จำนวน"
-                            value={item.quantity ?? 1}
-                            min={1}
-                            step={1}
-                            onChange={(e) => {
-                              const nextQty = clampQuantity(e.target.value);
+                              <td className="px-3 py-2 text-sm text-gray-800">
+                                <div className="flex items-center gap-2">
+                                  {item.isPromotionParent && (
+                                    <button
+                                      type="button"
+                                      onClick={() => togglePromotion(item.id)}
+                                      className="mr-1 text-gray-500 hover:text-gray-700 focus:outline-none"
+                                    >
+                                      {expandedPromotions.has(item.id) ? (
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          viewBox="0 0 20 20"
+                                          fill="currentColor"
+                                          className="w-4 h-4"
+                                        >
+                                          <path
+                                            fillRule="evenodd"
+                                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                            clipRule="evenodd"
+                                          />
+                                        </svg>
+                                      ) : (
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          viewBox="0 0 20 20"
+                                          fill="currentColor"
+                                          className="w-4 h-4 transform -rotate-90"
+                                        >
+                                          <path
+                                            fillRule="evenodd"
+                                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                            clipRule="evenodd"
+                                          />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  )}
+                                  {item.parentItemId && (
+                                    <span className="text-gray-400 pl-4">
+                                      ↳
+                                    </span>
+                                  )}
+                                  <div className="flex-1 flex gap-2 items-center">
+                                    <span
+                                      className={`text-sm ${item.isPromotionParent
+                                        ? "font-bold text-blue-700"
+                                        : "text-gray-900"
+                                        }`}
+                                    >
+                                      {item.productName}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
 
-                              const baseTotal = item.isFreebie
-                                ? 0
-                                : nextQty * (item.pricePerUnit || 0);
+                              <td className="px-3 py-2 text-center text-xs text-gray-700">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity ?? 1}
+                                  readOnly={isChild}
+                                  onChange={(e) => {
+                                    if (isChild) return;
+                                    const nextQty = clampQuantity(
+                                      e.target.value,
+                                    );
+                                    const baseTotal = item.isFreebie
+                                      ? 0
+                                      : nextQty * (item.pricePerUnit || 0);
+                                    const currentDiscount = item.discount || 0;
+                                    const clampedDiscount = Math.max(
+                                      0,
+                                      Math.min(currentDiscount, baseTotal),
+                                    );
 
-                              // ป้องกันไม่ให้ส่วนลดเกินยอดขายรวมทั้งหมดเมื่อจำนวนเปลี่ยน
+                                    // Update item itself
+                                    let newItems =
+                                      orderData.items?.map((it) =>
+                                        it.id === item.id
+                                          ? {
+                                            ...it,
+                                            quantity: nextQty,
+                                            discount: clampedDiscount,
+                                          }
+                                          : it,
+                                      ) || [];
 
-                              const currentDiscount = item.discount || 0;
-
-                              const clampedDiscount = Math.max(
-                                0,
-
-                                Math.min(currentDiscount, baseTotal),
-                              );
-
-                              updateOrderData(
-                                "items",
-
-                                orderData.items?.map((it) =>
-                                  it.id === item.id
-                                    ? {
-                                      ...it,
-
-                                      quantity: nextQty,
-
-                                      discount: clampedDiscount,
+                                    // Update children quantities if promotion parent
+                                    if (item.isPromotionParent) {
+                                      const parentId = item.id;
+                                      newItems = newItems.map((child) => {
+                                        if (child.parentItemId === parentId) {
+                                          return {
+                                            ...child,
+                                            quantity: nextQty * (child.originalQuantity || 1), // Assuming originalQuantity is stored
+                                          };
+                                        }
+                                        return child;
+                                      });
                                     }
-                                    : it,
-                                ),
-                              );
-                            }}
-                            onFocus={onFocusSelectAll}
-                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                            disabled={false}
-                          />
-                        </div>
 
-                        <div className="col-span-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            ราคา
-                          </label>
+                                    updateOrderData("items", newItems);
+                                  }}
+                                  className={`w-16 border rounded px-1 text-center ${isChild ? "bg-gray-100 text-gray-500" : ""}`}
+                                />
+                              </td>
 
-                          <input
-                            type="number"
-                            placeholder="ราคา"
-                            value={item.pricePerUnit}
-                            readOnly
-                            className="w-full p-2 border border-gray-300 rounded-md bg-slate-100 text-[#0e141b] text-sm"
-                          />
-                        </div>
+                              <td className="px-3 py-2 text-right text-xs text-gray-700">
+                                <input
+                                  type="number"
+                                  value={item.pricePerUnit}
+                                  readOnly
+                                  className="w-20 border rounded px-1 text-right bg-slate-100"
+                                />
+                              </td>
 
-                        <div className="col-span-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            ส่วนลด
-                          </label>
+                              <td className="px-3 py-2 text-right text-xs text-red-600">
+                                {isChild ? (
+                                  <div className="w-20 text-right pr-1"></div>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    value={item.discount || 0}
+                                    onChange={(e) => {
+                                      const discountValue =
+                                        Number(e.target.value) || 0;
+                                      const baseTotal = item.isFreebie
+                                        ? 0
+                                        : (item.quantity || 0) *
+                                        (item.pricePerUnit || 0);
+                                      const clampedDiscount = Math.max(
+                                        0,
+                                        Math.min(discountValue, baseTotal),
+                                      );
 
-                          <input
-                            type="number"
-                            placeholder="ส่วนลด"
-                            value={item.discount || 0}
-                            onChange={(e) => {
-                              const discountValue = Number(e.target.value) || 0;
+                                      updateOrderData(
+                                        "items",
+                                        orderData.items?.map((it) =>
+                                          it.id === item.id
+                                            ? { ...it, discount: clampedDiscount }
+                                            : it,
+                                        ),
+                                      );
+                                    }}
+                                    className="w-20 border rounded px-1 text-right text-red-600"
+                                    min={0}
+                                  />
+                                )}
+                              </td>
 
-                              const baseTotal = item.isFreebie
-                                ? 0
-                                : (item.quantity || 0) *
-                                (item.pricePerUnit || 0);
+                              <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
+                                {isChild ? (
+                                  <span></span>
+                                ) : item.isFreebie ? (
+                                  "฿0"
+                                ) : (
+                                  `฿${itemTotal.toLocaleString()}`
+                                )}
+                              </td>
 
-                              // ป้องกันไม่ให้ส่วนลดเกินยอดขายรวมทั้งหมด
+                              <td className="px-3 py-2 text-center">
+                                {item.isFreebie && (
+                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                                    แถม
+                                  </span>
+                                )}
+                              </td>
 
-                              const clampedDiscount = Math.max(
-                                0,
-
-                                Math.min(discountValue, baseTotal),
-                              );
-
-                              updateOrderData(
-                                "items",
-
-                                orderData.items?.map((it) =>
-                                  it.id === item.id
-                                    ? {
-                                      ...it,
-
-                                      discount: clampedDiscount,
-                                    }
-                                    : it,
-                                ),
-                              );
-                            }}
-                            onFocus={onFocusSelectAll}
-                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                            min={0}
-                            max={
-                              item.isFreebie
-                                ? 0
-                                : (item.quantity || 0) *
-                                (item.pricePerUnit || 0)
-                            }
-                          />
-                        </div>
-
-                        <div className="col-span-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            ยอดรวม
-                          </label>
-
-                          <input
-                            type="number"
-                            placeholder="ยอดรวม"
-                            value={(() => {
-                              if (item.isFreebie) return 0;
-
-                              const baseTotal =
-                                (item.quantity || 0) * (item.pricePerUnit || 0);
-
-                              return Math.max(
-                                0,
-
-                                baseTotal - (item.discount || 0),
-                              );
-                            })()}
-                            onChange={(e) => {
-                              const totalValue = Number(e.target.value) || 0;
-
-                              if (item.isFreebie) return;
-
-                              const baseTotal =
-                                (item.quantity || 0) * (item.pricePerUnit || 0);
-
-                              // ป้องกันไม่ให้ยอดรวมเกินยอดขายรวมทั้งหมด
-
-                              const clampedTotal = Math.max(
-                                0,
-
-                                Math.min(totalValue, baseTotal),
-                              );
-
-                              const calculatedDiscount = Math.max(
-                                0,
-
-                                baseTotal - clampedTotal,
-                              );
-
-                              updateOrderData(
-                                "items",
-
-                                orderData.items?.map((it) =>
-                                  it.id === item.id
-                                    ? {
-                                      ...it,
-
-                                      discount: calculatedDiscount,
-                                    }
-                                    : it,
-                                ),
-                              );
-                            }}
-                            onFocus={onFocusSelectAll}
-                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                            disabled={item.isFreebie}
-                            min={0}
-                            max={
-                              item.isFreebie
-                                ? 0
-                                : (item.quantity || 0) *
-                                (item.pricePerUnit || 0)
-                            }
-                          />
-                        </div>
-
-                        <div className="col-span-1">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            กล่อง
-                          </label>
-
-                          <select
-                            value={item.boxNumber || 1}
-                            onChange={(e) =>
-                              updateOrderData(
-                                "items",
-
-                                orderData.items?.map((it) =>
-                                  it.id === item.id
-                                    ? {
-                                      ...it,
-
-                                      boxNumber: Math.max(
+                              <td className="px-3 py-2 text-center text-xs text-gray-700">
+                                {isChild ? (
+                                  <div className="w-16 text-center text-gray-400">
+                                    {item.boxNumber || 1}
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={item.boxNumber || 1}
+                                    onChange={(e) => {
+                                      const newBoxNum = Math.max(
                                         1,
-
                                         Math.min(
                                           Number(e.target.value),
-
                                           numBoxes,
                                         ),
+                                      );
+
+                                      let newItems = orderData.items?.map((it) =>
+                                        it.id === item.id
+                                          ? { ...it, boxNumber: newBoxNum }
+                                          : it
+                                      ) || [];
+
+                                      // Sync children box number
+                                      if (item.isPromotionParent) {
+                                        newItems = newItems.map(it =>
+                                          it.parentItemId === item.id
+                                            ? { ...it, boxNumber: newBoxNum }
+                                            : it
+                                        );
+                                      }
+
+                                      updateOrderData("items", newItems);
+                                    }}
+                                    className="w-16 border rounded px-1 text-center"
+                                  >
+                                    {Array.from(
+                                      { length: numBoxes },
+                                      (_, i) => i + 1,
+                                    ).map((n) => (
+                                      <option key={n} value={n}>
+                                        {n}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-2 text-center text-xs text-gray-700">
+                                <input
+                                  type="checkbox"
+                                  checked={item.isFreebie}
+                                  disabled={isChild}
+                                  onChange={(e) =>
+                                    updateOrderData(
+                                      "items",
+                                      orderData.items?.map((it) =>
+                                        it.id === item.id
+                                          ? {
+                                            ...it,
+                                            isFreebie: e.target.checked,
+                                          }
+                                          : it,
                                       ),
-                                    }
-                                    : it,
-                                ),
-                              )
-                            }
-                            onFocus={onFocusSelectAll}
-                            className="w-full p-2 border border-gray-300 rounded-md bg-white text-[#0e141b] text-sm"
-                          >
-                            {Array.from(
-                              { length: numBoxes },
+                                    )
+                                  }
+                                  className={`cursor-pointer ${isChild ? "opacity-50" : ""}`}
+                                />
+                              </td>
 
-                              (_, i) => i + 1,
-                            ).map((n) => (
-                              <option key={n} value={n}>
-                                {n}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="col-span-1 flex flex-col items-center justify-end h-full pb-2">
-                          <label className="text-xs text-[#4e7397] mb-1 block">
-                            แถม
-                          </label>
-
-                          <input
-                            type="checkbox"
-                            title="ของแถม"
-                            checked={item.isFreebie}
-                            onChange={(e) =>
-                              updateOrderData(
-                                "items",
-
-                                orderData.items?.map((it) =>
-                                  it.id === item.id
-                                    ? { ...it, isFreebie: e.target.checked }
-                                    : it,
-                                ),
-                              )
-                            }
-                            className="h-4 w-4"
-                          />
-                        </div>
-
-                        <div className="col-span-1 flex items-end justify-center h-full pb-2">
+                              <td className="px-3 py-2 text-center">
+                                {!isChild && (
+                                  <button
+                                    onClick={() => {
+                                      const current = orderData.items || [];
+                                      const id = item.id;
+                                      const next = current.filter(
+                                        (it) =>
+                                          it.id !== id && it.parentItemId !== id,
+                                      );
+                                      updateOrderData("items", next);
+                                    }}
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth={1.5}
+                                      stroke="currentColor"
+                                      className="w-4 h-4"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                      />
+                                    </svg>
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                    <tfoot className="bg-gray-50">
+                      <tr>
+                        <td colSpan={11} className="px-3 py-2 text-center">
                           <button
-                            onClick={() => {
-                              const current = orderData.items || [];
-
-                              const id = item.id;
-
-                              const next = current.filter(
-                                (it) => it.id !== id && it.parentItemId !== id,
-                              );
-
-                              updateOrderData("items", next);
-                            }}
-                            className="text-red-500 hover:text-red-700 text-sm font-medium"
+                            onClick={() => openProductSelector("products")}
+                            className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={1.5}
-                              stroke="currentColor"
-                              className="w-5 h-5"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                              />
-                            </svg>
+                            + เพิ่มสินค้า
                           </button>
-                        </div>
-                      </div>
-                    ))}
-
-                  <button
-                    onClick={() => {
-                      const currentItems = orderData.items || [];
-                      if (currentItems.length === 0) {
-                        // If no items, add a default empty item
-                        updateOrderData("items", [
-                          ...currentItems,
-                          {
-                            id: Date.now(),
-                            productName: "",
-                            quantity: 1,
-                            pricePerUnit: 0,
-                            discount: 0,
-                            isFreebie: false,
-                            boxNumber: 1,
-                          },
-                        ]);
-                      } else {
-                        // If items exist, copy the last one
-                        const lastItem = currentItems[currentItems.length - 1];
-                        const countStr = window.prompt(
-                          "ต้องการคัดลอกกี่รายการ?",
-                          "1",
-                        );
-                        if (countStr) {
-                          const count = parseInt(countStr, 10);
-                          if (!isNaN(count) && count > 0) {
-                            const newItems = [];
-                            for (let i = 0; i < count; i++) {
-                              newItems.push({
-                                ...lastItem,
-                                id: Date.now() + i, // Ensure unique ID
-                              });
-                            }
-                            updateOrderData("items", [
-                              ...currentItems,
-                              ...newItems,
-                            ]);
-                          }
-                        }
-                      }
-                    }}
-                    className="text-sm text-blue-600 font-medium hover:underline"
-                  >
-                    + คัดลอกรายการล่าสุด
-                  </button>
-
-                  <div className="mt-3">
-                    <button
-                      onClick={() => openProductSelector(selectorTab)}
-                      className="px-3 py-2 bg-blue-600 text-white rounded-md mr-2"
-                    >
-                      {selectorTab === "products"
-                        ? "เลือกสินค้า"
-                        : "เลือกโปรโมชั่น"}
-                    </button>
-                  </div>
-
-
-                  {/* Product / Promotion Selector Modal */}
-                  <ProductSelectorModal
-                    isOpen={productSelectorOpen}
-                    onClose={closeProductSelector}
-                    tab={selectorTab}
-                    onTabChange={setSelectorTab}
-                    products={products}
-                    promotions={promotionsSafe}
-                    searchTerm={selectorSearchTerm}
-                    onSearchChange={setSelectorSearchTerm}
-                    onSelectProduct={addProductById}
-                    onSelectPromotion={addPromotionByIdFixed}
-                  />
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
+
+
+                {/* Product / Promotion Selector Modal */}
+                <ProductSelectorModal
+                  isOpen={productSelectorOpen}
+                  onClose={closeProductSelector}
+                  tab={selectorTab}
+                  onTabChange={setSelectorTab}
+                  products={products}
+                  promotions={promotionsSafe}
+                  searchTerm={selectorSearchTerm}
+                  onSearchChange={setSelectorSearchTerm}
+                  onSelectProduct={addProductById}
+                  onSelectPromotion={addPromotionByIdFixed}
+                />
               </div>
             )}
           </div>
 
           {/* Footer Actions */}
-          {(selectedCustomer || isCreatingNewCustomer) && (
-            <div className="mt-6 flex justify-end gap-3 pb-6">
-              <button
-                onClick={handleSave}
-                disabled={
-                  !isCodValid ||
-                  (isCreatingNewCustomer && !!newCustomerPhoneError)
-                }
-                className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                บันทึกคำสั่งซื้อ
-              </button>
-            </div>
-          )}
-        </div>
+          {
+            (selectedCustomer || isCreatingNewCustomer) && (
+              <div className="mt-6 flex justify-end gap-3 pb-6">
+                <button
+                  onClick={handleSave}
+                  disabled={
+                    !isCodValid ||
+                    (isCreatingNewCustomer && !!newCustomerPhoneError)
+                  }
+                  className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  บันทึกคำสั่งซื้อ
+                </button>
+              </div>
+            )
+          }
+        </div >
 
         {/* Right Column: Sticky Order Summary */}
-        {(selectedCustomer || isCreatingNewCustomer) && (
-          <div className="w-full lg:w-80 shrink-0">
-            <div className="sticky top-4">
-              <OrderSummary
-                orderData={orderData}
-                onUpdateOrder={updateOrderData}
-              />
+        {
+          (selectedCustomer || isCreatingNewCustomer) && (
+            <div className="w-full lg:w-80 shrink-0">
+              <div className="sticky top-4">
+                <OrderSummary
+                  orderData={orderData}
+                  onUpdateOrder={updateOrderData}
+                />
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )
+        }
+      </div >
 
       {/* Success Modal */}
 
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
-              <svg
-                className="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            </div>
+      {
+        showSuccessModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
 
-            <h3 className="text-lg font-semibold text-[#0e141b]">
-              สร้างคำสั่งซื้อสำเร็จ
-            </h3>
+              <h3 className="text-lg font-semibold text-[#0e141b]">
+                สร้างคำสั่งซื้อสำเร็จ
+              </h3>
 
-            {createdOrderId && (
-              <p className="mt-1 text-sm text-[#4e7397]">
-                หมายเลขคำสั่งซื้อ {createdOrderId}
+              {createdOrderId && (
+                <p className="mt-1 text-sm text-[#4e7397]">
+                  หมายเลขคำสั่งซื้อ {createdOrderId}
+                </p>
+              )}
+
+              <p className="mt-4 text-sm text-[#4e7397]">
+                สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
               </p>
-            )}
 
-            <p className="mt-4 text-sm text-[#4e7397]">
-              สามารถกลับไปยังหน้าหลักเพื่อดำเนินงานต่อได้ทันที
-            </p>
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
 
-            <div className="mt-6 flex justify-center">
-              <button
-                onClick={() => {
-                  setShowSuccessModal(false);
+                    // On success, call onSuccess callback (goes to Dashboard)
 
-                  // On success, call onSuccess callback (goes to Dashboard)
-
-                  if (onSuccess) {
-                    onSuccess();
-                  } else {
-                    onCancel();
-                  }
-                }}
-                className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-              >
-                กลับสู่หน้าหลัก
-              </button>
+                    if (onSuccess) {
+                      onSuccess();
+                    } else {
+                      onCancel();
+                    }
+                  }}
+                  className="inline-flex items-center rounded-lg bg-green-600 px-5 py-2.5 font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                >
+                  กลับสู่หน้าหลัก
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 
