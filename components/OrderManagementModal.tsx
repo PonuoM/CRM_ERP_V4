@@ -3565,6 +3565,55 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   }, [remainingBalance, currentOrder.amountPaid]);
 
+  const handleDuplicateItem = (item: any, count: number) => {
+    if (count <= 0) return;
+
+    const currentItems = currentOrder.items || [];
+    const newItems: any[] = [];
+    let nextId = Date.now() + Math.floor(Math.random() * 100000); // Ensure unique ID
+
+    for (let i = 0; i < count; i++) {
+      // Clone parent/single item
+      nextId += 1;
+      const newRootId = nextId;
+      const clonedRoot = {
+        ...item,
+        id: newRootId,
+      };
+      newItems.push(clonedRoot);
+
+      // Clone children if it's a promotion parent
+      if (item.isPromotionParent) {
+        const children = currentItems.filter((it: any) => it.parentItemId === item.id);
+        children.forEach((child: any) => {
+          nextId += 1;
+          newItems.push({
+            ...child,
+            id: nextId,
+            parentItemId: newRootId,
+          });
+        });
+      }
+    }
+
+    // Find insertion index
+    const index = currentItems.findIndex((it: any) => it.id === item.id);
+    let insertIndex = index + 1;
+    if (item.isPromotionParent) {
+      for (let j = index + 1; j < currentItems.length; j++) {
+        if ((currentItems[j] as any).parentItemId === item.id) {
+          insertIndex = j + 1;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const updatedItems = [...currentItems];
+    updatedItems.splice(insertIndex, 0, ...newItems);
+    setCurrentOrder(prev => ({ ...prev, items: updatedItems }));
+  };
+
 
 
 
@@ -4913,36 +4962,33 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                               <td className="px-3 py-2 text-center">
 
-
-
                                 {canEditItem && (
-
-
-
-                                  <button
-
-
-
-                                    onClick={() => handleRemoveItem(item)}
-
-
-
-                                    className="text-red-500 hover:text-red-700"
-
-
-
-                                  >
-
-
-
-                                    <Trash2 size={14} />
-
-
-
-                                  </button>
-
-
-
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const input = window.prompt("ระบุจำนวนที่ต้องการคัดลอก (จำนวนแถว)", "1");
+                                        if (input !== null) {
+                                          const count = parseInt(input, 10);
+                                          if (!isNaN(count) && count > 0) {
+                                            handleDuplicateItem(item, count);
+                                          }
+                                        }
+                                      }}
+                                      className="text-blue-500 hover:text-blue-700"
+                                      title="คัดลอก"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => handleRemoveItem(item)}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 )}
 
 
@@ -7215,7 +7261,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       </Modal >
 
       {/* Product Selector Modal */}
-      <ProductSelectorModal
+      < ProductSelectorModal
         isOpen={productSelectorOpen}
         onClose={closeProductSelector}
         tab={selectorTab}
