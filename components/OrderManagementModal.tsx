@@ -16,6 +16,7 @@ import {
   listBankAccounts,
   listPromotions,
   apiFetch,
+  patchOrder,
 } from '../services/api';
 import { toLocalDatetimeString, fromLocalDatetimeString } from '../utils/datetime';
 import resolveApiBasePath from '../utils/apiBasePath';
@@ -3038,6 +3039,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     onSave(updated);
   };
 
+  const handleCancelVerification = async () => {
+    if (!confirm('ต้องการยกเลิกการยืนยันสลิปใช่หรือไม่?')) return;
+
+    try {
+      await patchOrder(currentOrder.id, { paymentStatus: PaymentStatus.PendingVerification });
+
+      const updated = {
+        ...currentOrder,
+        paymentStatus: PaymentStatus.PendingVerification,
+      };
+
+      setCurrentOrder(updated);
+      onSave(updated); // Notify parent to refresh
+    } catch (error) {
+      console.error("Failed to cancel verification:", error);
+      alert("เกิดข้อผิดพลาดในการยกเลิกการยืนยันสลิป");
+    }
+  };
+
 
 
 
@@ -5503,6 +5523,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 </button>
                               );
                             })()}
+                            {/* Cancel Verification Button */}
+                            {currentOrder.paymentStatus === PaymentStatus.Verified &&
+                              currentOrder.orderStatus === OrderStatus.Pending && (
+                                <button
+                                  onClick={handleCancelVerification}
+                                  className="ml-3 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                >
+                                  <XCircle size={16} className="mr-2" />
+                                  ยกเลิกยืนยันสลิป
+                                </button>
+                              )}
                           </div>
                         )}
                     </>
