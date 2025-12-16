@@ -3223,6 +3223,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       }
     }
 
+    // Validate box numbers are sequential (no gaps)
+    const nonChildItems = currentOrder.items.filter((item: any) => !item.parentItemId);
+    const boxNumbers: number[] = nonChildItems.map(item => Number(item.boxNumber) || 1);
+    const uniqueBoxes: number[] = [...new Set(boxNumbers)].sort((a, b) => a - b);
+
+    // Check if box numbers are sequential starting from 1 (no gaps allowed)
+    for (let i = 0; i < uniqueBoxes.length; i++) {
+      if (uniqueBoxes[i] !== i + 1) {
+        alert(`ไม่สามารถบันทึกได้: หมายเลขกล่องต้องมีครบทุกหมายเลข\nพบกล่อง: ${uniqueBoxes.join(', ')}\nแต่ขาดกล่องหมายเลข ${i + 1}\nกรุณาแก้ไขหมายเลขกล่องให้มีครบทุกหมายเลขตั้งแต่ 1 ถึง ${uniqueBoxes.length}`);
+        return;
+      }
+    }
+
     // Persist slip metadata edits (bank/date/amount) for Transfer/PayAfter
     if (
       (currentOrder.paymentMethod === PaymentMethod.Transfer ||
@@ -4596,6 +4609,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700"></th>
                     <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
                     {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">แถม</th>}
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
@@ -4615,11 +4629,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                   {(() => {
                     let rowNumber = 0; // Counter for non-child items only
-                    return [...currentOrder.items].sort((a, b) => {
-                      const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
-                      const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
-                      return boxA - boxB;
-                    }).map((item, index) => {
+                    return currentOrder.items.map((item, index) => {
 
                       // Increment row number only for non-child items
                       if (!(item as any).parentItemId) {
@@ -4808,12 +4818,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
                           <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                            {(item as any).parentItemId ? '' : isFreebie ? (
-                              <span className="inline-flex items-center">
-                                ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
-                              </span>
-                            ) : (
-                              `฿${itemTotal.toLocaleString()}`
+                            {(item as any).parentItemId ? '' : isFreebie ? '฿0' : `฿${itemTotal.toLocaleString()}`}
+                          </td>
+
+                          <td className="px-3 py-2 text-center">
+                            {isFreebie && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">แถม</span>
                             )}
                           </td>
 
@@ -4823,9 +4833,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             {(item as any).parentItemId ? (
                               ''
                             ) : canEditItem ? (
-                              <input
-                                type="number"
-                                min="1"
+                              <select
                                 value={item.boxNumber || 1}
                                 onChange={(e) => {
                                   const newBoxNumber = Number(e.target.value);
@@ -4845,8 +4853,24 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                     }));
                                   }
                                 }}
-                                className="w-12 border rounded px-1 text-center"
-                              />
+                                className="w-16 border rounded px-1 text-center"
+                              >
+                                {(() => {
+                                  // Get all unique box numbers currently in use (from non-child items)
+                                  const nonChildItems = currentOrder.items.filter((it: any) => !it.parentItemId);
+                                  const boxNumbers: number[] = nonChildItems.map(it => Number(it.boxNumber) || 1);
+                                  const usedBoxes: number[] = [...new Set(boxNumbers)].sort((a, b) => a - b);
+                                  const maxUsedBox = usedBoxes.length > 0 ? Math.max(...usedBoxes) : 1;
+
+                                  // Allow selecting existing boxes + one new box (maxUsedBox + 1)
+                                  // But don't exceed total number of items
+                                  const maxAllowed = Math.min(maxUsedBox + 1, nonChildItems.length);
+
+                                  return Array.from({ length: maxAllowed }, (_, i) => i + 1).map(num => (
+                                    <option key={num} value={num}>{num}</option>
+                                  ));
+                                })()}
+                              </select>
                             ) : (
                               item.boxNumber || 1
                             )}
