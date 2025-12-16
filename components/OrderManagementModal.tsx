@@ -5456,14 +5456,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             <button
                               onClick={handleAcceptSlip}
                               disabled={!slips.some((s: any) => s.checked)}
-                              className={`inline - flex items - center px - 4 py - 2 border border - transparent text - sm font - medium rounded - md shadow - sm text - white 
-                            ${slips.some((s: any) => s.checked)
-                                  ? 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500'
-                                  : 'bg-gray-400 cursor-not-allowed'
-                                } `}
+                              className={`group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2
+                                ${slips.some((s: any) => s.checked)
+                                  ? 'bg-gradient-to-br from-emerald-500 to-green-600 shadow-green-500/40 hover:to-green-700 hover:shadow-green-500/60 hover:-translate-y-0.5'
+                                  : 'bg-gray-400 cursor-not-allowed shadow-none opacity-50'
+                                }`}
                             >
-                              <CheckCircle size={16} className="mr-2" />
-                              ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})
+                              <CheckCircle size={20} className="mr-2" />
+                              <span className="font-bold">ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})</span>
                             </button>
                           </div>
                         )}
@@ -5956,25 +5956,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
                           <button
-
-
-
                             onClick={handleAcceptSlip}
-
-
-
-                            className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-
-
-
+                            className="mt-2 group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-xl shadow-green-500/40 transition-all duration-300 hover:to-green-700 hover:shadow-green-500/60 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2"
                           >
-
-
-
-                            ยืนยันสลิป
-
-
-
+                            <CheckCircle className="mr-2 h-5 w-5" />
+                            <span className="font-bold">ยืนยันสลิป</span>
                           </button>
 
 
