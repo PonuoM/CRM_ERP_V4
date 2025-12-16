@@ -1,4 +1,4 @@
-
+﻿
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
@@ -160,7 +160,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       return false;
     }
     if (order.paymentStatus === PaymentStatus.Approved || order.paymentStatus === PaymentStatus.Paid) {
-      return false;
+      return order.reconcileAction !== 'Confirmed';
     }
     switch (order.paymentMethod) {
       case PaymentMethod.COD:
@@ -208,9 +208,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // เสร็จสิ้น: Approved หรือ Paid
   const completedOrders = useMemo(() =>
     orders.filter(o =>
-      o.paymentStatus === PaymentStatus.Approved ||
-      o.paymentStatus === PaymentStatus.Paid ||
-      o.orderStatus === OrderStatus.Delivered
+      (o.paymentStatus === PaymentStatus.Approved ||
+        o.paymentStatus === PaymentStatus.Paid ||
+        o.orderStatus === OrderStatus.Delivered) &&
+      o.reconcileAction === 'Confirmed'
     ), [orders]
   );
 
@@ -642,6 +643,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               subOrderId: b.sub_order_id ?? undefined,
             })) : [],
             notes: r.notes ?? undefined,
+            reconcileAction: r.reconcile_action || undefined,
           };
           updates[missing[idx]] = mapped;
         });

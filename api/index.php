@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/Services/ShippingSyncService.php';
 
 // Polyfill for PHP < 8 str_starts_with
 if (!function_exists('str_starts_with')) {
@@ -1613,11 +1614,13 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
-                               o.bank_account_id, o.transfer_date';
+                               o.bank_account_id, o.transfer_date,
+                               MAX(srl.confirmed_action) as reconcile_action';
 
                 $sql = "SELECT $selectCols
                         FROM orders o
-                        LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
+                        LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id
+                        LEFT JOIN statement_reconcile_logs srl ON srl.order_id = o.id";
                 
                 $params = [];
                 $whereConditions = [];
@@ -2419,6 +2422,34 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         $hasTrackingUpdate = true;
                     }
                 }
+
+                // --- Auto-Sync with Google Sheet Shipping Data ---
+                if ($hasTrackingUpdate) {
+                    try {
+                        $syncService = new ShippingSyncService($pdo);
+                        // We need the tracking numbers to sync.
+                        // Collect them from input or fetch from DB if needed.
+                        // Here we iterate over what was just added/update.
+                        $trackingsToSync = [];
+                        
+                        if (!empty($in['trackingEntries'])) {
+                            foreach ($in['trackingEntries'] as $entry) {
+                                if (!empty($entry['trackingNumber'])) $trackingsToSync[] = $entry['trackingNumber'];
+                            }
+                        } elseif (!empty($in['trackingNumbers'])) {
+                             foreach ($in['trackingNumbers'] as $tn) {
+                                if (!empty($tn)) $trackingsToSync[] = $tn;
+                            }
+                        }
+
+                        foreach (array_unique($trackingsToSync) as $tn) {
+                            $syncService->syncOrderFromSheet($tn);
+                        }
+                    } catch (Throwable $syncErr) {
+                        error_log("Shipping Sync Failed for Order {$id}: " . $syncErr->getMessage());
+                    }
+                }
+                // -------------------------------------------------
                 
                 // Auto-update order_status to Shipping when tracking is added and order is Picking or Preparing
                 // Only if order_status is not explicitly set in the request
@@ -3931,7 +3962,11 @@ function get_order(PDO $pdo, string $id): ?array {
     $mainOrderId = $isSubOrder ? $matches[1] : $id;
     
     // Always fetch main order record (not sub order)
-    $stmt = $pdo->prepare('SELECT * FROM orders WHERE id=?');
+    $stmt = $pdo->prepare('SELECT o.*, MAX(srl.confirmed_action) as reconcile_action 
+                           FROM orders o 
+                           LEFT JOIN statement_reconcile_logs srl ON srl.order_id = o.id 
+                           WHERE o.id=?
+                           GROUP BY o.id');
     $stmt->execute([$mainOrderId]);
     $o = $stmt->fetch();
     if (!$o) return null;

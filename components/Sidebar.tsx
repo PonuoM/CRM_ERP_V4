@@ -179,13 +179,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Create Promotion", icon: FileUp, key: "promo.create" },
       ]
     },
-    // Independent Items (Not in Group) - mapped to top level if permissible
     {
       label: "Orders & Customers",
       icon: Users,
       children: [
-        { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
         { label: "Customers", icon: Users, key: "nav.customers" },
+        { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
         { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
         { label: "Search", icon: Search, key: "nav.search" },
       ]

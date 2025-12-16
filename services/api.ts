@@ -205,6 +205,8 @@ export async function updateUser(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+
+
 }
 
 export async function deleteUser(id: number) {

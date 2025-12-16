@@ -15,6 +15,8 @@ interface TelesaleDashboardProps {
   systemTags: Tag[];
   setActivePage?: (page: string) => void;
   onUpsellClick?: (customer: Customer) => void;
+  onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
+  allUsers?: User[];
 }
 
 type SubMenu = 'do' | 'expiring' | 'updates' | 'all';
@@ -196,7 +198,7 @@ const SUB_MENU_VALUES: SubMenu[] = ['do', 'expiring', 'updates', 'all'];
 const ORDER_UPDATE_LOOKBACK_DAYS = 3;
 
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
-  const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick } = props;
+  const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick, onChangeOwner, allUsers } = props;
 
   // Create a unique key for this user's filter state
   const filterStorageKey = `telesale_filters_${user.id}`;
@@ -1147,6 +1149,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         storageKey={`telesale:${user.id}`}
         currentUserId={user.id}
         onUpsellClick={onUpsellClick}
+        onChangeOwner={onChangeOwner}
+        allUsers={allUsers}
+        currentUser={user}
       />
     </div>
   );

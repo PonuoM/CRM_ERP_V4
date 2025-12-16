@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../Services/ShippingSyncService.php';
 
 use Google\Client;
 use Google\Service\Sheets;
@@ -57,7 +58,20 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
             $systemCreateTime = $row[0] ?? null;
             $orderNumber = $row[1] ?? null;
             $deliveryDate = isset($row[2]) ? $row[2] : null;
-            $deliveryStatus = isset($row[3]) ? $row[3] : null;
+            $rawDeliveryStatus = isset($row[3]) ? $row[3] : null;
+            $orderStatus = null;
+            $deliveryStatus = null;
+
+            if ($rawDeliveryStatus) {
+                $parts = explode('|', $rawDeliveryStatus);
+                if (count($parts) > 1) {
+                    $orderStatus = trim($parts[0]);
+                    $deliveryStatus = trim($parts[1]);
+                } else {
+                    // Fallback if no pipe separator
+                    $deliveryStatus = trim($rawDeliveryStatus);
+                }
+            }
 
             if (empty($orderNumber) || empty($systemCreateTime)) continue;
 
@@ -110,7 +124,9 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
 
                 // Strategy 1: หาตัวที่เหมือนกันเป๊ะๆ ก่อน (Exact Match)
                 foreach ($pool as $key => $dbRow) {
-                    if ($dbRow['delivery_date'] == $deliveryDateFormatted && $dbRow['delivery_status'] == $deliveryStatus) {
+                    if ($dbRow['delivery_date'] == $deliveryDateFormatted && 
+                        $dbRow['delivery_status'] == $deliveryStatus &&
+                        (isset($dbRow['order_status']) ? $dbRow['order_status'] : null) == $orderStatus) {
                         $matchedDbRecord = $dbRow;
                         $matchType = 'exact';
                         unset($pool[$key]); // Consume: หยิบออกเพื่อไม่ให้แถวอื่นใน Sheet มาจับคู่ตัวนี้ซ้ำ
@@ -132,6 +148,7 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
                     'order_number' => $orderNumber,
                     'delivery_date' => $deliveryDateFormatted,
                     'delivery_status' => $deliveryStatus,
+                    'order_status' => $orderStatus,
                     'row_index' => $i + 1
                 ];
 
@@ -169,6 +186,16 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
                             $changes['delivery_status'] = [
                                 'old' => $matchedDbRecord['delivery_status'],
                                 'new' => $deliveryStatus
+                            ];
+                        }
+
+                        // เช็คสถานะคำสั่งซื้อ (Official)
+                        $dbOrderStatus = isset($matchedDbRecord['order_status']) ? $matchedDbRecord['order_status'] : null;
+                        if ($dbOrderStatus != $orderStatus) {
+                            $hasChanges = true;
+                            $changes['order_status'] = [
+                                'old' => $dbOrderStatus,
+                                'new' => $orderStatus
                             ];
                         }
                         
@@ -241,14 +268,15 @@ function confirmImportGoogleSheetData(PDO $pdo, array $recordsToImport): array {
                     // ไม่ใช้ row_index แล้ว ใช้ auto-increment id
                     $stmt = $pdo->prepare('
                         INSERT INTO google_sheet_shipping 
-                        (system_created_time, order_number, delivery_date, delivery_status)
-                        VALUES (?, ?, ?, ?)
+                        (system_created_time, order_number, delivery_date, delivery_status, order_status)
+                        VALUES (?, ?, ?, ?, ?)
                     ');
                     $stmt->execute([
                         $record['system_created_time'],
                         $record['order_number'],
                         $record['delivery_date'],
-                        $record['delivery_status']
+                        $record['delivery_status'],
+                        $record['order_status']
                     ]);
                     $inserted++;
                 } elseif ($record['action'] === 'update') {
@@ -256,12 +284,13 @@ function confirmImportGoogleSheetData(PDO $pdo, array $recordsToImport): array {
                     if (!empty($record['id'])) {
                         $stmt = $pdo->prepare('
                             UPDATE google_sheet_shipping 
-                            SET delivery_date = ?, delivery_status = ?, updated_at = NOW()
+                            SET delivery_date = ?, delivery_status = ?, order_status = ?, updated_at = NOW()
                             WHERE id = ?
                         ');
                         $stmt->execute([
                             $record['delivery_date'],
                             $record['delivery_status'],
+                            $record['order_status'],
                             $record['id']
                         ]);
                         $updated++;
@@ -275,6 +304,24 @@ function confirmImportGoogleSheetData(PDO $pdo, array $recordsToImport): array {
         }
 
         $pdo->commit();
+
+        // --- Auto-Sync Orders with Imported/Updated Data ---
+        try {
+            $syncService = new ShippingSyncService($pdo);
+            // $recordsToImport contains the data we just saved.
+            // We can pass it directly to syncFromSheetImport which iterates and syncs.
+            $syncResult = $syncService->syncFromSheetImport($recordsToImport);
+            
+            // Optionally log or add to result
+            // $errors could be appended if sync failed, but we probably shouldn't fail the whole import response
+            if (!empty($syncResult['details'])) {
+                 // Maybe add a note about synced orders? 
+                 // For now, we prefer silent success or error logging.
+            }
+        } catch (Throwable $syncErr) {
+            error_log("Post-Import Sync Failed: " . $syncErr->getMessage());
+        }
+        // ---------------------------------------------------
 
         return [
             'ok' => true,

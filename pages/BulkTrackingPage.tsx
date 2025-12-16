@@ -60,7 +60,7 @@ const detectShippingProvider = (trackingNumber: string): string => {
     return 'Kerry Express';
   }
 
-  return '-';
+  return 'Aiport';
 };
 
 const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdateTracking }) => {

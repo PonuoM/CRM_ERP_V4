@@ -14,6 +14,7 @@ interface ManageCustomersPageProps {
   openModal?: (type: ModalType, data: any) => void;
   onViewCustomer?: (customer: Customer) => void;
   onUpsellClick?: (customer: Customer) => void;
+  onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
 }
 
 const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
@@ -25,6 +26,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   openModal,
   onViewCustomer,
   onUpsellClick,
+  onChangeOwner,
 }) => {
   const [selectedUser, setSelectedUser] = useState<number | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -70,37 +72,37 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   // Filter customers based on selected user and search term
   const filteredCustomers = useMemo(() => {
     let customers = allCustomers;
-    
+
     // Debug: Log filtering info
     console.log('Debug - Total customers:', allCustomers.length);
     console.log('Debug - Selected user:', selectedUser);
-    
+
     // Filter by user
     if (selectedUser !== 'all') {
       customers = customers.filter(customer => customer.assignedTo === selectedUser);
       console.log('Debug - Customers after user filter:', customers.length);
     }
-    
+
     // Filter by search term
     if (searchTerm) {
-      customers = customers.filter(customer => 
+      customers = customers.filter(customer =>
         customer.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.phone.includes(searchTerm)
       );
       console.log('Debug - Customers after search filter:', customers.length);
     }
-    
+
     return customers;
   }, [allCustomers, selectedUser, searchTerm]);
-  
+
   // Pagination
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
   const paginatedCustomers = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredCustomers, currentPage, itemsPerPage]);
-  
+
   // Get customer stats
   const customerStats = useMemo(() => {
     const stats = {
@@ -255,34 +257,34 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             apDateAssigned.end ||
             apOwnership.start ||
             apOwnership.end) && (
-            <button
-              onClick={() => {
-                setSelectedUser("all");
-                setFName("");
-                setFPhone("");
-                setFProvince("");
-                setFLifecycle("");
-                setFBehavioral("");
-                setFGrade("");
-                setFHasOrders("all");
-                setFDateAssigned({ start: "", end: "" });
-                setFOwnership({ start: "", end: "" });
-                setApSelectedUser("all");
-                setApName("");
-                setApPhone("");
-                setApProvince("");
-                setApLifecycle("");
-                setApBehavioral("");
-                setApGrade("");
-                setApHasOrders("all");
-                setApDateAssigned({ start: "", end: "" });
-                setApOwnership({ start: "", end: "" });
-              }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600"
-            >
-              ล้างตัวกรอง
-            </button>
-          )}
+              <button
+                onClick={() => {
+                  setSelectedUser("all");
+                  setFName("");
+                  setFPhone("");
+                  setFProvince("");
+                  setFLifecycle("");
+                  setFBehavioral("");
+                  setFGrade("");
+                  setFHasOrders("all");
+                  setFDateAssigned({ start: "", end: "" });
+                  setFOwnership({ start: "", end: "" });
+                  setApSelectedUser("all");
+                  setApName("");
+                  setApPhone("");
+                  setApProvince("");
+                  setApLifecycle("");
+                  setApBehavioral("");
+                  setApGrade("");
+                  setApHasOrders("all");
+                  setApDateAssigned({ start: "", end: "" });
+                  setApOwnership({ start: "", end: "" });
+                }}
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600"
+              >
+                ล้างตัวกรอง
+              </button>
+            )}
         </div>
         {showAdvanced && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -487,7 +489,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 ))}
             </select>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <label className="text-sm font-medium text-gray-700">ค้นหา:</label>
             <input
@@ -501,7 +503,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-64"
             />
           </div>
-          
+
           <div className="flex items-center space-x-4 hidden">
             <label className="text-sm font-medium text-gray-700">แสดง:</label>
             <select
@@ -538,6 +540,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             onUpsellClick(customer);
           }
         }}
+        onChangeOwner={onChangeOwner}
+        allUsers={allUsers}
+        currentUser={currentUser}
       />
       <div className="bg-white rounded-lg shadow-sm border hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -579,7 +584,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               {paginatedCustomers.map((customer) => {
                 const customerOrders = allOrders.filter(order => order.customerId === customer.id);
                 const hasOrders = customerOrders.length > 0;
-                
+
                 return (
                   <tr key={customer.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -599,13 +604,12 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        customer.lifecycleStatus === 'New' 
-                          ? 'bg-green-100 text-green-800'
-                          : customer.lifecycleStatus === 'FollowUp'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${customer.lifecycleStatus === 'New'
+                        ? 'bg-green-100 text-green-800'
+                        : customer.lifecycleStatus === 'FollowUp'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-gray-100 text-gray-800'
-                      }`}>
+                        }`}>
                         {customer.lifecycleStatus}
                       </span>
                     </td>
@@ -628,7 +632,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </tbody>
           </table>
         </div>
-        
+
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
@@ -667,7 +671,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                       <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </button>
-                  
+
                   {/* Page numbers */}
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum;
@@ -680,22 +684,21 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
                         onClick={() => setCurrentPage(pageNum)}
-                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                          currentPage === pageNum
-                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                        }`}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${currentPage === pageNum
+                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                          }`}
                       >
                         {pageNum}
                       </button>
                     );
                   })}
-                  
+
                   <button
                     onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
@@ -711,7 +714,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           </div>
         )}
       </div>
-      
+
       {/* Customer Detail Modal (disabled to match Telesale fullpage) */}
       {false && selectedCustomer && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
@@ -727,7 +730,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 </svg>
               </button>
             </div>
-            
+
             <div className="px-6 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -775,7 +778,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 <div>
                   <p className="text-sm font-medium text-gray-500">วันที่สมัคร</p>
                   <p className="text-sm text-gray-900">
-                    {selectedCustomer.dateRegistered 
+                    {selectedCustomer.dateRegistered
                       ? new Date(selectedCustomer.dateRegistered).toLocaleDateString('th-TH')
                       : '-'
                     }
@@ -784,7 +787,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 <div>
                   <p className="text-sm font-medium text-gray-500">วันหมดอายุการดูแล</p>
                   <p className="text-sm text-gray-900">
-                    {selectedCustomer.ownershipExpires 
+                    {selectedCustomer.ownershipExpires
                       ? new Date(selectedCustomer.ownershipExpires).toLocaleDateString('th-TH')
                       : '-'
                     }
@@ -793,7 +796,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 <div>
                   <p className="text-sm font-medium text-gray-500">นัดหมายถัดไป</p>
                   <p className="text-sm text-gray-900">
-                    {selectedCustomer.followUpDate 
+                    {selectedCustomer.followUpDate
                       ? new Date(selectedCustomer.followUpDate).toLocaleDateString('th-TH')
                       : '-'
                     }
@@ -808,7 +811,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                   <p className="text-sm text-gray-900">{selectedCustomer.lineId || '-'}</p>
                 </div>
               </div>
-              
+
               {/* Customer Orders */}
               <div className="mt-6">
                 <h4 className="text-md font-medium text-gray-900 mb-3">ประวัติการสั่งซื้อ</h4>
@@ -846,13 +849,12 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                               ฿{order.totalAmount.toLocaleString()}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
-                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                order.orderStatus === 'Delivered' 
-                                  ? 'bg-green-100 text-green-800'
-                                  : order.orderStatus === 'Pending'
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${order.orderStatus === 'Delivered'
+                                ? 'bg-green-100 text-green-800'
+                                : order.orderStatus === 'Pending'
                                   ? 'bg-yellow-100 text-yellow-800'
                                   : 'bg-gray-100 text-gray-800'
-                              }`}>
+                                }`}>
                                 {order.orderStatus}
                               </span>
                             </td>
@@ -870,7 +872,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
                 </div>
               </div>
             </div>
-            
+
             <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
               <button
                 onClick={() => setSelectedCustomer(null)}

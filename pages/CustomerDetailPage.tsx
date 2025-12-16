@@ -182,43 +182,52 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   }, [customer.id, customer.customerId, customer.customerRefId, user?.id]);
 
   const eligibleOwners = useMemo(() => {
-    const sameCompanyUsers =
-      user.role === UserRole.SuperAdmin
-        ? allUsers
-        : allUsers.filter(
-          (candidate) => candidate.companyId === user.companyId,
-        );
-
-    if (user.role === UserRole.Supervisor) {
-      return sameCompanyUsers.filter((candidate) => {
-        if (candidate.id === user.id) return true;
-        if (
-          candidate.role === UserRole.Telesale &&
-          candidate.supervisorId === user.id
-        ) {
-          return true;
-        }
-        if (
-          candidate.role === UserRole.Supervisor &&
-          candidate.id !== user.id
-        ) {
-          return true;
-        }
-        return false;
-      });
+    // SuperAdmin can see everyone (or restrict if needed, but usually full access)
+    if (user.role === UserRole.SuperAdmin) {
+      return allUsers;
     }
 
+    // Base: Always same company for others
+    const sameCompanyUsers = allUsers.filter(
+      (candidate) => candidate.companyId === user.companyId
+    );
+
+    // 1. Telesale: Can only transfer to their OWN Supervisor
     if (user.role === UserRole.Telesale) {
       return sameCompanyUsers.filter(
-        (candidate) => candidate.id === user.supervisorId,
+        (candidate) => candidate.id === user.supervisorId
       );
     }
 
+    // 2. Supervisor (Super Telesale): 
+    //    - Other Supervisors in same company (candidate.role === Supervisor)
+    //    - Their own team members (candidate.supervisorId === user.id)
+    if (user.role === UserRole.Supervisor) {
+      return sameCompanyUsers.filter((candidate) => {
+        // Exclude self (handled later in filteredEligibleOwners too, but safe here)
+        if (candidate.id === user.id) return false; // Usually we want to see self?? No, transfer "to".
+
+        // Logic: Target is Supervisor (same company) OR Target is my subordinate
+        const isSameCompanySupervisor = candidate.role === UserRole.Supervisor;
+        const isMySubordinate = candidate.supervisorId === user.id;
+
+        return isSameCompanySupervisor || isMySubordinate;
+      });
+    }
+
+    // 3. Other roles (Admin, etc) -> See everyone in company? 
+    // User didn't specify, but assuming full company access for Admin/Backoffice
     return sameCompanyUsers;
   }, [allUsers, user]);
 
   const filteredEligibleOwners = useMemo(
-    () => eligibleOwners.filter((candidate) => candidate.id !== user.id),
+    () =>
+      eligibleOwners.filter(
+        (candidate) =>
+          candidate.id !== user.id &&
+          (candidate.role === UserRole.Supervisor ||
+            candidate.role === UserRole.Telesale),
+      ),
     [eligibleOwners, user.id],
   );
 
@@ -604,8 +613,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   // Filter activities for this customer
   const customerActivities = useMemo(() => {
     if (!activities || !Array.isArray(activities)) return [];
-    return activities.filter(a => 
-      a.customerId === customer.id || 
+    return activities.filter(a =>
+      a.customerId === customer.id ||
       a.customerId === String(customer.pk) ||
       (customer.pk && String(a.customerId) === String(customer.pk))
     );
@@ -679,7 +688,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
         actorName: activity.actorName,
         type: 'activity' as const,
       }));
-    
+
     const logItems = recentLogEntries.map(({ log, summaries }) => ({
       id: `log-${log.id}`,
       timestamp: log.createdAt,
@@ -860,6 +869,11 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                     >
                       (เปลี่ยนผู้ดูแล)
                     </button>
+                  )}
+                  {!canChangeOwner && user.role === UserRole.Telesale && !user.supervisorId && (
+                    <span className="text-xs text-red-600 ml-2">
+                      (ต้องตั้งค่าหัวหน้าทีมก่อน)
+                    </span>
                   )}
                 </div>
                 {showOwnerChange && canChangeOwner && (

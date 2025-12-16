@@ -441,6 +441,7 @@ export interface Order {
   salesChannelPageId?: number;
   bankAccountId?: number;
   transferDate?: string;
+  reconcileAction?: string;
   slips?: OrderSlip[];
   verificationInfo?: {
     verifiedBy: number;

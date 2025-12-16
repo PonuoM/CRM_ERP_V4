@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useRef, useEffect } from "react";
-import { Customer, ModalType, Tag, TagType } from "../types";
-import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart } from "lucide-react";
+import { Customer, ModalType, Tag, TagType, User, UserRole } from "../types";
+import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart, UserCog } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
 import usePersistentState from "@/utils/usePersistentState";
 import { checkUpsellEligibility } from "@/services/api";
@@ -15,6 +15,9 @@ interface CustomerTableProps {
   storageKey?: string;
   onUpsellClick?: (customer: Customer) => void;
   currentUserId?: number;
+  onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
+  allUsers?: User[];
+  currentUser?: User;
 }
 
 const NOOP_STORAGE: Storage = {
@@ -72,7 +75,13 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     storageKey,
     onUpsellClick,
     currentUserId,
+    onChangeOwner,
+    allUsers = [],
+    currentUser,
   } = props;
+
+  const [showChangeOwnerModal, setShowChangeOwnerModal] = useState<string | null>(null);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
 
   const defaultItemsPerPage = pageSizeOptions[0] ?? 10;
   const persistenceBaseKey = storageKey
@@ -128,6 +137,78 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
     setItemsPerPage(newItemsPerPage);
     setCurrentPage(1);
+  };
+
+  // Get eligible owners for a customer based on current user role
+  const getEligibleOwners = (customer: Customer): User[] => {
+    if (!currentUser || !allUsers || allUsers.length === 0) return [];
+
+    // SuperAdmin can see everyone
+    if (currentUser.role === UserRole.SuperAdmin) {
+      return allUsers;
+    }
+
+    // Base: Always same company for others
+    const sameCompanyUsers = allUsers.filter(
+      (candidate) => candidate.companyId === currentUser.companyId
+    );
+
+    // 1. Telesale: Can only transfer to their OWN Supervisor
+    if (currentUser.role === UserRole.Telesale) {
+      return sameCompanyUsers.filter(
+        (candidate) => candidate.id === currentUser.supervisorId
+      );
+    }
+
+    // 2. Supervisor (Super Telesale): 
+    //    - Other Supervisors in same company (candidate.role === Supervisor)
+    //    - Their own team members (candidate.supervisorId === currentUser.id)
+    if (currentUser.role === UserRole.Supervisor) {
+      return sameCompanyUsers.filter((candidate) => {
+        // Exclude self
+        if (candidate.id === currentUser.id) return false;
+
+        // Logic: Target is Supervisor (same company) OR Target is my subordinate
+        const isSameCompanySupervisor = candidate.role === UserRole.Supervisor;
+        const isMySubordinate = candidate.supervisorId === currentUser.id;
+
+        return isSameCompanySupervisor || isMySubordinate;
+      });
+    }
+
+    // 3. Other roles (Admin, etc) -> See everyone in company
+    return sameCompanyUsers;
+  };
+
+  // Filter to only show Supervisor and Telesale roles
+  const getFilteredEligibleOwners = (customer: Customer): User[] => {
+    const eligibleOwners = getEligibleOwners(customer);
+    return eligibleOwners.filter(
+      (candidate) =>
+        candidate.id !== currentUser?.id &&
+        (candidate.role === UserRole.Supervisor ||
+          candidate.role === UserRole.Telesale),
+    );
+  };
+
+  const handleChangeOwnerClick = (customer: Customer) => {
+    const eligibleOwners = getFilteredEligibleOwners(customer);
+    if (eligibleOwners.length > 0) {
+      setShowChangeOwnerModal(customer.id);
+      setSelectedOwnerId(eligibleOwners[0].id);
+    }
+  };
+
+  const handleConfirmChangeOwner = async () => {
+    if (!showChangeOwnerModal || !selectedOwnerId || !onChangeOwner) return;
+
+    try {
+      await onChangeOwner(showChangeOwnerModal, selectedOwnerId);
+      setShowChangeOwnerModal(null);
+      setSelectedOwnerId(null);
+    } catch (error) {
+      console.error('Failed to change owner:', error);
+    }
   };
 
   const TagColumn: React.FC<{ customer: Customer }> = ({ customer }) => {
@@ -318,6 +399,9 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                 const remainingTime = getRemainingTimeRounded(
                   customer.ownershipExpires,
                 );
+                const eligibleOwners = getFilteredEligibleOwners(customer);
+                const canChangeOwner = onChangeOwner && eligibleOwners.length > 0;
+
                 return (
                   <tr
                     key={
@@ -396,6 +480,15 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                       >
                         <PhoneCall size={16} />
                       </button>
+                      {canChangeOwner && (
+                        <button
+                          title="เปลี่ยนผู้ดูแล"
+                          onClick={() => handleChangeOwnerClick(customer)}
+                          className="p-2 text-purple-600 hover:bg-purple-100 rounded-full"
+                        >
+                          <UserCog size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -480,6 +573,55 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
           </div>
         </div>
       </div>
+
+      {/* Change Owner Modal */}
+      {showChangeOwnerModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                เปลี่ยนผู้ดูแลลูกค้า
+              </h3>
+            </div>
+            <div className="px-6 py-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                เลือกผู้ดูแลใหม่
+              </label>
+              <select
+                value={selectedOwnerId || ''}
+                onChange={(e) => setSelectedOwnerId(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              >
+                {getFilteredEligibleOwners(
+                  customers.find(c => c.id === showChangeOwnerModal)!
+                ).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.firstName} {user.lastName} ({user.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowChangeOwnerModal(null);
+                  setSelectedOwnerId(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleConfirmChangeOwner}
+                disabled={!selectedOwnerId}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -11,11 +11,13 @@ interface ShippingRecord {
     order_number: string;
     delivery_date: string | null;
     delivery_status: string | null;
+    order_status?: string | null;
     row_index: number;
     action: 'insert' | 'update' | 'skip';
     changes?: {
         delivery_date?: { old: string; new: string };
         delivery_status?: { old: string; new: string };
+        order_status?: { old: string; new: string };
     };
 }
 
@@ -172,7 +174,7 @@ const GoogleSheetImportPage: React.FC<GoogleSheetImportPageProps> = ({ apiBaseUr
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
+        <div className="p-6 w-full mx-auto">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 font-primary">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -418,6 +420,7 @@ const GoogleSheetImportPage: React.FC<GoogleSheetImportPageProps> = ({ apiBaseUr
                                             <th className="p-2 text-left font-semibold text-green-900">เวลาที่ระบบสร้าง</th>
                                             <th className="p-2 text-left font-semibold text-green-900">วันที่จัดส่ง</th>
                                             <th className="p-2 text-left font-semibold text-green-900">สถานะจัดส่ง</th>
+                                            <th className="p-2 text-left font-semibold text-green-900">สถานะออเดอร์</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -436,6 +439,11 @@ const GoogleSheetImportPage: React.FC<GoogleSheetImportPageProps> = ({ apiBaseUr
                                                 <td className="p-2">
                                                     <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
                                                         {record.delivery_status || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2">
+                                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
+                                                        {record.order_status || '-'}
                                                     </span>
                                                 </td>
                                             </tr>
@@ -482,6 +490,16 @@ const GoogleSheetImportPage: React.FC<GoogleSheetImportPageProps> = ({ apiBaseUr
                                                                 <span className="line-through text-red-600">{record.changes.delivery_status.old}</span>
                                                                 <span>→</span>
                                                                 <span className="text-green-600 font-semibold">{record.changes.delivery_status.new}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {record.changes?.order_status && (
+                                                        <div>
+                                                            <span className="font-medium text-gray-700">สถานะออเดอร์:</span>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="line-through text-red-600">{record.changes.order_status.old}</span>
+                                                                <span>→</span>
+                                                                <span className="text-green-600 font-semibold">{record.changes.order_status.new}</span>
                                                             </div>
                                                         </div>
                                                     )}

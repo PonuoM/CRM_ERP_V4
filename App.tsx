@@ -917,8 +917,14 @@ const App: React.FC = () => {
           phone: r.phone,
           role: r.role as unknown as UserRole,
           companyId: r.company_id,
-          teamId: r.team_id ?? undefined,
-          supervisorId: r.supervisor_id ?? undefined,
+          teamId:
+            typeof r.team_id !== "undefined" && r.team_id !== null
+              ? Number(r.team_id)
+              : undefined,
+          supervisorId:
+            typeof r.supervisor_id !== "undefined" && r.supervisor_id !== null
+              ? Number(r.supervisor_id)
+              : undefined,
           status: r.status,
           customTags: Array.isArray(r.customTags)
             ? r.customTags.map((t: any) => ({
@@ -1108,6 +1114,7 @@ const App: React.FC = () => {
                 createdAt: s.created_at,
               }))
               : undefined,
+            reconcileAction: r.reconcile_action || undefined,
           };
         };
 
@@ -2580,6 +2587,10 @@ const App: React.FC = () => {
     }
   };
 
+
+
+
+  // Force update
   const handleCreateOrder = async (payload: {
     order: Partial<Omit<Order, "id" | "orderDate" | "companyId" | "creatorId">>;
     newCustomer?: Omit<
@@ -3492,23 +3503,63 @@ const App: React.FC = () => {
     }
 
     const dateAssigned = new Date().toISOString();
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer) {
+      alert("ไม่พบข้อมูลลูกค้า");
+      return;
+    }
+    const targetId = customer.pk || customer.id;
 
     try {
-      await updateCustomer(customerId, {
+      await updateCustomer(String(targetId), {
         assignedTo: newOwnerId,
+        assigned_to: newOwnerId, // Send both for compatibility
         dateAssigned,
+        date_assigned: dateAssigned,
+
+        // Ensure customer is taken out of waiting basket/blocked state if they were in it
+        is_in_waiting_basket: 0,
+        isInWaitingBasket: false,
+        waiting_basket_start_date: null,
+        waitingBasketStartDate: null,
+        is_blocked: 0,
+        isBlocked: false,
       });
+
+      // Add immediate activity log
+      const newActivityId = Date.now();
+      const newActivity: Activity = {
+        id: newActivityId,
+        customerId: String(customer.pk || customer.id),
+        timestamp: new Date().toISOString(),
+        type: ActivityType.StatusChange,
+        description: `เปลี่ยนผู้ดูแลจาก "${companyUsers.find(u => u.id === customer.assignedTo)?.firstName || '-'}" เป็น "${targetUser.firstName}"`,
+        actorName: `${currentUser.firstName} ${currentUser.lastName}`
+      };
+
+      setActivities(prev => [newActivity, ...prev]);
+
+      // Also persisting activity to backend if needed is handled by separate call or let the next refresh handle it?
+      // Better to create it:
+      if (customer.pk || (typeof customer.id === 'number')) {
+        createActivity({
+          customerId: customer.pk || customer.id,
+          timestamp: newActivity.timestamp,
+          type: newActivity.type,
+          description: newActivity.description,
+          actorName: newActivity.actorName
+        }).catch(console.error);
+      }
+
     } catch (error) {
       console.error("update customer owner failed", error);
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error("ไม่สามารถเปลี่ยนผู้ดูแลได้");
+      alert("ไม่สามารถเปลี่ยนผู้ดูแลได้ กรุณาลองใหม่อีกครั้ง");
+      return;
     }
 
     setCustomers((prev) =>
       prev.map((customerItem) =>
-        customerItem.id === customerId
+        customerItem.id === customerId || customerItem.pk === targetId
           ? {
             ...customerItem,
             assignedTo: newOwnerId,
@@ -3525,7 +3576,7 @@ const App: React.FC = () => {
     // Redistribute ownership (adds 30 days)
     try {
       await redistributeCustomer(customerId);
-      const updated = await getCustomerOwnershipStatus(customerId);
+      const updated = await getCustomerOwnershipStatus(String(targetId));
       if (updated && updated.ownership_expires) {
         setCustomers((prev) =>
           prev.map((c) =>
@@ -5772,17 +5823,25 @@ const App: React.FC = () => {
               setCreateOrderInitialData({ customer, upsell: true });
               setActivePage("CreateOrder");
             }}
+            onChangeOwner={handleChangeCustomerOwner}
             systemTags={systemTags}
           />
         );
       }
       return (
-        <CustomerSearchPage
-          customers={companyCustomers}
-          orders={companyOrders}
-          users={companyUsers}
+        <ManageCustomersPage
+          allUsers={companyUsers}
+          allCustomers={companyCustomers}
+          allOrders={companyOrders}
           currentUser={currentUser}
-          onTakeCustomer={handleTakeCustomer}
+          onViewCustomer={handleViewCustomer}
+          openModal={openModal}
+          onChangeOwner={handleChangeCustomerOwner}
+          onUpsellClick={(customer) => {
+            setPreviousPage(activePage);
+            setCreateOrderInitialData({ customer, upsell: true });
+            setActivePage("CreateOrder");
+          }}
         />
       );
     }
@@ -6211,6 +6270,8 @@ const App: React.FC = () => {
               setActivePage("CreateOrder");
             }}
             systemTags={systemTags}
+            onChangeOwner={handleChangeCustomerOwner}
+            allUsers={companyUsers}
           />
         );
 
@@ -6343,6 +6404,7 @@ const App: React.FC = () => {
             onTakeCustomer={handleTakeCustomer}
             openModal={openModal}
             onViewCustomer={handleViewCustomer}
+            onChangeOwner={handleChangeCustomerOwner}
             onUpsellClick={(customer) => {
               setPreviousPage(activePage);
               setCreateOrderInitialData({ customer, upsell: true });
@@ -6876,7 +6938,7 @@ const App: React.FC = () => {
       )}
       {/* Main Content with proper margin */}
       <div
-        className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar
+        className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar || viewingCustomer
           ? ""
           : isSidebarCollapsed
             ? "ml-20"
@@ -6926,7 +6988,7 @@ const App: React.FC = () => {
           </header>
         )}
         <main className="flex-1 overflow-x-auto overflow-y-auto bg-[#F5F5F5] relative">
-          <div className="max-w-full">
+          <div className="max-w-full min-h-full">
             {renderPage()}
           </div>
         </main>
