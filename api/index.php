@@ -1615,12 +1615,15 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
-                               MAX(srl.confirmed_action) as reconcile_action';
+                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action';
 
                 $sql = "SELECT $selectCols
                         FROM orders o
                         LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id
-                        LEFT JOIN statement_reconcile_logs srl ON srl.order_id = o.id";
+                        LEFT JOIN statement_reconcile_logs srl ON (
+                            srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
+                            OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
+                        )";
                 
                 $params = [];
                 $whereConditions = [];
@@ -1642,7 +1645,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 $sql .= ' GROUP BY o.id
                           ORDER BY o.order_date DESC
-                          LIMIT 200';
+                          LIMIT 5000';
                 
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
@@ -3966,9 +3969,12 @@ function get_order(PDO $pdo, string $id): ?array {
     $mainOrderId = $isSubOrder ? $matches[1] : $id;
     
     // Always fetch main order record (not sub order)
-    $stmt = $pdo->prepare('SELECT o.*, MAX(srl.confirmed_action) as reconcile_action 
+    $stmt = $pdo->prepare('SELECT o.*, MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action 
                            FROM orders o 
-                           LEFT JOIN statement_reconcile_logs srl ON srl.order_id = o.id 
+                           LEFT JOIN statement_reconcile_logs srl ON (
+                               srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
+                               OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
+                           )
                            WHERE o.id=?
                            GROUP BY o.id');
     $stmt->execute([$mainOrderId]);

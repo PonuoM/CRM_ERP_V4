@@ -205,13 +205,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     [orders],
   );
 
-  // เสร็จสิ้น: Approved หรือ Paid
+  // เสร็จสิ้น: รายการที่บัญชี Confirm Reconcile แล้ว
   const completedOrders = useMemo(() =>
     orders.filter(o =>
-      (o.paymentStatus === PaymentStatus.Approved ||
-        o.paymentStatus === PaymentStatus.Paid ||
-        o.orderStatus === OrderStatus.Delivered) &&
-      o.reconcileAction === 'Confirmed'
+      o.reconcileAction === 'Confirmed' &&
+      o.orderStatus !== OrderStatus.Cancelled
     ), [orders]
   );
 
@@ -439,6 +437,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         });
       });
     }
+
     return list;
   }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, normalizedAfShop, customerById, productCategoryMap]);
 

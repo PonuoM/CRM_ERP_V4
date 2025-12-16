@@ -1403,6 +1403,7 @@ const App: React.FC = () => {
                 createdAt: s.created_at,
               }))
               : undefined,
+            reconcileAction: r.reconcile_action || undefined,
           };
         }));
       })

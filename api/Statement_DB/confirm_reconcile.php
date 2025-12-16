@@ -32,7 +32,8 @@ try {
     $sql = "UPDATE statement_reconcile_logs 
             SET confirmed_at = NOW(),
                 confirmed_action = 'Confirmed',
-                confirmed_order_id = :orderId,
+                order_id = :orderId,
+                confirmed_order_id = :confirmedOrderId,
                 confirmed_order_amount = :orderAmount,
                 confirmed_payment_method = :paymentMethod
             WHERE id = :id";
@@ -40,6 +41,7 @@ try {
     $stmt = $pdo->prepare($sql);
     $result = $stmt->execute([
         ':orderId' => $orderId,
+        ':confirmedOrderId' => $orderId,
         ':orderAmount' => $orderAmount,
         ':paymentMethod' => $paymentMethod,
         ':id' => $id
