@@ -357,7 +357,7 @@ const OrderSummary: React.FC<{
   );
 };
 
-const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
+export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   customers,
 
   products,
@@ -6562,6 +6562,74 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const commonLabelClass = "block text-sm font-medium text-[#0e141b] mb-1.5";
 
+  const handleDuplicateItem = (item: LineItem, count: number) => {
+    if (count <= 0) return;
+
+    const currentItems = orderData.items || [];
+    const newItems: LineItem[] = [];
+    let nextId = Date.now() + Math.floor(Math.random() * 100000); // Ensure unique ID
+
+    for (let i = 0; i < count; i++) {
+      // Clone parent/single item
+      nextId += 1;
+      const newRootId = nextId;
+      const clonedRoot = {
+        ...item,
+        id: newRootId,
+      };
+      newItems.push(clonedRoot);
+
+      // Clone children if it's a promotion parent
+      if (item.isPromotionParent) {
+        const children = currentItems.filter((it) => it.parentItemId === item.id);
+        children.forEach((child) => {
+          nextId += 1;
+          newItems.push({
+            ...child,
+            id: nextId,
+            parentItemId: newRootId,
+          });
+        });
+      }
+    }
+
+    // Find insertion index (after the item and its children)
+    const index = currentItems.findIndex((it) => it.id === item.id);
+    if (index === -1) {
+      // Fallback: append to end
+      updateOrderData("items", [...currentItems, ...newItems]);
+      return;
+    }
+
+    let insertIndex = index + 1;
+    // If it's a parent, skip its children to find the correct insertion point
+    if (item.isPromotionParent) {
+      // Items are usually grouped, but let's be safe. 
+      // We iterate forward from the parent until we find a non-child (or end of list).
+      // Actually, if we just filtered children above, we assume they might be scattered? 
+      // No, typically they are adjacent. But let's logic: 
+      // We want to insert AFTER this logical block.
+      // We can just splice appropriately.
+      // Let's assume the render order is the storage order for simplicity, 
+      // OR we can just append to end if order isn't strictly enforced in storage.
+      // But users prefer "duplicate next to original".
+
+      // Let's look for strict children subsequent to this item
+      for (let j = index + 1; j < currentItems.length; j++) {
+        if (currentItems[j].parentItemId === item.id) {
+          insertIndex = j + 1;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const updatedItems = [...currentItems];
+    updatedItems.splice(insertIndex, 0, ...newItems);
+    updateOrderData("items", updatedItems);
+  };
+
+
   const onFocusSelectAll = (
     e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
@@ -8995,35 +9063,58 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               </td>
 
                               <td className="px-3 py-2 text-center">
-                                {!isChild && (
-                                  <button
-                                    onClick={() => {
-                                      const current = orderData.items || [];
-                                      const id = item.id;
-                                      const next = current.filter(
-                                        (it) =>
-                                          it.id !== id && it.parentItemId !== id,
-                                      );
-                                      updateOrderData("items", next);
-                                    }}
-                                    className="text-red-500 hover:text-red-700"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth={1.5}
-                                      stroke="currentColor"
-                                      className="w-4 h-4"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                                      />
-                                    </svg>
-                                  </button>
-                                )}
+                                <div className="flex items-center justify-center gap-2">
+                                  {!isChild && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          const input = window.prompt("ระบุจำนวนที่ต้องการคัดลอก (จำนวนแถว)", "1");
+                                          if (input !== null) {
+                                            const count = parseInt(input, 10);
+                                            if (!isNaN(count) && count > 0) {
+                                              handleDuplicateItem(item, count);
+                                            }
+                                          }
+                                        }}
+                                        className="text-blue-500 hover:text-blue-700"
+                                        title="คัดลอก"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                        </svg>
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          const current = orderData.items || [];
+                                          const id = item.id;
+                                          const next = current.filter(
+                                            (it) =>
+                                              it.id !== id && it.parentItemId !== id,
+                                          );
+                                          updateOrderData("items", next);
+                                        }}
+                                        className="text-red-500 hover:text-red-700"
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          strokeWidth={1.5}
+                                          stroke="currentColor"
+                                          className="w-4 h-4"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -9160,4 +9251,4 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   );
 };
 
-export { CreateOrderPage };
+
