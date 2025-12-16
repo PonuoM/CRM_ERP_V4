@@ -324,10 +324,11 @@ const OrderTable: React.FC<OrderTableProps> = ({
 
   // Compute order total from items (more accurate than order.totalAmount)
   const computeOrderTotal = (order: Order): number => {
-    // Filter out freebie items before calculating total
+    // Filter out freebie items and child items before calculating total
     const nonFreebieItems = (order.items || []).filter((item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
-      return !isFreebie;
+      const isChild = item.parentItemId || item.parent_item_id;
+      return !isFreebie && !isChild;
     });
 
     const itemsTotal = nonFreebieItems.reduce((sum, item) => {
