@@ -33,8 +33,8 @@ try {
         SELECT 
             cr.*,
             u.username,
-            u.firstName,
-            u.lastName
+            u.first_name,
+            u.last_name
         FROM commission_records cr
         JOIN users u ON u.id = cr.user_id
         WHERE cr.period_id = ?

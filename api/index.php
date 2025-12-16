@@ -2524,17 +2524,21 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
 
                     if ($effectivePaymentMethod !== 'COD') {
-                        if (count($normalizedBoxes) !== 1) {
-                            throw new RuntimeException('NON_COD_SINGLE_BOX_ONLY');
+                        // Allow multiple boxes for non-COD, but force amount logic:
+                        // Box 1 gets the total amount, others get 0
+                        foreach ($normalizedBoxes as $num => &$boxData) {
+                            if ($num === 1) {
+                                $boxData['collection_amount'] = $totalAmount;
+                            } else {
+                                $boxData['collection_amount'] = 0.0;
+                            }
+                            $boxData['collected_amount'] = 0.0; // Paid via transfer usually means 0 to collect on delivery
+                            $boxData['waived_amount'] = 0.0;
                         }
-                        $normalizedBoxes = [
-                            1 => [
-                                'box_number' => 1,
-                                'collection_amount' => $orderTotal,
-                                'collected_amount' => $normalizedBoxes[1]['collected_amount'] ?? 0,
-                                'waived_amount' => $normalizedBoxes[1]['waived_amount'] ?? 0,
-                            ]
-                        ];
+                        unset($boxData); // Break reference
+                        
+                        $boxCount = count($normalizedBoxes);
+                        $boxTotal = $totalAmount;
                         $codTarget = null;
                     }
 

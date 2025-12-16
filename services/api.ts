@@ -221,6 +221,13 @@ export async function listProducts(companyId?: number) {
   return apiFetch(`products${companyId ? `?${qs}` : ""}`);
 }
 
+export async function listPromotions(companyId?: number) {
+  const qs = new URLSearchParams();
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`promotions${companyId ? `?${qs}` : ""}`);
+}
+
+
 export async function createProduct(payload: any) {
   return apiFetch("products", {
     method: "POST",
@@ -239,12 +246,6 @@ export async function deleteProduct(id: number) {
   return apiFetch(`products/${encodeURIComponent(String(id))}`, {
     method: "DELETE",
   });
-}
-
-export async function listPromotions(companyId?: number) {
-  const qs = new URLSearchParams();
-  if (companyId) qs.set("companyId", String(companyId));
-  return apiFetch(`promotions${companyId ? `?${qs}` : ""}`);
 }
 
 export async function createPromotion(promotionData: any) {

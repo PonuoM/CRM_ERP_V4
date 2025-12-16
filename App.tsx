@@ -2259,6 +2259,7 @@ const App: React.FC = () => {
           payload.boxes = updatedOrder.boxes.map((b) => ({
             boxNumber: b.boxNumber,
             collectionAmount: b.collectionAmount ?? b.codAmount ?? 0,
+            codAmount: b.collectionAmount ?? b.codAmount ?? 0, // Add codAmount to match user's working payload
             collectedAmount: b.collectedAmount ?? 0,
             waivedAmount: b.waivedAmount ?? 0,
           }));
