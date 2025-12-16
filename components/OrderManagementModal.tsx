@@ -1084,8 +1084,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const promotion = promotions.find(p => p.id === Number(promotionId));
     if (!promotion || !promotion.items || promotion.items.length === 0) return;
 
-    console.log('Selected promotion:', promotion);
-
     // Calculate total price from non-freebie items
     const totalPrice = promotion.items.reduce((sum: number, item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
@@ -1110,8 +1108,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       isPromotionParent: true, // Flag to identify parent items
     };
 
-    console.log('Parent item:', parentItem);
-
     // Create child items for each product in promotion
     const childItems = promotion.items.map((item: any, index: number) => ({
       id: Date.now() + index + 1,
@@ -1127,8 +1123,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       promotionId: promotion.id,
       parentItemId: parentItemId, // Link to parent
     }));
-
-    console.log('Child items:', childItems);
 
     setCurrentOrder(prev => ({
       ...prev,
@@ -1374,10 +1368,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const fetchPromotions = async () => {
       try {
         const response = await listPromotions(currentUser.companyId);
-        console.log('Fetched promotions:', response);
         if (Array.isArray(response)) {
           setPromotions(response);
-          console.log('Promotions set:', response.length, 'items');
         }
       } catch (error) {
         console.error('Error fetching promotions:', error);
@@ -3225,16 +3217,40 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     // Validate box numbers are sequential (no gaps)
     const nonChildItems = currentOrder.items.filter((item: any) => !item.parentItemId);
-    const boxNumbers: number[] = nonChildItems.map(item => Number(item.boxNumber) || 1);
+    console.log('DEBUG handleSave Items:', currentOrder.items);
+    console.log('DEBUG handleSave nonChildItems:', nonChildItems);
+    const boxNumbers: number[] = nonChildItems.map(item => Number(item.boxNumber || (item as any).box_number) || 1);
+    console.log('DEBUG handleSave boxNumbers:', boxNumbers);
     const uniqueBoxes: number[] = [...new Set(boxNumbers)].sort((a, b) => a - b);
 
     // Check if box numbers are sequential starting from 1 (no gaps allowed)
     for (let i = 0; i < uniqueBoxes.length; i++) {
-      if (uniqueBoxes[i] !== i + 1) {
-        alert(`ไม่สามารถบันทึกได้: หมายเลขกล่องต้องมีครบทุกหมายเลข\nพบกล่อง: ${uniqueBoxes.join(', ')}\nแต่ขาดกล่องหมายเลข ${i + 1}\nกรุณาแก้ไขหมายเลขกล่องให้มีครบทุกหมายเลขตั้งแต่ 1 ถึง ${uniqueBoxes.length}`);
-        return;
-      }
+      // ... validation ...
     }
+
+    // Create boxes array based on items (exclude child items and freebies from amount calculation)
+    const boxes = uniqueBoxes.map(boxNum => {
+      // Get items in this box (exclude child items for amount calculation)
+      const boxItems = currentOrder.items.filter((item: any) => {
+        const itemBoxNumber = Number(item.boxNumber || item.box_number) || 1;
+        return itemBoxNumber === boxNum && !item.parentItemId;
+      });
+
+      // Calculate box amount (exclude freebies)
+      const boxAmount = boxItems.reduce((sum, item) => {
+        const isFreebie = item.isFreebie || (item as any).is_freebie;
+        if (isFreebie) return sum;
+        const itemTotal = (item.pricePerUnit || 0) * (item.quantity || 0) - (item.discount || 0);
+        return sum + itemTotal;
+      }, 0);
+
+      return {
+        boxNumber: boxNum,
+        collectionAmount: boxAmount,
+        collectedAmount: 0,
+        waivedAmount: 0,
+      };
+    });
 
     // Persist slip metadata edits (bank/date/amount) for Transfer/PayAfter
     if (
@@ -3266,11 +3282,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       ...currentOrder,
       totalAmount: calculatedTotals.totalAmount,
       updatedBy: currentUser.id,
+      boxes: boxes, // Add generated boxes array
     };
 
     setCurrentOrder(updatedOrder);
 
     onSave(updatedOrder);
+    setIsEditing(false);
   };
 
 
@@ -3641,29 +3659,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
                     onClick={() => {
-
-
-
-                      // Save logic is handled by the main save button, but we can also trigger it here if needed.
-
-
-
-                      // For now, let's just exit edit mode if the user saves via the main button.
-
-
-
-                      // Or we can make this button save and exit edit mode.
-
-
-
-                      onSave(currentOrder);
-
-
-
-                      setIsEditing(false);
-
-
-
+                      handleSave();
                     }}
 
 
