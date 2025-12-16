@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product, Page, Platform, Promotion } from '../types';
 import Modal from './Modal';
 import ProductSelectorModal from './ProductSelectorModal';
-import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X, CornerDownRight, ChevronDown, ChevronRight } from 'lucide-react';
+import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X, CornerDownRight, ChevronDown, ChevronRight, Trash } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
 import {
   createExportLog,
@@ -3000,8 +3000,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     try {
       for (const slip of checkedSlips) {
         if (slip.id && (slip.amount || slip.bankAccountId || slip.transferDate)) {
-          await updateOrderSlip({
-            id: slip.id,
+          await updateOrderSlip(slip.id, {
             amount: slip.amount ? Number(slip.amount) : undefined,
             bankAccountId: slip.bankAccountId ? Number(slip.bankAccountId) : undefined,
             transferDate: slip.transferDate ? fromLocalDatetimeString(slip.transferDate) : undefined,
@@ -3257,8 +3256,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     ) {
       slips.forEach((slip: any) => {
         if (!slip.id) return;
-        updateOrderSlip({
-          id: slip.id,
+        updateOrderSlip(slip.id, {
           amount:
             typeof slip.amount === "number" && !Number.isNaN(slip.amount)
               ? slip.amount
@@ -5269,13 +5267,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           {canEditSlips ? (
                                             <select
                                               value={slip.bankAccountId || ""}
-                                              onChange={(e) => {
+                                              onChange={async (e) => {
                                                 const nextBankId = e.target.value === "" ? undefined : Number(e.target.value);
                                                 setSlips((prev) =>
                                                   prev.map((s) =>
                                                     s.id === slip.id ? { ...s, bankAccountId: nextBankId } : s
                                                   )
                                                 );
+                                                try {
+                                                  // Auto-save change to database
+                                                  await updateOrderSlip(slip.id, {
+                                                    bankAccountId: nextBankId,
+                                                    companyId: currentOrder.companyId
+                                                  });
+                                                } catch (error) {
+                                                  console.error("Failed to update slip bank account:", error);
+                                                }
                                               }}
                                               className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                             >
@@ -5338,9 +5345,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           <button
                                             onClick={() => openSlipViewer({ ...slip, uploadedByName: resolveUploaderName(slip.uploadedBy, slip.uploadedByName) })}
                                             className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                                            title="View Slip"
                                           >
                                             <Eye size={16} />
                                           </button>
+                                          {(() => {
+                                            const isConfirmed = [PaymentStatus.Verified, PaymentStatus.PreApproved, PaymentStatus.Approved, PaymentStatus.Paid].includes(currentOrder.paymentStatus);
+                                            if (!isOrderCompleted && !isConfirmed) {
+                                              return (
+                                                <button
+                                                  onClick={() => handleDeleteSlip(slip.id, slip.url)}
+                                                  className="text-red-600 hover:text-red-900 inline-flex items-center ml-2"
+                                                  title="Delete Slip"
+                                                >
+                                                  <Trash size={16} />
+                                                </button>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
                                         </td>
                                         {canVerifySlip && (
                                           <td className="px-3 py-2 whitespace-nowrap text-center">

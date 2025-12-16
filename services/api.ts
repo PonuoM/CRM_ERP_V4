@@ -1274,15 +1274,17 @@ export async function updateOrderStatus(payload: {
 }
 
 
-export async function updateOrderSlip(payload: {
-  id: number;
-  amount?: number;
-  bankAccountId?: number;
-  transferDate?: string;
-  url?: string;
-  updatedBy?: number;
-  companyId?: number;
-}) {
+export async function updateOrderSlip(
+  id: number,
+  payload: {
+    amount?: number;
+    bankAccountId?: number;
+    transferDate?: string;
+    url?: string;
+    updatedBy?: number;
+    companyId?: number;
+  }
+) {
   const legacyBase =
     typeof window === "undefined" ? "/api" : resolveApiBasePath();
   const url = `${legacyBase.replace(/\/$/, "")}/Slip_DB/update_order_slip.php`;
@@ -1297,11 +1299,12 @@ export async function updateOrderSlip(payload: {
     method: "POST",
     headers,
     body: JSON.stringify({
+      id: id,
       amount: payload.amount,
-      bankAccountId: payload.bankAccountId,
-      transferDate: payload.transferDate,
+      bank_account_id: payload.bankAccountId,
+      transfer_date: payload.transferDate,
       url: payload.url,
-      updatedBy: payload.updatedBy,
+      updated_by: payload.updatedBy,
       company_id: payload.companyId,
     }),
   });
