@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product, Page, Platform, Promotion } from '../types';
 import Modal from './Modal';
 import ProductSelectorModal from './ProductSelectorModal';
@@ -421,6 +421,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [selectorSearchTerm, setSelectorSearchTerm] = useState('');
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [expandedPromotions, setExpandedPromotions] = useState<Set<number>>(new Set());
+
+  // Prevent duplicate fetches for the same order
+  const lastFetchedOrderId = useRef<number | null>(null);
 
 
 
@@ -1432,20 +1435,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const needsSlip = typeof order.slipUrl === 'undefined';
 
-
-
+    // Guard against duplicate requests for the same order ID
     if (!needsItems && !needsBoxes && !needsSlip) return;
+    if (lastFetchedOrderId.current === order.id) return;
 
-
+    lastFetchedOrderId.current = order.id;
 
     (async () => {
-
-
-
       try {
-
-
-
         const r: any = await apiFetch(`orders/${encodeURIComponent(order.id)}`);
 
 
