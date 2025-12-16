@@ -371,6 +371,8 @@ export interface LineItem {
   parentItemId?: number; // NEW: รหัสรายการแม่ (สำหรับของแถมที่มาจากโปรโมชั่น)
   isPromotionParent?: boolean; // NEW: เป็นรายการแม่ของโปรโมชั่นหรือไม่
   creatorId?: number; // NEW: รหัสผู้สร้างรายการ (สำหรับ upsell)
+  originalQuantity?: number; // NEW: จำนวนเริ่มต้นต่อ 1 หน่วยของ parent (สำหรับคำนวณ)
+  sku?: string; // NEW: SKU specific to this line item (useful for promotion items)
 }
 
 export interface CodBox {
