@@ -14,6 +14,7 @@ import {
   listPages,
   listPlatforms,
   listBankAccounts,
+  listPromotions,
   apiFetch,
 } from '../services/api';
 import { toLocalDatetimeString, fromLocalDatetimeString } from '../utils/datetime';
@@ -1338,7 +1339,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const fetchPromotions = async () => {
       try {
-        const response = await apiFetch(`/api/index.php/promotions?companyId=${currentUser.companyId}`);
+        const response = await listPromotions(currentUser.companyId);
         if (Array.isArray(response)) {
           setPromotions(response);
         }
@@ -1349,6 +1350,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     fetchPromotions();
   }, [currentUser?.companyId]);
+
 
 
 
@@ -3488,7 +3490,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   return (
     <>
-      <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl" backdropClassName={backdropClassName}>\n
+      <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl" backdropClassName={backdropClassName}>
 
 
 
