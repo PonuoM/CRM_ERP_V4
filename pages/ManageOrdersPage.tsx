@@ -241,22 +241,19 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const shippingOrders = useMemo(
     () =>
       orders.filter((o) => {
-        // ต้องมี tracking number
         if (!o.trackingNumbers || o.trackingNumbers.length === 0) {
           return false;
         }
-        // ต้องยังไม่ PreApproved (ถ้า PreApproved จะไป tab รอตรวจสอบจากบัญชี)
-        if (o.paymentStatus === PaymentStatus.PreApproved) {
+        // Exclude Transfer orders from Shipping tab (user requirement)
+        if (o.paymentMethod === PaymentMethod.Transfer) {
           return false;
         }
-        // ต้องยังไม่ Approved/Paid (ถ้า Approved/Paid จะไป tab เสร็จสิ้น)
-        if (o.paymentStatus === PaymentStatus.Approved || o.paymentStatus === PaymentStatus.Paid) {
-          return false;
-        }
+        // Remove payment status restrictions - if it's shipping, it should be in this tab regardless of payment status
+        // Logic relying on orderStatus and trackingNumbers is sufficient (Line 257)
         return (
           o.orderStatus === OrderStatus.Shipping ||
           o.orderStatus === OrderStatus.Preparing ||
-          (o.orderStatus === OrderStatus.Pending && o.trackingNumbers.length > 0)
+          ((o.orderStatus === OrderStatus.Pending || o.orderStatus === OrderStatus.AwaitingVerification) && o.trackingNumbers.length > 0)
         );
       }),
     [orders],
