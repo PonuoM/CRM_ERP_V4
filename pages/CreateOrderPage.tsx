@@ -29,6 +29,7 @@ import {
   listOrderSlips,
 } from "../services/api";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
+import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
 
@@ -6508,192 +6509,23 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             </div>
           )}
 
+
           {/* Upsell Product Selector Modal */}
-
-          {upsellProductSelectorOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-              <div className="bg-white rounded-lg w-full max-w-[1200px] p-4 shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
-                <div className="flex gap-4 h-[70vh]">
-                  <div className="w-64 border-r pr-4 overflow-auto">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h3 className="font-semibold">ประเภท</h3>
-
-                      <button
-                        onClick={() => {
-                          setUpsellProductSelectorOpen(false);
-
-                          setUpsellEditingItemId(null);
-                        }}
-                        className="px-2 py-1 border rounded"
-                      >
-                        ปิด
-                      </button>
-                    </div>
-
-                    <ul className="space-y-2 text-sm">
-                      {upsellSelectorTab === "products" && (
-                        <li
-                          className={`p-2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor-pointer`}
-                          onClick={() => {
-                            setLeftFilter(null);
-
-                            setUpsellSelectorSearchTerm("");
-                          }}
-                        >
-                          ทั้งหมด
-                        </li>
-                      )}
-
-                      {upsellSelectorTab === "promotions" && (
-                        <>
-                          <li
-                            className={`p-2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor-pointer`}
-                            onClick={() => {
-                              setLeftFilter(-1);
-
-                              setUpsellSelectorSearchTerm("");
-                            }}
-                          >
-                            รายการโปรโมชั่น
-                          </li>
-
-                          {promotionsSafe.map((p) => (
-                            <li
-                              key={p.id}
-                              className={`p-2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor-pointer`}
-                              onClick={() => {
-                                setLeftFilter(p.id);
-
-                                setUpsellSelectorSearchTerm("");
-                              }}
-                            >
-                              {p.name}
-                            </li>
-                          ))}
-                        </>
-                      )}
-                    </ul>
-                  </div>
-
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <div className="mb-3">
-                      <input
-                        type="text"
-                        placeholder={`ค้นหา ${upsellSelectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"}`}
-                        value={upsellSelectorSearchTerm}
-                        onChange={(e) =>
-                          setUpsellSelectorSearchTerm(e.target.value)
-                        }
-                        className="w-full p-2 border rounded"
-                      />
-                    </div>
-
-                    <div className="flex-1 overflow-auto">
-                      {upsellSelectorTab === "products" && (
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-[#4e7397] border-b">
-                              <th className="p-2">SKU</th>
-
-                              <th className="p-2">สินค้า</th>
-
-                              <th className="p-2">ราคาขาย</th>
-
-                              <th className="p-2">เลือก</th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {products
-
-                              .filter(
-                                (pr) =>
-                                  !upsellSelectorSearchTerm ||
-                                  `${pr.sku} ${pr.name}`
-
-                                    .toLowerCase()
-
-                                    .includes(
-                                      upsellSelectorSearchTerm.toLowerCase(),
-                                    ),
-                              )
-
-                              .map((p) => (
-                                <tr key={p.id} className="border-b">
-                                  <td className="p-2 align-top">{p.sku}</td>
-
-                                  <td className="p-2 align-top">{p.name}</td>
-
-                                  <td className="p-2 align-top">
-                                    {p.price.toFixed(2)}
-                                  </td>
-
-                                  <td className="p-2 align-top">
-                                    <button
-                                      onClick={() =>
-                                        handleUpsellAddProductById(p.id)
-                                      }
-                                      className="text-blue-600"
-                                    >
-                                      เลือก
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      )}
-
-                      {upsellSelectorTab === "promotions" && (
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-[#4e7397] border-b">
-                              <th className="p-2">ชื่อโปรโมชั่น</th>
-
-                              <th className="p-2">เลือก</th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {promotionsSafe
-
-                              .filter(
-                                (pr) =>
-                                  !upsellSelectorSearchTerm ||
-                                  pr.name
-
-                                    .toLowerCase()
-
-                                    .includes(
-                                      upsellSelectorSearchTerm.toLowerCase(),
-                                    ),
-                              )
-
-                              .map((p) => (
-                                <tr key={p.id} className="border-b">
-                                  <td className="p-2 align-top">{p.name}</td>
-
-                                  <td className="p-2 align-top">
-                                    <button
-                                      onClick={() =>
-                                        handleUpsellAddPromotionById(p.id)
-                                      }
-                                      className="text-blue-600"
-                                    >
-                                      เลือก
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <ProductSelectorModal
+            isOpen={upsellProductSelectorOpen}
+            onClose={() => {
+              setUpsellProductSelectorOpen(false);
+              setUpsellEditingItemId(null);
+            }}
+            tab={upsellSelectorTab}
+            onTabChange={setUpsellSelectorTab}
+            products={products}
+            promotions={promotionsSafe}
+            searchTerm={upsellSelectorSearchTerm}
+            onSearchChange={setUpsellSelectorSearchTerm}
+            onSelectProduct={handleUpsellAddProductById}
+            onSelectPromotion={handleUpsellAddPromotionById}
+          />
         </div>
       </div>
     );
@@ -9228,247 +9060,20 @@ const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </button>
                   </div>
 
+
                   {/* Product / Promotion Selector Modal */}
-
-                  {productSelectorOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                      <div className="bg-white rounded-lg w-full max-w-[1200px] p-4 shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
-                        <div className="flex gap-4 h-[70vh]">
-                          <div className="w-64 border-r pr-4 overflow-auto">
-                            <div className="mb-4 flex items-center justify-between">
-                              <h3 className="font-semibold">ประเภท</h3>
-
-                              <button
-                                onClick={closeProductSelector}
-                                className="px-2 py-1 border rounded"
-                              >
-                                ปิด
-                              </button>
-                            </div>
-
-                            <ul className="space-y-2 text-sm">
-                              {selectorTab === "products" && (
-                                <li
-                                  className={`p-2 rounded ${!leftFilter ? "bg-slate-100" : ""} cursor-pointer`}
-                                  onClick={() => {
-                                    setLeftFilter(null);
-
-                                    setSelectorSearchTerm("");
-                                  }}
-                                >
-                                  ทั้งหมด
-                                </li>
-                              )}
-
-                              {selectorTab === "promotions" && (
-                                <>
-                                  <li
-                                    className={`p-2 rounded ${leftFilter === -1 ? "bg-slate-100" : ""} cursor-pointer`}
-                                    onClick={() => {
-                                      setLeftFilter(-1);
-
-                                      setSelectorSearchTerm("");
-                                    }}
-                                  >
-                                    รายการโปรโมชั่น
-                                  </li>
-
-                                  {promotionsSafe.map((p) => (
-                                    <li
-                                      key={p.id}
-                                      className={`p-2 rounded ${leftFilter === p.id ? "bg-slate-100" : ""} cursor-pointer`}
-                                      onClick={() => {
-                                        setLeftFilter(p.id);
-
-                                        setSelectorSearchTerm("");
-                                      }}
-                                    >
-                                      {p.name}
-                                    </li>
-                                  ))}
-                                </>
-                              )}
-                            </ul>
-                          </div>
-
-                          <div className="flex-1 flex flex-col min-w-0">
-                            <div className="mb-3">
-                              <input
-                                type="text"
-                                placeholder={`ค้นหา ${selectorTab === "products" ? "SKU, ชื่อสินค้า" : "ชื่อโปรโมชั่น"}`}
-                                value={selectorSearchTerm}
-                                onChange={(e) =>
-                                  setSelectorSearchTerm(e.target.value)
-                                }
-                                className="w-full p-2 border rounded"
-                              />
-                            </div>
-
-                            <div className="flex-1 overflow-auto">
-                              {selectorTab === "products" && (
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="text-left text-[#4e7397] border-b">
-                                      <th className="p-2">SKU</th>
-
-                                      <th className="p-2">สินค้า</th>
-
-                                      <th className="p-2">ราคาขาย</th>
-
-                                      <th className="p-2">เลือก</th>
-                                    </tr>
-                                  </thead>
-
-                                  <tbody>
-                                    {products
-
-                                      .filter(
-                                        (pr) =>
-                                          !selectorSearchTerm ||
-                                          `${pr.sku} ${pr.name}`
-
-                                            .toLowerCase()
-
-                                            .includes(
-                                              selectorSearchTerm.toLowerCase(),
-                                            ),
-                                      )
-
-                                      .map((p) => (
-                                        <tr key={p.id} className="border-b">
-                                          <td className="p-2 align-top">
-                                            {p.sku}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            {p.name}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            {p.price.toFixed(2)}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            <button
-                                              onClick={() =>
-                                                addProductById(p.id)
-                                              }
-                                              className="text-blue-600"
-                                            >
-                                              เลือก
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                  </tbody>
-                                </table>
-                              )}
-
-                              {selectorTab === "promotions" && (
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="text-left text-[#4e7397] border-b">
-                                      <th className="p-2">ชื่อโปรโมชั่น</th>
-
-                                      <th className="p-2">รายการ</th>
-
-                                      <th className="p-2">ราคาขาย</th>
-
-                                      <th className="p-2">สถานะ</th>
-
-                                      <th className="p-2">เลือก</th>
-                                    </tr>
-                                  </thead>
-
-                                  <tbody>
-                                    {promotionsSafe
-
-                                      .filter((pm) => {
-                                        // Filter only active promotions
-
-                                        if (!pm.active) return false;
-
-                                        if (leftFilter && leftFilter !== -1)
-                                          return (
-                                            String(pm.id) === String(leftFilter)
-                                          );
-
-                                        if (!selectorSearchTerm) return true;
-
-                                        return `${pm.name}`
-
-                                          .toLowerCase()
-
-                                          .includes(
-                                            selectorSearchTerm.toLowerCase(),
-                                          );
-                                      })
-
-                                      .map((pm) => (
-                                        <tr key={pm.id} className="border-b">
-                                          <td className="p-2 align-top">
-                                            {pm.name}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            {(pm.items || [])
-
-                                              .map((it: any) => {
-                                                const prodLabel =
-                                                  it.product_name ??
-                                                  it.product?.name ??
-                                                  it.sku ??
-                                                  it.product_sku ??
-                                                  "";
-
-                                                const priceText = it.is_freebie
-                                                  ? "ฟรี"
-                                                  : `฿${(it.price_override !== null && it.price_override !== undefined ? Number(it.price_override) : 0).toFixed(2)}`;
-
-                                                return `${it.quantity} x ${prodLabel} (${priceText})`;
-                                              })
-
-                                              .join(", ")}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            {calcPromotionSetPrice(pm).toFixed(
-                                              2,
-                                            )}
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            <span
-                                              className={`px-2 py-1 text-xs rounded-full ${pm.active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-                                            >
-                                              {pm.active
-                                                ? "Active"
-                                                : "Inactive"}
-                                            </span>
-                                          </td>
-
-                                          <td className="p-2 align-top">
-                                            <button
-                                              onClick={() =>
-                                                addPromotionByIdFixed(pm.id)
-                                              }
-                                              className={`px-3 py-1 rounded text-white ${pm.active ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"}`}
-                                              disabled={!pm.active}
-                                            >
-                                              เลือก
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                  </tbody>
-                                </table>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <ProductSelectorModal
+                    isOpen={productSelectorOpen}
+                    onClose={closeProductSelector}
+                    tab={selectorTab}
+                    onTabChange={setSelectorTab}
+                    products={products}
+                    promotions={promotionsSafe}
+                    searchTerm={selectorSearchTerm}
+                    onSearchChange={setSelectorSearchTerm}
+                    onSelectProduct={addProductById}
+                    onSelectPromotion={addPromotionByIdFixed}
+                  />
                 </div>
               </div>
             )}
