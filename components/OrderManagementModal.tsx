@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product, Page, Platform, Promotion } from '../types';
 import Modal from './Modal';
 import ProductSelectorModal from './ProductSelectorModal';
-import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X } from 'lucide-react';
+import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X, CornerDownRight, ChevronDown, ChevronRight } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
 import {
   createExportLog,
@@ -420,6 +420,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [selectorTab, setSelectorTab] = useState<'products' | 'promotions'>('products');
   const [selectorSearchTerm, setSelectorSearchTerm] = useState('');
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [expandedPromotions, setExpandedPromotions] = useState<Set<number>>(new Set());
 
 
 
@@ -1083,22 +1084,55 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const promotion = promotions.find(p => p.id === Number(promotionId));
     if (!promotion || !promotion.items || promotion.items.length === 0) return;
 
-    const newItems = promotion.items.map((item: any) => ({
-      id: Date.now() + Math.random(),
+    console.log('Selected promotion:', promotion);
+
+    // Calculate total price from non-freebie items
+    const totalPrice = promotion.items.reduce((sum: number, item: any) => {
+      const isFreebie = item.isFreebie || item.is_freebie;
+      if (isFreebie) return sum;
+      const priceOverride = item.priceOverride ?? item.price_override;
+      return sum + (priceOverride ? Number(priceOverride) : 0);
+    }, 0);
+
+    // Create parent promotion item
+    const parentItemId = Date.now();
+    const parentItem = {
+      id: parentItemId,
+      productId: 0, // No specific product for parent
+      productName: promotion.name || promotion.sku || `โปรโมชั่น #${promotion.id}`,
+      quantity: 1,
+      pricePerUnit: totalPrice, // Total price from children
+      discount: 0,
+      isFreebie: false,
+      boxNumber: 1,
+      creatorId: currentUser.id,
+      promotionId: promotion.id,
+      isPromotionParent: true, // Flag to identify parent items
+    };
+
+    console.log('Parent item:', parentItem);
+
+    // Create child items for each product in promotion
+    const childItems = promotion.items.map((item: any, index: number) => ({
+      id: Date.now() + index + 1,
       productId: item.productId || item.product_id,
       productName: item.product_name || item.product?.name || item.sku || '',
       quantity: item.quantity || 1,
-      pricePerUnit: item.priceOverride ?? item.price_override ?? 0,
+      originalQuantity: item.quantity || 1, // Store original quantity for multiplication
+      pricePerUnit: item.product_price ? Number(item.product_price) : 0, // Use product_price for unit price
       discount: 0,
       isFreebie: item.isFreebie || item.is_freebie || false,
       boxNumber: 1,
       creatorId: currentUser.id,
       promotionId: promotion.id,
+      parentItemId: parentItemId, // Link to parent
     }));
+
+    console.log('Child items:', childItems);
 
     setCurrentOrder(prev => ({
       ...prev,
-      items: [...prev.items, ...newItems],
+      items: [...prev.items, parentItem, ...childItems],
     }));
 
     closeProductSelector();
@@ -1340,8 +1374,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const fetchPromotions = async () => {
       try {
         const response = await listPromotions(currentUser.companyId);
+        console.log('Fetched promotions:', response);
         if (Array.isArray(response)) {
           setPromotions(response);
+          console.log('Promotions set:', response.length, 'items');
         }
       } catch (error) {
         console.error('Error fetching promotions:', error);
@@ -3368,10 +3404,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   const calculatedTotals = useMemo(() => {
 
-    // Filter out freebie items before calculating totals
+    // Filter out freebie items AND child items before calculating totals
     const nonFreebieItems = currentOrder.items.filter((item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
-      return !isFreebie;
+      const isChild = item.parentItemId; // Child items should not be counted
+      return !isFreebie && !isChild;
     });
 
     const itemsSubtotal = nonFreebieItems.reduce((sum, item) => {
@@ -3770,10 +3807,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 {(() => {
                   const selectedPlatform = platforms.find(p => p.name.toLowerCase() === (currentOrder.salesChannel || '').toLowerCase());
 
-                  console.log('Debug - salesChannel:', currentOrder.salesChannel);
-                  console.log('Debug - selectedPlatform:', selectedPlatform);
-                  console.log('Debug - all platforms:', platforms);
-
                   // Don't show page selector for 'โทร' platform in edit mode
                   if (selectedPlatform && selectedPlatform.name === 'โทร') {
                     return showInputs ? null : <p className="font-medium text-gray-800">-</p>;
@@ -3787,19 +3820,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       ? selectedPlatform.showPagesFrom.toLowerCase()
                       : selectedPlatform.name.toLowerCase();
 
-                    console.log('Debug - platformToMatch:', platformToMatch);
-
                     filtered = pages.filter(p => {
                       if (!p.active) return false;
                       const pagePlatform = (p.platform || '').toLowerCase();
-                      const matches = pagePlatform === platformToMatch;
-                      if (!matches) {
-                        console.log('Debug - page', p.name, 'platform:', pagePlatform, 'does not match', platformToMatch);
-                      }
-                      return matches;
+                      return pagePlatform === platformToMatch;
                     });
-
-                    console.log('Debug - filtered pages:', filtered);
                   }
 
                   // Always show page selector (disabled if no platform selected)
@@ -4564,35 +4589,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                   <tr className="bg-gray-50 border-b">
 
-
-
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ลำดับ</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Sku</th>
-
-                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
-
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อรายการ</th>
-
                     <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
-
-
-
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
-
-
-
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
-
-
-
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
-
-
-
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
+                    {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">แถม</th>}
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
-
-
-
                     {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จัดการ</th>}
 
 
@@ -4607,309 +4613,321 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                 <tbody>
 
-                  {[...currentOrder.items].sort((a, b) => {
-                    const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
-                    const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
-                    return boxA - boxB;
-                  }).map((item, index) => {
+                  {(() => {
+                    let rowNumber = 0; // Counter for non-child items only
+                    return [...currentOrder.items].sort((a, b) => {
+                      const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
+                      const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
+                      return boxA - boxB;
+                    }).map((item, index) => {
 
+                      // Increment row number only for non-child items
+                      if (!(item as any).parentItemId) {
+                        rowNumber++;
+                      }
+                      const displayRowNumber = (item as any).parentItemId ? '' : rowNumber;
 
+                      // Check if this child should be hidden
+                      const isChild = !!(item as any).parentItemId;
+                      const parentId = (item as any).parentItemId;
+                      const isExpanded = parentId ? expandedPromotions.has(parentId) : true;
 
-                    const itemCreator = item.creatorId ? users.find(u => {
+                      // Skip rendering if this is a collapsed child
+                      if (isChild && !isExpanded) {
+                        return null;
+                      }
 
+                      const itemCreator = item.creatorId ? users.find(u => {
 
 
-                      const userId = typeof u.id === 'number' ? u.id : Number(u.id);
 
+                        const userId = typeof u.id === 'number' ? u.id : Number(u.id);
 
 
-                      const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
 
+                        const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
 
 
-                      return userId === creatorId;
 
+                        return userId === creatorId;
 
 
-                    }) : null;
 
+                      }) : null;
 
 
-                    const isFreebie = (item as any).isFreebie || (item as any).is_freebie;
-                    const itemTotal = isFreebie ? 0 : ((item.pricePerUnit * item.quantity) - item.discount);
 
+                      const isFreebie = (item as any).isFreebie || (item as any).is_freebie;
+                      const itemTotal = isFreebie ? 0 : ((item.pricePerUnit * item.quantity) - item.discount);
 
 
 
 
 
 
-                    // Check if current user is the creator of this item
 
+                      // Check if current user is the creator of this item
 
 
-                    const isCreator = currentUser && item.creatorId === currentUser.id;
 
+                      const isCreator = currentUser && item.creatorId === currentUser.id;
 
 
-                    const canEditItem = showInputs && isCreator;
 
+                      const canEditItem = showInputs && isCreator;
 
 
 
 
 
 
-                    return (
 
+                      return (
 
 
-                      <tr key={item.id} className="border-b hover:bg-gray-50">
 
-                        <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">{index + 1}</td>
+                        <tr key={item.id} className="border-b hover:bg-gray-50">
 
-                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">
-                          {item.productId ? (products.find(p => p.id === item.productId)?.sku || '-') : '-'}
-                        </td>
+                          <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">
+                            {displayRowNumber}
+                          </td>
 
-                        <td className="px-3 py-2 text-center text-xs text-gray-700">
-                          {canEditItem ? (
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.boxNumber || 1}
-                              onChange={(e) => handleItemChange(index, 'boxNumber', Number(e.target.value))}
-                              className="w-12 border rounded px-1 text-center"
-                            />
-                          ) : (
-                            item.boxNumber || 1
-                          )}
-                        </td>
+                          <td className="px-3 py-2 text-xs text-gray-600 font-mono">
+                            {(item as any).isPromotionParent ? (
+                              // Show promotion SKU for parent
+                              promotions.find(p => p.id === item.promotionId)?.sku || '-'
+                            ) : (
+                              // Show product SKU for both child and regular items
+                              item.productId ? (products.find(p => p.id === item.productId)?.sku || '-') : '-'
+                            )}
+                          </td>
 
-                        <td className="px-3 py-2 text-sm text-gray-800">
+                          <td className="px-3 py-2 text-sm text-gray-800">
 
-
-
-                          {canEditItem ? (
-                            <select
-                              value={item.productId || ''}
-                              onChange={(e) => handleProductChange(index, Number(e.target.value))}
-                              className="w-full border rounded px-1 py-1 text-sm"
-                            >
-                              <option value="">เลือกสินค้า</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                          ) : item.productName}
-
-
-
-                        </td>
-
-
-
-                        <td className="px-3 py-2 text-center text-xs text-gray-700">
-
-
-
-                          {canEditItem ? (
-
-
-
-                            <input
-
-
-
-                              type="number"
-
-
-
-                              value={item.quantity}
-
-
-
-                              onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-
-
-
-                              className="w-16 border rounded px-1 text-center"
-
-
-
-                            />
-
-
-
-                          ) : item.quantity}
-
-
-
-                        </td>
-
-
-
-                        <td className="px-3 py-2 text-right text-xs text-gray-700">
-
-
-
-                          {canEditItem ? (
-
-
-
-                            <input
-
-
-
-                              type="number"
-
-
-
-                              value={item.pricePerUnit}
-
-
-
-                              onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
-
-
-
-                              className="w-20 border rounded px-1 text-right"
-
-
-
-                            />
-
-
-
-                          ) : `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `}
-
-
-
-                        </td>
-
-
-
-                        <td className="px-3 py-2 text-right text-xs text-red-600">
-
-
-
-                          {canEditItem ? (
-
-
-
-                            <input
-
-
-
-                              type="number"
-
-
-
-                              value={item.discount}
-
-
-
-                              onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
-
-
-
-                              className="w-20 border rounded px-1 text-right text-red-600"
-
-
-
-                            />
-
-
-
-                          ) : `-฿${Number(item.discount ?? 0).toLocaleString()} `}
-
-
-
-                        </td>
-
-
-
-                        <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                          {isFreebie ? (
-                            <span className="inline-flex items-center">
-                              ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
-                            </span>
-                          ) : (
-                            `฿${itemTotal.toLocaleString()}`
-                          )}
-                        </td>
-
-
-
-                        <td className="px-3 py-2 text-xs text-gray-600">
-
-
-
-                          {itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName} ` : '-'}
-
-
-
-                        </td>
-
-
-
-                        {
-                          showInputs && (
-
-
-
-                            <td className="px-3 py-2 text-center">
-
-
-
-                              {canEditItem && (
-
-
-
+                            <div className="flex items-center gap-2">
+                              {(item as any).isPromotionParent && (
                                 <button
-
-
-
-                                  onClick={() => handleRemoveItem(item)}
-
-
-
-                                  className="text-red-500 hover:text-red-700"
-
-
-
+                                  onClick={() => {
+                                    const itemId = item.id;
+                                    setExpandedPromotions(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(itemId)) {
+                                        next.delete(itemId);
+                                      } else {
+                                        next.add(itemId);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="text-gray-500 hover:text-gray-700 flex-shrink-0"
                                 >
-
-
-
-                                  <Trash2 size={14} />
-
-
-
+                                  {expandedPromotions.has(item.id) ? (
+                                    <ChevronDown className="w-4 h-4" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4" />
+                                  )}
                                 </button>
-
-
-
                               )}
+                              {(item as any).parentItemId && (
+                                <CornerDownRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              )}
+                              <span className={(item as any).isPromotionParent ? 'font-semibold text-blue-700' : ''}>
+                                {item.productName}
+                              </span>
+                            </div>
+
+                          </td>
 
 
 
-                            </td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-700">
+                            {canEditItem && !(item as any).parentItemId ? (
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const newQuantity = Math.max(1, Number(e.target.value));
+                                  handleItemChange(index, 'quantity', newQuantity);
+
+                                  // If this is a promotion parent, update all children quantities
+                                  if ((item as any).isPromotionParent) {
+                                    const parentId = item.id;
+                                    setCurrentOrder(prev => ({
+                                      ...prev,
+                                      items: prev.items.map(i =>
+                                        (i as any).parentItemId === parentId
+                                          ? { ...i, quantity: ((i as any).originalQuantity || 1) * newQuantity }
+                                          : i
+                                      )
+                                    }));
+                                  }
+                                }}
+                                className="w-16 border rounded px-1 text-center"
+                              />
+                            ) : (item as any).parentItemId ? (
+                              // For children, show calculated quantity (originalQuantity × parent quantity)
+                              (() => {
+                                const parent = currentOrder.items.find(p => p.id === (item as any).parentItemId);
+                                const parentQty = parent?.quantity || 1;
+                                const originalQty = (item as any).originalQuantity || item.quantity;
+                                return originalQty * parentQty;
+                              })()
+                            ) : item.quantity}                        </td>
 
 
 
-                          )
-                        }
-                      </tr>
+                          <td className="px-3 py-2 text-right text-xs text-gray-700">
+                            {(item as any).parentItemId ? (
+                              ''
+                            ) : canEditItem ? (
+                              <input
+                                type="number"
+                                value={item.pricePerUnit}
+                                onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
+                                className="w-20 border rounded px-1 text-right"
+                              />
+                            ) : `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `}
+                          </td>
 
 
 
-                    );
+                          <td className="px-3 py-2 text-right text-xs text-red-600">
+                            {(item as any).parentItemId ? (
+                              ''
+                            ) : canEditItem ? (
+                              <input
+                                type="number"
+                                value={item.discount}
+                                onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
+                                className="w-20 border rounded px-1 text-right text-red-600"
+                              />
+                            ) : `-฿${Number(item.discount ?? 0).toLocaleString()} `}
+                          </td>
 
 
 
-                  })}
+                          <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
+                            {(item as any).parentItemId ? '' : isFreebie ? (
+                              <span className="inline-flex items-center">
+                                ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
+                              </span>
+                            ) : (
+                              `฿${itemTotal.toLocaleString()}`
+                            )}
+                          </td>
 
+
+
+                          <td className="px-3 py-2 text-center text-xs text-gray-700">
+                            {(item as any).parentItemId ? (
+                              ''
+                            ) : canEditItem ? (
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.boxNumber || 1}
+                                onChange={(e) => {
+                                  const newBoxNumber = Number(e.target.value);
+                                  // Update parent box number
+                                  handleItemChange(index, 'boxNumber', newBoxNumber);
+
+                                  // Update all children's box numbers
+                                  if ((item as any).isPromotionParent) {
+                                    const parentId = item.id;
+                                    setCurrentOrder(prev => ({
+                                      ...prev,
+                                      items: prev.items.map(i =>
+                                        (i as any).parentItemId === parentId
+                                          ? { ...i, boxNumber: newBoxNumber }
+                                          : i
+                                      )
+                                    }));
+                                  }
+                                }}
+                                className="w-12 border rounded px-1 text-center"
+                              />
+                            ) : (
+                              item.boxNumber || 1
+                            )}
+                          </td>
+
+                          {showInputs && <td className="px-3 py-2 text-center">
+                            {(item as any).parentItemId ? (
+                              ''
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={isFreebie}
+                                onChange={(e) => handleItemChange(index, 'isFreebie', e.target.checked)}
+                                className="cursor-pointer"
+                              />
+                            )}
+                          </td>}
+
+                          <td className="px-3 py-2 text-xs text-gray-600">
+                            {(item as any).parentItemId ? '' : itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName} ` : '-'}
+                          </td>
+
+
+
+                          {
+                            showInputs && (
+
+
+
+                              <td className="px-3 py-2 text-center">
+
+
+
+                                {canEditItem && (
+
+
+
+                                  <button
+
+
+
+                                    onClick={() => handleRemoveItem(item)}
+
+
+
+                                    className="text-red-500 hover:text-red-700"
+
+
+
+                                  >
+
+
+
+                                    <Trash2 size={14} />
+
+
+
+                                  </button>
+
+
+
+                                )}
+
+
+
+                              </td>
+
+
+
+                            )
+                          }
+                        </tr>
+
+
+
+                      );
+
+
+
+                    });
+                  })()}
 
 
                 </tbody>
