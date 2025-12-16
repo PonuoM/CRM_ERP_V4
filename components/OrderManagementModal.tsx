@@ -5399,15 +5399,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </div>
                           )}
 
-                          <div className="mt-3 flex justify-end">
-                            <div className="flex items-center space-x-2">
-                              <label htmlFor={slipUploadInputId} className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                <Image size={16} className="mr-2" />
-                                อัปโหลดสลิปเพิ่มเติม
-                              </label>
-                              <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+                          {![PaymentStatus.Verified, PaymentStatus.PreApproved, PaymentStatus.Approved, PaymentStatus.Paid].includes(currentOrder.paymentStatus) && (
+                            <div className="mt-3 flex justify-end">
+                              <div className="flex items-center space-x-2">
+                                <label htmlFor={slipUploadInputId} className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                  <Image size={16} className="mr-2" />
+                                  อัปโหลดสลิปเพิ่มเติม
+                                </label>
+                                <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
 
                         {/* Validation Summary */}
@@ -5447,21 +5449,37 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       {canVerifySlip &&
                         (currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
                         hasTransferSlip &&
-                        currentOrder.paymentStatus !== PaymentStatus.Paid &&
                         !isOrderCompleted && (
                           <div className="flex justify-end mt-4">
-                            <button
-                              onClick={handleAcceptSlip}
-                              disabled={!slips.some((s: any) => s.checked)}
-                              className={`group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2
-                                ${slips.some((s: any) => s.checked)
-                                  ? 'bg-gradient-to-br from-emerald-500 to-green-600 shadow-green-500/40 hover:to-green-700 hover:shadow-green-500/60 hover:-translate-y-0.5'
-                                  : 'bg-gray-400 cursor-not-allowed shadow-none opacity-50'
-                                }`}
-                            >
-                              <CheckCircle size={20} className="mr-2" />
-                              <span className="font-bold">ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})</span>
-                            </button>
+                            {(() => {
+                              const isConfirmed = [PaymentStatus.Verified, PaymentStatus.PreApproved, PaymentStatus.Approved, PaymentStatus.Paid].includes(currentOrder.paymentStatus);
+                              // const hasCheckedSlips = slips.some((s: any) => s.checked);
+                              const allSlipsChecked = slips.length > 0 && slips.every((s: any) => s.checked);
+
+                              return (
+                                <button
+                                  onClick={handleAcceptSlip}
+                                  disabled={isConfirmed || !allSlipsChecked}
+                                  className={`group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2
+                                  ${isConfirmed || allSlipsChecked
+                                      ? 'bg-gradient-to-br from-emerald-500 to-green-600 shadow-green-500/40'
+                                      : 'bg-gray-400 shadow-none opacity-50'
+                                    }
+                                  ${!isConfirmed && allSlipsChecked
+                                      ? 'hover:to-green-700 hover:shadow-green-500/60 hover:-translate-y-0.5 cursor-pointer'
+                                      : 'cursor-not-allowed'
+                                    }`}
+                                >
+                                  <CheckCircle size={20} className="mr-2" />
+                                  <span className="font-bold">
+                                    {isConfirmed
+                                      ? 'ยืนยันเรียบร้อย'
+                                      : `ยืนยันสลิป (${slips.filter((s: any) => s.checked).length})`
+                                    }
+                                  </span>
+                                </button>
+                              );
+                            })()}
                           </div>
                         )}
                     </>
