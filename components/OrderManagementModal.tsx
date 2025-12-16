@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product, Page, Platform } from '../types';
+import { Order, OrderStatus, Customer, PaymentStatus, PaymentMethod, Address, Activity, ActivityType, User, UserRole, Product, Page, Platform, Promotion } from '../types';
 import Modal from './Modal';
+import ProductSelectorModal from './ProductSelectorModal';
 import { User as UserIcon, Phone, MapPin, Package, CreditCard, Truck, Paperclip, CheckCircle, Image, Trash2, Eye, History, Repeat, XCircle, Calendar, Edit2, Save, X } from 'lucide-react';
 import { getPaymentStatusChip, getStatusChip, ORDER_STATUS_LABELS } from './OrderTable';
 import {
@@ -17,6 +18,7 @@ import {
 } from '../services/api';
 import { toLocalDatetimeString, fromLocalDatetimeString } from '../utils/datetime';
 import resolveApiBasePath from '../utils/apiBasePath';
+
 
 
 
@@ -411,6 +413,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
   const [showSubDistrictDropdown, setShowSubDistrictDropdown] = useState(false);
+
+  // Product Selector Modal states
+  const [productSelectorOpen, setProductSelectorOpen] = useState(false);
+  const [selectorTab, setSelectorTab] = useState<'products' | 'promotions'>('products');
+  const [selectorSearchTerm, setSelectorSearchTerm] = useState('');
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
 
 
 
@@ -1029,77 +1037,71 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
   const handleAddItem = () => {
-
-
-
     if (!currentUser) return;
 
-
-
-    const newItem = {
-
-
-
-      id: Date.now(), // Temporary ID
-
-
-
-      productId: 0,
-
-
-
-      productName: 'เลือกสินค้า',
-
-
-
-      quantity: 1,
-
-
-
-      pricePerUnit: 0,
-
-
-
-      discount: 0,
-
-
-
-      isFreebie: false,
-
-
-
-      boxNumber: 1,
-
-
-
-      creatorId: currentUser.id,
-
-
-
-    };
-
-
-
-    setCurrentOrder(prev => ({
-
-
-
-      ...prev,
-
-
-
-      items: [...prev.items, newItem],
-
-
-
-    }));
-
-
-
+    // Open product selector modal instead of adding empty item
+    setProductSelectorOpen(true);
+    setSelectorTab('products');
+    setSelectorSearchTerm('');
   };
 
+  const closeProductSelector = () => {
+    setProductSelectorOpen(false);
+    setSelectorSearchTerm('');
+  };
 
+  const handleSelectProduct = (productId: number) => {
+    if (!currentUser) return;
 
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const newItem = {
+      id: Date.now(),
+      productId: product.id,
+      productName: product.name,
+      quantity: 1,
+      pricePerUnit: product.price,
+      discount: 0,
+      isFreebie: false,
+      boxNumber: 1,
+      creatorId: currentUser.id,
+    };
+
+    setCurrentOrder(prev => ({
+      ...prev,
+      items: [...prev.items, newItem],
+    }));
+
+    closeProductSelector();
+  };
+
+  const handleSelectPromotion = (promotionId: number | string) => {
+    if (!currentUser) return;
+
+    const promotion = promotions.find(p => p.id === Number(promotionId));
+    if (!promotion || !promotion.items || promotion.items.length === 0) return;
+
+    const newItems = promotion.items.map((item: any) => ({
+      id: Date.now() + Math.random(),
+      productId: item.productId || item.product_id,
+      productName: item.product_name || item.product?.name || item.sku || '',
+      quantity: item.quantity || 1,
+      pricePerUnit: item.priceOverride ?? item.price_override ?? 0,
+      discount: 0,
+      isFreebie: item.isFreebie || item.is_freebie || false,
+      boxNumber: 1,
+      creatorId: currentUser.id,
+      promotionId: promotion.id,
+    }));
+
+    setCurrentOrder(prev => ({
+      ...prev,
+      items: [...prev.items, ...newItems],
+    }));
+
+    closeProductSelector();
+  };
 
 
 
@@ -1328,6 +1330,24 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     fetchData();
 
     return () => { cancelled = true; };
+  }, [currentUser?.companyId]);
+
+  // Fetch promotions for product selector
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+
+    const fetchPromotions = async () => {
+      try {
+        const response = await apiFetch(`/api/index.php/promotions?companyId=${currentUser.companyId}`);
+        if (Array.isArray(response)) {
+          setPromotions(response);
+        }
+      } catch (error) {
+        console.error('Error fetching promotions:', error);
+      }
+    };
+
+    fetchPromotions();
   }, [currentUser?.companyId]);
 
 
@@ -3467,60 +3487,24 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
   return (
-
-    <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl" backdropClassName={backdropClassName}>\n
-
-
-
-      <div className="space-y-4 text-sm">
+    <>
+      <Modal title={`จัดการออเดอร์: ${order.id} `} onClose={onClose} size="xl" backdropClassName={backdropClassName}>\n
 
 
 
-        {isModifiable && (
+        <div className="space-y-4 text-sm">
 
 
 
-          <div className="flex justify-end mb-2">
+          {isModifiable && (
 
 
 
-            {!isEditing ? (
+            <div className="flex justify-end mb-2">
 
 
 
-              <button
-
-
-
-                onClick={() => setIsEditing(true)}
-
-
-
-                className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
-
-
-
-              >
-
-
-
-                <Edit2 size={14} className="mr-1.5" />
-
-
-
-                แก้ไขออเดอร์
-
-
-
-              </button>
-
-
-
-            ) : (
-
-
-
-              <div className="flex items-center space-x-2">
+              {!isEditing ? (
 
 
 
@@ -3528,23 +3512,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  onClick={() => {
+                  onClick={() => setIsEditing(true)}
 
 
 
-                    setIsEditing(false);
-
-
-
-                    setCurrentOrder(order); // Reset changes
-
-
-
-                  }}
-
-
-
-                  className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
+                  className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
 
 
 
@@ -3552,11 +3524,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  <X size={14} className="mr-1.5" />
+                  <Edit2 size={14} className="mr-1.5" />
 
 
 
-                  ยกเลิกการแก้ไข
+                  แก้ไขออเดอร์
 
 
 
@@ -3564,279 +3536,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                <button
-
-
-
-                  onClick={() => {
-
-
-
-                    // Save logic is handled by the main save button, but we can also trigger it here if needed.
-
-
-
-                    // For now, let's just exit edit mode if the user saves via the main button.
-
-
-
-                    // Or we can make this button save and exit edit mode.
-
-
-
-                    onSave(currentOrder);
-
-
-
-                    setIsEditing(false);
-
-
-
-                  }}
-
-
-
-                  className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
-
-
-
-                >
-
-
-
-                  <Save size={14} className="mr-1.5" />
-
-
-
-                  บันทึกการแก้ไข
-
-
-
-                </button>
-
-
-
-              </div>
-
-
-
-            )}
-
-
-
-          </div>
-
-
-
-        )}
-
-
-
-
-
-
-
-        <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
-
-
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-
-
-
-            <div>
-
-
-
-              <p className="text-xs text-gray-500">วันที่สั่งซื้อ</p>
-
-
-
-              <p className="font-medium text-gray-800">{currentOrder.orderDate ? new Date(currentOrder.orderDate).toLocaleString('th-TH') : '-'}</p>
-
-
-
-            </div>
-
-
-
-            <div>
-
-
-
-              <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
-
-
-
-              {showInputs ? (
-
-
-
-                <input
-
-
-
-                  type="date"
-
-
-
-                  value={deliveryDateInputValue}
-
-
-
-                  min={deliveryWindow.minIso}
-
-
-
-                  max={deliveryWindow.maxIso}
-
-
-
-                  onChange={(e) => handleDeliveryDateChange(e.target.value)}
-
-
-
-                  className="w-full p-1 text-sm border rounded"
-
-
-
-                />
-
-
-
               ) : (
 
 
 
-                <p className="font-medium text-gray-800">{currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
-
-
-
-              )}
-            </div>
-
-            <div>{/* Platform/Channel Selector */}
-              <p className="text-xs text-gray-500">ช่องทางการขาย</p>
-              {showInputs ? (
-                <select
-                  value={currentOrder.salesChannel || ''}
-                  onChange={(e) => {
-                    const channel = e.target.value || undefined;
-                    setCurrentOrder(prev => ({
-                      ...prev,
-                      salesChannel: channel,
-                      salesChannelPageId: undefined // Clear page when channel changes
-                    }));
-                  }}
-                  className="w-full p-1 text-sm border rounded"
-                >
-                  <option value="">-- เลือกช่องทาง --</option>
-                  {platforms.map(platform => (
-                    <option key={platform.id} value={platform.name}>
-                      {platform.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="font-medium text-gray-800">
-                  {currentOrder.salesChannel || '-'}
-                </p>
-              )}
-            </div>
-
-            <div>{/* Page Selector */}
-              {(() => {
-                const selectedPlatform = platforms.find(p => p.name.toLowerCase() === (currentOrder.salesChannel || '').toLowerCase());
-
-                console.log('Debug - salesChannel:', currentOrder.salesChannel);
-                console.log('Debug - selectedPlatform:', selectedPlatform);
-                console.log('Debug - all platforms:', platforms);
-
-                // Don't show page selector for 'โทร' platform in edit mode
-                if (selectedPlatform && selectedPlatform.name === 'โทร') {
-                  return showInputs ? null : <p className="font-medium text-gray-800">-</p>;
-                }
-
-                // Filter pages based on selected platform
-                let filtered: Page[] = [];
-                if (selectedPlatform) {
-                  const hasShowPagesFrom = selectedPlatform.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
-                  const platformToMatch = hasShowPagesFrom
-                    ? selectedPlatform.showPagesFrom.toLowerCase()
-                    : selectedPlatform.name.toLowerCase();
-
-                  console.log('Debug - platformToMatch:', platformToMatch);
-
-                  filtered = pages.filter(p => {
-                    if (!p.active) return false;
-                    const pagePlatform = (p.platform || '').toLowerCase();
-                    const matches = pagePlatform === platformToMatch;
-                    if (!matches) {
-                      console.log('Debug - page', p.name, 'platform:', pagePlatform, 'does not match', platformToMatch);
-                    }
-                    return matches;
-                  });
-
-                  console.log('Debug - filtered pages:', filtered);
-                }
-
-                // Always show page selector (disabled if no platform selected)
-                return (
-                  <>
-                    <p className="text-xs text-gray-500">เพจ</p>
-                    {showInputs ? (
-                      <select
-                        value={currentOrder.salesChannelPageId || ''}
-                        onChange={(e) => {
-                          const pid = e.target.value ? Number(e.target.value) : undefined;
-                          setCurrentOrder(prev => ({ ...prev, salesChannelPageId: pid }));
-                        }}
-                        disabled={!currentOrder.salesChannel}
-                        className="w-full p-1 text-sm border rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
-                      >
-                        <option value="">-- เลือกเพจ --</option>
-                        {filtered.map(page => (
-                          <option key={page.id} value={page.id}>{page.name}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p className="font-medium text-gray-800">
-                        {(() => {
-                          const page = pages.find(p => p.id === currentOrder.salesChannelPageId);
-                          return page ? page.name : (currentOrder.salesChannelPageId || '-');
-                        })()}
-                      </p>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </InfoCard>
-
-
-
-        <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
-
-
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-
-
-            <div>
-
-
-
-              <div className="flex items-center justify-between">
-
-
-
-                <p className="font-semibold text-gray-800 text-base">{customer ? `${customer.firstName} ${customer.lastName} ` : 'ไม่พบข้อมูล'}</p>
-
-
-
-                {showInputs && customer && onEditCustomer && (
+                <div className="flex items-center space-x-2">
 
 
 
@@ -3844,11 +3548,23 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    onClick={() => onEditCustomer(customer)}
+                    onClick={() => {
 
 
 
-                    className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
+                      setIsEditing(false);
+
+
+
+                      setCurrentOrder(order); // Reset changes
+
+
+
+                    }}
+
+
+
+                    className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
 
 
 
@@ -3856,7 +3572,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    แก้ไขลูกค้า
+                    <X size={14} className="mr-1.5" />
+
+
+
+                    ยกเลิกการแก้ไข
 
 
 
@@ -3864,15 +3584,63 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                )}
+                  <button
 
 
 
-              </div>
+                    onClick={() => {
 
 
 
-              <p className="text-gray-600 flex items-center mt-2"><Phone size={14} className="mr-2" />{customer?.phone || '-'}</p>
+                      // Save logic is handled by the main save button, but we can also trigger it here if needed.
+
+
+
+                      // For now, let's just exit edit mode if the user saves via the main button.
+
+
+
+                      // Or we can make this button save and exit edit mode.
+
+
+
+                      onSave(currentOrder);
+
+
+
+                      setIsEditing(false);
+
+
+
+                    }}
+
+
+
+                    className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+
+
+
+                  >
+
+
+
+                    <Save size={14} className="mr-1.5" />
+
+
+
+                    บันทึกการแก้ไข
+
+
+
+                  </button>
+
+
+
+                </div>
+
+
+
+              )}
 
 
 
@@ -3880,75 +3648,47 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-            <div>
+          )}
 
 
 
-              <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
 
 
 
-              {showInputs ? (
+
+          <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
 
 
 
-                <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
 
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
 
 
 
-                    <input
+                <p className="text-xs text-gray-500">วันที่สั่งซื้อ</p>
 
 
 
-                      placeholder="ชื่อผู้รับ"
+                <p className="font-medium text-gray-800">{currentOrder.orderDate ? new Date(currentOrder.orderDate).toLocaleString('th-TH') : '-'}</p>
 
 
 
-                      value={currentOrder.shippingAddress?.recipientFirstName || ''}
+              </div>
 
 
 
-                      onChange={(e) => updateShippingAddress({ recipientFirstName: e.target.value })}
+              <div>
 
 
 
-                      className="w-full p-2 text-sm border rounded"
+                <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
 
 
 
-                    />
-
-
-
-                    <input
-
-
-
-                      placeholder="นามสกุลผู้รับ"
-
-
-
-                      value={currentOrder.shippingAddress?.recipientLastName || ''}
-
-
-
-                      onChange={(e) => updateShippingAddress({ recipientLastName: e.target.value })}
-
-
-
-                      className="w-full p-2 text-sm border rounded"
-
-
-
-                    />
-
-
-
-                  </div>
+                {showInputs ? (
 
 
 
@@ -3956,19 +3696,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
+                    type="date"
 
 
 
-                    value={currentOrder.shippingAddress?.street || ''}
+                    value={deliveryDateInputValue}
 
 
 
-                    onChange={(e) => updateShippingAddress({ street: e.target.value })}
+                    min={deliveryWindow.minIso}
 
 
 
-                    className="w-full p-2 text-sm border rounded"
+                    max={deliveryWindow.maxIso}
+
+
+
+                    onChange={(e) => handleDeliveryDateChange(e.target.value)}
+
+
+
+                    className="w-full p-1 text-sm border rounded"
 
 
 
@@ -3976,11 +3724,199 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                ) : (
 
 
 
-                    <div className="relative">
+                  <p className="font-medium text-gray-800">{currentOrder.deliveryDate ? new Date(currentOrder.deliveryDate).toLocaleDateString('th-TH') : '-'}</p>
+
+
+
+                )}
+              </div>
+
+              <div>{/* Platform/Channel Selector */}
+                <p className="text-xs text-gray-500">ช่องทางการขาย</p>
+                {showInputs ? (
+                  <select
+                    value={currentOrder.salesChannel || ''}
+                    onChange={(e) => {
+                      const channel = e.target.value || undefined;
+                      setCurrentOrder(prev => ({
+                        ...prev,
+                        salesChannel: channel,
+                        salesChannelPageId: undefined // Clear page when channel changes
+                      }));
+                    }}
+                    className="w-full p-1 text-sm border rounded"
+                  >
+                    <option value="">-- เลือกช่องทาง --</option>
+                    {platforms.map(platform => (
+                      <option key={platform.id} value={platform.name}>
+                        {platform.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="font-medium text-gray-800">
+                    {currentOrder.salesChannel || '-'}
+                  </p>
+                )}
+              </div>
+
+              <div>{/* Page Selector */}
+                {(() => {
+                  const selectedPlatform = platforms.find(p => p.name.toLowerCase() === (currentOrder.salesChannel || '').toLowerCase());
+
+                  console.log('Debug - salesChannel:', currentOrder.salesChannel);
+                  console.log('Debug - selectedPlatform:', selectedPlatform);
+                  console.log('Debug - all platforms:', platforms);
+
+                  // Don't show page selector for 'โทร' platform in edit mode
+                  if (selectedPlatform && selectedPlatform.name === 'โทร') {
+                    return showInputs ? null : <p className="font-medium text-gray-800">-</p>;
+                  }
+
+                  // Filter pages based on selected platform
+                  let filtered: Page[] = [];
+                  if (selectedPlatform) {
+                    const hasShowPagesFrom = selectedPlatform.showPagesFrom && selectedPlatform.showPagesFrom.trim() !== '';
+                    const platformToMatch = hasShowPagesFrom
+                      ? selectedPlatform.showPagesFrom.toLowerCase()
+                      : selectedPlatform.name.toLowerCase();
+
+                    console.log('Debug - platformToMatch:', platformToMatch);
+
+                    filtered = pages.filter(p => {
+                      if (!p.active) return false;
+                      const pagePlatform = (p.platform || '').toLowerCase();
+                      const matches = pagePlatform === platformToMatch;
+                      if (!matches) {
+                        console.log('Debug - page', p.name, 'platform:', pagePlatform, 'does not match', platformToMatch);
+                      }
+                      return matches;
+                    });
+
+                    console.log('Debug - filtered pages:', filtered);
+                  }
+
+                  // Always show page selector (disabled if no platform selected)
+                  return (
+                    <>
+                      <p className="text-xs text-gray-500">เพจ</p>
+                      {showInputs ? (
+                        <select
+                          value={currentOrder.salesChannelPageId || ''}
+                          onChange={(e) => {
+                            const pid = e.target.value ? Number(e.target.value) : undefined;
+                            setCurrentOrder(prev => ({ ...prev, salesChannelPageId: pid }));
+                          }}
+                          disabled={!currentOrder.salesChannel}
+                          className="w-full p-1 text-sm border rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        >
+                          <option value="">-- เลือกเพจ --</option>
+                          {filtered.map(page => (
+                            <option key={page.id} value={page.id}>{page.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="font-medium text-gray-800">
+                          {(() => {
+                            const page = pages.find(p => p.id === currentOrder.salesChannelPageId);
+                            return page ? page.name : (currentOrder.salesChannelPageId || '-');
+                          })()}
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </InfoCard>
+
+
+
+          <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
+
+
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+
+
+              <div>
+
+
+
+                <div className="flex items-center justify-between">
+
+
+
+                  <p className="font-semibold text-gray-800 text-base">{customer ? `${customer.firstName} ${customer.lastName} ` : 'ไม่พบข้อมูล'}</p>
+
+
+
+                  {showInputs && customer && onEditCustomer && (
+
+
+
+                    <button
+
+
+
+                      onClick={() => onEditCustomer(customer)}
+
+
+
+                      className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
+
+
+
+                    >
+
+
+
+                      แก้ไขลูกค้า
+
+
+
+                    </button>
+
+
+
+                  )}
+
+
+
+                </div>
+
+
+
+                <p className="text-gray-600 flex items-center mt-2"><Phone size={14} className="mr-2" />{customer?.phone || '-'}</p>
+
+
+
+              </div>
+
+
+
+              <div>
+
+
+
+                <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+
+
+
+                {showInputs ? (
+
+
+
+                  <div className="space-y-2">
+
+
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
 
 
 
@@ -3988,59 +3924,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                        placeholder="จังหวัด"
+                        placeholder="ชื่อผู้รับ"
 
 
 
-                        value={provinceSearchTerm || currentOrder.shippingAddress?.province || ''}
+                        value={currentOrder.shippingAddress?.recipientFirstName || ''}
 
 
 
-                        onChange={(e) => {
-
-
-
-                          const val = e.target.value;
-
-
-
-                          setProvinceSearchTerm(val);
-
-
-
-                          setShowProvinceDropdown(true);
-
-
-
-                          if (!val) {
-
-
-
-                            setSelectedProvince(null);
-
-
-
-                            setSelectedDistrict(null);
-
-
-
-                            setSelectedSubDistrict(null);
-
-
-
-                            updateShippingAddress({ province: '', district: '', subdistrict: '', postalCode: '' });
-
-
-
-                          }
-
-
-
-                        }}
-
-
-
-                        onFocus={() => setShowProvinceDropdown(true)}
+                        onChange={(e) => updateShippingAddress({ recipientFirstName: e.target.value })}
 
 
 
@@ -4052,411 +3944,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      {showProvinceDropdown && (
-
-
-
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
-
-
-
-                          {filteredProvinces.map((province: any) => (
-
-
-
-                            <button
-
-
-
-                              type="button"
-
-
-
-                              key={province.id}
-
-
-
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-
-
-
-                              onMouseDown={(e) => e.preventDefault()}
-
-
-
-                              onClick={() => {
-
-
-
-                                handleSelectProvince(province);
-
-
-
-                                setShowProvinceDropdown(false);
-
-
-
-                              }}
-
-
-
-                            >
-
-
-
-                              {province.name_th}
-
-
-
-                            </button>
-
-
-
-                          ))}
-
-
-
-                          {filteredProvinces.length === 0 && (
-
-
-
-                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบจังหวัด</div>
-
-
-
-                          )}
-
-
-
-                        </div>
-
-
-
-                      )}
-
-
-
-                    </div>
-
-
-
-                    <div className="relative">
-
-
-
                       <input
 
 
 
-                        placeholder="อำเภอ/เขต"
+                        placeholder="นามสกุลผู้รับ"
 
 
 
-                        value={districtSearchTerm || currentOrder.shippingAddress?.district || ''}
+                        value={currentOrder.shippingAddress?.recipientLastName || ''}
 
 
 
-                        onChange={(e) => {
+                        onChange={(e) => updateShippingAddress({ recipientLastName: e.target.value })}
 
 
 
-                          const val = e.target.value;
-
-
-
-                          setDistrictSearchTerm(val);
-
-
-
-                          setShowDistrictDropdown(true);
-
-
-
-                          if (!val) {
-
-
-
-                            setSelectedDistrict(null);
-
-
-
-                            setSelectedSubDistrict(null);
-
-
-
-                            updateShippingAddress({ district: '', subdistrict: '', postalCode: '' });
-
-
-
-                          }
-
-
-
-                        }}
-
-
-
-                        onFocus={() => setShowDistrictDropdown(true)}
-
-
-
-                        disabled={!selectedProvince}
-
-
-
-                        className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+                        className="w-full p-2 text-sm border rounded"
 
 
 
                       />
-
-
-
-                      {showDistrictDropdown && selectedProvince && (
-
-
-
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
-
-
-
-                          {filteredDistricts.map((district: any) => (
-
-
-
-                            <button
-
-
-
-                              type="button"
-
-
-
-                              key={district.id}
-
-
-
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-
-
-
-                              onMouseDown={(e) => e.preventDefault()}
-
-
-
-                              onClick={() => {
-
-
-
-                                handleSelectDistrict(district);
-
-
-
-                                setShowDistrictDropdown(false);
-
-
-
-                              }}
-
-
-
-                            >
-
-
-
-                              {district.name_th}
-
-
-
-                            </button>
-
-
-
-                          ))}
-
-
-
-                          {filteredDistricts.length === 0 && (
-
-
-
-                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบอำเภอ/เขต</div>
-
-
-
-                          )}
-
-
-
-                        </div>
-
-
-
-                      )}
-
-
-
-                    </div>
-
-
-
-                  </div>
-
-
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-
-
-
-                    <div className="relative">
-
-
-
-                      <input
-
-
-
-                        placeholder="ตำบล/แขวง"
-
-
-
-                        value={subDistrictSearchTerm || currentOrder.shippingAddress?.subdistrict || ''}
-
-
-
-                        onChange={(e) => {
-
-
-
-                          const val = e.target.value;
-
-
-
-                          setSubDistrictSearchTerm(val);
-
-
-
-                          setShowSubDistrictDropdown(true);
-
-
-
-                          if (!val) {
-
-
-
-                            setSelectedSubDistrict(null);
-
-
-
-                            updateShippingAddress({ subdistrict: '', postalCode: '' });
-
-
-
-                          }
-
-
-
-                        }}
-
-
-
-                        onFocus={() => setShowSubDistrictDropdown(true)}
-
-
-
-                        disabled={!selectedDistrict}
-
-
-
-                        className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
-
-
-
-                      />
-
-
-
-                      {showSubDistrictDropdown && selectedDistrict && (
-
-
-
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
-
-
-
-                          {filteredSubDistricts.map((sub: any) => (
-
-
-
-                            <button
-
-
-
-                              type="button"
-
-
-
-                              key={sub.id}
-
-
-
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
-
-
-
-                              onMouseDown={(e) => e.preventDefault()}
-
-
-
-                              onClick={() => {
-
-
-
-                                handleSelectSubDistrict(sub);
-
-
-
-                                setShowSubDistrictDropdown(false);
-
-
-
-                              }}
-
-
-
-                            >
-
-
-
-                              {sub.name_th} ({sub.zip_code})
-
-
-
-                            </button>
-
-
-
-                          ))}
-
-
-
-                          {filteredSubDistricts.length === 0 && (
-
-
-
-                            <div className="px-3 py-2 text-sm text-gray-500">ไม่พบตำบล/แขวง</div>
-
-
-
-                          )}
-
-
-
-                        </div>
-
-
-
-                      )}
 
 
 
@@ -4468,19 +3976,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      placeholder="รหัสไปรษณีย์"
+                      placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
 
 
 
-                      value={currentOrder.shippingAddress?.postalCode || ''}
+                      value={currentOrder.shippingAddress?.street || ''}
 
 
 
-                      readOnly
+                      onChange={(e) => updateShippingAddress({ street: e.target.value })}
 
 
 
-                      className="w-full p-2 text-sm border rounded bg-gray-50"
+                      className="w-full p-2 text-sm border rounded"
 
 
 
@@ -4488,359 +3996,91 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
 
 
 
-                </div>
+                      <div className="relative">
 
 
 
-              ) : (
+                        <input
 
 
 
-                <p className="text-gray-700 flex items-start"><MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" /><span className="text-sm">{formatAddress(currentOrder.shippingAddress)}</span></p>
+                          placeholder="จังหวัด"
 
 
 
-              )}
+                          value={provinceSearchTerm || currentOrder.shippingAddress?.province || ''}
 
 
 
-            </div>
+                          onChange={(e) => {
 
 
 
-          </div>
+                            const val = e.target.value;
 
 
 
-        </InfoCard>
+                            setProvinceSearchTerm(val);
 
 
 
+                            setShowProvinceDropdown(true);
 
 
 
+                            if (!val) {
 
-        <InfoCard icon={Package} title="รายการสินค้า">
 
 
+                              setSelectedProvince(null);
 
-          <div className="overflow-x-auto">
 
 
+                              setSelectedDistrict(null);
 
-            <table className="w-full text-sm border-collapse">
 
 
+                              setSelectedSubDistrict(null);
 
-              <thead>
 
 
+                              updateShippingAddress({ province: '', district: '', subdistrict: '', postalCode: '' });
 
-                <tr className="bg-gray-50 border-b">
 
 
+                            }
 
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ลำดับ</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Sku</th>
 
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
 
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อรายการ</th>
+                          }}
 
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
 
 
+                          onFocus={() => setShowProvinceDropdown(true)}
 
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
 
 
+                          className="w-full p-2 text-sm border rounded"
 
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
 
 
+                        />
 
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
 
 
+                        {showProvinceDropdown && (
 
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
 
 
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
 
-                  {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จัดการ</th>}
 
 
-
-                </tr>
-
-
-
-              </thead>
-
-
-
-              <tbody>
-
-                {[...currentOrder.items].sort((a, b) => {
-                  const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
-                  const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
-                  return boxA - boxB;
-                }).map((item, index) => {
-
-
-
-                  const itemCreator = item.creatorId ? users.find(u => {
-
-
-
-                    const userId = typeof u.id === 'number' ? u.id : Number(u.id);
-
-
-
-                    const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
-
-
-
-                    return userId === creatorId;
-
-
-
-                  }) : null;
-
-
-
-                  const isFreebie = (item as any).isFreebie || (item as any).is_freebie;
-                  const itemTotal = isFreebie ? 0 : ((item.pricePerUnit * item.quantity) - item.discount);
-
-
-
-
-
-
-
-                  // Check if current user is the creator of this item
-
-
-
-                  const isCreator = currentUser && item.creatorId === currentUser.id;
-
-
-
-                  const canEditItem = showInputs && isCreator;
-
-
-
-
-
-
-
-                  return (
-
-
-
-                    <tr key={item.id} className="border-b hover:bg-gray-50">
-
-                      <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">{index + 1}</td>
-
-                      <td className="px-3 py-2 text-xs text-gray-600 font-mono">
-                        {item.productId ? (products.find(p => p.id === item.productId)?.sku || '-') : '-'}
-                      </td>
-
-                      <td className="px-3 py-2 text-center text-xs text-gray-700">
-                        {canEditItem ? (
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.boxNumber || 1}
-                            onChange={(e) => handleItemChange(index, 'boxNumber', Number(e.target.value))}
-                            className="w-12 border rounded px-1 text-center"
-                          />
-                        ) : (
-                          item.boxNumber || 1
-                        )}
-                      </td>
-
-                      <td className="px-3 py-2 text-sm text-gray-800">
-
-
-
-                        {canEditItem ? (
-                          <select
-                            value={item.productId || ''}
-                            onChange={(e) => handleProductChange(index, Number(e.target.value))}
-                            className="w-full border rounded px-1 py-1 text-sm"
-                          >
-                            <option value="">เลือกสินค้า</option>
-                            {products.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
-                        ) : item.productName}
-
-
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-center text-xs text-gray-700">
-
-
-
-                        {canEditItem ? (
-
-
-
-                          <input
-
-
-
-                            type="number"
-
-
-
-                            value={item.quantity}
-
-
-
-                            onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-
-
-
-                            className="w-16 border rounded px-1 text-center"
-
-
-
-                          />
-
-
-
-                        ) : item.quantity}
-
-
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-xs text-gray-700">
-
-
-
-                        {canEditItem ? (
-
-
-
-                          <input
-
-
-
-                            type="number"
-
-
-
-                            value={item.pricePerUnit}
-
-
-
-                            onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
-
-
-
-                            className="w-20 border rounded px-1 text-right"
-
-
-
-                          />
-
-
-
-                        ) : `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `}
-
-
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-xs text-red-600">
-
-
-
-                        {canEditItem ? (
-
-
-
-                          <input
-
-
-
-                            type="number"
-
-
-
-                            value={item.discount}
-
-
-
-                            onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
-
-
-
-                            className="w-20 border rounded px-1 text-right text-red-600"
-
-
-
-                          />
-
-
-
-                        ) : `-฿${Number(item.discount ?? 0).toLocaleString()} `}
-
-
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                        {isFreebie ? (
-                          <span className="inline-flex items-center">
-                            ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
-                          </span>
-                        ) : (
-                          `฿${itemTotal.toLocaleString()}`
-                        )}
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-xs text-gray-600">
-
-
-
-                        {itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName} ` : '-'}
-
-
-
-                      </td>
-
-
-
-                      {
-                        showInputs && (
-
-
-
-                          <td className="px-3 py-2 text-center">
-
-
-
-                            {canEditItem && (
+                            {filteredProvinces.map((province: any) => (
 
 
 
@@ -4848,11 +4088,35 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                                onClick={() => handleRemoveItem(item)}
+                                type="button"
 
 
 
-                                className="text-red-500 hover:text-red-700"
+                                key={province.id}
+
+
+
+                                className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                                onMouseDown={(e) => e.preventDefault()}
+
+
+
+                                onClick={() => {
+
+
+
+                                  handleSelectProvince(province);
+
+
+
+                                  setShowProvinceDropdown(false);
+
+
+
+                                }}
 
 
 
@@ -4860,7 +4124,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                                <Trash2 size={14} />
+                                {province.name_th}
 
 
 
@@ -4868,73 +4132,466 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
+                            ))}
+
+
+
+                            {filteredProvinces.length === 0 && (
+
+
+
+                              <div className="px-3 py-2 text-sm text-gray-500">ไม่พบจังหวัด</div>
+
+
+
                             )}
 
 
 
-                          </td>
+                          </div>
 
 
 
-                        )
-                      }
-                    </tr>
+                        )}
 
 
 
-                  );
+                      </div>
 
 
 
-                })}
+                      <div className="relative">
 
 
 
-              </tbody>
+                        <input
 
 
 
-              <tfoot className="bg-gray-50">
+                          placeholder="อำเภอ/เขต"
 
 
 
-                {showInputs && (
+                          value={districtSearchTerm || currentOrder.shippingAddress?.district || ''}
 
 
 
-                  <tr>
+                          onChange={(e) => {
 
 
 
-                    <td colSpan={9} className="px-3 py-2 text-center">
+                            const val = e.target.value;
 
 
 
-                      <button
+                            setDistrictSearchTerm(val);
 
 
 
-                        onClick={handleAddItem}
+                            setShowDistrictDropdown(true);
 
 
 
-                        className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
+                            if (!val) {
 
 
 
-                      >
+                              setSelectedDistrict(null);
 
 
 
-                        + เพิ่มสินค้า
+                              setSelectedSubDistrict(null);
 
 
 
-                      </button>
+                              updateShippingAddress({ district: '', subdistrict: '', postalCode: '' });
 
 
 
-                    </td>
+                            }
+
+
+
+                          }}
+
+
+
+                          onFocus={() => setShowDistrictDropdown(true)}
+
+
+
+                          disabled={!selectedProvince}
+
+
+
+                          className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+
+
+
+                        />
+
+
+
+                        {showDistrictDropdown && selectedProvince && (
+
+
+
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
+
+
+
+                            {filteredDistricts.map((district: any) => (
+
+
+
+                              <button
+
+
+
+                                type="button"
+
+
+
+                                key={district.id}
+
+
+
+                                className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                                onMouseDown={(e) => e.preventDefault()}
+
+
+
+                                onClick={() => {
+
+
+
+                                  handleSelectDistrict(district);
+
+
+
+                                  setShowDistrictDropdown(false);
+
+
+
+                                }}
+
+
+
+                              >
+
+
+
+                                {district.name_th}
+
+
+
+                              </button>
+
+
+
+                            ))}
+
+
+
+                            {filteredDistricts.length === 0 && (
+
+
+
+                              <div className="px-3 py-2 text-sm text-gray-500">ไม่พบอำเภอ/เขต</div>
+
+
+
+                            )}
+
+
+
+                          </div>
+
+
+
+                        )}
+
+
+
+                      </div>
+
+
+
+                    </div>
+
+
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+
+
+
+                      <div className="relative">
+
+
+
+                        <input
+
+
+
+                          placeholder="ตำบล/แขวง"
+
+
+
+                          value={subDistrictSearchTerm || currentOrder.shippingAddress?.subdistrict || ''}
+
+
+
+                          onChange={(e) => {
+
+
+
+                            const val = e.target.value;
+
+
+
+                            setSubDistrictSearchTerm(val);
+
+
+
+                            setShowSubDistrictDropdown(true);
+
+
+
+                            if (!val) {
+
+
+
+                              setSelectedSubDistrict(null);
+
+
+
+                              updateShippingAddress({ subdistrict: '', postalCode: '' });
+
+
+
+                            }
+
+
+
+                          }}
+
+
+
+                          onFocus={() => setShowSubDistrictDropdown(true)}
+
+
+
+                          disabled={!selectedDistrict}
+
+
+
+                          className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+
+
+
+                        />
+
+
+
+                        {showSubDistrictDropdown && selectedDistrict && (
+
+
+
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow max-h-56 overflow-auto">
+
+
+
+                            {filteredSubDistricts.map((sub: any) => (
+
+
+
+                              <button
+
+
+
+                                type="button"
+
+
+
+                                key={sub.id}
+
+
+
+                                className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+
+
+
+                                onMouseDown={(e) => e.preventDefault()}
+
+
+
+                                onClick={() => {
+
+
+
+                                  handleSelectSubDistrict(sub);
+
+
+
+                                  setShowSubDistrictDropdown(false);
+
+
+
+                                }}
+
+
+
+                              >
+
+
+
+                                {sub.name_th} ({sub.zip_code})
+
+
+
+                              </button>
+
+
+
+                            ))}
+
+
+
+                            {filteredSubDistricts.length === 0 && (
+
+
+
+                              <div className="px-3 py-2 text-sm text-gray-500">ไม่พบตำบล/แขวง</div>
+
+
+
+                            )}
+
+
+
+                          </div>
+
+
+
+                        )}
+
+
+
+                      </div>
+
+
+
+                      <input
+
+
+
+                        placeholder="รหัสไปรษณีย์"
+
+
+
+                        value={currentOrder.shippingAddress?.postalCode || ''}
+
+
+
+                        readOnly
+
+
+
+                        className="w-full p-2 text-sm border rounded bg-gray-50"
+
+
+
+                      />
+
+
+
+                    </div>
+
+
+
+                  </div>
+
+
+
+                ) : (
+
+
+
+                  <p className="text-gray-700 flex items-start"><MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" /><span className="text-sm">{formatAddress(currentOrder.shippingAddress)}</span></p>
+
+
+
+                )}
+
+
+
+              </div>
+
+
+
+            </div>
+
+
+
+          </InfoCard>
+
+
+
+
+
+
+
+          <InfoCard icon={Package} title="รายการสินค้า">
+
+
+
+            <div className="overflow-x-auto">
+
+
+
+              <table className="w-full text-sm border-collapse">
+
+
+
+                <thead>
+
+
+
+                  <tr className="bg-gray-50 border-b">
+
+
+
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ลำดับ</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Sku</th>
+
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">กล่องที่</th>
+
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ชื่อรายการ</th>
+
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จำนวน</th>
+
+
+
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ราคาต่อหน่วย</th>
+
+
+
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">ส่วนลด</th>
+
+
+
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">รวม</th>
+
+
+
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ผู้ขาย</th>
+
+
+
+                    {showInputs && <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">จัดการ</th>}
 
 
 
@@ -4942,479 +4599,531 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                )}
+                </thead>
 
 
 
-                <tr>
+                <tbody>
 
+                  {[...currentOrder.items].sort((a, b) => {
+                    const boxA = parseInt(String(a.boxNumber || (a as any).box_number || '0'), 10);
+                    const boxB = parseInt(String(b.boxNumber || (b as any).box_number || '0'), 10);
+                    return boxA - boxB;
+                  }).map((item, index) => {
 
 
-                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
 
+                    const itemCreator = item.creatorId ? users.find(u => {
 
 
-                  <td colSpan={1} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
 
+                      const userId = typeof u.id === 'number' ? u.id : Number(u.id);
 
 
-                  <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.itemsDiscount.toLocaleString()}</td>
 
+                      const creatorId = typeof item.creatorId === 'number' ? item.creatorId : Number(item.creatorId);
 
 
-                  <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
 
+                      return userId === creatorId;
 
 
-                  <td colSpan={showInputs ? 2 : 1}></td>
 
+                    }) : null;
 
 
-                </tr>
 
+                    const isFreebie = (item as any).isFreebie || (item as any).is_freebie;
+                    const itemTotal = isFreebie ? 0 : ((item.pricePerUnit * item.quantity) - item.discount);
 
 
-                <tr>
 
 
 
-                  <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ส่วนลดทั้งออเดอร์</td>
 
 
+                    // Check if current user is the creator of this item
 
-                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.billDiscount.toLocaleString()}</td>
 
 
+                    const isCreator = currentUser && item.creatorId === currentUser.id;
 
-                </tr>
 
 
+                    const canEditItem = showInputs && isCreator;
 
-                <tr>
 
 
 
-                  <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ค่าส่ง</td>
 
 
 
-                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.shippingCost.toLocaleString()}</td>
+                    return (
 
 
 
-                </tr>
+                      <tr key={item.id} className="border-b hover:bg-gray-50">
 
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono text-center">{index + 1}</td>
 
+                        <td className="px-3 py-2 text-xs text-gray-600 font-mono">
+                          {item.productId ? (products.find(p => p.id === item.productId)?.sku || '-') : '-'}
+                        </td>
 
-                <tr className="border-t-2">
+                        <td className="px-3 py-2 text-center text-xs text-gray-700">
+                          {canEditItem ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.boxNumber || 1}
+                              onChange={(e) => handleItemChange(index, 'boxNumber', Number(e.target.value))}
+                              className="w-12 border rounded px-1 text-center"
+                            />
+                          ) : (
+                            item.boxNumber || 1
+                          )}
+                        </td>
 
+                        <td className="px-3 py-2 text-sm text-gray-800">
 
 
-                  <td colSpan={5} className="px-3 py-2 text-sm font-bold text-gray-800">ยอดสุทธิ</td>
 
+                          {canEditItem ? (
+                            <select
+                              value={item.productId || ''}
+                              onChange={(e) => handleProductChange(index, Number(e.target.value))}
+                              className="w-full border rounded px-1 py-1 text-sm"
+                            >
+                              <option value="">เลือกสินค้า</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                          ) : item.productName}
 
 
-                  <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-base font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</td>
 
+                        </td>
 
 
-                </tr>
 
+                        <td className="px-3 py-2 text-center text-xs text-gray-700">
 
 
-              </tfoot>
 
+                          {canEditItem ? (
 
 
-            </table>
 
+                            <input
 
 
-          </div>
 
+                              type="number"
 
 
-        </InfoCard>
 
+                              value={item.quantity}
 
 
 
+                              onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
 
 
 
-        {
-          (currentOrder.paymentMethod === PaymentMethod.Transfer ||
+                              className="w-16 border rounded px-1 text-center"
 
 
 
-            currentOrder.paymentMethod === PaymentMethod.PayAfter ||
+                            />
 
 
 
-            currentOrder.paymentMethod === PaymentMethod.COD) && (
+                          ) : item.quantity}
 
 
 
-            <InfoCard icon={CreditCard} title="การชำระเงิน">
+                        </td>
 
 
 
-              <div className="flex items-center justify-between mb-3">
+                        <td className="px-3 py-2 text-right text-xs text-gray-700">
 
 
 
-                <span className="font-medium text-gray-600">วิธีชำระ: {currentOrder.paymentMethod}</span>
+                          {canEditItem ? (
 
 
 
-                {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod, currentOrder.amountPaid, calculatedTotals.totalAmount)}
+                            <input
 
 
 
-              </div>
+                              type="number"
 
 
 
-              <div className="flex items-center justify-between mb-2 text-xs">
+                              value={item.pricePerUnit}
 
 
 
-                <span className="text-gray-500">สถานะการชำระ</span>
+                              onChange={(e) => handleItemChange(index, 'pricePerUnit', Number(e.target.value))}
 
 
 
-                <span className={`px - 2 py - 0.5 rounded - full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'} `}>{derivedAmountStatus === 'Paid' ? 'ชำระแล้ว' : derivedAmountStatus === 'Unpaid' ? 'ยังไม่ชำระ' : derivedAmountStatus === 'Partial' ? 'ชำระบางส่วน' : 'ชำระเกิน'}</span>
+                              className="w-20 border rounded px-1 text-right"
 
 
 
-              </div>
+                            />
 
 
 
-              {(currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.COD) && (
+                          ) : `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `}
 
 
 
-                <div className="space-y-2">
+                        </td>
 
 
 
-                  <div>
+                        <td className="px-3 py-2 text-right text-xs text-red-600">
 
 
 
-                    <label className="block text-xs font-medium text-gray-500 mb-1">จำนวนเงินที่ได้รับ</label>
+                          {canEditItem ? (
 
 
 
-                    <input
+                            <input
 
 
 
-                      type="number"
+                              type="number"
 
 
 
-                      inputMode="decimal"
+                              value={item.discount}
 
 
 
-                      value={currentOrder.amountPaid ?? ''}
+                              onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))}
 
 
 
-                      onFocus={(e) => e.currentTarget.select()}
+                              className="w-20 border rounded px-1 text-right text-red-600"
 
 
 
-                      onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+                            />
 
 
 
-                      className="w-full p-2 border rounded-md"
+                          ) : `-฿${Number(item.discount ?? 0).toLocaleString()} `}
 
 
 
-                    />
+                        </td>
 
 
 
-                  </div>
+                        <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
+                          {isFreebie ? (
+                            <span className="inline-flex items-center">
+                              ฿0 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">ของแถม</span>
+                            </span>
+                          ) : (
+                            `฿${itemTotal.toLocaleString()}`
+                          )}
+                        </td>
 
 
 
-                  <div className="flex justify-between font-semibold">
+                        <td className="px-3 py-2 text-xs text-gray-600">
 
 
 
-                    <span className="text-gray-600">คงเหลือ</span>
+                          {itemCreator ? `${itemCreator.firstName} ${itemCreator.lastName} ` : '-'}
 
 
 
-                    <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'} `}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? ` - ${remainingBalance.toLocaleString()} ` : ` + ${Math.abs(remainingBalance).toLocaleString()} `)}</span>
+                        </td>
 
 
 
-                  </div>
+                        {
+                          showInputs && (
+
+
+
+                            <td className="px-3 py-2 text-center">
+
+
+
+                              {canEditItem && (
+
+
+
+                                <button
+
+
+
+                                  onClick={() => handleRemoveItem(item)}
+
+
+
+                                  className="text-red-500 hover:text-red-700"
+
+
+
+                                >
+
+
+
+                                  <Trash2 size={14} />
+
+
+
+                                </button>
+
+
+
+                              )}
+
+
+
+                            </td>
+
+
+
+                          )
+                        }
+                      </tr>
+
+
+
+                    );
+
+
+
+                  })}
+
+
+
+                </tbody>
+
+
+
+                <tfoot className="bg-gray-50">
+
+
+
+                  {showInputs && (
+
+
+
+                    <tr>
+
+
+
+                      <td colSpan={9} className="px-3 py-2 text-center">
+
+
+
+                        <button
+
+
+
+                          onClick={handleAddItem}
+
+
+
+                          className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center justify-center w-full"
+
+
+
+                        >
+
+
+
+                          + เพิ่มสินค้า
+
+
+
+                        </button>
+
+
+
+                      </td>
+
+
+
+                    </tr>
+
+
+
+                  )}
+
+
+
+                  <tr>
+
+
+
+                    <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">รวมรายการ</td>
+
+
+
+                    <td colSpan={1} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+
+
+
+                    <td className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.itemsDiscount.toLocaleString()}</td>
+
+
+
+                    <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">฿{calculatedTotals.itemsSubtotal.toLocaleString()}</td>
+
+
+
+                    <td colSpan={showInputs ? 2 : 1}></td>
+
+
+
+                  </tr>
+
+
+
+                  <tr>
+
+
+
+                    <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ส่วนลดทั้งออเดอร์</td>
+
+
+
+                    <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs text-red-600">-฿{calculatedTotals.billDiscount.toLocaleString()}</td>
+
+
+
+                  </tr>
+
+
+
+                  <tr>
+
+
+
+                    <td colSpan={5} className="px-3 py-2 text-xs text-gray-600">ค่าส่ง</td>
+
+
+
+                    <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-xs font-medium text-gray-900">฿{calculatedTotals.shippingCost.toLocaleString()}</td>
+
+
+
+                  </tr>
+
+
+
+                  <tr className="border-t-2">
+
+
+
+                    <td colSpan={5} className="px-3 py-2 text-sm font-bold text-gray-800">ยอดสุทธิ</td>
+
+
+
+                    <td colSpan={showInputs ? 3 : 2} className="px-3 py-2 text-right text-base font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</td>
+
+
+
+                  </tr>
+
+
+
+                </tfoot>
+
+
+
+              </table>
+
+
+
+            </div>
+
+
+
+          </InfoCard>
+
+
+
+
+
+
+
+          {
+            (currentOrder.paymentMethod === PaymentMethod.Transfer ||
+
+
+
+              currentOrder.paymentMethod === PaymentMethod.PayAfter ||
+
+
+
+              currentOrder.paymentMethod === PaymentMethod.COD) && (
+
+
+
+              <InfoCard icon={CreditCard} title="การชำระเงิน">
+
+
+
+                <div className="flex items-center justify-between mb-3">
+
+
+
+                  <span className="font-medium text-gray-600">วิธีชำระ: {currentOrder.paymentMethod}</span>
+
+
+
+                  {getPaymentStatusChip(currentOrder.paymentStatus, currentOrder.paymentMethod, currentOrder.amountPaid, calculatedTotals.totalAmount)}
 
 
 
                 </div>
-              )}
 
-              {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
-                currentOrder.paymentMethod === PaymentMethod.PayAfter) && (
-                  <>
-                    <div className="space-y-4 mt-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">รายการสลิปที่โอนเงิน</label>
 
-                        {slips.length > 0 ? (
-                          <div className="overflow-x-auto border rounded-lg">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    ลำดับ
-                                  </th>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    ธนาคาร
-                                  </th>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    วัน-เวลา
-                                  </th>
-                                  <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    จำนวนเงิน
-                                  </th>
-                                  <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    รูปภาพ
-                                  </th>
-                                  {canVerifySlip && (
-                                    <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      ตรวจสอบ
-                                    </th>
-                                  )}
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white divide-y divide-gray-200">
-                                {slips.map((slip, index) => {
-                                  const bankLabel = resolveBankName(slip.bankAccountId);
-                                  const transferLabel = formatSlipDateTime(slip.transferDate);
-                                  const isComplete = !!(slip.amount && slip.bankAccountId && slip.transferDate);
-                                  const isChecked = !!(slip as any).checked;
 
-                                  return (
-                                    <tr key={slip.id} className={isChecked ? "bg-green-50" : ""}>
-                                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                        {index + 1}
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                        {canEditSlips ? (
-                                          <select
-                                            value={slip.bankAccountId || ""}
-                                            onChange={(e) => {
-                                              const nextBankId = e.target.value === "" ? undefined : Number(e.target.value);
-                                              setSlips((prev) =>
-                                                prev.map((s) =>
-                                                  s.id === slip.id ? { ...s, bankAccountId: nextBankId } : s
-                                                )
-                                              );
-                                            }}
-                                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                          >
-                                            <option value="">เลือกธนาคาร</option>
-                                            {bankAccounts.map(ba => (
-                                              <option key={ba.id} value={ba.id}>
-                                                {ba.bank} {ba.bank_number}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <span>{bankLabel || "-"}</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                        {canEditSlips ? (
-                                          <input
-                                            type="datetime-local"
-                                            value={toLocalDatetimeString(slip.transferDate)}
-                                            onChange={(e) => {
-                                              const nextDate = e.target.value ? fromLocalDatetimeString(e.target.value) : undefined;
-                                              setSlips((prev) =>
-                                                prev.map((s) =>
-                                                  s.id === slip.id ? { ...s, transferDate: nextDate } : s
-                                                )
-                                              );
-                                            }}
-                                            className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                          />
-                                        ) : (
-                                          <span>{transferLabel || "-"}</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
-                                        {canEditSlips ? (
-                                          <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={typeof slip.amount === "number" && !Number.isNaN(slip.amount) ? slip.amount : ""}
-                                            onChange={(e) => {
-                                              const nextAmount = e.target.value === "" ? undefined : Number(e.target.value);
-                                              setSlips((prev) =>
-                                                prev.map((s) =>
-                                                  s.id === slip.id ? { ...s, amount: nextAmount } : s
-                                                )
-                                              );
-                                            }}
-                                            className="w-24 text-right border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                          />
-                                        ) : (
-                                          <span className="text-gray-900 font-medium">
-                                            {typeof slip.amount === "number"
-                                              ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                              : "-"}
-                                          </span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap text-center">
-                                        <button
-                                          onClick={() => openSlipViewer({ ...slip, uploadedByName: resolveUploaderName(slip.uploadedBy, slip.uploadedByName) })}
-                                          className="text-blue-600 hover:text-blue-900 inline-flex items-center"
-                                        >
-                                          <Eye size={16} />
-                                        </button>
-                                      </td>
-                                      {canVerifySlip && (
-                                        <td className="px-3 py-2 whitespace-nowrap text-center">
-                                          {false ? (
-                                            // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
-                                            <div className="flex items-center justify-center">
-                                              <CheckCircle className="w-5 h-5 text-green-600" />
-                                            </div>
-                                          ) : isOrderCompleted ? (
-                                            // Order เสร็จสิ้นแล้ว - แสดงติ๊กถูก (ไม่สามารถแก้ไขได้)
-                                            <div className="flex items-center justify-center">
-                                              <CheckCircle className="w-5 h-5 text-gray-400" />
-                                            </div>
-                                          ) : (
-                                            // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              disabled={!isComplete}
-                                              onChange={(e) => {
-                                                if (!isComplete) return;
-                                                const checked = e.target.checked;
-                                                setSlips((prev) =>
-                                                  prev.map((s) =>
-                                                    s.id === slip.id ? { ...s, checked } : s
-                                                  )
-                                                );
-                                              }}
-                                              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded cursor-pointer"
-                                            />
-                                          )}
-                                        </td>
-                                      )}
-                                    </tr>
-                                  );
-                                })}
-                                {/* Summary Row */}
-                                <tr className="bg-gray-50 font-medium">
-                                  <td colSpan={3} className="px-3 py-2 text-right text-sm text-gray-700">
-                                    รวมยอดที่เลือก:
-                                  </td>
-                                  <td className="px-3 py-2 text-right text-sm text-blue-700">
-                                    {slips
-                                      .filter((s: any) => s.checked)
-                                      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
-                                      .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </td>
-                                  <td colSpan={canVerifySlip ? 2 : 1}></td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                            <p className="text-gray-500 text-sm">ยังไม่มีหลักฐานการชำระเงิน</p>
-                          </div>
-                        )}
+                <div className="flex items-center justify-between mb-2 text-xs">
 
-                        <div className="mt-3 flex justify-end">
-                          <div className="flex items-center space-x-2">
-                            <label htmlFor={slipUploadInputId} className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                              <Image size={16} className="mr-2" />
-                              อัปโหลดสลิปเพิ่มเติม
-                            </label>
-                            <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* Validation Summary */}
-                      {canVerifySlip && slips.length > 0 && (
-                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm text-gray-600">ยอดออเดอร์ทั้งหมด:</span>
-                            <span className="text-sm font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm text-gray-600">ยอดสลิปที่ตรวจสอบแล้ว:</span>
-                            <span className="text-sm font-bold text-green-600">
-                              ฿{slips
-                                .filter((s: any) => s.checked)
-                                .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
-                                .toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="border-t border-gray-200 my-2 pt-2 flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-900">ส่วนต่าง:</span>
-                            {(() => {
-                              const checkedTotal = slips
-                                .filter((s: any) => s.checked)
-                                .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-                              const diff = checkedTotal - calculatedTotals.totalAmount;
-                              return (
-                                <span className={`text - sm font - bold ${diff < 0 ? 'text-red-600' : diff > 0 ? 'text-blue-600' : 'text-green-600'} `}>
-                                  {diff > 0 ? '+' : ''}{diff.toLocaleString()}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
-                    {canVerifySlip &&
-                      (currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
-                      hasTransferSlip &&
-                      currentOrder.paymentStatus !== PaymentStatus.Paid &&
-                      !isOrderCompleted && (
-                        <div className="flex justify-end mt-4">
-                          <button
-                            onClick={handleAcceptSlip}
-                            disabled={!slips.some((s: any) => s.checked)}
-                            className={`inline - flex items - center px - 4 py - 2 border border - transparent text - sm font - medium rounded - md shadow - sm text - white 
-                            ${slips.some((s: any) => s.checked)
-                                ? 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500'
-                                : 'bg-gray-400 cursor-not-allowed'
-                              } `}
-                          >
-                            <CheckCircle size={16} className="mr-2" />
-                            ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})
-                          </button>
-                        </div>
-                      )}
-                  </>
-                )}
+                  <span className="text-gray-500">สถานะการชำระ</span>
 
-              {false && currentOrder.paymentMethod === PaymentMethod.PayAfter && (
-                <>
+
+
+                  <span className={`px - 2 py - 0.5 rounded - full ${derivedAmountStatus === 'Paid' ? 'bg-green-100 text-green-700' : derivedAmountStatus === 'Unpaid' ? 'bg-gray-100 text-gray-700' : derivedAmountStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'} `}>{derivedAmountStatus === 'Paid' ? 'ชำระแล้ว' : derivedAmountStatus === 'Unpaid' ? 'ยังไม่ชำระ' : derivedAmountStatus === 'Partial' ? 'ชำระบางส่วน' : 'ชำระเกิน'}</span>
+
+
+
+                </div>
+
+
+
+                {(currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.COD) && (
+
+
+
                   <div className="space-y-2">
+
+
+
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
+
+
+
+                      <label className="block text-xs font-medium text-gray-500 mb-1">จำนวนเงินที่ได้รับ</label>
 
 
 
@@ -5446,10 +5155,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                        disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
-
-
-
                       />
 
 
@@ -5462,11 +5167,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      <span className="text-red-600">ยอดค้างชำระ</span>
+                      <span className="text-gray-600">คงเหลือ</span>
 
 
 
-                      <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+                      <span className={`${remainingBalance < 0 ? 'text-purple-600' : remainingBalance > 0 ? 'text-red-600' : 'text-green-600'} `}>{remainingBalance === 0 ? '0' : (remainingBalance > 0 ? ` - ${remainingBalance.toLocaleString()} ` : ` + ${Math.abs(remainingBalance).toLocaleString()} `)}</span>
 
 
 
@@ -5475,207 +5180,261 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
                   </div>
-
-
-
-
-
-
-
-                  {/* ส่วนอัปโหลดสลิปสำหรับ PayAfter */}
-
-
-
-                  <div className="space-y-2 mt-4">
-
-
-
-                    <div>
-
-
-
-                      <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
-
-
-
-                      {slips.length > 0 ? (
-
-
-
-                        <div className="flex flex-wrap gap-3 mb-2">
-
-
-
-                          {slips.map(slip => {
-
-                            const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
-
-                            const bankLabel = resolveBankName(slip.bankAccountId);
-
-                            const transferLabel = formatSlipDateTime(slip.transferDate);
-
-                            const amountLabel =
-
-                              typeof slip.amount === "number"
-
-                                ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-                                : undefined;
-
-                            return (
-
-                              <div key={slip.id} className="relative w-40 border rounded-md p-2 group bg-white shadow-sm">
-
-                                <div className="h-32 w-full relative">
-
-                                  <img
-
-                                    onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-
-
-
-                                    src={slip.url}
-
-
-
-                                    alt="Slip preview"
-
-
-
-                                    className="w-full h-full object-contain cursor-pointer"
-
-
-
-                                  />
-
-
-
-                                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-
-
-
-                                    <button
-
-
-
-                                      onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-
-
-
-                                      className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
-
-
-
-                                    >
-
-
-
-                                      <Eye size={16} className="mr-1" /> ดู
-
-
-
-                                    </button>
-
-                                  </div>
-
-                                </div>
-
-                                <div className="mt-1 text-[11px] text-gray-700 leading-tight space-y-0.5">
-                                  {amountLabel && <div>฿{amountLabel}</div>}
-                                  {bankLabel && <div>{bankLabel}</div>}
-                                  {transferLabel && <div>{transferLabel}</div>}
-                                </div>
-                                {canVerifySlip && (
-                                  <div className="mt-2 text-[11px] space-y-1">
-                                    <label className="block text-gray-600">จำนวนเงินสลิป (ยืนยัน)</label>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={
-                                        typeof slip.amount === "number" && !Number.isNaN(slip.amount)
-                                          ? slip.amount
-                                          : ""
-                                      }
-                                      onChange={(e) => {
-                                        const nextAmount =
-                                          e.target.value === "" ? undefined : Number(e.target.value);
-                                        setSlips((prev) =>
-                                          prev.map((s) =>
-                                            s.id === slip.id ? { ...s, amount: nextAmount } : s,
-                                          ),
-                                        );
-                                      }}
-                                      className="w-full border rounded px-2 py-1"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            );
-
-
-
-                          })}
-
-
-
+                )}
+
+                {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+                  currentOrder.paymentMethod === PaymentMethod.PayAfter) && (
+                    <>
+                      <div className="space-y-4 mt-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">รายการสลิปที่โอนเงิน</label>
+
+                          {slips.length > 0 ? (
+                            <div className="overflow-x-auto border rounded-lg">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      ลำดับ
+                                    </th>
+                                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      ธนาคาร
+                                    </th>
+                                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      วัน-เวลา
+                                    </th>
+                                    <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      จำนวนเงิน
+                                    </th>
+                                    <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      รูปภาพ
+                                    </th>
+                                    {canVerifySlip && (
+                                      <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        ตรวจสอบ
+                                      </th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {slips.map((slip, index) => {
+                                    const bankLabel = resolveBankName(slip.bankAccountId);
+                                    const transferLabel = formatSlipDateTime(slip.transferDate);
+                                    const isComplete = !!(slip.amount && slip.bankAccountId && slip.transferDate);
+                                    const isChecked = !!(slip as any).checked;
+
+                                    return (
+                                      <tr key={slip.id} className={isChecked ? "bg-green-50" : ""}>
+                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                          {index + 1}
+                                        </td>
+                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                                          {canEditSlips ? (
+                                            <select
+                                              value={slip.bankAccountId || ""}
+                                              onChange={(e) => {
+                                                const nextBankId = e.target.value === "" ? undefined : Number(e.target.value);
+                                                setSlips((prev) =>
+                                                  prev.map((s) =>
+                                                    s.id === slip.id ? { ...s, bankAccountId: nextBankId } : s
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                            >
+                                              <option value="">เลือกธนาคาร</option>
+                                              {bankAccounts.map(ba => (
+                                                <option key={ba.id} value={ba.id}>
+                                                  {ba.bank} {ba.bank_number}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <span>{bankLabel || "-"}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                          {canEditSlips ? (
+                                            <input
+                                              type="datetime-local"
+                                              value={toLocalDatetimeString(slip.transferDate)}
+                                              onChange={(e) => {
+                                                const nextDate = e.target.value ? fromLocalDatetimeString(e.target.value) : undefined;
+                                                setSlips((prev) =>
+                                                  prev.map((s) =>
+                                                    s.id === slip.id ? { ...s, transferDate: nextDate } : s
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                            />
+                                          ) : (
+                                            <span>{transferLabel || "-"}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                                          {canEditSlips ? (
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              value={typeof slip.amount === "number" && !Number.isNaN(slip.amount) ? slip.amount : ""}
+                                              onChange={(e) => {
+                                                const nextAmount = e.target.value === "" ? undefined : Number(e.target.value);
+                                                setSlips((prev) =>
+                                                  prev.map((s) =>
+                                                    s.id === slip.id ? { ...s, amount: nextAmount } : s
+                                                  )
+                                                );
+                                              }}
+                                              className="w-24 text-right border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                            />
+                                          ) : (
+                                            <span className="text-gray-900 font-medium">
+                                              {typeof slip.amount === "number"
+                                                ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                                : "-"}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 whitespace-nowrap text-center">
+                                          <button
+                                            onClick={() => openSlipViewer({ ...slip, uploadedByName: resolveUploaderName(slip.uploadedBy, slip.uploadedByName) })}
+                                            className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                                          >
+                                            <Eye size={16} />
+                                          </button>
+                                        </td>
+                                        {canVerifySlip && (
+                                          <td className="px-3 py-2 whitespace-nowrap text-center">
+                                            {false ? (
+                                              // สลิปถูกตรวจสอบแล้ว - แสดงติ๊กถูก
+                                              <div className="flex items-center justify-center">
+                                                <CheckCircle className="w-5 h-5 text-green-600" />
+                                              </div>
+                                            ) : isOrderCompleted ? (
+                                              // Order เสร็จสิ้นแล้ว - แสดงติ๊กถูก (ไม่สามารถแก้ไขได้)
+                                              <div className="flex items-center justify-center">
+                                                <CheckCircle className="w-5 h-5 text-gray-400" />
+                                              </div>
+                                            ) : (
+                                              // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
+                                              <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                disabled={!isComplete}
+                                                onChange={(e) => {
+                                                  if (!isComplete) return;
+                                                  const checked = e.target.checked;
+                                                  setSlips((prev) =>
+                                                    prev.map((s) =>
+                                                      s.id === slip.id ? { ...s, checked } : s
+                                                    )
+                                                  );
+                                                }}
+                                                className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded cursor-pointer"
+                                              />
+                                            )}
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
+                                  {/* Summary Row */}
+                                  <tr className="bg-gray-50 font-medium">
+                                    <td colSpan={3} className="px-3 py-2 text-right text-sm text-gray-700">
+                                      รวมยอดที่เลือก:
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-sm text-blue-700">
+                                      {slips
+                                        .filter((s: any) => s.checked)
+                                        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+                                        .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                    <td colSpan={canVerifySlip ? 2 : 1}></td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                              <p className="text-gray-500 text-sm">ยังไม่มีหลักฐานการชำระเงิน</p>
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex justify-end">
+                            <div className="flex items-center space-x-2">
+                              <label htmlFor={slipUploadInputId} className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                <Image size={16} className="mr-2" />
+                                อัปโหลดสลิปเพิ่มเติม
+                              </label>
+                              <input id={slipUploadInputId} type="file" accept="image/*" multiple onChange={handleSlipUpload} className="hidden" />
+                            </div>
+                          </div>
                         </div>
 
+                        {/* Validation Summary */}
+                        {canVerifySlip && slips.length > 0 && (
+                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-gray-600">ยอดออเดอร์ทั้งหมด:</span>
+                              <span className="text-sm font-bold text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-gray-600">ยอดสลิปที่ตรวจสอบแล้ว:</span>
+                              <span className="text-sm font-bold text-green-600">
+                                ฿{slips
+                                  .filter((s: any) => s.checked)
+                                  .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+                                  .toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="border-t border-gray-200 my-2 pt-2 flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-900">ส่วนต่าง:</span>
+                              {(() => {
+                                const checkedTotal = slips
+                                  .filter((s: any) => s.checked)
+                                  .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+                                const diff = checkedTotal - calculatedTotals.totalAmount;
+                                return (
+                                  <span className={`text - sm font - bold ${diff < 0 ? 'text-red-600' : diff > 0 ? 'text-blue-600' : 'text-green-600'} `}>
+                                    {diff > 0 ? '+' : ''}{diff.toLocaleString()}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
+                      {canVerifySlip &&
+                        (currentOrder.paymentMethod === PaymentMethod.Transfer || currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
+                        hasTransferSlip &&
+                        currentOrder.paymentStatus !== PaymentStatus.Paid &&
+                        !isOrderCompleted && (
+                          <div className="flex justify-end mt-4">
+                            <button
+                              onClick={handleAcceptSlip}
+                              disabled={!slips.some((s: any) => s.checked)}
+                              className={`inline - flex items - center px - 4 py - 2 border border - transparent text - sm font - medium rounded - md shadow - sm text - white 
+                            ${slips.some((s: any) => s.checked)
+                                  ? 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500'
+                                  : 'bg-gray-400 cursor-not-allowed'
+                                } `}
+                            >
+                              <CheckCircle size={16} className="mr-2" />
+                              ยืนยันสลิป ({slips.filter((s: any) => s.checked).length})
+                            </button>
+                          </div>
+                        )}
+                    </>
+                  )}
 
-                      ) : (
-
-
-
-                        <p className="text-xs text-gray-400 mb-2">ยังไม่มีหลักฐานการชำระเงิน</p>
-
-
-
-                      )}
-
-
-
-                      <div className="flex items-center space-x-2">
-
-
-
-                        <label
-
-
-
-                          htmlFor={`${slipUploadInputId} -payafter`}
-
-
-
-                          className={`cursor - pointer w - full text - center py - 2 px - 4 bg - white border border - gray - 300 rounded - lg text - gray - 600 flex items - center justify - center ${currentOrder.paymentStatus === PaymentStatus.Paid
-
-
-
-                            ? 'opacity-50 cursor-not-allowed'
-
-
-
-                            : 'hover:bg-gray-50'
-
-
-
-                            } `}
-
-
-
-                        >
-
-
-
-                          <Image size={16} className="mr-2" />
-
-
-
-                          อัปโหลดสลิป
-
-
-
-                        </label>
+                {false && currentOrder.paymentMethod === PaymentMethod.PayAfter && (
+                  <>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">บันทึกยอดชำระ</label>
 
 
 
@@ -5683,31 +5442,31 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                          id={`${slipUploadInputId} -payafter`}
+                          type="number"
 
 
 
-                          type="file"
+                          inputMode="decimal"
 
 
 
-                          accept="image/*"
+                          value={currentOrder.amountPaid ?? ''}
 
 
 
-                          multiple
+                          onFocus={(e) => e.currentTarget.select()}
 
 
 
-                          onChange={handleSlipUpload}
+                          onChange={(e) => handleAmountPaidChange(Number(e.target.value))}
+
+
+
+                          className="w-full p-2 border rounded-md"
 
 
 
                           disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
-
-
-
-                          className="hidden"
 
 
 
@@ -5719,6 +5478,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
+                      <div className="flex justify-between font-semibold">
+
+
+
+                        <span className="text-red-600">ยอดค้างชำระ</span>
+
+
+
+                        <span className="text-red-600">฿{remainingBalance.toLocaleString()}</span>
+
+
+
+                      </div>
+
+
+
                     </div>
 
 
@@ -5727,35 +5502,304 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    {/* แสดงข้อมูลธนาคารและเวลาโอน (ถ้ามี) */}
+                    {/* ส่วนอัปโหลดสลิปสำหรับ PayAfter */}
 
 
 
-                    {(currentOrder.bankAccountId || currentOrder.transferDate) && (
+                    <div className="space-y-2 mt-4">
 
 
 
-                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div>
 
 
 
-                        <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">หลักฐานการชำระเงิน</label>
 
 
 
-                        <div className="text-xs text-blue-700 space-y-1">
+                        {slips.length > 0 ? (
 
 
 
-                          {currentOrder.bankAccountId && (() => {
+                          <div className="flex flex-wrap gap-3 mb-2">
 
 
 
-                            const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+                            {slips.map(slip => {
+
+                              const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+
+                              const bankLabel = resolveBankName(slip.bankAccountId);
+
+                              const transferLabel = formatSlipDateTime(slip.transferDate);
+
+                              const amountLabel =
+
+                                typeof slip.amount === "number"
+
+                                  ? slip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+                                  : undefined;
+
+                              return (
+
+                                <div key={slip.id} className="relative w-40 border rounded-md p-2 group bg-white shadow-sm">
+
+                                  <div className="h-32 w-full relative">
+
+                                    <img
+
+                                      onClick={() => openSlipViewer({ ...slip, uploadedByName })}
 
 
 
-                            return (
+                                      src={slip.url}
+
+
+
+                                      alt="Slip preview"
+
+
+
+                                      className="w-full h-full object-contain cursor-pointer"
+
+
+
+                                    />
+
+
+
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+
+
+
+                                      <button
+
+
+
+                                        onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+
+
+
+                                        className="p-2 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+
+
+
+                                      >
+
+
+
+                                        <Eye size={16} className="mr-1" /> ดู
+
+
+
+                                      </button>
+
+                                    </div>
+
+                                  </div>
+
+                                  <div className="mt-1 text-[11px] text-gray-700 leading-tight space-y-0.5">
+                                    {amountLabel && <div>฿{amountLabel}</div>}
+                                    {bankLabel && <div>{bankLabel}</div>}
+                                    {transferLabel && <div>{transferLabel}</div>}
+                                  </div>
+                                  {canVerifySlip && (
+                                    <div className="mt-2 text-[11px] space-y-1">
+                                      <label className="block text-gray-600">จำนวนเงินสลิป (ยืนยัน)</label>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={
+                                          typeof slip.amount === "number" && !Number.isNaN(slip.amount)
+                                            ? slip.amount
+                                            : ""
+                                        }
+                                        onChange={(e) => {
+                                          const nextAmount =
+                                            e.target.value === "" ? undefined : Number(e.target.value);
+                                          setSlips((prev) =>
+                                            prev.map((s) =>
+                                              s.id === slip.id ? { ...s, amount: nextAmount } : s,
+                                            ),
+                                          );
+                                        }}
+                                        className="w-full border rounded px-2 py-1"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+
+
+
+                            })}
+
+
+
+                          </div>
+
+
+
+                        ) : (
+
+
+
+                          <p className="text-xs text-gray-400 mb-2">ยังไม่มีหลักฐานการชำระเงิน</p>
+
+
+
+                        )}
+
+
+
+                        <div className="flex items-center space-x-2">
+
+
+
+                          <label
+
+
+
+                            htmlFor={`${slipUploadInputId} -payafter`}
+
+
+
+                            className={`cursor - pointer w - full text - center py - 2 px - 4 bg - white border border - gray - 300 rounded - lg text - gray - 600 flex items - center justify - center ${currentOrder.paymentStatus === PaymentStatus.Paid
+
+
+
+                              ? 'opacity-50 cursor-not-allowed'
+
+
+
+                              : 'hover:bg-gray-50'
+
+
+
+                              } `}
+
+
+
+                          >
+
+
+
+                            <Image size={16} className="mr-2" />
+
+
+
+                            อัปโหลดสลิป
+
+
+
+                          </label>
+
+
+
+                          <input
+
+
+
+                            id={`${slipUploadInputId} -payafter`}
+
+
+
+                            type="file"
+
+
+
+                            accept="image/*"
+
+
+
+                            multiple
+
+
+
+                            onChange={handleSlipUpload}
+
+
+
+                            disabled={currentOrder.paymentStatus === PaymentStatus.Paid}
+
+
+
+                            className="hidden"
+
+
+
+                          />
+
+
+
+                        </div>
+
+
+
+                      </div>
+
+
+
+
+
+
+
+                      {/* แสดงข้อมูลธนาคารและเวลาโอน (ถ้ามี) */}
+
+
+
+                      {(currentOrder.bankAccountId || currentOrder.transferDate) && (
+
+
+
+                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+
+
+
+                          <h4 className="text-sm font-medium text-blue-800 mb-2">ข้อมูลการโอนเงิน</h4>
+
+
+
+                          <div className="text-xs text-blue-700 space-y-1">
+
+
+
+                            {currentOrder.bankAccountId && (() => {
+
+
+
+                              const bankAccount = bankAccounts.find(ba => ba.id === currentOrder.bankAccountId);
+
+
+
+                              return (
+
+
+
+                                <p>
+
+
+
+                                  ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number} ` : `ID: ${currentOrder.bankAccountId} `}
+
+
+
+                                </p>
+
+
+
+                              );
+
+
+
+                            })()}
+
+
+
+                            {currentOrder.transferDate && (
 
 
 
@@ -5763,7 +5807,31 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                                ธนาคาร: {bankAccount ? `${bankAccount.bank} ${bankAccount.bank_number} ` : `ID: ${currentOrder.bankAccountId} `}
+                                เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
+
+
+
+                                  year: 'numeric',
+
+
+
+                                  month: '2-digit',
+
+
+
+                                  day: '2-digit',
+
+
+
+                                  hour: '2-digit',
+
+
+
+                                  minute: '2-digit',
+
+
+
+                                })}
 
 
 
@@ -5771,55 +5839,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                            );
+                            )}
 
 
 
-                          })()}
-
-
-
-                          {currentOrder.transferDate && (
-
-
-
-                            <p>
-
-
-
-                              เวลาโอน: {new Date(currentOrder.transferDate).toLocaleString('th-TH', {
-
-
-
-                                year: 'numeric',
-
-
-
-                                month: '2-digit',
-
-
-
-                                day: '2-digit',
-
-
-
-                                hour: '2-digit',
-
-
-
-                                minute: '2-digit',
-
-
-
-                              })}
-
-
-
-                            </p>
-
-
-
-                          )}
+                          </div>
 
 
 
@@ -5827,11 +5851,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      </div>
-
-
-
-                    )}
+                      )}
 
 
 
@@ -5839,31 +5859,35 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    {/* แสดงข้อมูลการตรวจสอบสลิป (ถ้ามี) */}
+                      {/* แสดงข้อมูลการตรวจสอบสลิป (ถ้ามี) */}
 
 
 
-                    {currentOrder.verificationInfo && (
+                      {currentOrder.verificationInfo && (
 
 
 
-                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
 
 
 
-                        <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
+                          <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลการตรวจสอบสลิป</h4>
 
 
 
-                        <div className="text-xs text-green-700 space-y-1">
+                          <div className="text-xs text-green-700 space-y-1">
 
 
 
-                          <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
+                            <p>ผู้ตรวจสอบ: {currentOrder.verificationInfo.verifiedByName}</p>
 
 
 
-                          <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
+                            <p>วันที่ตรวจสอบ: {new Date(currentOrder.verificationInfo.verifiedAt).toLocaleString('th-TH')}</p>
+
+
+
+                          </div>
 
 
 
@@ -5871,71 +5895,70 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      </div>
+                      )}
 
 
 
-                    )}
 
 
 
 
+                      {/* ปุ่มยืนยันสลิปสำหรับ Backoffice/Admin */}
 
 
 
-                    {/* ปุ่มยืนยันสลิปสำหรับ Backoffice/Admin */}
+                      {canVerifySlip && slips.length > 0 && currentOrder.paymentStatus !== PaymentStatus.Paid && (
 
 
 
-                    {canVerifySlip && slips.length > 0 && currentOrder.paymentStatus !== PaymentStatus.Paid && (
+                        <div className="flex justify-end">
 
 
 
-                      <div className="flex justify-end">
+                          <button
 
 
 
-                        <button
+                            onClick={handleAcceptSlip}
 
 
 
-                          onClick={handleAcceptSlip}
+                            className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
 
 
 
-                          className="mt-2 inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                          >
 
 
 
-                        >
+                            ยืนยันสลิป
 
 
 
-                          ยืนยันสลิป
+                          </button>
 
 
 
-                        </button>
+                        </div>
 
 
 
-                      </div>
+                      )}
 
 
 
-                    )}
+                    </div>
 
 
 
-                  </div>
+                  </>
 
 
 
-                </>
+                )}
 
 
 
-              )}
 
 
 
@@ -5948,83 +5971,52 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
+                {/* แสดงสลิปที่อัปโหลดสำหรับ payment methods อื่นๆ (ที่ไม่ใช่ Transfer หรือ PayAfter) */}
 
 
 
-              {/* แสดงสลิปที่อัปโหลดสำหรับ payment methods อื่นๆ (ที่ไม่ใช่ Transfer หรือ PayAfter) */}
+                {
+                  slips.length > 0 &&
 
 
 
-              {
-                slips.length > 0 &&
+                  currentOrder.paymentMethod !== PaymentMethod.Transfer &&
 
 
 
-                currentOrder.paymentMethod !== PaymentMethod.Transfer &&
+                  currentOrder.paymentMethod !== PaymentMethod.PayAfter && (
 
 
 
-                currentOrder.paymentMethod !== PaymentMethod.PayAfter && (
+                    <div className="mt-2">
 
 
 
-                  <div className="mt-2">
+                      <h4 className="text-xs font-medium text-gray-500 mb-1">สลิปที่อัปโหลด</h4>
 
 
 
-                    <h4 className="text-xs font-medium text-gray-500 mb-1">สลิปที่อัปโหลด</h4>
+                      <div className="flex flex-wrap gap-3">
 
 
 
-                    <div className="flex flex-wrap gap-3">
+                        {slips.map(slip => {
 
 
 
-                      {slips.map(slip => {
+                          const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
 
 
 
-                        const uploadedByName = resolveUploaderName(slip.uploadedBy, slip.uploadedByName);
+                          return (
 
 
 
-                        return (
+                            <div key={slip.id} className="relative w-24 h-24 border rounded-md overflow-hidden group">
 
 
 
-                          <div key={slip.id} className="relative w-24 h-24 border rounded-md overflow-hidden group">
-
-
-
-                            <img
-
-
-
-                              onClick={() => openSlipViewer({ ...slip, uploadedByName })}
-
-
-
-                              src={slip.url}
-
-
-
-                              alt="Slip"
-
-
-
-                              className="w-full h-full object-cover cursor-pointer"
-
-
-
-                            />
-
-
-
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-
-
-
-                              <button
+                              <img
 
 
 
@@ -6032,19 +6024,51 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                                className="p-1.5 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                                src={slip.url}
 
 
 
-                              >
+                                alt="Slip"
 
 
 
-                                <Eye size={14} className="mr-1" /> ดู
+                                className="w-full h-full object-cover cursor-pointer"
 
 
 
-                              </button>
+                              />
+
+
+
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+
+
+
+                                <button
+
+
+
+                                  onClick={() => openSlipViewer({ ...slip, uploadedByName })}
+
+
+
+                                  className="p-1.5 bg-white/90 rounded-full text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+
+
+
+                                >
+
+
+
+                                  <Eye size={14} className="mr-1" /> ดู
+
+
+
+                                </button>
+
+
+
+                              </div>
 
 
 
@@ -6052,7 +6076,408 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                          </div>
+                          );
+
+
+
+                        })}
+
+
+
+                      </div>
+
+
+
+                    </div>
+
+
+
+                  )
+
+
+
+
+
+
+
+
+
+
+                }
+              </InfoCard>
+            )
+          }
+
+
+
+          {
+            currentOrder.paymentMethod === PaymentMethod.COD && currentOrder.boxes && currentOrder.boxes.length > 0 && (
+
+
+
+              <div className="border rounded-xl p-4 shadow-sm mb-4">
+
+
+
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-gray-800">ยอด COD ต่อกล่อง</h3>
+                  {showInputs && (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-600">จำนวนกล่อง:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={currentOrder.boxes ? currentOrder.boxes.length : 1}
+                        onChange={(e) => handleCodBoxCountChange(Number(e.target.value))}
+                        className="w-16 p-1 text-xs border rounded text-center"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* COD Validation Summary - Show when payment method is COD */}
+                {currentOrder.paymentMethod === PaymentMethod.COD && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+                    <div className="flex justify-between items-center text-sm mb-1">
+                      <span className="text-gray-600">ยอดรวมออเดอร์:</span>
+                      <span className="font-medium text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mb-1">
+                      <span className="text-gray-600">ยอดเก็บเงินรวมทุกกล่อง:</span>
+                      <span className="font-medium text-blue-600">
+                        ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
+                      <span className="font-medium text-gray-700">ส่วนต่าง:</span>
+                      {(() => {
+                        const boxTotal = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
+                        const diff = boxTotal - calculatedTotals.totalAmount;
+                        const isMatch = Math.abs(diff) < 0.01;
+
+                        return (
+                          <span className={`font-bold ${isMatch ? 'text-green-600' : 'text-red-600'}`}>
+                            {isMatch ? 'ครบถ้วน (0.00)' : `${diff > 0 ? '+' : ''}${diff.toLocaleString()} (ยอดไม่ตรง)`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+
+
+
+                  <table className="min-w-full text-xs text-gray-700">
+
+
+
+                    <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
+
+
+
+                      <tr>
+
+
+
+                        <th className="px-3 py-2 text-left font-semibold">กล่อง / Tracking</th>
+
+
+
+                        <th className="px-3 py-2 text-right font-semibold">ยอดเก็บเงิน</th>
+
+
+
+                        <th className="px-3 py-2 text-right font-semibold">เก็บแล้ว</th>
+
+
+
+                        <th className="px-3 py-2 text-right font-semibold">ยกเลิก/ยก</th>
+
+
+
+                        <th className="px-3 py-2 text-right font-semibold">คงเหลือ</th>
+
+
+
+                      </tr>
+
+
+
+                    </thead>
+
+
+
+                    <tbody className="divide-y divide-gray-100">
+
+
+
+                      {currentOrder.boxes.map((box, idx) => {
+
+
+
+                        const collection = box.collectionAmount ?? box.codAmount ?? 0;
+
+
+
+                        const paidRaw = box.collectedAmount ?? 0;
+
+
+
+                        const waived = box.waivedAmount ?? 0;
+
+
+
+                        const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
+
+
+
+                        let paid = paidRaw;
+
+
+
+                        if (!hasAnyCollected && (currentOrder.amountPaid ?? 0) > 0) {
+
+
+
+                          const totalCollection = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
+
+
+
+                          const weight = totalCollection > 0 ? collection / totalCollection : (1 / Math.max(1, currentOrder.boxes.length));
+
+
+
+                          paid = Math.min(collection, (currentOrder.amountPaid ?? 0) * weight);
+
+
+
+                        }
+
+
+
+                        const remaining = Math.max(0, collection - paid - waived);
+
+
+
+                        const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
+
+
+                        return (
+
+
+
+                          <tr key={box.boxNumber} className={rowBg}>
+
+
+
+                            <td className="px-3 py-2 font-medium text-gray-800">
+
+
+
+                              <div className="flex flex-col leading-tight">
+
+
+
+                                <span>กล่อง {box.boxNumber}</span>
+
+
+
+                                {box.trackingNumber ? (
+
+
+
+                                  <span className="text-[11px] text-gray-500">Tracking: {box.trackingNumber}</span>
+
+
+
+                                ) : null}
+
+
+
+                              </div>
+
+
+
+                            </td>
+
+
+
+                            <td className="px-3 py-2 text-right">
+
+
+
+                              {showInputs ? (
+
+
+
+                                <input
+
+
+
+                                  type="number"
+
+
+
+                                  min={0}
+
+
+
+                                  step="0.01"
+
+
+
+                                  value={collection}
+
+
+
+                                  onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectionAmount', Number(e.target.value))}
+
+
+
+                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
+                                />
+
+
+
+                              ) : (
+
+
+
+                                <span>฿{collection.toLocaleString()}</span>
+
+
+
+                              )}
+
+
+
+                            </td>
+
+
+
+                            <td className="px-3 py-2 text-right">
+
+
+
+                              {showInputs ? (
+
+
+
+                                <input
+
+
+
+                                  type="number"
+
+
+
+                                  min={0}
+
+
+
+                                  step="0.01"
+
+
+
+                                  value={paid}
+
+
+
+                                  onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectedAmount', Number(e.target.value))}
+
+
+
+                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
+                                />
+
+
+
+                              ) : (
+
+
+
+                                <span>฿{paid.toLocaleString()}</span>
+
+
+
+                              )}
+
+
+
+                            </td>
+
+
+
+                            <td className="px-3 py-2 text-right text-red-600">
+
+
+
+                              {showInputs ? (
+
+
+
+                                <input
+
+
+
+                                  type="number"
+
+
+
+                                  min={0}
+
+
+
+                                  step="0.01"
+
+
+
+                                  value={waived}
+
+
+
+                                  onChange={(e) => handleBoxFieldChange(box.boxNumber, 'waivedAmount', Number(e.target.value))}
+
+
+
+                                  className="w-full text-right border border-gray-200 rounded px-2 py-1"
+
+
+
+                                />
+
+
+
+                              ) : (
+
+
+
+                                <span>-฿{waived.toLocaleString()}</span>
+
+
+
+                              )}
+
+
+
+                            </td>
+
+
+
+                            <td className="px-3 py-2 text-right font-semibold text-gray-900">฿{remaining.toLocaleString()}</td>
+
+
+
+                          </tr>
 
 
 
@@ -6064,172 +6489,163 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                    </div>
+                    </tbody>
 
 
 
-                  </div>
+                    <tfoot className="bg-gray-50">
 
 
 
-                )
+                      <tr>
 
 
 
+                        <td className="px-3 py-2 text-sm font-semibold text-gray-800">รวม ({currentOrder.boxes.length} กล่อง)</td>
 
 
 
+                        <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+
+                          ฿{calculatedTotals.totalAmount.toLocaleString()}
+
+                        </td>
 
 
 
+                        <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
 
-              }
-            </InfoCard>
-          )
-        }
+                          ฿{(() => {
+                            const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
+
+                            if (hasAnyCollected) {
+                              // If any box has collectedAmount, sum them up
+                              return currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
+                            } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                              // If no collectedAmount but amountPaid exists, use amountPaid
+                              return currentOrder.amountPaid ?? 0;
+                            }
+                            return 0;
+                          })().toLocaleString()}
+
+                        </td>
 
 
 
-        {
-          currentOrder.paymentMethod === PaymentMethod.COD && currentOrder.boxes && currentOrder.boxes.length > 0 && (
+                        <td className="px-3 py-2 text-right text-sm font-semibold text-red-600">
 
 
 
-            <div className="border rounded-xl p-4 shadow-sm mb-4">
+                          -฿{currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0).toLocaleString()}
 
 
 
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-gray-800">ยอด COD ต่อกล่อง</h3>
-                {showInputs && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-600">จำนวนกล่อง:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={currentOrder.boxes ? currentOrder.boxes.length : 1}
-                      onChange={(e) => handleCodBoxCountChange(Number(e.target.value))}
-                      className="w-16 p-1 text-xs border rounded text-center"
-                    />
-                  </div>
-                )}
+                        </td>
+
+
+
+                        <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
+
+                          ฿{(() => {
+                            const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
+                            let totalCollected = 0;
+
+                            if (hasAnyCollected) {
+                              totalCollected = currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
+                            } else if ((currentOrder.amountPaid ?? 0) > 0) {
+                              totalCollected = currentOrder.amountPaid ?? 0;
+                            }
+
+                            const totalWaived = currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0);
+                            return Math.max(0, calculatedTotals.totalAmount - totalCollected - totalWaived);
+                          })().toLocaleString()}
+
+                        </td>
+
+
+
+                      </tr>
+
+
+
+                    </tfoot>
+
+
+
+                  </table>
+
+
+
+                </div>
+
+
+
               </div>
 
-              {/* COD Validation Summary - Show when payment method is COD */}
-              {currentOrder.paymentMethod === PaymentMethod.COD && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
-                  <div className="flex justify-between items-center text-sm mb-1">
-                    <span className="text-gray-600">ยอดรวมออเดอร์:</span>
-                    <span className="font-medium text-gray-900">฿{calculatedTotals.totalAmount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm mb-1">
-                    <span className="text-gray-600">ยอดเก็บเงินรวมทุกกล่อง:</span>
-                    <span className="font-medium text-blue-600">
-                      ฿{currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
-                    <span className="font-medium text-gray-700">ส่วนต่าง:</span>
-                    {(() => {
-                      const boxTotal = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
-                      const diff = boxTotal - calculatedTotals.totalAmount;
-                      const isMatch = Math.abs(diff) < 0.01;
 
-                      return (
-                        <span className={`font-bold ${isMatch ? 'text-green-600' : 'text-red-600'}`}>
-                          {isMatch ? 'ครบถ้วน (0.00)' : `${diff > 0 ? '+' : ''}${diff.toLocaleString()} (ยอดไม่ตรง)`}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
 
-              <div className="overflow-x-auto">
+            )
+          }
 
 
 
-                <table className="min-w-full text-xs text-gray-700">
 
 
 
-                  <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
 
+          <InfoCard icon={Truck} title="การจัดส่ง">
 
 
-                    <tr>
 
+            <div className="grid grid-cols-2 gap-4">
 
 
-                      <th className="px-3 py-2 text-left font-semibold">กล่อง / Tracking</th>
 
+              <div>
 
 
-                      <th className="px-3 py-2 text-right font-semibold">ยอดเก็บเงิน</th>
 
+                <label className="block text-xs font-medium text-gray-500 mb-1">สถานะออเดอร์</label>
 
 
-                      <th className="px-3 py-2 text-right font-semibold">เก็บแล้ว</th>
 
+                <select
 
 
-                      <th className="px-3 py-2 text-right font-semibold">ยกเลิก/ยก</th>
 
+                  value={currentOrder.orderStatus}
 
 
-                      <th className="px-3 py-2 text-right font-semibold">คงเหลือ</th>
 
+                  onChange={(e) => handleFieldChange('orderStatus', e.target.value as OrderStatus)}
 
 
-                    </tr>
 
+                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
 
 
-                  </thead>
 
+                >
 
 
-                  <tbody className="divide-y divide-gray-100">
 
+                  {Object.values(OrderStatus)
 
 
-                    {currentOrder.boxes.map((box, idx) => {
 
+                    .filter(status => {
 
 
-                      const collection = box.collectionAmount ?? box.codAmount ?? 0;
 
+                      if (showInputs) {
 
 
-                      const paidRaw = box.collectedAmount ?? 0;
 
+                        // If modifiable, only allow keeping current status or cancelling
 
 
-                      const waived = box.waivedAmount ?? 0;
 
-
-
-                      const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
-
-
-
-                      let paid = paidRaw;
-
-
-
-                      if (!hasAnyCollected && (currentOrder.amountPaid ?? 0) > 0) {
-
-
-
-                        const totalCollection = currentOrder.boxes.reduce((sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0), 0);
-
-
-
-                        const weight = totalCollection > 0 ? collection / totalCollection : (1 / Math.max(1, currentOrder.boxes.length));
-
-
-
-                        paid = Math.min(collection, (currentOrder.amountPaid ?? 0) * weight);
+                        return status === currentOrder.orderStatus || status === OrderStatus.Cancelled;
 
 
 
@@ -6237,322 +6653,83 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                      const remaining = Math.max(0, collection - paid - waived);
+                      return true;
 
 
 
-                      const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    })
 
 
 
-                      return (
+                    .map(status => (
 
 
 
-                        <tr key={box.boxNumber} className={rowBg}>
+                      <option key={status} value={status}>{ORDER_STATUS_LABELS[status] ?? status}</option>
 
 
 
-                          <td className="px-3 py-2 font-medium text-gray-800">
+                    ))}
 
 
 
-                            <div className="flex flex-col leading-tight">
+                </select>
 
 
 
-                              <span>กล่อง {box.boxNumber}</span>
+              </div>
 
 
 
-                              {box.trackingNumber ? (
+              <div>
 
 
 
-                                <span className="text-[11px] text-gray-500">Tracking: {box.trackingNumber}</span>
+                <label className="block text-xs font-medium text-gray-500 mb-1">เลข Tracking (คั่นด้วย ,)</label>
 
 
 
-                              ) : null}
+                <input
 
 
 
-                            </div>
+                  type="text"
 
 
 
-                          </td>
+                  value={currentOrder.trackingNumbers.join(', ')}
 
 
 
-                          <td className="px-3 py-2 text-right">
+                  onChange={(e) => {
 
 
 
-                            {showInputs ? (
+                    const parts = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
 
 
 
-                              <input
+                    const deduped = Array.from(new Set(parts));
 
 
 
-                                type="number"
+                    handleFieldChange('trackingNumbers', deduped);
 
 
 
-                                min={0}
+                  }}
 
 
 
-                                step="0.01"
+                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
 
 
 
-                                value={collection}
+                  placeholder="TH123, TH456"
 
 
 
-                                onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectionAmount', Number(e.target.value))}
-
-
-
-                                className="w-full text-right border border-gray-200 rounded px-2 py-1"
-
-
-
-                              />
-
-
-
-                            ) : (
-
-
-
-                              <span>฿{collection.toLocaleString()}</span>
-
-
-
-                            )}
-
-
-
-                          </td>
-
-
-
-                          <td className="px-3 py-2 text-right">
-
-
-
-                            {showInputs ? (
-
-
-
-                              <input
-
-
-
-                                type="number"
-
-
-
-                                min={0}
-
-
-
-                                step="0.01"
-
-
-
-                                value={paid}
-
-
-
-                                onChange={(e) => handleBoxFieldChange(box.boxNumber, 'collectedAmount', Number(e.target.value))}
-
-
-
-                                className="w-full text-right border border-gray-200 rounded px-2 py-1"
-
-
-
-                              />
-
-
-
-                            ) : (
-
-
-
-                              <span>฿{paid.toLocaleString()}</span>
-
-
-
-                            )}
-
-
-
-                          </td>
-
-
-
-                          <td className="px-3 py-2 text-right text-red-600">
-
-
-
-                            {showInputs ? (
-
-
-
-                              <input
-
-
-
-                                type="number"
-
-
-
-                                min={0}
-
-
-
-                                step="0.01"
-
-
-
-                                value={waived}
-
-
-
-                                onChange={(e) => handleBoxFieldChange(box.boxNumber, 'waivedAmount', Number(e.target.value))}
-
-
-
-                                className="w-full text-right border border-gray-200 rounded px-2 py-1"
-
-
-
-                              />
-
-
-
-                            ) : (
-
-
-
-                              <span>-฿{waived.toLocaleString()}</span>
-
-
-
-                            )}
-
-
-
-                          </td>
-
-
-
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">฿{remaining.toLocaleString()}</td>
-
-
-
-                        </tr>
-
-
-
-                      );
-
-
-
-                    })}
-
-
-
-                  </tbody>
-
-
-
-                  <tfoot className="bg-gray-50">
-
-
-
-                    <tr>
-
-
-
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800">รวม ({currentOrder.boxes.length} กล่อง)</td>
-
-
-
-                      <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
-
-                        ฿{calculatedTotals.totalAmount.toLocaleString()}
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
-
-                        ฿{(() => {
-                          const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
-
-                          if (hasAnyCollected) {
-                            // If any box has collectedAmount, sum them up
-                            return currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
-                          } else if ((currentOrder.amountPaid ?? 0) > 0) {
-                            // If no collectedAmount but amountPaid exists, use amountPaid
-                            return currentOrder.amountPaid ?? 0;
-                          }
-                          return 0;
-                        })().toLocaleString()}
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-sm font-semibold text-red-600">
-
-
-
-                        -฿{currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0).toLocaleString()}
-
-
-
-                      </td>
-
-
-
-                      <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
-
-                        ฿{(() => {
-                          const hasAnyCollected = currentOrder.boxes.some((b) => (b.collectedAmount ?? 0) > 0);
-                          let totalCollected = 0;
-
-                          if (hasAnyCollected) {
-                            totalCollected = currentOrder.boxes.reduce((sum, b) => sum + (b.collectedAmount ?? 0), 0);
-                          } else if ((currentOrder.amountPaid ?? 0) > 0) {
-                            totalCollected = currentOrder.amountPaid ?? 0;
-                          }
-
-                          const totalWaived = currentOrder.boxes.reduce((sum, b) => sum + (b.waivedAmount ?? 0), 0);
-                          return Math.max(0, calculatedTotals.totalAmount - totalCollected - totalWaived);
-                        })().toLocaleString()}
-
-                      </td>
-
-
-
-                    </tr>
-
-
-
-                  </tfoot>
-
-
-
-                </table>
+                />
 
 
 
@@ -6564,8 +6741,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-          )
-        }
+          </InfoCard>
 
 
 
@@ -6573,218 +6749,113 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-        <InfoCard icon={Truck} title="การจัดส่ง">
+          <InfoCard icon={History} title="ประวัติออเดอร์">
 
 
 
-          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 max-h-40 overflow-y-auto pr-2">
 
 
 
-            <div>
+              {orderActivities.length > 0 ? orderActivities.map(activity => (
 
 
 
-              <label className="block text-xs font-medium text-gray-500 mb-1">สถานะออเดอร์</label>
+                <div key={activity.id} className="flex">
 
 
 
-              <select
+                  <div className="flex-shrink-0 w-8 text-center pt-0.5">
 
 
 
-                value={currentOrder.orderStatus}
+                    <ActivityIcon type={activity.type} />
 
 
 
-                onChange={(e) => handleFieldChange('orderStatus', e.target.value as OrderStatus)}
+                  </div>
 
 
 
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                  <div className="ml-2">
 
 
 
+                    <p className="text-xs text-gray-700">{activity.description}</p>
+
+
+
+                    <p className="text-xs text-gray-400 mt-0.5">{activity.actorName} • {getRelativeTime(activity.timestamp)}</p>
+
+
+
+                  </div>
+
+
+
+                </div>
+
+
+
+              )) : (
+
+
+
+                <p className="text-xs text-gray-400 text-center py-4">ไม่มีประวัติการเปลี่ยนแปลง</p>
+
+
+
+              )}
+
+
+
+            </div>
+
+
+
+          </InfoCard>
+
+
+
+
+
+
+
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+
+
+
+            <button
+
+
+
+              onClick={onClose}
+
+
+
+              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+
+
+
+            >
+
+
+
+              ยกเลิก
+
+
+
+            </button>
+
+
+
+            {!isOrderCompleted && (
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
               >
-
-
-
-                {Object.values(OrderStatus)
-
-
-
-                  .filter(status => {
-
-
-
-                    if (showInputs) {
-
-
-
-                      // If modifiable, only allow keeping current status or cancelling
-
-
-
-                      return status === currentOrder.orderStatus || status === OrderStatus.Cancelled;
-
-
-
-                    }
-
-
-
-                    return true;
-
-
-
-                  })
-
-
-
-                  .map(status => (
-
-
-
-                    <option key={status} value={status}>{ORDER_STATUS_LABELS[status] ?? status}</option>
-
-
-
-                  ))}
-
-
-
-              </select>
-
-
-
-            </div>
-
-
-
-            <div>
-
-
-
-              <label className="block text-xs font-medium text-gray-500 mb-1">เลข Tracking (คั่นด้วย ,)</label>
-
-
-
-              <input
-
-
-
-                type="text"
-
-
-
-                value={currentOrder.trackingNumbers.join(', ')}
-
-
-
-                onChange={(e) => {
-
-
-
-                  const parts = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
-
-
-
-                  const deduped = Array.from(new Set(parts));
-
-
-
-                  handleFieldChange('trackingNumbers', deduped);
-
-
-
-                }}
-
-
-
-                className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
-
-
-
-                placeholder="TH123, TH456"
-
-
-
-              />
-
-
-
-            </div>
-
-
-
-          </div>
-
-
-
-        </InfoCard>
-
-
-
-
-
-
-
-        <InfoCard icon={History} title="ประวัติออเดอร์">
-
-
-
-          <div className="space-y-4 max-h-40 overflow-y-auto pr-2">
-
-
-
-            {orderActivities.length > 0 ? orderActivities.map(activity => (
-
-
-
-              <div key={activity.id} className="flex">
-
-
-
-                <div className="flex-shrink-0 w-8 text-center pt-0.5">
-
-
-
-                  <ActivityIcon type={activity.type} />
-
-
-
-                </div>
-
-
-
-                <div className="ml-2">
-
-
-
-                  <p className="text-xs text-gray-700">{activity.description}</p>
-
-
-
-                  <p className="text-xs text-gray-400 mt-0.5">{activity.actorName} • {getRelativeTime(activity.timestamp)}</p>
-
-
-
-                </div>
-
-
-
-              </div>
-
-
-
-            )) : (
-
-
-
-              <p className="text-xs text-gray-400 text-center py-4">ไม่มีประวัติการเปลี่ยนแปลง</p>
-
-
-
+                บันทึกการเปลี่ยนแปลง
+              </button>
             )}
 
 
@@ -6793,107 +6864,40 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-        </InfoCard>
+        </div >
 
 
 
+        {
+          lightboxSlip && (
 
 
 
+            <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
 
-        <div className="flex justify-end space-x-3 pt-4 border-t">
 
 
+              <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-4 md:p-6 relative">
 
-          <button
 
 
+                <div className="flex items-center justify-between mb-4">
 
-            onClick={onClose}
 
 
+                  <h3 className="text-lg font-semibold text-gray-800">สลิปการชำระเงิน</h3>
 
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
 
 
+                  <button onClick={() => setLightboxSlip(null)} className="text-gray-500 hover:text-gray-700">
 
-          >
 
 
+                    <X size={20} />
 
-            ยกเลิก
 
 
-
-          </button>
-
-
-
-          {!isOrderCompleted && (
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200"
-            >
-              บันทึกการเปลี่ยนแปลง
-            </button>
-          )}
-
-
-
-        </div>
-
-
-
-      </div >
-
-
-
-      {
-        lightboxSlip && (
-
-
-
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-
-
-
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-4 md:p-6 relative">
-
-
-
-              <div className="flex items-center justify-between mb-4">
-
-
-
-                <h3 className="text-lg font-semibold text-gray-800">สลิปการชำระเงิน</h3>
-
-
-
-                <button onClick={() => setLightboxSlip(null)} className="text-gray-500 hover:text-gray-700">
-
-
-
-                  <X size={20} />
-
-
-
-                </button>
-
-
-
-              </div>
-
-
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-
-
-                <div className="flex items-center justify-center bg-gray-50 rounded-md p-2 border">
-
-
-
-                  <img src={lightboxSlip.url} alt="Slip" className="max-h-[70vh] object-contain rounded" />
+                  </button>
 
 
 
@@ -6901,19 +6905,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                <div className="space-y-2 text-sm text-gray-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
 
 
-                  <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center justify-center bg-gray-50 rounded-md p-2 border">
 
 
 
-                    <span className="text-gray-500">ผู้อัพโหลด</span>
-
-
-
-                    <span className="font-medium">{resolveUploaderName(lightboxSlip.uploadedBy, lightboxSlip.uploadedByName) ?? 'ไม่ทราบ'}</span>
+                    <img src={lightboxSlip.url} alt="Slip" className="max-h-[70vh] object-contain rounded" />
 
 
 
@@ -6921,95 +6921,119 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-                  <div className="flex items-center justify-between border-b pb-2">
+                  <div className="space-y-2 text-sm text-gray-700">
 
 
 
-                    <span className="text-gray-500">เวลาอัพโหลด</span>
+                    <div className="flex items-center justify-between border-b pb-2">
 
 
 
-                    <span className="font-medium">
+                      <span className="text-gray-500">ผู้อัพโหลด</span>
 
 
 
-                      {lightboxSlip.createdAt
+                      <span className="font-medium">{resolveUploaderName(lightboxSlip.uploadedBy, lightboxSlip.uploadedByName) ?? 'ไม่ทราบ'}</span>
 
 
 
-                        ? new Date(lightboxSlip.createdAt).toLocaleString('th-TH')
+                    </div>
 
 
 
-                        : '-'}
+                    <div className="flex items-center justify-between border-b pb-2">
 
 
 
-                    </span>
+                      <span className="text-gray-500">เวลาอัพโหลด</span>
 
 
 
-                  </div>
+                      <span className="font-medium">
 
 
 
-                  <div className="flex items-center justify-between border-b pb-2">
+                        {lightboxSlip.createdAt
 
 
 
-                    <span className="text-gray-500">จำนวนเงิน</span>
+                          ? new Date(lightboxSlip.createdAt).toLocaleString('th-TH')
 
 
 
-                    <span className="font-medium">
+                          : '-'}
 
 
 
-                      {typeof lightboxSlip.amount === 'number'
+                      </span>
 
 
 
-                        ? `฿${lightboxSlip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                    </div>
 
 
 
-                        : '-'}
+                    <div className="flex items-center justify-between border-b pb-2">
 
 
 
-                    </span>
+                      <span className="text-gray-500">จำนวนเงิน</span>
 
 
 
-                  </div>
+                      <span className="font-medium">
 
 
 
-                  <div className="flex items-center justify-between border-b pb-2">
+                        {typeof lightboxSlip.amount === 'number'
 
 
 
-                    <span className="text-gray-500">ธนาคาร</span>
+                          ? `฿${lightboxSlip.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
 
 
 
-                    <span className="font-medium">{resolveBankName(lightboxSlip.bankAccountId) ?? '-'}</span>
+                          : '-'}
 
 
 
-                  </div>
+                      </span>
 
 
 
-                  <div className="flex items-center justify-between">
+                    </div>
 
 
 
-                    <span className="text-gray-500">วัน-เวลา</span>
+                    <div className="flex items-center justify-between border-b pb-2">
 
 
 
-                    <span className="font-medium">{formatSlipDateTime(lightboxSlip.transferDate) ?? '-'}</span>
+                      <span className="text-gray-500">ธนาคาร</span>
+
+
+
+                      <span className="font-medium">{resolveBankName(lightboxSlip.bankAccountId) ?? '-'}</span>
+
+
+
+                    </div>
+
+
+
+                    <div className="flex items-center justify-between">
+
+
+
+                      <span className="text-gray-500">วัน-เวลา</span>
+
+
+
+                      <span className="font-medium">{formatSlipDateTime(lightboxSlip.transferDate) ?? '-'}</span>
+
+
+
+                    </div>
 
 
 
@@ -7021,63 +7045,63 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-              </div>
+                <div className="flex justify-end space-x-2 mt-4">
 
 
 
-              <div className="flex justify-end space-x-2 mt-4">
+                  <button
 
 
 
-                <button
+                    onClick={() => setLightboxSlip(null)}
 
 
 
-                  onClick={() => setLightboxSlip(null)}
+                    className="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
 
 
 
-                  className="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50"
+                  >
 
 
 
-                >
+                    ปิด
 
 
 
-                  ปิด
+                  </button>
 
 
 
-                </button>
+                  <button
 
 
 
-                <button
+                    onClick={() => handleDeleteSlip(lightboxSlip.id, lightboxSlip.url)}
 
 
 
-                  onClick={() => handleDeleteSlip(lightboxSlip.id, lightboxSlip.url)}
+                    className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
 
 
 
-                  className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!lightboxSlip.id && !slipPreview}
 
 
 
-                  disabled={!lightboxSlip.id && !slipPreview}
+                  >
 
 
 
-                >
+                    ลบ
 
 
 
-                  ลบ
+                  </button>
 
 
 
-                </button>
+                </div>
 
 
 
@@ -7089,19 +7113,26 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
 
 
-          </div>
 
+          )
+        }
 
+      </Modal >
 
-        )
-      }
-
-
-
-    </Modal >
-
-
-
+      {/* Product Selector Modal */}
+      <ProductSelectorModal
+        isOpen={productSelectorOpen}
+        onClose={closeProductSelector}
+        tab={selectorTab}
+        onTabChange={setSelectorTab}
+        products={products}
+        promotions={promotions}
+        searchTerm={selectorSearchTerm}
+        onSearchChange={setSelectorSearchTerm}
+        onSelectProduct={handleSelectProduct}
+        onSelectPromotion={handleSelectPromotion}
+      />
+    </>
   );
 
 
