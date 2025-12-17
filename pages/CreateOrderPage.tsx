@@ -1940,27 +1940,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
   }, []);
 
   useEffect(() => {
-    if (
-      orderData.paymentMethod !== PaymentMethod.Transfer &&
-      transferSlipUploads.length > 0
-    ) {
+    if (orderData.paymentMethod !== PaymentMethod.Transfer && transferSlipUploads.length > 0) {
       setTransferSlipUploads([]);
-
       updateOrderData("paymentStatus", PaymentStatus.Unpaid);
     }
-
     if (orderData.paymentMethod !== PaymentMethod.Transfer) {
       clearValidationErrorFor("transferSlips");
-
       setSelectedBankAccountId(null);
-
       setTransferDate("");
     }
-
     if (orderData.paymentMethod !== PaymentMethod.COD) {
       clearValidationErrorFor("cod");
     }
-  }, [orderData.paymentMethod, transferSlipUploads.length, validationError]);
+
+    // Initialize boxes if empty (ensure at least 1 box or matching numBoxes)
+    if ((!orderData.boxes || orderData.boxes.length === 0) && numBoxes > 0) {
+      const newBoxes = Array.from({ length: numBoxes }, (_, i) => ({
+        boxNumber: i + 1,
+        codAmount: 0,
+      }));
+      updateOrderData("boxes", newBoxes);
+    }
+  }, [orderData.paymentMethod, transferSlipUploads.length, validationError, orderData.boxes, numBoxes]);
 
   useEffect(() => {
     const province = (shippingAddress.province || "").trim();
@@ -8487,151 +8488,165 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
                   )}
 
-                  {(orderData.paymentMethod === PaymentMethod.COD ||
-                    orderData.paymentMethod === PaymentMethod.Transfer) && (
-                      <div
-                        ref={codSectionRef}
-                        className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
-                      >
-                        <h4 className="font-semibold text-[#0e141b]">
-                          {orderData.paymentMethod === PaymentMethod.COD
-                            ? "รายละเอียดการเก็บเงินปลายทาง"
-                            : "รายละเอียดการจัดส่ง (จำนวนกล่อง)"}
-                        </h4>
+                  {orderData.paymentMethod && (
+                    <div
+                      ref={codSectionRef}
+                      className="space-y-4 p-4 border border-gray-300 rounded-md bg-slate-50"
+                    >
+                      <h4 className="font-semibold text-[#0e141b]">
+                        {orderData.paymentMethod === PaymentMethod.COD
+                          ? "รายละเอียดการเก็บเงินปลายทาง"
+                          : "รายละเอียดการจัดส่ง (จำนวนกล่อง)"}
+                      </h4>
 
-                        {orderData.paymentMethod === PaymentMethod.COD && (
-                          <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
-                            โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
-                            <strong>฿{totalAmount.toFixed(2)}</strong>
-                            <span className="ml-2">
-                              (ยอดรวมปัจจุบัน:{" "}
-                              <span
-                                className={
-                                  !isCodValid
-                                    ? "text-red-600 font-bold"
-                                    : "text-green-700 font-bold"
-                                }
-                              >
-                                ฿{codTotal.toFixed(2)}
-                              </span>
-                              )
-                            </span>
-                            <span className="block mt-1">
-                              {codRemaining === 0 ? (
-                                <span className="text-green-700 font-medium">
-                                  ครบถ้วนแล้ว
-                                </span>
-                              ) : codRemaining > 0 ? (
-                                <span className="text-orange-600 font-medium">
-                                  คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-red-600 font-medium">
-                                  เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-
-                        <div>
-                          <label className={commonLabelClass}>จำนวนกล่อง</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max={(() => {
-                              // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
-                              const parentItems = (orderData.items || []).filter(
-                                (it) => !it.parentItemId,
-                              );
-                              return parentItems.length || 1;
-                            })()}
-                            value={numBoxes}
-                            onChange={(e) => {
-                              clearValidationErrorFor("cod");
-                              const newValue = Math.max(1, Number(e.target.value));
-
-                              // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
-                              const parentItems = (orderData.items || []).filter(
-                                (it) => !it.parentItemId,
-                              );
-                              const maxBoxes = parentItems.length || 1;
-
-                              if (newValue > maxBoxes) {
-                                alert(
-                                  `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
-                                );
-                                return;
+                      {orderData.paymentMethod === PaymentMethod.COD && (
+                        <div className="p-3 border border-yellow-300 rounded-md bg-yellow-50 text-sm text-[#0e141b]">
+                          โปรดระบุยอด COD ต่อกล่องให้ผลรวมเท่ากับยอดสุทธิ:{" "}
+                          <strong>฿{totalAmount.toFixed(2)}</strong>
+                          <span className="ml-2">
+                            (ยอดรวมปัจจุบัน:{" "}
+                            <span
+                              className={
+                                !isCodValid
+                                  ? "text-red-600 font-bold"
+                                  : "text-green-700 font-bold"
                               }
+                            >
+                              ฿{codTotal.toFixed(2)}
+                            </span>
+                            )
+                          </span>
+                          <span className="block mt-1">
+                            {codRemaining === 0 ? (
+                              <span className="text-green-700 font-medium">
+                                ครบถ้วนแล้ว
+                              </span>
+                            ) : codRemaining > 0 ? (
+                              <span className="text-orange-600 font-medium">
+                                คงเหลือ: ฿{Math.abs(codRemaining).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-red-600 font-medium">
+                                เกิน: ฿{Math.abs(codRemaining).toFixed(2)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
 
-                              setNumBoxes(newValue);
-                            }}
-                            onFocus={onFocusSelectAll}
-                            className={commonInputClass}
-                          />
-                          {(() => {
+                      <div>
+                        <label className={commonLabelClass}>จำนวนกล่อง</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={(() => {
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
+                            const parentItems = (orderData.items || []).filter(
+                              (it) => !it.parentItemId,
+                            );
+                            return parentItems.length || 1;
+                          })()}
+                          value={numBoxes}
+                          onChange={(e) => {
+                            clearValidationErrorFor("cod");
+                            const newValue = Math.max(1, Number(e.target.value));
+
+                            // จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (parent items only)
                             const parentItems = (orderData.items || []).filter(
                               (it) => !it.parentItemId,
                             );
                             const maxBoxes = parentItems.length || 1;
 
-                            if (numBoxes > maxBoxes) {
-                              return (
-                                <p className="text-red-600 text-xs mt-1">
-                                  จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด {maxBoxes}{" "}
-                                  กล่อง)
-                                </p>
+                            if (newValue > maxBoxes) {
+                              alert(
+                                `จำนวนกล่องต้องไม่เกินจำนวนรายการสินค้า (สูงสุด ${maxBoxes} กล่อง)`,
                               );
+                              return;
                             }
-                            return null;
-                          })()}
-                        </div>
 
-                        {orderData.paymentMethod === PaymentMethod.COD && (
-                          <button
-                            onClick={divideCodEqually}
-                            className="text-sm text-blue-600 font-medium hover:underline"
-                          >
-                            แบ่งยอดเท่าๆ กัน
-                          </button>
-                        )}
+                            setNumBoxes(newValue);
 
-                        <div className="space-y-2">
-                          {orderData.boxes?.map((box, index) => (
-                            <div key={index} className="flex items-center gap-4">
-                              <label className="font-medium text-[#0e141b] w-24">
-                                กล่อง #{box.boxNumber}:
-                              </label>
-                              {orderData.paymentMethod === PaymentMethod.COD ? (
-                                <input
-                                  type="number"
-                                  placeholder="ยอด COD"
-                                  value={box.codAmount}
-                                  onChange={(e) =>
-                                    handleCodBoxAmountChange(
-                                      index,
-                                      Number(e.target.value),
-                                    )
-                                  }
-                                  onFocus={onFocusSelectAll}
-                                  className={commonInputClass}
-                                />
-                              ) : (
-                                <span className="text-sm text-gray-500 italic">
-                                  (ระบุสินค้าในกล่องที่ตารางสินค้า)
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                            // Sync with orderData.boxes immediately
+                            const currentBoxes = orderData.boxes || [];
+                            const newBoxes: CodBox[] = [];
+                            for (let i = 0; i < newValue; i++) {
+                              if (i < currentBoxes.length) {
+                                newBoxes.push(currentBoxes[i]);
+                              } else {
+                                newBoxes.push({
+                                  boxNumber: i + 1,
+                                  codAmount: 0,
+                                });
+                              }
+                            }
+                            updateOrderData("boxes", newBoxes);
+                          }}
+                          onFocus={onFocusSelectAll}
+                          className={commonInputClass}
+                        />
+                        {(() => {
+                          const parentItems = (orderData.items || []).filter(
+                            (it) => !it.parentItemId,
+                          );
+                          const maxBoxes = parentItems.length || 1;
 
-                        {orderData.paymentMethod === PaymentMethod.COD && !isCodValid && (
-                          <p className="text-red-600 text-sm font-medium">
-                            ยอดรวม COD ไม่ถูกต้อง
-                          </p>
-                        )}
+                          if (numBoxes > maxBoxes) {
+                            return (
+                              <p className="text-red-600 text-xs mt-1">
+                                จำนวนกล่องเกินจำนวนรายการสินค้า (สูงสุด {maxBoxes}{" "}
+                                กล่อง)
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
-                    )}
+
+                      {orderData.paymentMethod === PaymentMethod.COD && (
+                        <button
+                          onClick={divideCodEqually}
+                          className="text-sm text-blue-600 font-medium hover:underline"
+                        >
+                          แบ่งยอดเท่าๆ กัน
+                        </button>
+                      )}
+
+                      <div className="space-y-2">
+                        {orderData.boxes?.map((box, index) => (
+                          <div key={index} className="flex items-center gap-4">
+                            <label className="font-medium text-[#0e141b] w-24">
+                              กล่อง #{box.boxNumber}:
+                            </label>
+                            {orderData.paymentMethod === PaymentMethod.COD ? (
+                              <input
+                                type="number"
+                                placeholder="ยอด COD"
+                                value={box.codAmount}
+                                onChange={(e) =>
+                                  handleCodBoxAmountChange(
+                                    index,
+                                    Number(e.target.value),
+                                  )
+                                }
+                                onFocus={onFocusSelectAll}
+                                className={commonInputClass}
+                              />
+                            ) : (
+                              <span className="text-sm text-gray-500 italic">
+                                (ระบุสินค้าในกล่องที่ตารางสินค้า)
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {orderData.paymentMethod === PaymentMethod.COD && !isCodValid && (
+                        <p className="text-red-600 text-sm font-medium">
+                          ยอดรวม COD ไม่ถูกต้อง
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

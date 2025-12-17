@@ -1999,15 +1999,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                     $codAmountValue = $boxTotal;
                 } else {
-                    if ($boxCount !== 1 || $maxItemBoxNumber > 1) {
-                        $pdo->rollBack();
-                        json_response(['error' => 'NON_COD_SINGLE_BOX_ONLY', 'message' => 'ออเดอร์ที่ไม่ใช่ COD ต้องมี 1 กล่อง'], 400);
-                        return;
-                    }
-                    // Force single box for non-COD with full amount
-                    $normalizedBoxes = [1 => ['box_number' => 1, 'collection_amount' => $totalAmount]];
-                    $boxCount = 1;
-                    $boxTotal = $totalAmount;
+                    // Non-COD: Allow multiple boxes. No strict validation on box count.
+                    // We keep normalizedBoxes as is (from user input or default).
                     $codAmountValue = null;
                 }
 
