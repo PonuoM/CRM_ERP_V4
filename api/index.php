@@ -2615,8 +2615,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                     // 1. Clear old allocations and items to prevent duplicates/conflicts
                     // 1. Clear old allocations and items to prevent duplicates/conflicts (Check Main ID and Sub-IDs)
-                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
-                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
 
                     // 2. Prepare insert statement (same as POST)
                     $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
