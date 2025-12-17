@@ -30,50 +30,34 @@ try {
     $pdo->exec("DROP TRIGGER IF EXISTS trg_tracking_update");
     
     // 3. Trigger: Order Status
+    // REMOVED: Log logic moved to Application Layer (api/index.php) to support merged logs
+    /*
     $pdo->exec("
         CREATE TRIGGER trg_order_status_update
-        AFTER UPDATE ON orders
-        FOR EACH ROW
-        BEGIN
-            DECLARE cur_tracking VARCHAR(100);
-            IF NOT (NEW.order_status <=> OLD.order_status) THEN
-                SELECT tracking_number INTO cur_tracking FROM order_tracking_numbers WHERE parent_order_id = NEW.id LIMIT 1;
-                INSERT INTO order_status_logs (order_id, previous_status, new_status, previous_tracking, new_tracking, trigger_type, changed_at)
-                VALUES (NEW.id, OLD.order_status, NEW.order_status, cur_tracking, cur_tracking, 'StatusChange', NOW());
-            END IF;
-        END
+        ...
     ");
     echo "Trigger 'trg_order_status_update' (Orders Table) created.<br>";
+    */
 
     // 4. Trigger: Tracking Insert
+    // REMOVED: Log logic moved to Application Layer
+    /*
     $pdo->exec("
         CREATE TRIGGER trg_tracking_insert
-        AFTER INSERT ON order_tracking_numbers
-        FOR EACH ROW
-        BEGIN
-            DECLARE cur_status VARCHAR(50);
-            SELECT order_status INTO cur_status FROM orders WHERE id = NEW.parent_order_id;
-            INSERT INTO order_status_logs (order_id, previous_status, new_status, new_tracking, trigger_type, changed_at)
-            VALUES (NEW.parent_order_id, cur_status, cur_status, NEW.tracking_number, 'TrackingUpdate', NOW());
-        END
+        ...
     ");
     echo "Trigger 'trg_tracking_insert' (Tracking Table) created.<br>";
+    */
 
     // 5. Trigger: Tracking Update
+    // REMOVED: Log logic moved to Application Layer
+    /*
     $pdo->exec("
         CREATE TRIGGER trg_tracking_update
-        AFTER UPDATE ON order_tracking_numbers
-        FOR EACH ROW
-        BEGIN
-            DECLARE cur_status VARCHAR(50);
-            IF NOT (NEW.tracking_number <=> OLD.tracking_number) THEN
-                SELECT order_status INTO cur_status FROM orders WHERE id = NEW.parent_order_id;
-                INSERT INTO order_status_logs (order_id, previous_status, new_status, previous_tracking, new_tracking, trigger_type, changed_at)
-                VALUES (NEW.parent_order_id, cur_status, cur_status, OLD.tracking_number, NEW.tracking_number, 'TrackingUpdate', NOW());
-            END IF;
-        END
+        ...
     ");
     echo "Trigger 'trg_tracking_update' (Tracking Table) created.<br>";
+    */
 
 } catch (PDOException $e) {
     echo "<div style='color:red'>Error: " . $e->getMessage() . "</div>";

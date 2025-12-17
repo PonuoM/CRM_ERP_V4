@@ -2332,6 +2332,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $previousPayment = (string)($existingOrder['payment_status'] ?? '');
                 $customerId = $existingOrder['customer_id'] ?? null;
 
+                // [LOGGING] Capture Previous Tracking
+                $ptStmt = $pdo->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = ? ORDER BY id");
+                $ptStmt->execute([$id]);
+                $prevTrackings = $ptStmt->fetchAll(PDO::FETCH_COLUMN);
+                $previousTrackingStr = implode(', ', array_filter($prevTrackings));
+
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
@@ -2730,6 +2736,22 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         ]);
                     }
                 }
+
+                // [LOGGING] Capture New Tracking & Write Log
+                $ntStmt = $pdo->prepare("SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = ? ORDER BY id");
+                $ntStmt->execute([$id]);
+                $newTrackings = $ntStmt->fetchAll(PDO::FETCH_COLUMN);
+                $newTrackingStr = implode(', ', array_filter($newTrackings));
+
+                // Determine Trigger Type for merged log
+                $triggerType = 'Manual'; 
+                if ($previousStatus !== $newStatus && $previousTrackingStr === $newTrackingStr) {
+                    $triggerType = 'StatusChange';
+                } elseif ($previousStatus === $newStatus && $previousTrackingStr !== $newTrackingStr) {
+                    $triggerType = 'TrackingUpdate';
+                }
+
+                create_audit_log_entry($pdo, $id, $previousStatus, $newStatus, $previousTrackingStr, $newTrackingStr, $triggerType);
 
                 $pdo->commit();
 
@@ -3863,9 +3885,20 @@ function handle_exports(PDO $pdo, ?string $id): void {
 }
 
 function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $entries, bool $replaceExisting = false, ?int $creatorId = null, ?string $customerId = null): void {
+    // 1. Fetch existing tracking numbers to perform a diff (if replacing)
+    $existing = [];
     if ($replaceExisting) {
-        $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE parent_order_id=?');
-        $del->execute([$parentOrderId]);
+        $stmt = $pdo->prepare('SELECT id, box_number, tracking_number FROM order_tracking_numbers WHERE parent_order_id = ?');
+        $stmt->execute([$parentOrderId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            // Key by box_number + tracking_number to identify duplicates/unchanged items
+            // Use a unique key format: "box_{box}_{tracking}"
+            $box = $row['box_number'] !== null ? (int)$row['box_number'] : 'NULL';
+            $tn  = trim($row['tracking_number']);
+            $key = "{$box}_{$tn}";
+            $existing[$key] = $row['id'];
+        }
     }
 
     // Check if order has boxes - if yes, auto-assign box_number to tracking entries without box_number
@@ -3919,6 +3952,9 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
 
         // Use box_number as key if available, otherwise use index to prevent overwriting
         // This allows multiple tracking numbers without box_number to be stored
+        // BUT for diffing, we need to know strictly if this combination exists.
+        
+        // For processing, we keep the original logic's key structure for uniqueness within the input batch
         if ($boxNumber !== null) {
             $boxKey = 'box_' . $boxNumber;
         } else {
@@ -3933,17 +3969,61 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
         ];
     }
 
-    if (empty($normalized)) {
+    if (empty($normalized) && $replaceExisting) {
+        // Input empty + replace = Delete All
+        $del = $pdo->prepare('DELETE FROM order_tracking_numbers WHERE parent_order_id=?');
+        $del->execute([$parentOrderId]);
         return;
     }
 
-    $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, parent_order_id, box_number, tracking_number) VALUES (?,?,?,?)');
-    foreach ($normalized as $data) {
-        $boxNumber = $data['box_number'];
-        // order_id should be sub-order ID (parentOrderId-boxNumber) if box_number exists, otherwise use parentOrderId
-        // This allows tracking to be linked to specific boxes
-        $subOrderId = $boxNumber !== null ? "{$parentOrderId}-{$boxNumber}" : $parentOrderId;
-        $ins->execute([$subOrderId, $parentOrderId, $boxNumber, $data['tracking_number']]);
+    if ($replaceExisting) {
+        $toKeepIds = [];
+        $toInsert = [];
+
+        foreach ($normalized as $data) {
+            $tn = $data['tracking_number'];
+            $box = $data['box_number'] !== null ? $data['box_number'] : 'NULL';
+            $key = "{$box}_{$tn}";
+
+            if (isset($existing[$key])) {
+                // Found in existing -> Keep it
+                $toKeepIds[] = $existing[$key];
+                // Remove from existing list so we know what to delete later? 
+                // Actually, we can just collect IDs to DELETE = array_diff(all_existing_ids, $toKeepIds)
+            } else {
+                // Not found -> Insert
+                $toInsert[] = $data;
+            }
+        }
+
+        // 2. Delete removed items
+        $idsToDelete = array_diff(array_values($existing), $toKeepIds);
+        if (!empty($idsToDelete)) {
+            $placeholders = implode(',', array_fill(0, count($idsToDelete), '?'));
+            $delStmt = $pdo->prepare("DELETE FROM order_tracking_numbers WHERE id IN ($placeholders)");
+            $delStmt->execute(array_values($idsToDelete));
+        }
+
+        // 3. Insert new items
+        if (!empty($toInsert)) {
+            $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, parent_order_id, box_number, tracking_number) VALUES (?,?,?,?)');
+            foreach ($toInsert as $data) {
+                $boxNumber = $data['box_number'];
+                $subOrderId = $boxNumber !== null ? "{$parentOrderId}-{$boxNumber}" : $parentOrderId;
+                $ins->execute([$subOrderId, $parentOrderId, $boxNumber, $data['tracking_number']]);
+            }
+        }
+
+    } else {
+        // Legacy behavior: Append (INSERT only), no deletes
+        // Original code didn't check for duplicates here, but we probably should to be safe?
+        // For now, keep original logic: just insert.
+        $ins = $pdo->prepare('INSERT INTO order_tracking_numbers (order_id, parent_order_id, box_number, tracking_number) VALUES (?,?,?,?)');
+        foreach ($normalized as $data) {
+            $boxNumber = $data['box_number'];
+            $subOrderId = $boxNumber !== null ? "{$parentOrderId}-{$boxNumber}" : $parentOrderId;
+            $ins->execute([$subOrderId, $parentOrderId, $boxNumber, $data['tracking_number']]);
+        }
     }
 
     if ($creatorId !== null && $customerId !== null) {
@@ -3960,6 +4040,32 @@ function save_order_tracking_entries(PDO $pdo, string $parentOrderId, array $ent
             }
         } catch (Throwable $e) { /* ignore auto-assign failures */ }
     }
+}
+
+function create_audit_log_entry(PDO $pdo, string $orderId, ?string $prevStatus, ?string $newStatus, ?string $prevTracking, ?string $newTracking, string $triggerType): void {
+    if ($prevStatus === $newStatus && $prevTracking === $newTracking) {
+        return; 
+    }
+    
+    // Formatting Rules:
+    // previous_status: Always show context
+    // new_status: Show only if changed from previous
+    // previous_tracking: Always show context
+    // new_tracking: Show only if changed from previous
+    
+    $logNewStatus = ($prevStatus !== $newStatus) ? $newStatus : null;
+    $logNewTracking = ($prevTracking !== $newTracking) ? $newTracking : null;
+    
+    if ($logNewStatus === null && $logNewTracking === null) {
+        return; // No effective change to log
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO order_status_logs 
+        (order_id, previous_status, new_status, previous_tracking, new_tracking, trigger_type, changed_at)
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    ");
+    $stmt->execute([$orderId, $prevStatus, $logNewStatus, $prevTracking, $logNewTracking, $triggerType]);
 }
 
 function get_order(PDO $pdo, string $id): ?array {

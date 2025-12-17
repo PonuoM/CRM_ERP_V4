@@ -2494,24 +2494,40 @@ const App: React.FC = () => {
   ) => {
     const activitiesToAdd: Activity[] = [];
     const patchPromises: Promise<any>[] = [];
+
+    // Group updates by orderId to prevent race conditions
+    const updatesByOrder = new Map<string, string[]>();
+    updates.forEach(update => {
+      const current = updatesByOrder.get(update.orderId) || [];
+      current.push(update.trackingNumber);
+      updatesByOrder.set(update.orderId, current);
+    });
+
     setOrders((prevOrders) => {
       const updatedOrdersMap = new Map(prevOrders.map((o) => [o.id, o]));
 
-      updates.forEach((update) => {
-        const orderToUpdate = updatedOrdersMap.get(update.orderId);
+      updatesByOrder.forEach((newTrackingNumbers, orderId) => {
+        const orderToUpdate = updatedOrdersMap.get(orderId);
         if (orderToUpdate) {
-          const existingTrackingNumbers =
-            (orderToUpdate as Order).trackingNumbers || [];
-          if (!existingTrackingNumbers.includes(update.trackingNumber)) {
+          const existingTrackingNumbers = (orderToUpdate as Order).trackingNumbers || [];
+
+          // Filter out duplicates that already exist on the order
+          const distinctNewTrackingNumbers = newTrackingNumbers.filter(
+            tn => !existingTrackingNumbers.includes(tn)
+          );
+
+          if (distinctNewTrackingNumbers.length > 0) {
             const customerIdForActivity = getCustomerIdForActivity((orderToUpdate as Order).customerId);
             if (customerIdForActivity) {
-              activitiesToAdd.push({
-                id: Date.now() + Math.random(),
-                customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-                timestamp: new Date().toISOString(),
-                type: ActivityType.TrackingAdded,
-                description: `เพิ่ม Tracking ${update.trackingNumber} สำหรับคำสั่งซื้อ ${update.orderId}`,
-                actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+              distinctNewTrackingNumbers.forEach(tn => {
+                activitiesToAdd.push({
+                  id: Date.now() + Math.random(),
+                  customerId: String(customerIdForActivity),
+                  timestamp: new Date().toISOString(),
+                  type: ActivityType.TrackingAdded,
+                  description: `เพิ่ม Tracking ${tn} สำหรับคำสั่งซื้อ ${orderId}`,
+                  actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+                });
               });
             }
 
@@ -2519,7 +2535,7 @@ const App: React.FC = () => {
               ...(orderToUpdate as Order),
               trackingNumbers: [
                 ...existingTrackingNumbers,
-                update.trackingNumber,
+                ...distinctNewTrackingNumbers,
               ],
               orderStatus:
                 (orderToUpdate as Order).paymentStatus ===
@@ -2542,21 +2558,22 @@ const App: React.FC = () => {
               if (customerIdForActivity) {
                 activitiesToAdd.push({
                   id: Date.now() + Math.random(),
-                  customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+                  customerId: String(customerIdForActivity),
                   timestamp: new Date().toISOString(),
                   type: ActivityType.OrderStatusChanged,
-                  description: `อัปเดตสถานะคำสั่งซื้อ ${update.orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
+                  description: `อัปเดตสถานะคำสั่งซื้อ ${orderId} จาก '${(orderToUpdate as Order).orderStatus}' เป็น '${newOrderState.orderStatus}'`,
                   actorName: `${currentUser.firstName} ${currentUser.lastName}`,
                 });
               }
             }
-            updatedOrdersMap.set(update.orderId, newOrderState);
+            updatedOrdersMap.set(orderId, newOrderState);
+
             if (true) {
               const deduped = Array.from(
                 new Set(newOrderState.trackingNumbers.filter(Boolean)),
               );
               patchPromises.push(
-                apiPatchOrder(update.orderId, { trackingNumbers: deduped }),
+                apiPatchOrder(orderId, { trackingNumbers: deduped }),
               );
             }
           }
@@ -2564,6 +2581,7 @@ const App: React.FC = () => {
       });
       return Array.from(updatedOrdersMap.values());
     });
+
     if (activitiesToAdd.length > 0) {
       if (true) {
         activitiesToAdd.forEach((activity) => {
@@ -2580,6 +2598,7 @@ const App: React.FC = () => {
       }
       setActivities((prev) => [...activitiesToAdd, ...prev]);
     }
+
     if (true && patchPromises.length) {
       try {
         await Promise.all(patchPromises);

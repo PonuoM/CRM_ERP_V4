@@ -16,7 +16,7 @@ interface RowData {
 
 interface BulkTrackingPageProps {
   orders: Order[];
-  onBulkUpdateTracking: (updates: { orderId: string; trackingNumber: string; boxNumber: number }[]) => void;
+  onBulkUpdateTracking: (updates: { orderId: string; trackingNumber: string; boxNumber: number }[]) => Promise<void>;
 }
 
 const createEmptyRow = (id: number): RowData => ({
@@ -394,7 +394,7 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
       if (window.confirm(`คุณต้องการนำเข้าเลข Tracking จำนวน ${updates.length} รายการใช่หรือไม่?`)) {
         try {
           // Update tracking numbers via callback
-          onBulkUpdateTracking(updates);
+          await onBulkUpdateTracking(updates);
 
           // Update shipping_provider for each order
           const shippingUpdates = new Map<string, string>(); // orderId -> shipping_provider

@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api'; // Adjust path based on location
 import { Search, Loader2, ExternalLink, Filter, CheckSquare, TrendingUp, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
+import { Order, ModalType } from '../../types';
 import StatCard from '../../components/StatCard';
+import OrderDetailModal from '../../components/OrderDetailModal';
+
+
+
 
 interface RevenueItem {
     id: string; // Order ID
@@ -16,6 +21,7 @@ interface RevenueItem {
     cross_period: boolean;
     pending_issue: boolean;
     order_month: string;
+    shipping_provider?: string;
 }
 
 const RevenueRecognitionPage: React.FC = () => {
@@ -23,15 +29,23 @@ const RevenueRecognitionPage: React.FC = () => {
     const [data, setData] = useState<RevenueItem[]>([]);
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    // Modal State
+    const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const response = await apiFetch('accounting_revenue_recognition', {
-                method: 'GET',
-                query: { month, year } // Pass as query params
+            const query = new URLSearchParams({
+                month: String(month),
+                year: String(year)
             });
-            if (response.ok) {
+            const response = await apiFetch(`accounting_revenue_recognition?${query}`);
+
+            // API returns array directly
+            if (Array.isArray(response)) {
+                setData(response);
+            } else if (response && response.data && Array.isArray(response.data)) {
+                // Fallback if API changes to return envelope
                 setData(response.data);
             }
         } catch (error) {
@@ -40,6 +54,12 @@ const RevenueRecognitionPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+
+
+    const handleOrderClick = (orderId: string) => {
+        setSelectedOrderId(orderId);
     };
 
     useEffect(() => {
@@ -131,6 +151,7 @@ const RevenueRecognitionPage: React.FC = () => {
                                 <th className="px-6 py-4 text-left">ลูกค้า</th>
                                 <th className="px-6 py-4 text-center">วันที่สั่งซื้อ (Booking)</th>
                                 <th className="px-6 py-4 text-center bg-blue-50/50">วันที่ส่งของ (Goods Issue)</th>
+                                <th className="px-6 py-4 text-left">ขนส่ง</th>
                                 <th className="px-6 py-4 text-center">หลักฐาน (Tracking/Log)</th>
                                 <th className="px-6 py-4 text-right">ยอดเงิน</th>
                                 <th className="px-6 py-4 text-center">สถานะบัญชี</th>
@@ -164,12 +185,20 @@ const RevenueRecognitionPage: React.FC = () => {
                                                 ${!item.is_recognized && item.pending_issue ? 'bg-orange-50/30' : ''}`}
                                         >
                                             <td className="px-6 py-4 font-medium text-gray-900">
-                                                {item.id}
-                                                {item.cross_period && (
-                                                    <span className="ml-2 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">
-                                                        ข้ามเดือน
-                                                    </span>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleOrderClick(item.id)}
+                                                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center"
+                                                    >
+                                                        {item.id}
+                                                        <ExternalLink className="w-3 h-3 ml-1" />
+                                                    </button>
+                                                    {item.cross_period && (
+                                                        <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 whitespace-nowrap">
+                                                            ข้ามเดือน
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]">
                                                 {item.customer_name || '-'}
@@ -185,6 +214,9 @@ const RevenueRecognitionPage: React.FC = () => {
                                                     })
                                                     : 'ยังไม่ส่งออก'
                                                 }
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-600">
+                                                {item.shipping_provider || '-'}
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 {item.tracking_no ? (
@@ -233,6 +265,12 @@ const RevenueRecognitionPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {/* Order Detail Modal */}
+            <OrderDetailModal
+                isOpen={!!selectedOrderId}
+                onClose={() => setSelectedOrderId(null)}
+                orderId={selectedOrderId}
+            />
         </div>
     );
 };

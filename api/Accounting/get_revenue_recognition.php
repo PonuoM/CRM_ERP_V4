@@ -24,7 +24,8 @@ function handle_revenue_recognition(PDO $pdo) {
                 o.customer_id, 
                 CONCAT(c.first_name, ' ', c.last_name) as customer_name,
                 o.order_status, 
-                (SELECT tracking_number FROM order_tracking_numbers WHERE parent_order_id = o.id LIMIT 1) as tracking_no,
+                o.shipping_provider, 
+                (SELECT GROUP_CONCAT(tracking_number SEPARATOR ', ') FROM order_tracking_numbers WHERE parent_order_id = o.id) as tracking_no,
                 -- Find the earliest 'Goods Issue' event from the logs
                 (
                     SELECT MIN(changed_at) 
