@@ -11,7 +11,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activities' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `activities` ADD COLUMN `customer_id` INT NULL',
+  'ALTER TABLE `activities` ADD COLUMN `customer_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -21,7 +21,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activities' AND COLUMN_NAME = 'timestamp'
 ) = 0,
-  'ALTER TABLE `activities` ADD COLUMN `timestamp` DATETIME NULL',
+  'ALTER TABLE `activities` ADD COLUMN `timestamp` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -31,7 +31,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activities' AND COLUMN_NAME = 'type'
 ) = 0,
-  'ALTER TABLE `activities` ADD COLUMN `type` VARCHAR(64) NULL',
+  'ALTER TABLE `activities` ADD COLUMN `type` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -41,7 +41,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activities' AND COLUMN_NAME = 'description'
 ) = 0,
-  'ALTER TABLE `activities` ADD COLUMN `description` TEXT NULL',
+  'ALTER TABLE `activities` ADD COLUMN `description` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -51,7 +51,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activities' AND COLUMN_NAME = 'actor_name'
 ) = 0,
-  'ALTER TABLE `activities` ADD COLUMN `actor_name` VARCHAR(128) NULL',
+  'ALTER TABLE `activities` ADD COLUMN `actor_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -80,7 +80,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ad_spend' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `ad_spend` ADD COLUMN `page_id` INT NULL',
+  'ALTER TABLE `ad_spend` ADD COLUMN `page_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -90,7 +90,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ad_spend' AND COLUMN_NAME = 'spend_date'
 ) = 0,
-  'ALTER TABLE `ad_spend` ADD COLUMN `spend_date` DATE NULL',
+  'ALTER TABLE `ad_spend` ADD COLUMN `spend_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -100,7 +100,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ad_spend' AND COLUMN_NAME = 'amount'
 ) = 0,
-  'ALTER TABLE `ad_spend` ADD COLUMN `amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `ad_spend` ADD COLUMN `amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -110,7 +110,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ad_spend' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `ad_spend` ADD COLUMN `notes` VARCHAR(255) NULL',
+  'ALTER TABLE `ad_spend` ADD COLUMN `notes` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS `address_districts` (
 `name_th` VARCHAR(255) NULL,
 `name_en` VARCHAR(255) NULL,
 `province_id` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
 `deleted_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
@@ -141,7 +141,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'name_th'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `name_th` VARCHAR(255) NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `name_th` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -151,7 +151,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'name_en'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `name_en` VARCHAR(255) NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `name_en` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -161,7 +161,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'province_id'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `province_id` INT NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `province_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -171,7 +171,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -181,7 +181,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -191,7 +191,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_districts' AND COLUMN_NAME = 'deleted_at'
 ) = 0,
-  'ALTER TABLE `address_districts` ADD COLUMN `deleted_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_districts` ADD COLUMN `deleted_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -211,7 +211,7 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `address_geographies` (
 `id` INT NOT NULL,
 `name` VARCHAR(255) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
 `deleted_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
@@ -220,7 +220,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_geographies' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `address_geographies` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `address_geographies` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -230,7 +230,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_geographies' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `address_geographies` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_geographies` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -240,7 +240,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_geographies' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `address_geographies` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_geographies` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -250,7 +250,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_geographies' AND COLUMN_NAME = 'deleted_at'
 ) = 0,
-  'ALTER TABLE `address_geographies` ADD COLUMN `deleted_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_geographies` ADD COLUMN `deleted_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS `address_provinces` (
 `name_th` VARCHAR(255) NULL,
 `name_en` VARCHAR(255) NULL,
 `geography_id` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
 `deleted_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
@@ -271,7 +271,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'name_th'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `name_th` VARCHAR(255) NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `name_th` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -281,7 +281,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'name_en'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `name_en` VARCHAR(255) NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `name_en` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -291,7 +291,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'geography_id'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `geography_id` INT NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `geography_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -301,7 +301,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -311,7 +311,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -321,7 +321,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_provinces' AND COLUMN_NAME = 'deleted_at'
 ) = 0,
-  'ALTER TABLE `address_provinces` ADD COLUMN `deleted_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_provinces` ADD COLUMN `deleted_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS `address_sub_districts` (
 `district_id` INT NULL,
 `lat` DECIMAL(10, 8) NULL,
 `long` DECIMAL(11, 8) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
 `deleted_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
@@ -355,7 +355,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'zip_code'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `zip_code` VARCHAR(10) NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `zip_code` VARCHAR(10) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -365,7 +365,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'name_th'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_th` VARCHAR(255) NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_th` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -375,7 +375,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'name_en'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_en` VARCHAR(255) NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_en` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -385,7 +385,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'district_id'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `district_id` INT NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `district_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -395,7 +395,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'lat'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `lat` DECIMAL(10, 8) NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `lat` DECIMAL(10, 8) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -405,7 +405,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'long'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `long` DECIMAL(11, 8) NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `long` DECIMAL(11, 8) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -415,7 +415,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -425,7 +425,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -435,7 +435,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'deleted_at'
 ) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `deleted_at` TIMESTAMP NULL',
+  'ALTER TABLE `address_sub_districts` ADD COLUMN `deleted_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -476,7 +476,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `customer_id` INT NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `customer_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -486,7 +486,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'customer_ref_id'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `customer_ref_id` VARCHAR(64) NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `customer_ref_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -496,7 +496,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'date'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `date` DATETIME NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -506,7 +506,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'title'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `title` VARCHAR(255) NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `title` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -516,7 +516,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `status` VARCHAR(64) NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `status` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -526,7 +526,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `appointments` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `appointments` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -559,7 +559,7 @@ CREATE TABLE IF NOT EXISTS `bank_account` (
 `bank` VARCHAR(100) NULL,
 `bank_number` VARCHAR(50) NULL,
 `is_active` BOOLEAN NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
 `deleted_at` DATETIME NULL,
   PRIMARY KEY (`id`)
@@ -568,7 +568,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -578,7 +578,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'bank'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `bank` VARCHAR(100) NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `bank` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -588,7 +588,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'bank_number'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `bank_number` VARCHAR(50) NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `bank_number` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -598,7 +598,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'is_active'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `is_active` BOOLEAN NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `is_active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -608,7 +608,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -618,7 +618,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -628,7 +628,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bank_account' AND COLUMN_NAME = 'deleted_at'
 ) = 0,
-  'ALTER TABLE `bank_account` ADD COLUMN `deleted_at` DATETIME NULL',
+  'ALTER TABLE `bank_account` ADD COLUMN `deleted_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -672,7 +672,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `customer_id` INT NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `customer_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -682,7 +682,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'date'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `date` DATETIME NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -692,7 +692,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'caller'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `caller` VARCHAR(128) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `caller` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -702,7 +702,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `status` VARCHAR(64) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `status` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -712,7 +712,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'result'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `result` VARCHAR(255) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `result` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -722,7 +722,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'crop_type'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `crop_type` VARCHAR(128) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `crop_type` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -732,7 +732,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'area_size'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `area_size` VARCHAR(128) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `area_size` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -742,7 +742,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -752,7 +752,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'call_history' AND COLUMN_NAME = 'duration'
 ) = 0,
-  'ALTER TABLE `call_history` ADD COLUMN `duration` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `call_history` ADD COLUMN `duration` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -768,7 +768,7 @@ CREATE TABLE IF NOT EXISTS `statement_logs` (
 `bank_display_name` VARCHAR(150) NULL,
 `channel` VARCHAR(64) NULL,
 `description` TEXT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `statement_reconcile_logs` VARCHAR(255) NULL,
   PRIMARY KEY (`id`)
 );
@@ -776,7 +776,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'batch_id'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `batch_id` INT NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `batch_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -786,7 +786,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'transfer_at'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `transfer_at` DATETIME NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `transfer_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -796,7 +796,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'amount'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -806,7 +806,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'bank_account_id'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `bank_account_id` INT NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `bank_account_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -816,7 +816,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'bank_display_name'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `bank_display_name` VARCHAR(150) NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `bank_display_name` VARCHAR(150) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -826,7 +826,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'channel'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `channel` VARCHAR(64) NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `channel` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -836,7 +836,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'description'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `description` TEXT NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `description` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -846,7 +846,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -856,7 +856,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_logs' AND COLUMN_NAME = 'statement_reconcile_logs'
 ) = 0,
-  'ALTER TABLE `statement_logs` ADD COLUMN `statement_reconcile_logs` VARCHAR(255) NULL',
+  'ALTER TABLE `statement_logs` ADD COLUMN `statement_reconcile_logs` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -893,6 +893,118 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+CREATE TABLE IF NOT EXISTS `roles` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`code` VARCHAR(64) NULL,
+`name` VARCHAR(128) NULL,
+`description` TEXT NULL,
+`is_active` BOOLEAN NULL,
+`is_system` BOOLEAN NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+`updated_at` DATETIME NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'code'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `code` VARCHAR(64) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'name'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `name` VARCHAR(128) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'description'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `description` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'is_active'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `is_active` BOOLEAN NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'is_system'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `is_system` BOOLEAN NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `roles` ADD COLUMN `updated_at` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND INDEX_NAME = 'idx_roles_active'
+) = 0,
+  'CREATE INDEX `idx_roles_active` ON `roles`(`is_active`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND INDEX_NAME = 'idx_roles_code'
+) = 0,
+  'CREATE INDEX `idx_roles_code` ON `roles`(`code`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles' AND INDEX_NAME = 'uniq_roles_code'
+) = 0,
+  'CREATE UNIQUE INDEX `uniq_roles_code` ON `roles`(`code`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS `users` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `username` VARCHAR(64) NULL,
@@ -902,12 +1014,13 @@ CREATE TABLE IF NOT EXISTS `users` (
 `email` VARCHAR(255) NULL,
 `phone` VARCHAR(64) NULL,
 `role` VARCHAR(64) NULL,
+`role_id` INT NULL,
 `company_id` INT NULL,
 `team_id` INT NULL,
 `supervisor_id` INT NULL,
 `id_oth` VARCHAR(255) NULL,
 `status` VARCHAR(255) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
 `last_login` DATETIME NULL,
 `login_count` INT NULL,
@@ -917,7 +1030,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `username` VARCHAR(64) NULL',
+  'ALTER TABLE `users` ADD COLUMN `username` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -927,7 +1040,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `password` VARCHAR(255) NULL',
+  'ALTER TABLE `users` ADD COLUMN `password` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -937,7 +1050,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'first_name'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `first_name` VARCHAR(128) NULL',
+  'ALTER TABLE `users` ADD COLUMN `first_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -947,7 +1060,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'last_name'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `last_name` VARCHAR(128) NULL',
+  'ALTER TABLE `users` ADD COLUMN `last_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -957,7 +1070,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `email` VARCHAR(255) NULL',
+  'ALTER TABLE `users` ADD COLUMN `email` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -967,7 +1080,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(64) NULL',
+  'ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -977,7 +1090,17 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `role` VARCHAR(64) NULL',
+  'ALTER TABLE `users` ADD COLUMN `role` VARCHAR(64) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role_id'
+) = 0,
+  'ALTER TABLE `users` ADD COLUMN `role_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -987,7 +1110,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `users` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -997,7 +1120,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'team_id'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `team_id` INT NULL',
+  'ALTER TABLE `users` ADD COLUMN `team_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1007,7 +1130,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'supervisor_id'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `supervisor_id` INT NULL',
+  'ALTER TABLE `users` ADD COLUMN `supervisor_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1017,7 +1140,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id_oth'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `id_oth` VARCHAR(255) NULL',
+  'ALTER TABLE `users` ADD COLUMN `id_oth` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1027,7 +1150,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `users` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1047,7 +1170,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `users` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1057,7 +1180,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `users` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1067,7 +1190,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'last_login'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `last_login` DATETIME NULL',
+  'ALTER TABLE `users` ADD COLUMN `last_login` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1077,7 +1200,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'login_count'
 ) = 0,
-  'ALTER TABLE `users` ADD COLUMN `login_count` INT NULL',
+  'ALTER TABLE `users` ADD COLUMN `login_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1155,6 +1278,16 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'idx_users_role_id'
+) = 0,
+  'CREATE INDEX `idx_users_role_id` ON `users`(`role_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'idx_users_status'
 ) = 0,
   'CREATE INDEX `idx_users_status` ON `users`(`status`)',
@@ -1168,6 +1301,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'uniq_users_username'
 ) = 0,
   'CREATE UNIQUE INDEX `uniq_users_username` ON `users`(`username`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND CONSTRAINT_NAME = 'fk_users_role' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `users` ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE RESTRICT ON UPDATE NO ACTION',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1188,7 +1331,7 @@ CREATE TABLE IF NOT EXISTS `cod_documents` (
 `created_by` INT NULL,
 `verified_by` INT NULL,
 `verified_at` DATETIME NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -1196,7 +1339,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'document_number'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `document_number` VARCHAR(64) NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `document_number` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1206,7 +1349,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'document_datetime'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `document_datetime` DATETIME NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `document_datetime` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1216,7 +1359,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'bank_account_id'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `bank_account_id` INT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `bank_account_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1226,7 +1369,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'matched_statement_log_id'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `matched_statement_log_id` INT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `matched_statement_log_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1236,7 +1379,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1246,7 +1389,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'total_input_amount'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `total_input_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `total_input_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1256,7 +1399,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'total_order_amount'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `total_order_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `total_order_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1266,7 +1409,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `status` VARCHAR(32) NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `status` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1276,7 +1419,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1286,7 +1429,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1296,7 +1439,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'verified_by'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `verified_by` INT NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `verified_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1306,7 +1449,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'verified_at'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `verified_at` DATETIME NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `verified_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1316,7 +1459,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1326,7 +1469,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_documents' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `cod_documents` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `cod_documents` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1447,7 +1590,7 @@ CREATE TABLE IF NOT EXISTS `cod_records` (
 `status` VARCHAR(32) NULL,
 `company_id` INT NULL,
 `created_by` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -1455,7 +1598,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'document_id'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `document_id` INT NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `document_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1465,7 +1608,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'tracking_number'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `tracking_number` VARCHAR(128) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `tracking_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1475,7 +1618,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1485,7 +1628,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'delivery_start_date'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `delivery_start_date` DATE NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `delivery_start_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1495,7 +1638,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'delivery_end_date'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `delivery_end_date` DATE NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `delivery_end_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1505,7 +1648,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'cod_amount'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1515,7 +1658,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'order_amount'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `order_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `order_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1525,7 +1668,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'received_amount'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `received_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `received_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1535,7 +1678,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'difference'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `difference` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `difference` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1545,7 +1688,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `status` VARCHAR(32) NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `status` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1555,7 +1698,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1565,7 +1708,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1575,7 +1718,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1585,7 +1728,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cod_records' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `cod_records` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `cod_records` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1669,7 +1812,7 @@ CREATE TABLE IF NOT EXISTS `companies` (
 `phone` VARCHAR(64) NULL,
 `email` VARCHAR(255) NULL,
 `tax_id` VARCHAR(32) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -1677,7 +1820,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `companies` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1687,7 +1830,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'address'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `address` TEXT NULL',
+  'ALTER TABLE `companies` ADD COLUMN `address` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1697,7 +1840,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'phone'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `phone` VARCHAR(64) NULL',
+  'ALTER TABLE `companies` ADD COLUMN `phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1707,7 +1850,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'email'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `email` VARCHAR(255) NULL',
+  'ALTER TABLE `companies` ADD COLUMN `email` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1717,7 +1860,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'tax_id'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `tax_id` VARCHAR(32) NULL',
+  'ALTER TABLE `companies` ADD COLUMN `tax_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1727,7 +1870,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `companies` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1737,7 +1880,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `companies` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `companies` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1754,7 +1897,7 @@ CREATE TABLE IF NOT EXISTS `customer_address` (
 `district` VARCHAR(100) NULL,
 `sub_district` VARCHAR(100) NULL,
 `zip_code` VARCHAR(10) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -1762,7 +1905,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `customer_id` VARCHAR(255) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `customer_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1772,7 +1915,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'address'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `address` VARCHAR(255) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `address` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1782,7 +1925,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'recipient_first_name'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1792,7 +1935,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'recipient_last_name'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1802,7 +1945,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'province'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `province` VARCHAR(100) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `province` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1812,7 +1955,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'district'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `district` VARCHAR(100) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `district` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1822,7 +1965,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'sub_district'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `sub_district` VARCHAR(100) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `sub_district` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1832,7 +1975,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'zip_code'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `zip_code` VARCHAR(10) NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `zip_code` VARCHAR(10) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1842,7 +1985,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1852,7 +1995,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_address' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `customer_address` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `customer_address` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1880,7 +2023,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_assignment_history' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `customer_assignment_history` ADD COLUMN `customer_id` INT NULL',
+  'ALTER TABLE `customer_assignment_history` ADD COLUMN `customer_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1890,7 +2033,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_assignment_history' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `customer_assignment_history` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `customer_assignment_history` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1900,7 +2043,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_assignment_history' AND COLUMN_NAME = 'assigned_at'
 ) = 0,
-  'ALTER TABLE `customer_assignment_history` ADD COLUMN `assigned_at` DATETIME NULL',
+  'ALTER TABLE `customer_assignment_history` ADD COLUMN `assigned_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1932,7 +2075,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `customer_id` VARCHAR(64) NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `customer_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1942,7 +2085,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'reason'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `reason` TEXT NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `reason` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1952,7 +2095,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'blocked_by'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `blocked_by` INT NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `blocked_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1962,7 +2105,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'blocked_at'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `blocked_at` DATETIME NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `blocked_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1972,7 +2115,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'unblocked_by'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `unblocked_by` INT NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `unblocked_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1982,7 +2125,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'unblocked_at'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `unblocked_at` DATETIME NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `unblocked_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -1992,7 +2135,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_blocks' AND COLUMN_NAME = 'active'
 ) = 0,
-  'ALTER TABLE `customer_blocks` ADD COLUMN `active` BOOLEAN NULL',
+  'ALTER TABLE `customer_blocks` ADD COLUMN `active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2010,14 +2153,14 @@ CREATE TABLE IF NOT EXISTS `customer_logs` (
 `new_values` JSON NULL,
 `changed_fields` JSON NULL,
 `created_by` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `customer_id` VARCHAR(32) NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `customer_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2027,7 +2170,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'bucket_type'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `bucket_type` VARCHAR(16) NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `bucket_type` VARCHAR(16) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2037,7 +2180,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'lifecycle_status'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `lifecycle_status` VARCHAR(255) NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `lifecycle_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2057,7 +2200,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'assigned_to'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `assigned_to` INT NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `assigned_to` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2067,7 +2210,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'action_type'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `action_type` VARCHAR(255) NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `action_type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2087,7 +2230,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'old_values'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `old_values` JSON NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `old_values` JSON NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2097,7 +2240,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'new_values'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `new_values` JSON NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `new_values` JSON NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2107,7 +2250,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'changed_fields'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `changed_fields` JSON NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `changed_fields` JSON NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2117,7 +2260,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2127,7 +2270,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_logs' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `customer_logs` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `customer_logs` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2212,7 +2355,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'customer_ref_id'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `customer_ref_id` VARCHAR(64) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `customer_ref_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2222,7 +2365,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'first_name'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `first_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `first_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2232,7 +2375,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'last_name'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `last_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `last_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2242,7 +2385,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'phone'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `phone` VARCHAR(64) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2252,7 +2395,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'backup_phone'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `backup_phone` VARCHAR(64) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `backup_phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2262,7 +2405,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'email'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `email` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `email` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2272,7 +2415,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'province'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `province` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `province` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2282,7 +2425,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `customers` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2292,7 +2435,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'assigned_to'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `assigned_to` INT NULL',
+  'ALTER TABLE `customers` ADD COLUMN `assigned_to` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2302,7 +2445,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'date_assigned'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `date_assigned` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `date_assigned` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2312,7 +2455,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'date_registered'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `date_registered` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `date_registered` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2322,7 +2465,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'follow_up_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `follow_up_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `follow_up_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2332,7 +2475,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'ownership_expires'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `ownership_expires` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `ownership_expires` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2342,7 +2485,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'lifecycle_status'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `lifecycle_status` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `lifecycle_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2362,7 +2505,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'behavioral_status'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `behavioral_status` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `behavioral_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2382,7 +2525,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'grade'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `grade` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `grade` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2402,7 +2545,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'total_purchases'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `total_purchases` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `total_purchases` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2412,7 +2555,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'total_calls'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `total_calls` INT NULL',
+  'ALTER TABLE `customers` ADD COLUMN `total_calls` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2422,7 +2565,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'facebook_name'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `facebook_name` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `facebook_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2432,7 +2575,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'line_id'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `line_id` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `line_id` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2442,7 +2585,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'street'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `street` VARCHAR(255) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `street` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2452,7 +2595,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'subdistrict'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `subdistrict` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `subdistrict` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2462,7 +2605,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'district'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `district` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `district` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2472,7 +2615,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'postal_code'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `postal_code` VARCHAR(16) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `postal_code` VARCHAR(16) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2482,7 +2625,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'recipient_first_name'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2492,7 +2635,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'recipient_last_name'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2502,7 +2645,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'has_sold_before'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `has_sold_before` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `has_sold_before` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2512,7 +2655,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'follow_up_count'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `follow_up_count` INT NULL',
+  'ALTER TABLE `customers` ADD COLUMN `follow_up_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2522,7 +2665,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'last_follow_up_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `last_follow_up_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `last_follow_up_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2532,7 +2675,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'last_sale_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `last_sale_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `last_sale_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2542,7 +2685,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'is_in_waiting_basket'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `is_in_waiting_basket` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `is_in_waiting_basket` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2552,7 +2695,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'waiting_basket_start_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `waiting_basket_start_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `waiting_basket_start_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2562,7 +2705,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'followup_bonus_remaining'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `followup_bonus_remaining` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `followup_bonus_remaining` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2572,7 +2715,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'is_blocked'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `is_blocked` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `is_blocked` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2582,7 +2725,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'first_order_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `first_order_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `first_order_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2592,7 +2735,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'last_order_date'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `last_order_date` DATETIME NULL',
+  'ALTER TABLE `customers` ADD COLUMN `last_order_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2602,7 +2745,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'order_count'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `order_count` INT NULL',
+  'ALTER TABLE `customers` ADD COLUMN `order_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2612,7 +2755,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'is_new_customer'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `is_new_customer` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `is_new_customer` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2622,7 +2765,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'is_repeat_customer'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `is_repeat_customer` BOOLEAN NULL',
+  'ALTER TABLE `customers` ADD COLUMN `is_repeat_customer` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2632,7 +2775,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'bucket_type'
 ) = 0,
-  'ALTER TABLE `customers` ADD COLUMN `bucket_type` VARCHAR(16) NULL',
+  'ALTER TABLE `customers` ADD COLUMN `bucket_type` VARCHAR(16) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2743,7 +2886,8 @@ CREATE TABLE IF NOT EXISTS `env` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `key` VARCHAR(255) NULL,
 `value` TEXT NULL,
-`created_at` TIMESTAMP NULL,
+`company_id` INT NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -2751,7 +2895,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'env' AND COLUMN_NAME = 'key'
 ) = 0,
-  'ALTER TABLE `env` ADD COLUMN `key` VARCHAR(255) NULL',
+  'ALTER TABLE `env` ADD COLUMN `key` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2761,7 +2905,17 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'env' AND COLUMN_NAME = 'value'
 ) = 0,
-  'ALTER TABLE `env` ADD COLUMN `value` TEXT NULL',
+  'ALTER TABLE `env` ADD COLUMN `value` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'env' AND COLUMN_NAME = 'company_id'
+) = 0,
+  'ALTER TABLE `env` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2771,7 +2925,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'env' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `env` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `env` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2781,7 +2935,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'env' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `env` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `env` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2815,7 +2969,7 @@ CREATE TABLE IF NOT EXISTS `exports` (
 `orders_count` INT NULL,
 `user_id` INT NULL,
 `exported_by` VARCHAR(128) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `download_count` INT NULL,
   PRIMARY KEY (`id`)
 );
@@ -2823,7 +2977,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'filename'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `filename` VARCHAR(255) NULL',
+  'ALTER TABLE `exports` ADD COLUMN `filename` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2833,7 +2987,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'file_path'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `file_path` VARCHAR(1024) NULL',
+  'ALTER TABLE `exports` ADD COLUMN `file_path` VARCHAR(1024) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2843,7 +2997,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'orders_count'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `orders_count` INT NULL',
+  'ALTER TABLE `exports` ADD COLUMN `orders_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2853,7 +3007,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `exports` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2863,7 +3017,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'exported_by'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `exported_by` VARCHAR(128) NULL',
+  'ALTER TABLE `exports` ADD COLUMN `exported_by` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2873,7 +3027,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `exports` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2883,7 +3037,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'download_count'
 ) = 0,
-  'ALTER TABLE `exports` ADD COLUMN `download_count` INT NULL',
+  'ALTER TABLE `exports` ADD COLUMN `download_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2909,7 +3063,7 @@ CREATE TABLE IF NOT EXISTS `marketing_ads_log` (
 `impressions` INT NULL,
 `reach` INT NULL,
 `clicks` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -2917,7 +3071,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `page_id` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `page_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2927,7 +3081,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2937,7 +3091,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'date'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `date` DATE NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2947,7 +3101,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'ads_cost'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `ads_cost` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `ads_cost` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2957,7 +3111,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'impressions'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `impressions` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `impressions` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2967,7 +3121,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'reach'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `reach` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `reach` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2977,7 +3131,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'clicks'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `clicks` INT NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `clicks` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2987,7 +3141,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -2997,7 +3151,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_ads_log' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `marketing_ads_log` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `marketing_ads_log` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3058,7 +3212,7 @@ CREATE TABLE IF NOT EXISTS `marketing_user_page` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `page_id` INT NULL,
 `user_id` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -3066,7 +3220,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_page' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `marketing_user_page` ADD COLUMN `page_id` INT NULL',
+  'ALTER TABLE `marketing_user_page` ADD COLUMN `page_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3076,7 +3230,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_page' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `marketing_user_page` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `marketing_user_page` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3086,7 +3240,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_page' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `marketing_user_page` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `marketing_user_page` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3096,7 +3250,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_page' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `marketing_user_page` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `marketing_user_page` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3138,14 +3292,14 @@ CREATE TABLE IF NOT EXISTS `notification_read_status` (
 `notification_id` VARCHAR(50) NULL,
 `user_id` INT NULL,
 `read_at` DATETIME NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_read_status' AND COLUMN_NAME = 'notification_id'
 ) = 0,
-  'ALTER TABLE `notification_read_status` ADD COLUMN `notification_id` VARCHAR(50) NULL',
+  'ALTER TABLE `notification_read_status` ADD COLUMN `notification_id` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3155,7 +3309,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_read_status' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `notification_read_status` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `notification_read_status` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3165,7 +3319,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_read_status' AND COLUMN_NAME = 'read_at'
 ) = 0,
-  'ALTER TABLE `notification_read_status` ADD COLUMN `read_at` DATETIME NULL',
+  'ALTER TABLE `notification_read_status` ADD COLUMN `read_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3175,7 +3329,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_read_status' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `notification_read_status` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `notification_read_status` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3216,14 +3370,14 @@ CREATE TABLE IF NOT EXISTS `notification_roles` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `notification_id` VARCHAR(50) NULL,
 `role` VARCHAR(255) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_roles' AND COLUMN_NAME = 'notification_id'
 ) = 0,
-  'ALTER TABLE `notification_roles` ADD COLUMN `notification_id` VARCHAR(50) NULL',
+  'ALTER TABLE `notification_roles` ADD COLUMN `notification_id` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3233,7 +3387,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_roles' AND COLUMN_NAME = 'role'
 ) = 0,
-  'ALTER TABLE `notification_roles` ADD COLUMN `role` VARCHAR(255) NULL',
+  'ALTER TABLE `notification_roles` ADD COLUMN `role` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3253,7 +3407,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_roles' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `notification_roles` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `notification_roles` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3288,7 +3442,7 @@ CREATE TABLE IF NOT EXISTS `notification_settings` (
 `email_enabled` BOOLEAN NULL,
 `sms_enabled` BOOLEAN NULL,
 `business_hours_only` BOOLEAN NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -3296,7 +3450,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3306,7 +3460,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'notification_type'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `notification_type` VARCHAR(50) NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `notification_type` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3316,7 +3470,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'in_app_enabled'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `in_app_enabled` BOOLEAN NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `in_app_enabled` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3326,7 +3480,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'email_enabled'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `email_enabled` BOOLEAN NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `email_enabled` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3336,7 +3490,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'sms_enabled'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `sms_enabled` BOOLEAN NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `sms_enabled` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3346,7 +3500,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'business_hours_only'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `business_hours_only` BOOLEAN NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `business_hours_only` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3356,7 +3510,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3366,7 +3520,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_settings' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `notification_settings` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `notification_settings` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3407,14 +3561,14 @@ CREATE TABLE IF NOT EXISTS `notification_users` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `notification_id` VARCHAR(50) NULL,
 `user_id` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_users' AND COLUMN_NAME = 'notification_id'
 ) = 0,
-  'ALTER TABLE `notification_users` ADD COLUMN `notification_id` VARCHAR(50) NULL',
+  'ALTER TABLE `notification_users` ADD COLUMN `notification_id` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3424,7 +3578,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_users' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `notification_users` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `notification_users` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3434,7 +3588,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_users' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `notification_users` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `notification_users` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3480,7 +3634,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 `action_url` VARCHAR(255) NULL,
 `action_text` VARCHAR(100) NULL,
 `metadata` JSON NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -3488,7 +3642,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'type'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `type` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3508,7 +3662,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'category'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3528,7 +3682,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'title'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `title` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `title` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3538,7 +3692,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'message'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `message` TEXT NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `message` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3548,7 +3702,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'timestamp'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `timestamp` DATETIME NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `timestamp` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3558,7 +3712,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'is_read'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `is_read` BOOLEAN NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `is_read` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3568,7 +3722,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'priority'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `priority` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `priority` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3588,7 +3742,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'related_id'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `related_id` VARCHAR(50) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `related_id` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3598,7 +3752,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `page_id` INT NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `page_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3608,7 +3762,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'page_name'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `page_name` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `page_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3618,7 +3772,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'platform'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `platform` VARCHAR(50) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `platform` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3628,7 +3782,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'previous_value'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `previous_value` DECIMAL(10, 2) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `previous_value` DECIMAL(10, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3638,7 +3792,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'current_value'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `current_value` DECIMAL(10, 2) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `current_value` DECIMAL(10, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3648,7 +3802,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'percentage_change'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `percentage_change` DECIMAL(5, 2) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `percentage_change` DECIMAL(5, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3658,7 +3812,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'action_url'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `action_url` VARCHAR(255) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `action_url` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3668,7 +3822,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'action_text'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `action_text` VARCHAR(100) NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `action_text` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3678,7 +3832,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'metadata'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `metadata` JSON NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `metadata` JSON NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3688,7 +3842,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3698,7 +3852,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `notifications` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `notifications` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3780,14 +3934,14 @@ CREATE TABLE IF NOT EXISTS `onecall_batch` (
 `startdate` DATE NULL,
 `enddate` DATE NULL,
 `amount_record` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_batch' AND COLUMN_NAME = 'startdate'
 ) = 0,
-  'ALTER TABLE `onecall_batch` ADD COLUMN `startdate` DATE NULL',
+  'ALTER TABLE `onecall_batch` ADD COLUMN `startdate` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3797,7 +3951,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_batch' AND COLUMN_NAME = 'enddate'
 ) = 0,
-  'ALTER TABLE `onecall_batch` ADD COLUMN `enddate` DATE NULL',
+  'ALTER TABLE `onecall_batch` ADD COLUMN `enddate` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3807,7 +3961,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_batch' AND COLUMN_NAME = 'amount_record'
 ) = 0,
-  'ALTER TABLE `onecall_batch` ADD COLUMN `amount_record` INT NULL',
+  'ALTER TABLE `onecall_batch` ADD COLUMN `amount_record` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3817,7 +3971,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_batch' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `onecall_batch` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `onecall_batch` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3839,7 +3993,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'timestamp'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `timestamp` TIMESTAMP NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `timestamp` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3849,7 +4003,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'duration'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `duration` INT NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `duration` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3859,7 +4013,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'localParty'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `localParty` VARCHAR(255) NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `localParty` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3869,7 +4023,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'remoteParty'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `remoteParty` VARCHAR(255) NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `remoteParty` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3879,7 +4033,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'direction'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `direction` VARCHAR(10) NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `direction` VARCHAR(10) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3889,7 +4043,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'phone_telesale'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `phone_telesale` VARCHAR(255) NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `phone_telesale` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3899,7 +4053,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onecall_log' AND COLUMN_NAME = 'batch_id'
 ) = 0,
-  'ALTER TABLE `onecall_log` ADD COLUMN `batch_id` INT NULL',
+  'ALTER TABLE `onecall_log` ADD COLUMN `batch_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3944,14 +4098,14 @@ CREATE TABLE IF NOT EXISTS `order_box_collection_logs` (
 `old_status` VARCHAR(255) NULL,
 `new_status` VARCHAR(255) NULL,
 `notes` TEXT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'order_box_id'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `order_box_id` INT NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `order_box_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3961,7 +4115,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3971,7 +4125,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'sub_order_id'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `sub_order_id` VARCHAR(64) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `sub_order_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3981,7 +4135,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'box_number'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `box_number` INT NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `box_number` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3991,7 +4145,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'change_type'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `change_type` VARCHAR(255) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `change_type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4011,7 +4165,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'old_collection_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_collection_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_collection_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4021,7 +4175,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'new_collection_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_collection_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_collection_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4031,7 +4185,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'old_collected_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_collected_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_collected_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4041,7 +4195,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'new_collected_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_collected_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_collected_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4051,7 +4205,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'old_waived_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_waived_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_waived_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4061,7 +4215,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'new_waived_amount'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_waived_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_waived_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4071,7 +4225,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'old_payment_method'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_payment_method` VARCHAR(255) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_payment_method` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4091,7 +4245,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'new_payment_method'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_payment_method` VARCHAR(255) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_payment_method` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4111,7 +4265,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'old_status'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_status` VARCHAR(255) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `old_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4131,7 +4285,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'new_status'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_status` VARCHAR(255) NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `new_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4151,7 +4305,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4161,7 +4315,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_box_collection_logs' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `order_box_collection_logs` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4219,7 +4373,7 @@ CREATE TABLE IF NOT EXISTS `order_boxes` (
 `collection_amount` DECIMAL(12, 2) NULL,
 `collected_amount` DECIMAL(12, 2) NULL,
 `waived_amount` DECIMAL(12, 2) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
 `shipped_at` DATETIME NULL,
 `delivered_at` DATETIME NULL,
@@ -4229,7 +4383,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4239,7 +4393,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'sub_order_id'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `sub_order_id` VARCHAR(64) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `sub_order_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4249,7 +4403,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'box_number'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `box_number` INT NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `box_number` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4259,7 +4413,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'payment_method'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `payment_method` VARCHAR(255) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `payment_method` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4279,7 +4433,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4299,7 +4453,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'cod_amount'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4309,7 +4463,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'collection_amount'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `collection_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `collection_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4319,7 +4473,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'collected_amount'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `collected_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `collected_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4329,7 +4483,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'waived_amount'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `waived_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `waived_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4339,7 +4493,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4349,7 +4503,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4359,7 +4513,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'shipped_at'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `shipped_at` DATETIME NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `shipped_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4369,7 +4523,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_boxes' AND COLUMN_NAME = 'delivered_at'
 ) = 0,
-  'ALTER TABLE `order_boxes` ADD COLUMN `delivered_at` DATETIME NULL',
+  'ALTER TABLE `order_boxes` ADD COLUMN `delivered_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4420,7 +4574,7 @@ CREATE TABLE IF NOT EXISTS `order_item_allocations` (
 `status` VARCHAR(255) NULL,
 `notes` TEXT NULL,
 `created_by` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -4428,7 +4582,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4438,7 +4592,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'order_item_id'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `order_item_id` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `order_item_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4448,7 +4602,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4458,7 +4612,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'promotion_id'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `promotion_id` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `promotion_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4468,7 +4622,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'is_freebie'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `is_freebie` BOOLEAN NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `is_freebie` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4478,7 +4632,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'required_quantity'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `required_quantity` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `required_quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4488,7 +4642,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'allocated_quantity'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `allocated_quantity` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `allocated_quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4498,7 +4652,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4508,7 +4662,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'lot_number'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `lot_number` VARCHAR(128) NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `lot_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4518,7 +4672,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4538,7 +4692,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4548,7 +4702,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4558,7 +4712,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4568,7 +4722,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_item_allocations' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `order_item_allocations` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `order_item_allocations` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4667,7 +4821,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4677,7 +4831,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'parent_order_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `parent_order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `parent_order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4687,7 +4841,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'creator_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `creator_id` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `creator_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4697,7 +4851,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4707,7 +4861,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'product_name'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `product_name` VARCHAR(255) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `product_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4717,7 +4871,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'quantity'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `quantity` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4727,7 +4881,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'price_per_unit'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `price_per_unit` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `price_per_unit` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4737,7 +4891,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'discount'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `discount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `discount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4747,7 +4901,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'net_total'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `net_total` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `net_total` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4757,7 +4911,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_freebie'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `is_freebie` BOOLEAN NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `is_freebie` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4767,7 +4921,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'box_number'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `box_number` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `box_number` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4777,7 +4931,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'promotion_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `promotion_id` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `promotion_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4787,7 +4941,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'parent_item_id'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `parent_item_id` INT NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `parent_item_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4797,7 +4951,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_promotion_parent'
 ) = 0,
-  'ALTER TABLE `order_items` ADD COLUMN `is_promotion_parent` BOOLEAN NULL',
+  'ALTER TABLE `order_items` ADD COLUMN `is_promotion_parent` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4887,7 +5041,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_sequences' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `order_sequences` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `order_sequences` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4897,7 +5051,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_sequences' AND COLUMN_NAME = 'period'
 ) = 0,
-  'ALTER TABLE `order_sequences` ADD COLUMN `period` VARCHAR(255) NULL',
+  'ALTER TABLE `order_sequences` ADD COLUMN `period` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4917,7 +5071,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_sequences' AND COLUMN_NAME = 'prefix'
 ) = 0,
-  'ALTER TABLE `order_sequences` ADD COLUMN `prefix` VARCHAR(8) NULL',
+  'ALTER TABLE `order_sequences` ADD COLUMN `prefix` VARCHAR(8) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4927,7 +5081,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_sequences' AND COLUMN_NAME = 'last_sequence'
 ) = 0,
-  'ALTER TABLE `order_sequences` ADD COLUMN `last_sequence` INT NULL',
+  'ALTER TABLE `order_sequences` ADD COLUMN `last_sequence` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4937,7 +5091,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_sequences' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `order_sequences` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `order_sequences` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4963,7 +5117,7 @@ CREATE TABLE IF NOT EXISTS `order_slips` (
 `url` VARCHAR(1024) NULL,
 `upload_by` INT NULL,
 `upload_by_name` VARCHAR(255) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -4971,7 +5125,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'amount'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4981,7 +5135,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'bank_account_id'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `bank_account_id` INT NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `bank_account_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -4991,7 +5145,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'transfer_date'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `transfer_date` DATETIME NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `transfer_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5001,7 +5155,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5011,7 +5165,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'url'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `url` VARCHAR(1024) NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `url` VARCHAR(1024) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5021,7 +5175,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'upload_by'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `upload_by` INT NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `upload_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5031,7 +5185,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'upload_by_name'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `upload_by_name` VARCHAR(255) NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `upload_by_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5041,7 +5195,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5051,7 +5205,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_slips' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `order_slips` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `order_slips` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5100,7 +5254,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5110,7 +5264,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'parent_order_id'
 ) = 0,
-  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `parent_order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `parent_order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5120,7 +5274,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'box_number'
 ) = 0,
-  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `box_number` INT NULL',
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `box_number` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5130,7 +5284,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_tracking_numbers' AND COLUMN_NAME = 'tracking_number'
 ) = 0,
-  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `tracking_number` VARCHAR(128) NULL',
+  'ALTER TABLE `order_tracking_numbers` ADD COLUMN `tracking_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5160,6 +5314,7 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `orders` (
 `id` VARCHAR(32) NOT NULL,
 `customer_id` INT NULL,
+`customer_type` VARCHAR(50) NULL,
 `company_id` INT NULL,
 `creator_id` INT NULL,
 `order_date` DATETIME NULL,
@@ -5194,7 +5349,17 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'customer_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `customer_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `customer_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'customer_type'
+) = 0,
+  'ALTER TABLE `orders` ADD COLUMN `customer_type` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5204,7 +5369,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5214,7 +5379,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'creator_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `creator_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `creator_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5224,7 +5389,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'order_date'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `order_date` DATETIME NULL',
+  'ALTER TABLE `orders` ADD COLUMN `order_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5234,7 +5399,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'delivery_date'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `delivery_date` DATETIME NULL',
+  'ALTER TABLE `orders` ADD COLUMN `delivery_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5244,7 +5409,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'street'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `street` VARCHAR(255) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `street` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5254,7 +5419,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'subdistrict'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `subdistrict` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `subdistrict` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5264,7 +5429,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'district'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `district` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `district` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5274,7 +5439,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'province'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `province` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `province` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5284,7 +5449,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'postal_code'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `postal_code` VARCHAR(16) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `postal_code` VARCHAR(16) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5294,7 +5459,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'recipient_first_name'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `recipient_first_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5304,7 +5469,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'recipient_last_name'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `recipient_last_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5314,7 +5479,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'shipping_provider'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `shipping_provider` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `shipping_provider` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5324,7 +5489,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'shipping_cost'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `shipping_cost` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `shipping_cost` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5334,7 +5499,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'bill_discount'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `bill_discount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `bill_discount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5344,7 +5509,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'total_amount'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `total_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `total_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5354,7 +5519,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'payment_method'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `payment_method` VARCHAR(255) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `payment_method` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5374,7 +5539,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'payment_status'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `payment_status` VARCHAR(255) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `payment_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5394,7 +5559,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'slip_url'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `slip_url` VARCHAR(1024) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `slip_url` VARCHAR(1024) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5404,7 +5569,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'amount_paid'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `amount_paid` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `amount_paid` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5414,7 +5579,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'cod_amount'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `cod_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5424,7 +5589,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'order_status'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `order_status` VARCHAR(255) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `order_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5444,7 +5609,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5454,7 +5619,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'ocr_payment_date'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `ocr_payment_date` DATETIME NULL',
+  'ALTER TABLE `orders` ADD COLUMN `ocr_payment_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5464,7 +5629,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'sales_channel'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `sales_channel` VARCHAR(128) NULL',
+  'ALTER TABLE `orders` ADD COLUMN `sales_channel` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5474,7 +5639,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'sales_channel_page_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `sales_channel_page_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `sales_channel_page_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5484,7 +5649,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'bank_account_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `bank_account_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `bank_account_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5494,7 +5659,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'transfer_date'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `transfer_date` DATETIME NULL',
+  'ALTER TABLE `orders` ADD COLUMN `transfer_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5504,7 +5669,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `orders` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `orders` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5634,7 +5799,7 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `page_engagement_batch` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `date_range` VARCHAR(100) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `status` VARCHAR(255) NULL,
 `records_count` INT NULL,
 `user_id` INT NULL,
@@ -5644,7 +5809,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_batch' AND COLUMN_NAME = 'date_range'
 ) = 0,
-  'ALTER TABLE `page_engagement_batch` ADD COLUMN `date_range` VARCHAR(100) NULL',
+  'ALTER TABLE `page_engagement_batch` ADD COLUMN `date_range` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5654,7 +5819,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_batch' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `page_engagement_batch` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_engagement_batch` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5664,7 +5829,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_batch' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `page_engagement_batch` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `page_engagement_batch` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5684,7 +5849,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_batch' AND COLUMN_NAME = 'records_count'
 ) = 0,
-  'ALTER TABLE `page_engagement_batch` ADD COLUMN `records_count` INT NULL',
+  'ALTER TABLE `page_engagement_batch` ADD COLUMN `records_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5694,7 +5859,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_batch' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `page_engagement_batch` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `page_engagement_batch` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5739,7 +5904,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'batch_id'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `batch_id` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `batch_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5749,7 +5914,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `page_id` VARCHAR(50) NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `page_id` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5759,7 +5924,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'date'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `date` DATE NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5769,7 +5934,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'inbox'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `inbox` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `inbox` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5779,7 +5944,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'comment'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `comment` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `comment` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5789,7 +5954,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'total'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `total` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `total` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5799,7 +5964,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'new_customer_replied'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `new_customer_replied` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `new_customer_replied` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5809,7 +5974,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'customer_engagement_new_inbox'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `customer_engagement_new_inbox` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `customer_engagement_new_inbox` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5819,7 +5984,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'order_count'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `order_count` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `order_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5829,7 +5994,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_engagement_log' AND COLUMN_NAME = 'old_order_count'
 ) = 0,
-  'ALTER TABLE `page_engagement_log` ADD COLUMN `old_order_count` INT NULL',
+  'ALTER TABLE `page_engagement_log` ADD COLUMN `old_order_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5872,7 +6037,7 @@ CREATE TABLE IF NOT EXISTS `page_list_user` (
 `page_user_id` VARCHAR(255) NULL,
 `status` VARCHAR(50) NULL,
 `still_in_list` BOOLEAN NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -5880,7 +6045,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `page_id` VARCHAR(255) NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `page_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5890,7 +6055,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'page_user_id'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `page_user_id` VARCHAR(255) NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `page_user_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5900,7 +6065,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `status` VARCHAR(50) NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `status` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5910,7 +6075,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'still_in_list'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `still_in_list` BOOLEAN NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `still_in_list` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5920,7 +6085,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -5930,7 +6095,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_list_user' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `page_list_user` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_list_user` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6010,14 +6175,14 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `page_stats_batch` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `date_range` VARCHAR(255) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_batch' AND COLUMN_NAME = 'date_range'
 ) = 0,
-  'ALTER TABLE `page_stats_batch` ADD COLUMN `date_range` VARCHAR(255) NULL',
+  'ALTER TABLE `page_stats_batch` ADD COLUMN `date_range` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6027,7 +6192,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_batch' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `page_stats_batch` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_stats_batch` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6077,7 +6242,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'batch_id'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `batch_id` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `batch_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6087,7 +6252,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `page_id` VARCHAR(255) NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `page_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6097,7 +6262,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'time_column'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `time_column` VARCHAR(255) NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `time_column` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6107,7 +6272,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'new_customers'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `new_customers` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `new_customers` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6117,7 +6282,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'total_phones'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `total_phones` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `total_phones` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6127,7 +6292,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'new_phones'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `new_phones` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `new_phones` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6137,7 +6302,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'total_comments'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `total_comments` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `total_comments` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6147,7 +6312,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'total_chats'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `total_chats` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `total_chats` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6157,7 +6322,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'total_page_comments'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `total_page_comments` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `total_page_comments` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6167,7 +6332,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'total_page_chats'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `total_page_chats` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `total_page_chats` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6177,7 +6342,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'new_chats'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `new_chats` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `new_chats` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6187,7 +6352,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'chats_from_old_customers'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `chats_from_old_customers` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `chats_from_old_customers` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6197,7 +6362,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'web_logged_in'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `web_logged_in` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `web_logged_in` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6207,7 +6372,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'web_guest'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `web_guest` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `web_guest` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6217,7 +6382,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_stats_log' AND COLUMN_NAME = 'orders_count'
 ) = 0,
-  'ALTER TABLE `page_stats_log` ADD COLUMN `orders_count` INT NULL',
+  'ALTER TABLE `page_stats_log` ADD COLUMN `orders_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6270,7 +6435,7 @@ CREATE TABLE IF NOT EXISTS `page_user` (
 `page_user_id` VARCHAR(255) NULL,
 `page_user_name` VARCHAR(255) NULL,
 `page_count` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -6278,7 +6443,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6288,7 +6453,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'page_user_id'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `page_user_id` VARCHAR(255) NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `page_user_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6298,7 +6463,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'page_user_name'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `page_user_name` VARCHAR(255) NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `page_user_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6308,7 +6473,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'page_count'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `page_count` INT NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `page_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6318,7 +6483,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6328,7 +6493,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'page_user' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `page_user` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `page_user` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6406,7 +6571,7 @@ CREATE TABLE IF NOT EXISTS `pages` (
 `active` BOOLEAN NULL,
 `still_in_list` BOOLEAN NULL,
 `user_count` INT NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
 );
@@ -6414,7 +6579,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'page_id'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `page_id` VARCHAR(255) NULL',
+  'ALTER TABLE `pages` ADD COLUMN `page_id` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6424,7 +6589,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `pages` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6434,7 +6599,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'platform'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `platform` VARCHAR(64) NULL',
+  'ALTER TABLE `pages` ADD COLUMN `platform` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6444,7 +6609,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'page_type'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `page_type` VARCHAR(50) NULL',
+  'ALTER TABLE `pages` ADD COLUMN `page_type` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6454,7 +6619,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'url'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `url` VARCHAR(1024) NULL',
+  'ALTER TABLE `pages` ADD COLUMN `url` VARCHAR(1024) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6464,7 +6629,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `pages` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6474,7 +6639,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'active'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `active` BOOLEAN NULL',
+  'ALTER TABLE `pages` ADD COLUMN `active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6484,7 +6649,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'still_in_list'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `still_in_list` BOOLEAN NULL',
+  'ALTER TABLE `pages` ADD COLUMN `still_in_list` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6494,7 +6659,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'user_count'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `user_count` INT NULL',
+  'ALTER TABLE `pages` ADD COLUMN `user_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6504,7 +6669,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `pages` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6514,7 +6679,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `pages` ADD COLUMN `updated_at` TIMESTAMP NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6588,18 +6753,18 @@ CREATE TABLE IF NOT EXISTS `platforms` (
 `description` VARCHAR(255) NULL,
 `company_id` INT NULL,
 `active` BOOLEAN NULL,
-`role_show` VARCHAR(255) NULL,
 `sort_order` INT NULL,
 `show_pages_from` VARCHAR(64) NULL,
-`created_at` TIMESTAMP NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
+`role_show` VARCHAR(255) NULL,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `name` VARCHAR(64) NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `name` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6609,7 +6774,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'display_name'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `display_name` VARCHAR(128) NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `display_name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6619,7 +6784,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'description'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `description` VARCHAR(255) NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `description` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6629,7 +6794,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6639,17 +6804,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'active'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `active` BOOLEAN NULL',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'role_show'
-) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `role_show` VARCHAR(255) NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6659,7 +6814,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'sort_order'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `sort_order` INT NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `sort_order` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6669,7 +6824,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'show_pages_from'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `show_pages_from` VARCHAR(64) NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `show_pages_from` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6679,7 +6834,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `created_at` TIMESTAMP NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6689,7 +6844,17 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `platforms` ADD COLUMN `updated_at` TIMESTAMP NULL',
+  'ALTER TABLE `platforms` ADD COLUMN `updated_at` TIMESTAMP NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'platforms' AND COLUMN_NAME = 'role_show'
+) = 0,
+  'ALTER TABLE `platforms` ADD COLUMN `role_show` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6760,7 +6925,7 @@ CREATE TABLE IF NOT EXISTS `product_lots` (
 `supplier_invoice` VARCHAR(128) NULL,
 `status` VARCHAR(255) NULL,
 `notes` TEXT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -6768,7 +6933,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'lot_number'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `lot_number` VARCHAR(128) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `lot_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6778,7 +6943,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6788,7 +6953,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6798,7 +6963,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'purchase_date'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `purchase_date` DATE NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `purchase_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6808,7 +6973,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'expiry_date'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `expiry_date` DATE NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `expiry_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6818,7 +6983,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'quantity_received'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `quantity_received` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `quantity_received` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6828,7 +6993,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'quantity_remaining'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `quantity_remaining` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `quantity_remaining` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6838,7 +7003,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'unit_cost'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `unit_cost` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `unit_cost` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6848,7 +7013,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'supplier_id'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `supplier_id` INT NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `supplier_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6858,7 +7023,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'supplier_invoice'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `supplier_invoice` VARCHAR(128) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `supplier_invoice` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6868,7 +7033,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6888,7 +7053,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6898,7 +7063,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6908,7 +7073,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `product_lots` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `product_lots` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6984,7 +7149,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'sku'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `sku` VARCHAR(64) NULL',
+  'ALTER TABLE `products` ADD COLUMN `sku` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -6994,7 +7159,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `products` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7004,7 +7169,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `description` TEXT NULL',
+  'ALTER TABLE `products` ADD COLUMN `description` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7014,7 +7179,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'category'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `category` VARCHAR(128) NULL',
+  'ALTER TABLE `products` ADD COLUMN `category` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7024,7 +7189,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'unit'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `unit` VARCHAR(32) NULL',
+  'ALTER TABLE `products` ADD COLUMN `unit` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7034,7 +7199,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'cost'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `cost` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `products` ADD COLUMN `cost` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7044,7 +7209,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'price'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `price` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `products` ADD COLUMN `price` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7054,7 +7219,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'stock'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `stock` INT NULL',
+  'ALTER TABLE `products` ADD COLUMN `stock` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7064,7 +7229,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `products` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7074,7 +7239,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'shop'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `shop` VARCHAR(128) NULL',
+  'ALTER TABLE `products` ADD COLUMN `shop` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7084,7 +7249,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `products` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `products` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7134,7 +7299,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotion_items' AND COLUMN_NAME = 'promotion_id'
 ) = 0,
-  'ALTER TABLE `promotion_items` ADD COLUMN `promotion_id` INT NULL',
+  'ALTER TABLE `promotion_items` ADD COLUMN `promotion_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7144,7 +7309,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotion_items' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `promotion_items` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `promotion_items` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7154,7 +7319,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotion_items' AND COLUMN_NAME = 'quantity'
 ) = 0,
-  'ALTER TABLE `promotion_items` ADD COLUMN `quantity` INT NULL',
+  'ALTER TABLE `promotion_items` ADD COLUMN `quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7164,7 +7329,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotion_items' AND COLUMN_NAME = 'is_freebie'
 ) = 0,
-  'ALTER TABLE `promotion_items` ADD COLUMN `is_freebie` BOOLEAN NULL',
+  'ALTER TABLE `promotion_items` ADD COLUMN `is_freebie` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7174,7 +7339,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotion_items' AND COLUMN_NAME = 'price_override'
 ) = 0,
-  'ALTER TABLE `promotion_items` ADD COLUMN `price_override` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `promotion_items` ADD COLUMN `price_override` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7216,7 +7381,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'sku'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `sku` VARCHAR(64) NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `sku` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7226,7 +7391,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7236,7 +7401,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'description'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `description` TEXT NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `description` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7246,7 +7411,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7256,7 +7421,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'active'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `active` BOOLEAN NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7266,7 +7431,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'start_date'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `start_date` DATETIME NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `start_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7276,7 +7441,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'promotions' AND COLUMN_NAME = 'end_date'
 ) = 0,
-  'ALTER TABLE `promotions` ADD COLUMN `end_date` DATETIME NULL',
+  'ALTER TABLE `promotions` ADD COLUMN `end_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7316,13 +7481,56 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS `role_permissions` (
 `role` VARCHAR(64) NOT NULL,
 `data` TEXT NULL,
+`description` TEXT NULL,
+`updated_by` INT NULL,
+`updated_at` DATETIME NULL,
   PRIMARY KEY (`role`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions' AND COLUMN_NAME = 'data'
 ) = 0,
-  'ALTER TABLE `role_permissions` ADD COLUMN `data` TEXT NULL',
+  'ALTER TABLE `role_permissions` ADD COLUMN `data` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions' AND COLUMN_NAME = 'description'
+) = 0,
+  'ALTER TABLE `role_permissions` ADD COLUMN `description` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions' AND COLUMN_NAME = 'updated_by'
+) = 0,
+  'ALTER TABLE `role_permissions` ADD COLUMN `updated_by` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `role_permissions` ADD COLUMN `updated_at` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_permissions' AND INDEX_NAME = 'idx_role_permissions_updated'
+) = 0,
+  'CREATE INDEX `idx_role_permissions_updated` ON `role_permissions`(`updated_at`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7336,14 +7544,14 @@ CREATE TABLE IF NOT EXISTS `statement_batchs` (
 `row_count` INT NULL,
 `transfer_min` DATETIME NULL,
 `transfer_max` DATETIME NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7353,7 +7561,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7363,7 +7571,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'row_count'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `row_count` INT NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `row_count` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7373,7 +7581,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'transfer_min'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `transfer_min` DATETIME NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `transfer_min` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7383,7 +7591,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'transfer_max'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `transfer_max` DATETIME NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `transfer_max` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7393,7 +7601,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_batchs' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `statement_batchs` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `statement_batchs` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7419,7 +7627,7 @@ CREATE TABLE IF NOT EXISTS `statement_reconcile_batches` (
 `start_date` DATETIME NULL,
 `end_date` DATETIME NULL,
 `created_by` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `notes` TEXT NULL,
   PRIMARY KEY (`id`)
 );
@@ -7427,7 +7635,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'document_no'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `document_no` VARCHAR(120) NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `document_no` VARCHAR(120) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7437,7 +7645,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'bank_account_id'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `bank_account_id` INT NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `bank_account_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7447,7 +7655,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'bank_display_name'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `bank_display_name` VARCHAR(150) NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `bank_display_name` VARCHAR(150) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7457,7 +7665,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7467,7 +7675,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'start_date'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `start_date` DATETIME NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `start_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7477,7 +7685,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'end_date'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `end_date` DATETIME NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `end_date` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7487,7 +7695,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7497,7 +7705,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7507,7 +7715,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_batches' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `statement_reconcile_batches` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7562,14 +7770,14 @@ CREATE TABLE IF NOT EXISTS `statement_reconcile_logs` (
 `statement_amount` DECIMAL(12, 2) NULL,
 `confirmed_amount` DECIMAL(12, 2) NULL,
 `auto_matched` BOOLEAN NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'batch_id'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `batch_id` INT NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `batch_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7579,7 +7787,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'statement_log_id'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `statement_log_id` INT NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `statement_log_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7589,7 +7797,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7599,7 +7807,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'statement_amount'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `statement_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `statement_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7609,7 +7817,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'confirmed_amount'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `confirmed_amount` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `confirmed_amount` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7619,7 +7827,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'auto_matched'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `auto_matched` BOOLEAN NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `auto_matched` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7629,7 +7837,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'statement_reconcile_logs' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `statement_reconcile_logs` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7708,14 +7916,14 @@ CREATE TABLE IF NOT EXISTS `stock_movements` (
 `reason` VARCHAR(255) NULL,
 `notes` TEXT NULL,
 `created_by` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7725,7 +7933,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7735,7 +7943,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'movement_type'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `movement_type` VARCHAR(255) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `movement_type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7755,7 +7963,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'quantity'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `quantity` INT NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7765,7 +7973,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'lot_number'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `lot_number` VARCHAR(128) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `lot_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7775,7 +7983,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'reference_type'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `reference_type` VARCHAR(64) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `reference_type` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7785,7 +7993,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'reference_id'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `reference_id` VARCHAR(64) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `reference_id` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7795,7 +8003,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'reason'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `reason` VARCHAR(255) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `reason` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7805,7 +8013,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7815,7 +8023,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7825,7 +8033,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7893,14 +8101,14 @@ CREATE TABLE IF NOT EXISTS `stock_reservations` (
 `expires_at` DATETIME NULL,
 `status` VARCHAR(255) NULL,
 `created_by` INT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7910,7 +8118,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7920,7 +8128,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'order_id'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `order_id` VARCHAR(32) NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `order_id` VARCHAR(32) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7930,7 +8138,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'quantity'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `quantity` INT NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7940,7 +8148,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'lot_number'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `lot_number` VARCHAR(128) NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `lot_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7950,7 +8158,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'reserved_at'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `reserved_at` DATETIME NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `reserved_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7960,7 +8168,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'expires_at'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `expires_at` DATETIME NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `expires_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7970,7 +8178,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'status'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `status` VARCHAR(255) NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7990,7 +8198,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'created_by'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `created_by` INT NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `created_by` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8000,7 +8208,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `stock_reservations` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `stock_reservations` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8068,7 +8276,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tags' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `tags` ADD COLUMN `name` VARCHAR(128) NULL',
+  'ALTER TABLE `tags` ADD COLUMN `name` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8078,7 +8286,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tags' AND COLUMN_NAME = 'type'
 ) = 0,
-  'ALTER TABLE `tags` ADD COLUMN `type` VARCHAR(255) NULL',
+  'ALTER TABLE `tags` ADD COLUMN `type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8098,7 +8306,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tags' AND COLUMN_NAME = 'color'
 ) = 0,
-  'ALTER TABLE `tags` ADD COLUMN `color` VARCHAR(20) NULL',
+  'ALTER TABLE `tags` ADD COLUMN `color` VARCHAR(20) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8124,7 +8332,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8134,7 +8342,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'work_date'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `work_date` DATE NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `work_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8144,7 +8352,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'first_login'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `first_login` DATETIME NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `first_login` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8154,7 +8362,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'last_logout'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `last_logout` DATETIME NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `last_logout` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8164,7 +8372,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'login_sessions'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `login_sessions` INT NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `login_sessions` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8174,7 +8382,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'effective_seconds'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `effective_seconds` INT NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `effective_seconds` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8184,7 +8392,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'percent_of_workday'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `percent_of_workday` DECIMAL(5, 2) NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `percent_of_workday` DECIMAL(5, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8194,7 +8402,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'attendance_value'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `attendance_value` DECIMAL(3, 1) NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `attendance_value` DECIMAL(3, 1) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8204,7 +8412,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'attendance_status'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `attendance_status` VARCHAR(255) NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `attendance_status` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8224,7 +8432,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'computed_at'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `computed_at` DATETIME NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `computed_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8234,7 +8442,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_daily_attendance' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `user_daily_attendance` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `user_daily_attendance` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8275,7 +8483,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8285,7 +8493,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'login_time'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `login_time` DATETIME NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `login_time` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8295,7 +8503,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'ip_address'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `ip_address` VARCHAR(45) NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `ip_address` VARCHAR(45) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8305,7 +8513,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'user_agent'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `user_agent` TEXT NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `user_agent` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8315,7 +8523,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'logout_time'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `logout_time` DATETIME NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `logout_time` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8325,7 +8533,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'session_duration'
 ) = 0,
-  'ALTER TABLE `user_login_history` ADD COLUMN `session_duration` INT NULL',
+  'ALTER TABLE `user_login_history` ADD COLUMN `session_duration` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8356,14 +8564,14 @@ CREATE TABLE IF NOT EXISTS `user_pancake_mapping` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `id_user` INT NULL,
 `id_panake` VARCHAR(255) NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_pancake_mapping' AND COLUMN_NAME = 'id_user'
 ) = 0,
-  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `id_user` INT NULL',
+  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `id_user` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8373,7 +8581,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_pancake_mapping' AND COLUMN_NAME = 'id_panake'
 ) = 0,
-  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `id_panake` VARCHAR(255) NULL',
+  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `id_panake` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8383,7 +8591,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_pancake_mapping' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `user_pancake_mapping` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8430,6 +8638,148 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+CREATE TABLE IF NOT EXISTS `user_permission_overrides` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`user_id` INT NULL,
+`permission_key` VARCHAR(128) NULL,
+`permission_value` JSON NULL,
+`notes` TEXT NULL,
+`created_by` INT NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+`updated_at` DATETIME NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'user_id'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `user_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'permission_key'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `permission_key` VARCHAR(128) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'permission_value'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `permission_value` JSON NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'notes'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `notes` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'created_by'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `created_by` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD COLUMN `updated_at` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND INDEX_NAME = 'fk_user_permission_creator'
+) = 0,
+  'CREATE INDEX `fk_user_permission_creator` ON `user_permission_overrides`(`created_by`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND INDEX_NAME = 'idx_user_overrides_key'
+) = 0,
+  'CREATE INDEX `idx_user_overrides_key` ON `user_permission_overrides`(`permission_key`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND INDEX_NAME = 'idx_user_permission_user'
+) = 0,
+  'CREATE INDEX `idx_user_permission_user` ON `user_permission_overrides`(`user_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND INDEX_NAME = 'uniq_user_permission'
+) = 0,
+  'CREATE UNIQUE INDEX `uniq_user_permission` ON `user_permission_overrides`(`user_id`, `permission_key`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND CONSTRAINT_NAME = 'fk_user_permission_creator' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD CONSTRAINT `fk_user_permission_creator` FOREIGN KEY (`created_by`) REFERENCES `users`(`id`)  ON UPDATE NO ACTION',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_permission_overrides' AND CONSTRAINT_NAME = 'fk_user_permission_user' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `user_permission_overrides` ADD CONSTRAINT `fk_user_permission_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS `user_tags` (
 `user_id` INT NULL,
 `tag_id` INT NULL
@@ -8438,7 +8788,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tags' AND COLUMN_NAME = 'user_id'
 ) = 0,
-  'ALTER TABLE `user_tags` ADD COLUMN `user_id` INT NULL',
+  'ALTER TABLE `user_tags` ADD COLUMN `user_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8448,7 +8798,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tags' AND COLUMN_NAME = 'tag_id'
 ) = 0,
-  'ALTER TABLE `user_tags` ADD COLUMN `tag_id` INT NULL',
+  'ALTER TABLE `user_tags` ADD COLUMN `tag_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8459,6 +8809,85 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tags' AND INDEX_NAME = 'fk_user_tags_tag'
 ) = 0,
   'CREATE INDEX `fk_user_tags_tag` ON `user_tags`(`tag_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `user_tokens` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`user_id` INT NULL,
+`token` VARCHAR(64) NULL,
+`expires_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND COLUMN_NAME = 'user_id'
+) = 0,
+  'ALTER TABLE `user_tokens` ADD COLUMN `user_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND COLUMN_NAME = 'token'
+) = 0,
+  'ALTER TABLE `user_tokens` ADD COLUMN `token` VARCHAR(64) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND COLUMN_NAME = 'expires_at'
+) = 0,
+  'ALTER TABLE `user_tokens` ADD COLUMN `expires_at` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `user_tokens` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND INDEX_NAME = 'idx_user'
+) = 0,
+  'CREATE INDEX `idx_user` ON `user_tokens`(`user_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND INDEX_NAME = 'uniq_user_tokens_token'
+) = 0,
+  'CREATE UNIQUE INDEX `uniq_user_tokens_token` ON `user_tokens`(`token`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_tokens' AND CONSTRAINT_NAME = 'fk_token_user' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `user_tokens` ADD CONSTRAINT `fk_token_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8479,7 +8908,7 @@ CREATE TABLE IF NOT EXISTS `warehouse_stocks` (
 `selling_price` DECIMAL(12, 2) NULL,
 `location_in_warehouse` VARCHAR(255) NULL,
 `notes` TEXT NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -8487,7 +8916,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'warehouse_id'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `warehouse_id` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `warehouse_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8497,7 +8926,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'product_id'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `product_id` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `product_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8507,7 +8936,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'lot_number'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `lot_number` VARCHAR(128) NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `lot_number` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8517,7 +8946,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'product_lot_id'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `product_lot_id` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `product_lot_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8527,7 +8956,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'quantity'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `quantity` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8537,7 +8966,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'reserved_quantity'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `reserved_quantity` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `reserved_quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8547,7 +8976,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'available_quantity'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `available_quantity` INT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `available_quantity` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8557,7 +8986,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'expiry_date'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `expiry_date` DATE NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `expiry_date` DATE NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8567,7 +8996,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'purchase_price'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `purchase_price` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `purchase_price` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8577,7 +9006,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'selling_price'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `selling_price` DECIMAL(12, 2) NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `selling_price` DECIMAL(12, 2) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8587,7 +9016,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'location_in_warehouse'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `location_in_warehouse` VARCHAR(255) NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `location_in_warehouse` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8597,7 +9026,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'notes'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `notes` TEXT NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `notes` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8607,7 +9036,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8617,7 +9046,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_stocks' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `warehouse_stocks` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `warehouse_stocks` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8689,7 +9118,7 @@ CREATE TABLE IF NOT EXISTS `warehouses` (
 `manager_phone` VARCHAR(64) NULL,
 `responsible_provinces` TEXT NULL,
 `is_active` BOOLEAN NULL,
-`created_at` DATETIME NULL,
+`created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` DATETIME NULL,
   PRIMARY KEY (`id`)
 );
@@ -8697,7 +9126,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'name'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `name` VARCHAR(255) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8707,7 +9136,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'company_id'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `company_id` INT NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `company_id` INT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8717,7 +9146,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'address'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `address` TEXT NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `address` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8727,7 +9156,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'province'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `province` VARCHAR(128) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `province` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8737,7 +9166,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'district'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `district` VARCHAR(128) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `district` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8747,7 +9176,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'subdistrict'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `subdistrict` VARCHAR(128) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `subdistrict` VARCHAR(128) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8757,7 +9186,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'postal_code'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `postal_code` VARCHAR(16) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `postal_code` VARCHAR(16) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8767,7 +9196,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'phone'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `phone` VARCHAR(64) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8777,7 +9206,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'email'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `email` VARCHAR(255) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `email` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8787,7 +9216,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'manager_name'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `manager_name` VARCHAR(255) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `manager_name` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8797,7 +9226,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'manager_phone'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `manager_phone` VARCHAR(64) NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `manager_phone` VARCHAR(64) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8807,7 +9236,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'responsible_provinces'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `responsible_provinces` TEXT NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `responsible_provinces` TEXT NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8817,7 +9246,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'is_active'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `is_active` BOOLEAN NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `is_active` BOOLEAN NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8827,7 +9256,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'created_at'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `created_at` DATETIME NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8837,7 +9266,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses' AND COLUMN_NAME = 'updated_at'
 ) = 0,
-  'ALTER TABLE `warehouses` ADD COLUMN `updated_at` DATETIME NULL',
+  'ALTER TABLE `warehouses` ADD COLUMN `updated_at` DATETIME NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
