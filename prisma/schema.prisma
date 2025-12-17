@@ -174,6 +174,69 @@ model cod_records {
   @@index([tracking_number], map: "idx_tracking")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model commission_order_lines {
+  id                 Int                @id @default(autoincrement())
+  record_id          Int
+  order_id           String             @db.VarChar(32)
+  order_date         DateTime           @db.Date
+  confirmed_at       DateTime           @db.DateTime(0)
+  order_amount       Decimal            @db.Decimal(12, 2)
+  commission_amount  Decimal            @db.Decimal(12, 2)
+  created_at         DateTime?          @default(now()) @db.DateTime(0)
+  commission_records commission_records @relation(fields: [record_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "commission_order_lines_ibfk_1")
+
+  @@index([order_id], map: "idx_commission_order")
+  @@index([record_id], map: "record_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model commission_periods {
+  id                 Int                  @id @default(autoincrement())
+  company_id         Int
+  period_month       Int
+  period_year        Int
+  order_month        Int
+  order_year         Int
+  cutoff_date        DateTime             @db.Date
+  status             String?              @default("Draft") @db.VarChar(20)
+  total_sales        Decimal?             @default(0.00) @db.Decimal(14, 2)
+  total_commission   Decimal?             @default(0.00) @db.Decimal(14, 2)
+  total_orders       Int?                 @default(0)
+  calculated_at      DateTime?            @db.DateTime(0)
+  calculated_by      Int?
+  approved_at        DateTime?            @db.DateTime(0)
+  approved_by        Int?
+  paid_at            DateTime?            @db.DateTime(0)
+  notes              String?              @db.Text
+  created_at         DateTime?            @default(now()) @db.DateTime(0)
+  updated_at         DateTime?            @default(now()) @db.DateTime(0)
+  commission_records commission_records[]
+
+  @@unique([company_id, period_year, period_month], map: "unique_period")
+  @@index([company_id, period_year, period_month], map: "idx_period_company")
+  @@index([status], map: "idx_period_status")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model commission_records {
+  id                     Int                      @id @default(autoincrement())
+  period_id              Int
+  user_id                Int
+  total_sales            Decimal                  @default(0.00) @db.Decimal(12, 2)
+  commission_rate        Decimal?                 @db.Decimal(5, 2)
+  commission_amount      Decimal                  @default(0.00) @db.Decimal(12, 2)
+  order_count            Int?                     @default(0)
+  notes                  String?                  @db.Text
+  created_at             DateTime?                @default(now()) @db.DateTime(0)
+  commission_order_lines commission_order_lines[]
+  commission_periods     commission_periods       @relation(fields: [period_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "commission_records_ibfk_1")
+  users                  users                    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "commission_records_ibfk_2")
+
+  @@index([period_id, user_id], map: "idx_commission_period_user")
+  @@index([user_id], map: "user_id")
+}
+
 model companies {
   id         Int       @id @default(autoincrement())
   name       String    @db.VarChar(255)
@@ -324,6 +387,22 @@ model exports {
   download_count Int      @default(0)
 
   @@index([created_at], map: "idx_exports_created_at")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model google_sheet_shipping {
+  id                  Int       @id @default(autoincrement())
+  system_created_time DateTime  @db.DateTime(0)
+  order_number        String    @db.VarChar(128)
+  delivery_date       DateTime? @db.Date
+  delivery_status     String?   @db.VarChar(100)
+  imported_at         DateTime  @default(now()) @db.DateTime(0)
+  updated_at          DateTime  @default(now()) @db.DateTime(0)
+
+  @@index([delivery_date], map: "idx_delivery_date")
+  @@index([delivery_status], map: "idx_delivery_status")
+  @@index([order_number], map: "idx_order_number")
+  @@index([order_number, system_created_time], map: "idx_order_time")
 }
 
 model marketing_ads_log {
@@ -504,7 +583,6 @@ model order_boxes {
   @@index([status], map: "idx_order_boxes_status")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_item_allocations {
   id                 Int                           @id @default(autoincrement())
   order_id           String                        @db.VarChar(32)
@@ -531,7 +609,6 @@ model order_item_allocations {
   @@index([warehouse_id], map: "idx_allocations_warehouse")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_items {
   id                  Int     @id @default(autoincrement())
   order_id            String  @db.VarChar(32)
@@ -586,6 +663,21 @@ model order_slips {
   @@index([order_id], map: "idx_order_slips_order")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model order_status_logs {
+  id                Int      @id @default(autoincrement())
+  order_id          String   @db.VarChar(32)
+  previous_status   String?  @db.VarChar(50)
+  new_status        String?  @db.VarChar(50)
+  previous_tracking String?  @db.VarChar(100)
+  new_tracking      String?  @db.VarChar(100)
+  changed_at        DateTime @default(now()) @db.DateTime(0)
+  trigger_type      String   @db.VarChar(20)
+
+  @@index([changed_at], map: "idx_order_log_changed_at")
+  @@index([order_id], map: "idx_order_log_order_id")
+}
+
 model order_tracking_numbers {
   id              Int    @id @default(autoincrement())
   order_id        String @db.VarChar(32)
@@ -597,7 +689,6 @@ model order_tracking_numbers {
   @@index([parent_order_id], map: "idx_order_tracking_parent_order")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model orders {
   id                       String                     @id @db.VarChar(32)
   customer_id              Int?
@@ -622,7 +713,7 @@ model orders {
   slip_url                 String?                    @db.VarChar(1024)
   amount_paid              Decimal?                   @db.Decimal(12, 2)
   cod_amount               Decimal?                   @db.Decimal(12, 2)
-  order_status             orders_order_status?
+  order_status             orders_order_status        @default(Pending)
   notes                    String?                    @db.Text
   ocr_payment_date         DateTime?                  @db.DateTime(0)
   sales_channel            String?                    @db.VarChar(128)
@@ -676,7 +767,6 @@ model page_engagement_log {
   @@index([page_id], map: "idx_page_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_list_user {
   id            Int       @id @default(autoincrement())
   page_id       String    @db.VarChar(255)
@@ -695,7 +785,6 @@ model page_list_user {
   @@index([updated_at], map: "idx_updated_at")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_batch {
   id         Int       @id @default(autoincrement())
   date_range String    @db.VarChar(255)
@@ -705,7 +794,6 @@ model page_stats_batch {
   @@index([date_range], map: "idx_date_range")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_log {
   id                       Int    @id @default(autoincrement())
   batch_id                 Int
@@ -730,7 +818,6 @@ model page_stats_log {
   @@index([time_column], map: "idx_time_column")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_user {
   id             Int       @id @default(autoincrement())
   user_id        Int?
@@ -747,7 +834,6 @@ model page_user {
   @@index([user_id], map: "idx_user_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model pages {
   id            Int       @id @default(autoincrement())
   page_id       String?   @db.VarChar(255)
@@ -857,7 +943,6 @@ model promotions {
   @@index([start_date, end_date], map: "idx_promotions_dates")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model role_permissions {
   role        String    @id @db.VarChar(64)
   data        String    @db.Text
@@ -868,8 +953,6 @@ model role_permissions {
   @@index([updated_at], map: "idx_role_permissions_updated")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model roles {
   id          Int       @id @default(autoincrement())
   code        String    @unique(map: "code") @db.VarChar(64)
@@ -936,20 +1019,26 @@ model statement_reconcile_logs {
   id                          Int                         @id @default(autoincrement())
   batch_id                    Int
   statement_log_id            Int                         @unique(map: "uniq_statement_log")
-  order_id                    String                      @db.VarChar(32)
+  order_id                    String?                     @db.VarChar(32)
+  reconcile_type              String                      @default("Order") @db.VarChar(20)
   statement_amount            Decimal                     @db.Decimal(12, 2)
   confirmed_amount            Decimal?                    @db.Decimal(12, 2)
   auto_matched                Boolean                     @default(false)
   created_at                  DateTime                    @default(now()) @db.DateTime(0)
+  confirmed_at                DateTime?                   @db.DateTime(0)
+  confirmed_order_id          String?                     @db.VarChar(100)
+  confirmed_order_amount      Decimal?                    @db.Decimal(10, 2)
+  confirmed_payment_method    String?                     @db.VarChar(50)
+  confirmed_action            String?                     @db.VarChar(50)
   statement_reconcile_batches statement_reconcile_batches @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_batch")
-  orders                      orders                      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_order")
+  orders                      orders?                     @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_order")
   statement_logs              statement_logs              @relation(fields: [statement_log_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_statement_reconcile_statement")
 
   @@index([batch_id], map: "idx_statement_reconcile_batch")
   @@index([order_id, statement_log_id], map: "idx_statement_reconcile_order_statement")
+  @@index([reconcile_type], map: "idx_statement_reconcile_type")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model stock_movements {
   id             Int                           @id @default(autoincrement())
   warehouse_id   Int
@@ -971,7 +1060,6 @@ model stock_movements {
   @@index([movement_type], map: "idx_stock_movements_type")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model stock_reservations {
   id           Int                       @id @default(autoincrement())
   warehouse_id Int
@@ -999,7 +1087,6 @@ model tags {
   color String?   @db.VarChar(20)
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_daily_attendance {
   id                 BigInt                                  @id @default(autoincrement())
   user_id            Int
@@ -1018,7 +1105,6 @@ model user_daily_attendance {
   @@index([work_date], map: "idx_work_date")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_login_history {
   id               BigInt    @id @default(autoincrement())
   user_id          Int
@@ -1042,7 +1128,6 @@ model user_pancake_mapping {
   @@index([id_user], map: "idx_user")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_permission_overrides {
   id                                                Int       @id @default(autoincrement())
   user_id                                           Int
@@ -1080,7 +1165,6 @@ model user_tokens {
   @@index([user_id], map: "idx_user")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model users {
   id                                                                    Int                         @id @default(autoincrement())
   username                                                              String                      @unique(map: "username") @db.VarChar(64)
@@ -1101,6 +1185,7 @@ model users {
   last_login                                                            DateTime?                   @db.DateTime(0)
   login_count                                                           Int                         @default(0)
   cod_documents                                                         cod_documents[]
+  commission_records                                                    commission_records[]
   user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
   user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
   user_tokens                                                           user_tokens[]
@@ -1117,7 +1202,6 @@ model users {
   @@index([status], map: "idx_users_status")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouse_stocks {
   id                    Int       @id @default(autoincrement())
   warehouse_id          Int
@@ -1142,7 +1226,6 @@ model warehouse_stocks {
   @@index([quantity], map: "idx_warehouse_stocks_quantity")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouses {
   id                    Int      @id @default(autoincrement())
   name                  String   @db.VarChar(255)
@@ -1420,4 +1503,6 @@ enum orders_order_status {
   Delivered
   Returned
   Cancelled
+  Claiming
+  BadDebt
 }

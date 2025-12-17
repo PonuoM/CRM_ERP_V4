@@ -62,6 +62,7 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
     validate_auth($pdo);
 }
 
+try {
     switch ($resource) {
     case 'auth':
         handle_auth($pdo, $id);
@@ -247,6 +248,10 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
         break;
     default:
         json_response(['ok' => false, 'error' => 'NOT_FOUND', 'path' => $parts], 404);
+    }
+} catch (Throwable $e) {
+    error_log("API Error: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+    json_response(['ok' => false, 'error' => 'INTERNAL_ERROR', 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()], 500);
 }
 
 function ensure_user_pancake_mapping_table(PDO $pdo): void {
