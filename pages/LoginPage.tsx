@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { login } from '../services/api';
+import APP_BASE_PATH from '../appBasePath';
 
 type StatusTone = 'idle' | 'info' | 'success' | 'error';
 
@@ -430,8 +431,8 @@ export default function LoginPage() {
       localStorage.removeItem('checkinPromptSeenDate');
 
       setTimeout(() => {
-        // Always redirect to home page after login to avoid redirect loops
-        window.location.replace('/');
+        // Always redirect to home page (with correct base) after login to avoid redirect loops
+        window.location.replace(APP_BASE_PATH);
       }, 800);
     } catch (e: any) {
       const message =
