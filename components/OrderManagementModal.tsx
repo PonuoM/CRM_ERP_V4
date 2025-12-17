@@ -1884,6 +1884,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     });
   };
 
+  const handleBoxTrackingChange = (boxNumber: number, value: string) => {
+    setCurrentOrder((prev) => {
+      const boxes = (prev.boxes || []).map((box) => {
+        if (box.boxNumber === boxNumber) {
+          return { ...box, trackingNumber: value };
+        }
+        return box;
+      });
+      return { ...prev, boxes };
+    });
+  };
+
   // Removed manual confirm button: payment status derives from amountPaid
 
   const calculateOrderTotal = (
@@ -4008,6 +4020,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                   </table>
                 </div>
               </div>
+            )}
+
+
+          {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+            currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
+            currentOrder.boxes &&
+            currentOrder.boxes.length > 0 && (
+              <InfoCard icon={Truck} title="Tracking รายกล่อง">
+                <div className="flex flex-wrap gap-2">
+                  {currentOrder.boxes.map((box) => {
+                    const hasTracking = !!box.trackingNumber;
+                    return (
+                      <div
+                        key={box.boxNumber}
+                        className={`flex items-center px-2 py-1 rounded text-xs border ${hasTracking
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-gray-50 border-gray-200 text-gray-500"
+                          }`}
+                      >
+                        <span className="font-medium mr-2">
+                          กล่อง {box.boxNumber}:
+                        </span>
+                        <span>
+                          {hasTracking ? box.trackingNumber : "ยังไม่มี"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </InfoCard>
             )}
 
           <InfoCard icon={Truck} title="การจัดส่ง">
