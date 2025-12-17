@@ -5849,6 +5849,8 @@ const App: React.FC = () => {
           />
         );
       }
+
+      // If Admin clicks "Customers", they see ManageCustomersPage (List View)
       return (
         <ManageCustomersPage
           allUsers={companyUsers}
@@ -5863,6 +5865,17 @@ const App: React.FC = () => {
             setCreateOrderInitialData({ customer, upsell: true });
             setActivePage("CreateOrder");
           }}
+        />
+      );
+    }
+
+    // "Manage Customers" -> CustomerDistributionPage (Distribute List)
+    if (activePage === "Manage Customers") {
+      return (
+        <CustomerDistributionPage
+          allCustomers={companyCustomers}
+          allUsers={companyUsers}
+          setCustomers={setCustomers}
         />
       );
     }

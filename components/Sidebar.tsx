@@ -184,6 +184,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Users,
       children: [
         { label: "Customers", icon: Users, key: "nav.customers" },
+        {
+          label: "Manage Customers",
+          icon: Users,
+          key: "nav.manage_customers",
+          allowRule: (user: UserType) => user.role !== UserRole.Telesale
+        },
         { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
         { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
         { label: "Search", icon: Search, key: "nav.search" },
