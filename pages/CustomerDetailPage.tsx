@@ -1008,7 +1008,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               <td className="py-2 px-2">{c.result}</td>
                               <td className="py-2 px-2">{c.cropType || "-"}</td>
                               <td className="py-2 px-2">{c.areaSize || "-"}</td>
-                              <td className="py-2 px-2">{c.notes || "-"}</td>
+                              <td
+                                className="py-2 px-2 max-w-[200px] truncate"
+                                title={c.notes || ""}
+                              >
+                                {c.notes || "-"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1047,7 +1052,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                     {a.status}
                                   </span>
                                 </td>
-                                <td className="py-2 px-2">{a.notes || "-"}</td>
+                                <td
+                                  className="py-2 px-2 max-w-[200px] truncate"
+                                  title={a.notes || ""}
+                                >
+                                  {a.notes || "-"}
+                                </td>
                                 <td className="py-2 px-2">
                                   {a.status === "เสร็จสิ้น" ? (
                                     <Check

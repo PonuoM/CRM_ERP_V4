@@ -1266,6 +1266,9 @@ const App: React.FC = () => {
             }))
             : [],
         );
+        if (perms && (perms as any).data) {
+          setRolePermissions((perms as any).data);
+        }
       } catch (e) {
         // API failed - show error to user
         console.error("Failed to load data from database:", e);
@@ -1283,6 +1286,8 @@ const App: React.FC = () => {
         setCompanies([]);
         setWarehouses([]);
       }
+
+
     };
     load();
     return () => {
