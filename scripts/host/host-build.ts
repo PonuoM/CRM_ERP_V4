@@ -25,7 +25,7 @@ const apiDir = path.join(projectRoot, "api");
 const htaccessFile = path.join(projectRoot, ".htaccess");
 const rootConfigFile = path.join(projectRoot, "config.php");
 
-const excludedApiSubdirs = ["uploads"];
+const excludedApiSubdirs = ["uploads", "vendor"];
 
 function shouldExcludeApiPath(filePath: string): boolean {
   const relative = path.relative(apiDir, filePath);
@@ -98,9 +98,37 @@ function main(): void {
     console.log("Copying dist/ to host/dist...");
     copyDirectory(distDir, path.join(hostDir, "dist"));
 
-    // Copy api/ (excluding uploads)
-    console.log("Copying api/ to host/api (excluding uploads)...");
+    // Copy api/ (excluding uploads and vendor)
+    console.log("Copying api/ to host/api (excluding uploads and vendor)...");
     copyDirectory(apiDir, path.join(hostDir, "api"), shouldExcludeApiPath);
+
+    // Handle api/vendor special case (Compress to zip)
+    const vendorSrc = path.join(apiDir, "vendor");
+    const vendorDestDir = path.join(hostDir, "api", "vendor");
+    if (fs.existsSync(vendorSrc)) {
+      console.log("Processing api/vendor -> vendor.zip...");
+      if (!fs.existsSync(vendorDestDir)) {
+        fs.mkdirSync(vendorDestDir, { recursive: true });
+      }
+
+      const vendorZipPath = path.join(vendorDestDir, "vendor.zip");
+      const psSrc = path.join(vendorSrc, "*");
+
+      // Use PowerShell to compress. Note: standard string interpolation works for paths on Windows
+      // we wrap paths in quotes to handle potential spaces.
+      const cmd = `powershell -Command "Compress-Archive -Path '${psSrc}' -DestinationPath '${vendorZipPath}' -Force"`;
+
+      try {
+        console.log("Compressing vendor folder...");
+        execSync(cmd, { stdio: "inherit" });
+        console.log("Vendor zip created successfully.");
+      } catch (e) {
+        console.error("Failed to create vendor zip:", e);
+        // Don't fail the whole build if zip fails? Or should we?
+        // Usually build should fail.
+        throw e;
+      }
+    }
 
     // Copy .htaccess
     console.log("Copying .htaccess (if exists)...");
