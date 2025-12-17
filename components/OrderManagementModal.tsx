@@ -1837,11 +1837,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     try {
       await patchOrder(currentOrder.id, {
         paymentStatus: PaymentStatus.PendingVerification,
+        amountPaid: null,
       });
 
       const updated = {
         ...currentOrder,
         paymentStatus: PaymentStatus.PendingVerification,
+        amountPaid: null as any,
       };
 
       setCurrentOrder(updated);
