@@ -664,6 +664,48 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   const showInputs = isModifiable && isEditing;
 
+  const sortedItemsWithIndex = useMemo(() => {
+    const items = currentOrder.items || [];
+    // Map items to include their original index
+    const itemsWithIndex = items.map((item, index) => ({ item, index }));
+
+    // Group children by parentItemId
+    const childrenMap = new Map<number, typeof itemsWithIndex>();
+    itemsWithIndex.forEach((entry) => {
+      const parentId = (entry.item as any).parentItemId;
+      if (parentId) {
+        if (!childrenMap.has(parentId)) {
+          childrenMap.set(parentId, []);
+        }
+        childrenMap.get(parentId)?.push(entry);
+      }
+    });
+
+    const sorted: typeof itemsWithIndex = [];
+    const processedChildren = new Set<number>();
+
+    // Iterate through items to build sorted list
+    itemsWithIndex.forEach((entry) => {
+      // If it's a child, skip (will be added after parent)
+      if ((entry.item as any).parentItemId) return;
+
+      // Add parent/regular item
+      sorted.push(entry);
+
+      // Check if this item is a parent and add its children immediately after
+      const itemId = entry.item.id;
+      if (childrenMap.has(itemId)) {
+        const children = childrenMap.get(itemId) || [];
+        children.forEach((child) => {
+          sorted.push(child);
+          processedChildren.add(child.index);
+        });
+      }
+    });
+
+    return sorted;
+  }, [currentOrder.items]);
+
   const handleAddItem = () => {
     if (!currentUser) return;
 
@@ -2678,7 +2720,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 <tbody>
                   {(() => {
                     let rowNumber = 0; // Counter for non-child items only
-                    return currentOrder.items.map((item, index) => {
+                    return sortedItemsWithIndex.map(({ item, index }) => {
                       // Increment row number only for non-child items
                       if (!(item as any).parentItemId) {
                         rowNumber++;
@@ -4035,8 +4077,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       <div
                         key={box.boxNumber}
                         className={`flex items-center px-2 py-1 rounded text-xs border ${hasTracking
-                            ? "bg-green-50 border-green-200 text-green-700"
-                            : "bg-gray-50 border-gray-200 text-gray-500"
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-gray-50 border-gray-200 text-gray-500"
                           }`}
                       >
                         <span className="font-medium mr-2">
