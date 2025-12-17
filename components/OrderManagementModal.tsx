@@ -1798,6 +1798,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               : undefined,
             url: slip.url,
             updatedBy: currentUser?.id,
+            companyId: currentOrder.companyId,
           });
         }
       }
