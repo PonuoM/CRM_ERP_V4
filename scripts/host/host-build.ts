@@ -140,18 +140,23 @@ function main(): void {
     if (!vendorZipReady && fs.existsSync(vendorSrc)) {
       console.log("Processing api/vendor -> vendor.zip...");
 
-      const psSrc = path.join(vendorSrc, "*");
-
-      // Use PowerShell to compress. Note: standard string interpolation works for paths on Windows
-      // we wrap paths in quotes to handle potential spaces.
-      const cmd = `powershell -Command "Compress-Archive -Path '${psSrc}' -DestinationPath '${vendorZipDest}' -Force"`;
+      // Use tar (available on Windows 10/11) to create zip with forward slashes
+      // -a: Auto-detect compression (zip) based on extension
+      // -c: Create
+      // -f: File
+      // -C: Change directory (so zip contents are relative to vendor root)
+      const cmd = `tar -a -c -f "${vendorZipDest}" -C "${vendorSrc}" .`;
 
       try {
-        console.log("Compressing vendor folder...");
+        console.log("Compressing vendor folder using tar...");
         execSync(cmd, { stdio: "inherit" });
         console.log("Vendor zip created successfully.");
       } catch (e) {
         console.error("Failed to create vendor zip:", e);
+        if (fs.existsSync(vendorZipDest)) {
+          console.log("Removing partial/corrupt vendor.zip...");
+          fs.unlinkSync(vendorZipDest);
+        }
         throw e;
       }
     } else if (vendorZipReady) {
