@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api'; // Adjust path based on location
-import { Search, Loader2, ExternalLink, Filter, CheckSquare, TrendingUp, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
+import { Search, Loader2, ExternalLink, Filter, CheckSquare, TrendingUp, AlertCircle, Calendar, CheckCircle, X, Copy, Check } from 'lucide-react';
 import { Order, ModalType } from '../../types';
 import StatCard from '../../components/StatCard';
 import OrderDetailModal from '../../components/OrderDetailModal';
+import TrackingModal from '../../components/TrackingModal';
 
 
 
@@ -31,6 +32,14 @@ const RevenueRecognitionPage: React.FC = () => {
     const [year, setYear] = useState(new Date().getFullYear());
     // Modal State
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+    const [openTrackingId, setOpenTrackingId] = useState<string | null>(null);
+
+    // Close popup when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => setOpenTrackingId(null);
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, []);
 
     const fetchData = async () => {
         setLoading(true);
@@ -220,11 +229,32 @@ const RevenueRecognitionPage: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 {item.tracking_no ? (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs">
-                                                        {item.tracking_no}
-                                                    </span>
+                                                    <div className="flex flex-wrap gap-1 justify-center relative">
+                                                        {item.tracking_no.split(',').map((track, i) => {
+                                                            const t = track.trim();
+                                                            if (i < 2) {
+                                                                return (
+                                                                    <span key={i} className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs border border-gray-200">
+                                                                        {t}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })}
+                                                        {item.tracking_no.split(',').length > 2 && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenTrackingId(item.id);
+                                                                }}
+                                                                className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] border border-blue-100 hover:bg-blue-100 transition-colors"
+                                                            >
+                                                                +{item.tracking_no.split(',').length - 2}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 ) : item.goods_issue_date ? (
-                                                    <span className="text-xs text-gray-500">Log Detected</span>
+                                                    <span className="text-xs text-gray-400">Log Detected</span>
                                                 ) : (
                                                     '-'
                                                 )}
@@ -265,6 +295,20 @@ const RevenueRecognitionPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Tracking Modal */}
+            {openTrackingId && (() => {
+                const item = data.find(d => d.id === openTrackingId);
+                if (!item) return null;
+                return (
+                    <TrackingModal
+                        isOpen={true}
+                        onClose={() => setOpenTrackingId(null)}
+                        trackingNo={item.tracking_no}
+                    />
+                );
+            })()}
+
             {/* Order Detail Modal */}
             <OrderDetailModal
                 isOpen={!!selectedOrderId}
@@ -275,4 +319,5 @@ const RevenueRecognitionPage: React.FC = () => {
     );
 };
 
+// Local definition removed, using imported component
 export default RevenueRecognitionPage;

@@ -33,6 +33,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 500];
 
 // --- Order Detail Modal Component ---
 import OrderDetailModal from '../../components/OrderDetailModal';
+import TrackingModal from '../../components/TrackingModal';
 
 
 
@@ -44,7 +45,7 @@ const AllOrdersSentPage: React.FC = () => {
     // Filters
     // Set default range to current month
     const [startDate, setStartDate] = useState<string>(
-        new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`
     );
     const [endDate, setEndDate] = useState<string>(
         new Date().toISOString().split('T')[0]
@@ -63,6 +64,7 @@ const AllOrdersSentPage: React.FC = () => {
 
     // Modal State
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+    const [openTrackingId, setOpenTrackingId] = useState<string | null>(null);
 
     useEffect(() => {
         loadBanks();
@@ -397,12 +399,29 @@ const AllOrdersSentPage: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 max-w-xs break-words text-xs">
                                             {order.tracking_numbers ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {order.tracking_numbers.split(', ').map((t, idx) => (
-                                                        <span key={idx} className="bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[120px] inline-block font-mono" title={t}>
-                                                            {t}
-                                                        </span>
-                                                    ))}
+                                                <div className="flex flex-wrap gap-1 relative">
+                                                    {order.tracking_numbers.split(', ').map((t, idx) => {
+                                                        const cleanTrack = t.trim();
+                                                        if (idx < 2) {
+                                                            return (
+                                                                <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs border border-gray-200 font-mono">
+                                                                    {cleanTrack}
+                                                                </span>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })}
+                                                    {order.tracking_numbers.split(', ').length > 2 && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenTrackingId(order.id);
+                                                            }}
+                                                            className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] border border-blue-100 hover:bg-blue-100 transition-colors"
+                                                        >
+                                                            +{order.tracking_numbers.split(', ').length - 2}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ) : <span className="text-slate-300">-</span>}
                                         </td>
@@ -455,6 +474,19 @@ const AllOrdersSentPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Tracking Modal */}
+            {openTrackingId && (() => {
+                const item = orders.find(d => d.id === openTrackingId);
+                if (!item || !item.tracking_numbers) return null;
+                return (
+                    <TrackingModal
+                        isOpen={true}
+                        onClose={() => setOpenTrackingId(null)}
+                        trackingNo={item.tracking_numbers}
+                    />
+                );
+            })()}
 
             {/* Order Detail Modal */}
             <OrderDetailModal

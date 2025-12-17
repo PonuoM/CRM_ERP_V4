@@ -27,15 +27,16 @@ function handle_revenue_recognition(PDO $pdo) {
                 o.shipping_provider, 
                 (SELECT GROUP_CONCAT(tracking_number SEPARATOR ', ') FROM order_tracking_numbers WHERE parent_order_id = o.id) as tracking_no,
                 -- Find the earliest 'Goods Issue' event from the logs
-                (
+                -- Find the earliest 'Goods Issue' event from the logs OR use delivery_date for Airport
+                IF(o.shipping_provider = 'Airport', o.delivery_date, (
                     SELECT MIN(changed_at) 
                     FROM order_status_logs LOG 
                     WHERE LOG.order_id = o.id 
                     AND (
-                        LOG.new_status IN ('Shipped', 'Delivered', 'Completed') 
+                        LOG.new_status IN ('Shipping', 'Shipped', 'Delivered', 'Completed') 
                         OR LOG.trigger_type = 'TrackingUpdate'
                     )
-                ) as goods_issue_date
+                )) as goods_issue_date
             FROM orders o
             LEFT JOIN customers c ON c.customer_id = o.customer_id
             WHERE 
@@ -48,17 +49,21 @@ function handle_revenue_recognition(PDO $pdo) {
                     WHERE LOG.order_id = o.id 
                     AND MONTH(LOG.changed_at) = :m2 AND YEAR(LOG.changed_at) = :y2
                     AND (
-                        LOG.new_status IN ('Shipped', 'Delivered', 'Completed') 
+                        LOG.new_status IN ('Shipping', 'Shipped', 'Delivered', 'Completed') 
                         OR LOG.trigger_type = 'TrackingUpdate'
                     )
                 )
+                OR
+                -- Filter 3: Airport orders with delivery_date in this month
+                (o.shipping_provider = 'Airport' AND MONTH(o.delivery_date) = :m3 AND YEAR(o.delivery_date) = :y3)
             ORDER BY o.order_date DESC
         ";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             ':m1' => $month, ':y1' => $year,
-            ':m2' => $month, ':y2' => $year
+            ':m2' => $month, ':y2' => $year,
+            ':m3' => $month, ':y3' => $year
         ]);
         
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -79,7 +84,7 @@ function handle_revenue_recognition(PDO $pdo) {
                 $row['is_recognized'] = true;
             } else {
                 // Fallback for legacy/manual data checks
-                if (!empty($row['tracking_no']) || in_array($row['order_status'], ['Shipped', 'Delivered', 'Completed'])) {
+                if (!empty($row['tracking_no']) || in_array($row['order_status'], ['Shipping', 'Shipped', 'Delivered', 'Completed'])) {
                     $row['status_note'] = 'Legacy/Manual Check';
                 }
             }
