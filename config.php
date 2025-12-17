@@ -6,8 +6,8 @@ $DB_HOST = getenv("DB_HOST") ?: "localhost";
 $DB_PORT = getenv("DB_PORT") ?: "3306";
 $DB_NAME = getenv("DB_NAME") ?: "primacom_mini_erp";
 $DB_USER = getenv("DB_USER") ?: "primacom_bloguser";
-// $DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
-$DB_PASS = getenv("DB_PASS") ?: "MzBpsVmDmhg8afrxgaUg";
+$DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
+// $DB_PASS = getenv("DB_PASS") ?: "MzBpsVmDmhg8afrxgaUg";
 
 function db_connect(): PDO
 {
