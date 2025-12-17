@@ -4306,6 +4306,17 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       ...orderData,
       items: normalizedItems,
 
+      // For PayAfter, force the first box to carry the full amount, others 0
+      boxes:
+        orderData.paymentMethod === PaymentMethod.PayAfter &&
+          orderData.boxes &&
+          orderData.boxes.length > 0
+          ? orderData.boxes.map((box, index) => ({
+            ...box,
+            codAmount: index === 0 ? totalAmount : 0,
+          }))
+          : orderData.boxes,
+
       shippingAddress,
 
       totalAmount,
