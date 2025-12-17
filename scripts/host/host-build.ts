@@ -79,10 +79,25 @@ function copyFileIfExists(src: string, dest: string, label?: string): void {
   }
 }
 
+// Parse args
+const args = process.argv.slice(2);
+const forceZip = args.includes("--zip");
+
 function main(): void {
   console.log("Starting host build...");
 
+  let preservedVendorZipPath: string | null = null;
+  const vendorZipDest = path.join(hostDir, "api", "vendor", "vendor.zip");
+  const tempVendorZip = path.join(projectRoot, "temp_vendor.zip");
+
   try {
+    // 1. Check if we can preserve vendor.zip
+    if (!forceZip && fs.existsSync(vendorZipDest)) {
+      console.log("Found existing vendor.zip. Preserving...");
+      fs.copyFileSync(vendorZipDest, tempVendorZip);
+      preservedVendorZipPath = tempVendorZip;
+    }
+
     // Clean host directory
     if (fs.existsSync(hostDir)) {
       console.log("Removing existing host directory...");
@@ -105,18 +120,31 @@ function main(): void {
     // Handle api/vendor special case (Compress to zip)
     const vendorSrc = path.join(apiDir, "vendor");
     const vendorDestDir = path.join(hostDir, "api", "vendor");
-    if (fs.existsSync(vendorSrc)) {
-      console.log("Processing api/vendor -> vendor.zip...");
-      if (!fs.existsSync(vendorDestDir)) {
-        fs.mkdirSync(vendorDestDir, { recursive: true });
-      }
 
-      const vendorZipPath = path.join(vendorDestDir, "vendor.zip");
+    // Create vendor dir
+    if (!fs.existsSync(vendorDestDir)) {
+      fs.mkdirSync(vendorDestDir, { recursive: true });
+    }
+
+    let vendorZipReady = false;
+
+    // 2. Restore preserved zip if available
+    if (preservedVendorZipPath && fs.existsSync(preservedVendorZipPath)) {
+      console.log("Restoring preserved vendor.zip...");
+      fs.copyFileSync(preservedVendorZipPath, vendorZipDest);
+      fs.unlinkSync(preservedVendorZipPath); // Clean up temp
+      vendorZipReady = true;
+    }
+
+    // 3. Create zip if not ready
+    if (!vendorZipReady && fs.existsSync(vendorSrc)) {
+      console.log("Processing api/vendor -> vendor.zip...");
+
       const psSrc = path.join(vendorSrc, "*");
 
       // Use PowerShell to compress. Note: standard string interpolation works for paths on Windows
       // we wrap paths in quotes to handle potential spaces.
-      const cmd = `powershell -Command "Compress-Archive -Path '${psSrc}' -DestinationPath '${vendorZipPath}' -Force"`;
+      const cmd = `powershell -Command "Compress-Archive -Path '${psSrc}' -DestinationPath '${vendorZipDest}' -Force"`;
 
       try {
         console.log("Compressing vendor folder...");
@@ -124,10 +152,10 @@ function main(): void {
         console.log("Vendor zip created successfully.");
       } catch (e) {
         console.error("Failed to create vendor zip:", e);
-        // Don't fail the whole build if zip fails? Or should we?
-        // Usually build should fail.
         throw e;
       }
+    } else if (vendorZipReady) {
+      console.log("Skipped vendor compression (using preserved file).");
     }
 
     // Copy .htaccess
@@ -144,8 +172,15 @@ function main(): void {
 
     console.log("Host build completed successfully.");
     console.log(`Host folder ready at: ${hostDir}`);
-    console.log("Contents: api/, dist/, .htaccess, and api/config.php replaced.");
+    console.log(
+      "Contents: api/, dist/, .htaccess, and api/config.php replaced.",
+    );
   } catch (err) {
+    // Cleanup temp if exists and we crashed
+    if (fs.existsSync(tempVendorZip)) {
+      fs.unlinkSync(tempVendorZip);
+    }
+
     const error = err as Error;
     console.error("Host build failed:", error.message);
     process.exit(1);
