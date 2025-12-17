@@ -3501,13 +3501,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               </span>
                               <span className="text-sm font-bold text-green-600">
                                 ฿
-                                {slips
-                                  .filter((s: any) => s.checked)
-                                  .reduce(
-                                    (sum, s) => sum + (Number(s.amount) || 0),
-                                    0,
-                                  )
-                                  .toLocaleString()}
+                                {(Number(currentOrder.amountPaid) || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="border-t border-gray-200 my-2 pt-2 flex justify-between items-center">
