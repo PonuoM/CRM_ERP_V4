@@ -620,6 +620,18 @@ export async function listCustomerBlocks(customerId?: string) {
   return apiFetch(`customer_blocks${customerId ? `?${qs}` : ""}`);
 }
 
+export async function getOrderStats(companyId: number) {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${apiBasePath}/Orders/stats.php?company_id=${companyId}`, {
+    method: "GET",
+    headers,
+  });
+  return res.json();
+}
+
 export async function unblockCustomerBlock(id: number, unblockedBy: number) {
   return apiFetch(`customer_blocks/${encodeURIComponent(String(id))}`, {
     method: "PATCH",

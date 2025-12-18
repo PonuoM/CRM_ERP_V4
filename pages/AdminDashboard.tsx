@@ -3,7 +3,7 @@ import { User, Order, Customer, OrderStatus, CustomerGrade } from '../types';
 import StatCard from '../components/StatCard';
 import { MonthlyOrdersChart, CustomerGradeChart } from '../components/Charts';
 import { Users, ShoppingCart, BarChart2, DollarSign, List, Award, PlusCircle } from 'lucide-react';
-import { getCustomerStats } from '../services/api';
+import { getCustomerStats, getOrderStats } from '../services/api';
 
 interface AdminDashboardProps {
     user: User;
@@ -51,25 +51,44 @@ const SummaryTable: React.FC<{ title: string, data: { label: string, value: numb
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers, openCreateOrderModal }) => {
     console.log("AdminDashboard: Rendered with user:", user);
     const [dbStats, setDbStats] = React.useState<{ totalCustomers: number; grades: Record<string, number> } | null>(null);
+    const [orderStats, setOrderStats] = React.useState<{ totalOrders: number; totalRevenue: number; avgOrderValue: number; statusCounts: Record<string, number>; monthlyCounts: Record<string, number> } | null>(null);
     const [loadingStats, setLoadingStats] = React.useState(!!user.companyId);
 
     React.useEffect(() => {
-        if (user.companyId) {
-            console.log("AdminDashboard: fetching customer stats for company", user.companyId);
-            getCustomerStats(user.companyId).then(res => {
-                console.log("AdminDashboard: retrieved stats", res);
-                if (res.ok && res.stats) {
-                    setDbStats(res.stats);
+        if (user.companyId) { // Only dependency is companyId, effectively "on load" for a logged-in user context
+            console.log("AdminDashboard: fetching stats for company", user.companyId);
+
+            Promise.all([
+                getCustomerStats(user.companyId),
+                getOrderStats(user.companyId)
+            ]).then(([custRes, orderRes]) => {
+                console.log("AdminDashboard: retrieved stats", custRes, orderRes);
+                if (custRes.ok && custRes.stats) {
+                    setDbStats(custRes.stats);
+                }
+                if (orderRes.ok && orderRes.stats) {
+                    setOrderStats(orderRes.stats);
                 }
             })
                 .catch(err => console.error("Failed to load stats", err))
                 .finally(() => setLoadingStats(false));
+
         } else {
             console.warn("AdminDashboard: no companyId to fetch stats", user);
+            setLoadingStats(false);
         }
     }, [user.companyId]);
 
     const stats = useMemo(() => {
+        if (orderStats) {
+            return {
+                totalCustomers: dbStats ? dbStats.totalCustomers : (loadingStats ? 0 : customers.length),
+                totalOrders: orderStats.totalOrders,
+                totalRevenue: orderStats.totalRevenue,
+                avgOrderValue: orderStats.avgOrderValue,
+            };
+        }
+
         const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
         const totalOrders = orders.length;
         const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -80,16 +99,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
             totalRevenue,
             avgOrderValue,
         };
-    }, [orders, customers.length, dbStats, loadingStats]);
+    }, [orders, customers.length, dbStats, loadingStats, orderStats]);
 
     const orderStatusData = useMemo(() => {
+        if (orderStats?.statusCounts) {
+            const total = orderStats.totalOrders || 1;
+            return Object.entries(orderStats.statusCounts)
+                .map(([label, value]) => ({ label, value, total }));
+        }
+
         const statusCounts = orders.reduce((acc, order) => {
             acc[order.orderStatus] = (acc[order.orderStatus] || 0) + 1;
             return acc;
         }, {} as Record<OrderStatus, number>);
 
         return Object.entries(statusCounts).map(([label, value]) => ({ label, value, total: orders.length }));
-    }, [orders]);
+    }, [orders, orderStats]);
 
     const customerGradeData = useMemo(() => {
         if (loadingStats) {
@@ -151,12 +176,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                <MonthlyOrdersChart />
+                <MonthlyOrdersChart data={orderStats?.monthlyCounts} loading={loadingStats} />
                 <CustomerGradeChart grades={customerGradeData} loading={loadingStats} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <SummaryTable title="สถานะคำสั่งซื้อ" data={orderStatusData} icon={List} header={['สถานะ', 'จำนวน', 'เปอร์เซ็นต์']} />
+                <SummaryTable title="สถานะคำสั่งซื้อ" data={orderStatusData} icon={List} header={['สถานะ', 'จำนวน', 'เปอร์เซ็นต์']} loading={loadingStats} />
                 <SummaryTable title="เกรดลูกค้า" data={customerGradeData} icon={Award} header={['เกรด', 'จำนวน', 'เปอร์เซ็นต์']} loading={loadingStats} />
             </div>
 
