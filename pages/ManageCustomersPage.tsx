@@ -140,7 +140,15 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           lifecycle: apLifecycle || undefined,
           behavioral: apBehavioral || undefined,
           userId: currentUser.id, // For upsell check exclusion context
-          // Note: apDateAssigned / apOwnership logic can be added here if backend supports it
+          // Advanced filters
+          name: apName || undefined,
+          phone: apPhone || undefined,
+          grade: apGrade || undefined,
+          hasOrders: apHasOrders !== 'all' ? apHasOrders : undefined,
+          dateAssignedStart: apDateAssigned.start || undefined,
+          dateAssignedEnd: apDateAssigned.end || undefined,
+          ownershipStart: apOwnership.start || undefined,
+          ownershipEnd: apOwnership.end || undefined,
         });
 
         // Handle result (normalized to { total, data })
@@ -161,6 +169,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
     return () => clearTimeout(timeout);
   }, [
     currentUser.companyId,
+    currentUser.id,
     currentPage,
     itemsPerPage,
     searchTerm,
@@ -168,9 +177,15 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
     apProvince,
     apLifecycle,
     apBehavioral,
-    // Trigger on advanced search application
     apSelectedUser,
-    apName, // redundant with searchTerm if mapped?
+    apName,
+    apPhone,
+    apGrade,
+    apHasOrders,
+    apDateAssigned.start,
+    apDateAssigned.end,
+    apOwnership.start,
+    apOwnership.end,
   ]);
 
   // Use fetched customers for display

@@ -119,6 +119,15 @@ export async function listCustomers(params?: {
   assignedTo?: number;
   page?: number;
   pageSize?: number;
+  // Advanced filters
+  name?: string;
+  phone?: string;
+  grade?: string;
+  hasOrders?: "all" | "yes" | "no";
+  dateAssignedStart?: string;
+  dateAssignedEnd?: string;
+  ownershipStart?: string;
+  ownershipEnd?: string;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -135,6 +144,15 @@ export async function listCustomers(params?: {
   if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
   // Pass userId to context (e.g. for upsell exclusion)
   if (params?.userId) qs.set("userId", String(params.userId));
+  // Advanced filters
+  if (params?.name) qs.set("name", params.name);
+  if (params?.phone) qs.set("phone", params.phone);
+  if (params?.grade) qs.set("grade", params.grade);
+  if (params?.hasOrders && params.hasOrders !== "all") qs.set("hasOrders", params.hasOrders);
+  if (params?.dateAssignedStart) qs.set("dateAssignedStart", params.dateAssignedStart);
+  if (params?.dateAssignedEnd) qs.set("dateAssignedEnd", params.dateAssignedEnd);
+  if (params?.ownershipStart) qs.set("ownershipStart", params.ownershipStart);
+  if (params?.ownershipEnd) qs.set("ownershipEnd", params.ownershipEnd);
 
   const query = qs.toString();
   const response = await apiFetch(`customers${query ? `?${query}` : ""}`);

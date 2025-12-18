@@ -727,6 +727,77 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $params[] = (int)$assignedTo; 
                         }
 
+                        // Additional advanced filters
+                        $name = $_GET['name'] ?? null;
+                        $phone = $_GET['phone'] ?? null;
+                        $grade = $_GET['grade'] ?? null;
+                        $hasOrders = $_GET['hasOrders'] ?? null;
+                        $dateAssignedStart = $_GET['dateAssignedStart'] ?? null;
+                        $dateAssignedEnd = $_GET['dateAssignedEnd'] ?? null;
+                        $ownershipStart = $_GET['ownershipStart'] ?? null;
+                        $ownershipEnd = $_GET['ownershipEnd'] ?? null;
+
+                        if ($name && $name !== '') {
+                            $where[] = '(first_name LIKE ? OR last_name LIKE ?)';
+                            $params[] = "%$name%";
+                            $params[] = "%$name%";
+                        }
+
+                        if ($phone && $phone !== '') {
+                            $where[] = 'phone LIKE ?';
+                            $params[] = "%$phone%";
+                        }
+
+                        if ($grade && $grade !== '') {
+                            // Grade is calculated from total_purchases
+                            // A+: >= 50000, A: >= 10000, B: >= 5000, C: >= 2000, D: < 2000
+                            switch ($grade) {
+                                case 'A+':
+                                    $where[] = 'total_purchases >= 50000';
+                                    break;
+                                case 'A':
+                                    $where[] = 'total_purchases >= 10000 AND total_purchases < 50000';
+                                    break;
+                                case 'B':
+                                    $where[] = 'total_purchases >= 5000 AND total_purchases < 10000';
+                                    break;
+                                case 'C':
+                                    $where[] = 'total_purchases >= 2000 AND total_purchases < 5000';
+                                    break;
+                                case 'D':
+                                    $where[] = 'total_purchases < 2000';
+                                    break;
+                            }
+                        }
+
+                        if ($hasOrders && $hasOrders !== 'all') {
+                            if ($hasOrders === 'yes') {
+                                $where[] = 'EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.customer_id)';
+                            } elseif ($hasOrders === 'no') {
+                                $where[] = 'NOT EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.customer_id)';
+                            }
+                        }
+
+                        if ($dateAssignedStart && $dateAssignedStart !== '') {
+                            $where[] = 'date_assigned >= ?';
+                            $params[] = $dateAssignedStart . ' 00:00:00';
+                        }
+
+                        if ($dateAssignedEnd && $dateAssignedEnd !== '') {
+                            $where[] = 'date_assigned <= ?';
+                            $params[] = $dateAssignedEnd . ' 23:59:59';
+                        }
+
+                        if ($ownershipStart && $ownershipStart !== '') {
+                            $where[] = 'ownership_expires >= ?';
+                            $params[] = $ownershipStart . ' 00:00:00';
+                        }
+
+                        if ($ownershipEnd && $ownershipEnd !== '') {
+                            $where[] = 'ownership_expires <= ?';
+                            $params[] = $ownershipEnd . ' 23:59:59';
+                        }
+
                         $whereSql = implode(' AND ', $where);
 
                         // If pagination is requested, get total count
