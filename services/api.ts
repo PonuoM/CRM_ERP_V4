@@ -208,6 +208,27 @@ export async function getCustomerStats(companyId: number) {
   return await res.json();
 }
 
+export async function getTelesaleUsers(companyId: number) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${apiBasePath.replace(/\/$/, "")}/User_DB/telesale.php?company_id=${companyId}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Telesale users fetch failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
 // Admin Page users (Active only)
 export interface AdminPageUser {
   id: number;

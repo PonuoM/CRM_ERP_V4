@@ -23,7 +23,7 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
@@ -239,6 +239,11 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     };
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+
+  // Telesale User Stats from API
+  const [telesaleStats, setTelesaleStats] = useState<any[]>([]);
+  const [loadingTelesaleStats, setLoadingTelesaleStats] = useState(true);
+
   // Pool source toggle (all | new_sale | waiting_return | stock)
   const [poolSource, setPoolSource] = useState<
     "all" | "new_sale" | "waiting_return" | "stock"
@@ -334,6 +339,33 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       })
       .finally(() => {
         if (mounted) setLoadingStats(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.companyId]);
+
+  // Fetch telesale user stats from API
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setLoadingTelesaleStats(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoadingTelesaleStats(true);
+    getTelesaleUsers(currentUser.companyId)
+      .then((response) => {
+        if (!mounted) return;
+        if (response?.ok && response?.users) {
+          setTelesaleStats(response.users);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch telesale stats:", err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingTelesaleStats(false);
       });
     return () => {
       mounted = false;
@@ -532,10 +564,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   };
 
   const handleSelectAllAgents = () => {
-    if (selectedAgentIds.length === telesaleAgents.length) {
+    if (selectedAgentIds.length === telesaleStats.length) {
       setSelectedAgentIds([]);
     } else {
-      setSelectedAgentIds(telesaleAgents.map((a) => a.id));
+      setSelectedAgentIds(telesaleStats.map((a) => a.id));
     }
     setShowPreview(false);
     setShowPreviewModal(false);
@@ -1294,8 +1326,8 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     <input
                       type="checkbox"
                       checked={
-                        selectedAgentIds.length === telesaleAgents.length &&
-                        telesaleAgents.length > 0
+                        selectedAgentIds.length === telesaleStats.length &&
+                        telesaleStats.length > 0
                       }
                       onChange={handleSelectAllAgents}
                       className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
@@ -1311,34 +1343,49 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 </tr>
               </thead>
               <tbody className="text-gray-700">
-                {telesaleAgents.map((agent) => {
-                  const workload = getAgentWorkloadByGrade(agent.id);
-                  return (
-                    <tr
-                      key={agent.id}
-                      className={`border-b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"}`}
-                    >
-                      <td className="px-4 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedAgentIds.includes(agent.id)}
-                          onChange={() => handleAgentSelection(agent.id)}
-                          className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
-                        />
-                      </td>
-                      {/* FIX: Replaced non-existent 'name' property with 'firstName' and 'lastName' for the user object. */}
-                      <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName}`}</td>
-                      <td className="px-6 py-2 text-center font-bold">
-                        {workload.total}
-                      </td>
-                      {gradeOrder.map((grade, index) => (
-                        <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
-                          {workload[grade] ?? 0}
+                {loadingTelesaleStats ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center">
+                      <div className="flex justify-center items-center">
+                        <Spinner size="lg" />
+                      </div>
+                    </td>
+                  </tr>
+                ) : telesaleStats.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      ไม่พบพนักงาน Telesale
+                    </td>
+                  </tr>
+                ) : (
+                  telesaleStats.map((agent) => {
+                    const gradeDistribution = agent.gradeDistribution || {};
+                    return (
+                      <tr
+                        key={agent.id}
+                        className={`border-b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"}`}
+                      >
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedAgentIds.includes(agent.id)}
+                            onChange={() => handleAgentSelection(agent.id)}
+                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
+                          />
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
+                        <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName}`}</td>
+                        <td className="px-6 py-2 text-center font-bold">
+                          {agent.totalCustomers}
+                        </td>
+                        {gradeOrder.map((grade, index) => (
+                          <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
+                            {gradeDistribution[grade] ?? 0}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
