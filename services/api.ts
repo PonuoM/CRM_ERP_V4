@@ -620,12 +620,17 @@ export async function listCustomerBlocks(customerId?: string) {
   return apiFetch(`customer_blocks${customerId ? `?${qs}` : ""}`);
 }
 
-export async function getOrderStats(companyId: number) {
+export async function getOrderStats(companyId: number, month?: string, year?: string) {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${apiBasePath}/Orders/stats.php?company_id=${companyId}`, {
+  const params = new URLSearchParams();
+  params.set("company_id", String(companyId));
+  if (month) params.set("month", month);
+  if (year) params.set("year", year);
+
+  const res = await fetch(`${apiBasePath}/Orders/stats.php?${params.toString()}`, {
     method: "GET",
     headers,
   });

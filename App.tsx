@@ -5838,7 +5838,11 @@ const App: React.FC = () => {
     // Global entries: simple, international dashboards for layout-only views
     if (activePage === "Sales Overview") {
       return (
-        <SalesDashboard orders={companyOrders} customers={companyCustomers} />
+        <SalesDashboard
+          user={currentUser}
+          orders={companyOrders}
+          customers={companyCustomers}
+        />
       );
     }
     if (activePage === "Calls Overview") {

@@ -28,58 +28,97 @@ try {
         exit();
     }
 
-    // 1. Overall Stats
-    // Exclude 'Cancelled' from revenue calculations if desired, but usually totalOrders includes everything or specific statuses.
-    // Adjusting logic: Total Orders (All), Revenue (Payment Status = Paid or specific logic?), Avg Order Value.
-    // For simplicity and matching typical dashboards:
-    // Total Orders: Count of all orders (maybe excluding cancelled?) -> User simplified view usually implies all or valid.
-    // Let's assume all for count, but revenue might need to be 'Paid' or 'Completed'? 
-    // Looking at previous AdminDashboard logic:
-    // const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0); 
-    // It summed EVERYTHING in the loaded list. I will replicate that behavior for consistency.
-    
+    // Parameters
+    $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
+    $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
+
+    // Base filtering for "Summary" cards (Orders, Revenue, Status, Payment)
+    // If AdminDashboard calls without filters -> All Time
+    // If SalesDashboard calls with filters -> Filtered
+    $filterWhere = "WHERE company_id = ?";
+    $filterParams = [$companyId];
+
+    if ($year) {
+        $filterWhere .= " AND YEAR(order_date) = ?";
+        $filterParams[] = $year;
+        if ($month) {
+            $filterWhere .= " AND MONTH(order_date) = ?";
+            $filterParams[] = $month;
+        }
+    }
+
+    // 1. Overall/Filtered Stats
     $stmtOverall = $pdo->prepare("
         SELECT 
             COUNT(*) as totalOrders, 
             COALESCE(SUM(total_amount), 0) as totalRevenue 
         FROM orders 
-        WHERE company_id = ?
+        $filterWhere
     ");
-    $stmtOverall->execute([$companyId]);
+    $stmtOverall->execute($filterParams);
     $overall = $stmtOverall->fetch(PDO::FETCH_ASSOC);
     
     $totalOrders = (int)$overall['totalOrders'];
     $totalRevenue = (float)$overall['totalRevenue'];
     $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
 
-    // 2. Status Breakdown
-    // o.order_status
+    // 2. Status Breakdown (Filtered)
     $stmtStatus = $pdo->prepare("
         SELECT order_status, COUNT(*) as count 
         FROM orders 
-        WHERE company_id = ? 
+        $filterWhere 
         GROUP BY order_status
     ");
-    $stmtStatus->execute([$companyId]);
-    $statusCounts = $stmtStatus->fetchAll(PDO::FETCH_KEY_PAIR); // ['Pending' => 5, 'Confirmed' => 3]
+    $stmtStatus->execute($filterParams);
+    $statusCounts = $stmtStatus->fetchAll(PDO::FETCH_KEY_PAIR);
 
-    // 3. Monthly Counts (Last 12 months)
-    // Group by YYYY-MM
-    $stmtMonthly = $pdo->prepare("
-        SELECT 
-            DATE_FORMAT(order_date, '%Y-%m') as month_key, 
-            COUNT(*) as count 
+    // 3. Payment Method Counts (Filtered) - Needed for SalesDashboard
+    // Mapping: 'COD' -> 'COD', 'Transfer' -> 'Transfer' (or whatever DB values are)
+    $stmtPayment = $pdo->prepare("
+        SELECT payment_method, COUNT(*) as count 
         FROM orders 
-        WHERE company_id = ? 
-          AND order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-        GROUP BY month_key 
-        ORDER BY month_key ASC
+        $filterWhere 
+        GROUP BY payment_method
     ");
-    $stmtMonthly->execute([$companyId]);
+    $stmtPayment->execute($filterParams);
+    $paymentMethodCounts = $stmtPayment->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    // 4. Monthly Counts for Chart (Contextual Trend)
+    // If year is selected, maybe show that year's data? 
+    // Or just keep Last 12 Months? AdminDashboard likes Last 12.
+    // SalesDashboard might prefer the selected year trend.
+    // Let's adapt: If Year is provided, show that Year's months. Else Last 12.
+    
+    $chartParams = [$companyId];
+    if ($year) {
+        $chartSql = "
+            SELECT 
+                DATE_FORMAT(order_date, '%Y-%m') as month_key, 
+                COUNT(*) as count 
+            FROM orders 
+            WHERE company_id = ? 
+              AND YEAR(order_date) = ?
+            GROUP BY month_key 
+            ORDER BY month_key ASC
+        ";
+        $chartParams[] = $year;
+    } else {
+        $chartSql = "
+            SELECT 
+                DATE_FORMAT(order_date, '%Y-%m') as month_key, 
+                COUNT(*) as count 
+            FROM orders 
+            WHERE company_id = ? 
+              AND order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+            GROUP BY month_key 
+            ORDER BY month_key ASC
+        ";
+    }
+
+    $stmtMonthly = $pdo->prepare($chartSql);
+    $stmtMonthly->execute($chartParams);
     $monthlyRaw = $stmtMonthly->fetchAll(PDO::FETCH_ASSOC);
     
-    // Format for chart: usually we want a continuous list or just the raw data.
-    // Client side often handles filling gaps, but let's return the raw list first.
     $monthlyCounts = [];
     foreach ($monthlyRaw as $row) {
         $monthlyCounts[$row['month_key']] = (int)$row['count'];
@@ -87,11 +126,16 @@ try {
 
     echo json_encode([
         'ok' => true,
+        'filter' => [
+            'month' => $month,
+            'year' => $year
+        ],
         'stats' => [
             'totalOrders' => $totalOrders,
             'totalRevenue' => $totalRevenue,
             'avgOrderValue' => $avgOrderValue,
             'statusCounts' => $statusCounts,
+            'paymentMethodCounts' => $paymentMethodCounts,
             'monthlyCounts' => $monthlyCounts
         ]
     ]);
