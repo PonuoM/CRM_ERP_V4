@@ -229,6 +229,34 @@ export async function getTelesaleUsers(companyId: number) {
   return await res.json();
 }
 
+export async function bulkDistributeCustomers(payload: {
+  companyId: number;
+  count: number;
+  agentIds: number[];
+  targetStatus: string;
+  ownershipDays: number;
+}) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/bulk_distribute.php`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Bulk distribution failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
 // Admin Page users (Active only)
 export interface AdminPageUser {
   id: number;

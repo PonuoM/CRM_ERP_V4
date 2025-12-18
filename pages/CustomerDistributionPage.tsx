@@ -23,7 +23,7 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, bulkDistributeCustomers } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
@@ -688,93 +688,66 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
 
   const handleExecuteDistribution = async () => {
-    const totalToAssign = Object.values(
-      previewAssignments as PreviewAssignments,
-    ).flat().length;
-    if (totalToAssign === 0) {
-      alert("กรุณาสร้างรายการที่ต้องการแจกก่อน");
+    const actualCount = parseInt(distributionCount, 10);
+
+    if (isNaN(actualCount) || actualCount <= 0) {
+      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
 
-    // Use distributionCount for confirmation instead of preview count
-    const actualCount = parseInt(distributionCount, 10);
+    if (selectedAgentIds.length === 0) {
+      alert("กรุณาเลือกพนักงานเป้าหมาย");
+      return;
+    }
+
     if (
       !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่?`)
     ) {
       return;
     }
 
-    const now = new Date();
-    const assignmentTimestamp = now.toISOString();
-    const ownershipDeadline = new Date(now.getTime());
-    ownershipDeadline.setDate(ownershipDeadline.getDate() + 30); // เริ่มต้น 30 วัน เมื่อแจกรายวัน
-    const ownershipExpires = ownershipDeadline.toISOString();
-
-    const updatePromises: Promise<unknown>[] = [];
-    for (const agentIdStr in previewAssignments as PreviewAssignments) {
-      const agentId = parseInt(agentIdStr, 10);
-      const customers = (previewAssignments as PreviewAssignments)[agentId];
-      if (!Array.isArray(customers)) continue;
-      customers.forEach((customer) => {
-        updatePromises.push(
-          updateCustomer(String(customer.id), {
-            assignedTo: agentId,
-            lifecycleStatus: targetStatus,
-            dateAssigned: assignmentTimestamp,
-            ownershipExpires,
-            is_in_waiting_basket: 0,
-            is_blocked: 0,
-          }),
-        );
-      });
-    }
-
-    if (updatePromises.length === 0) {
-      alert("ไม่พบลูกค้าที่ต้องการแจก กรุณาตรวจสอบอีกครั้ง");
-      return;
-    }
-
     setSavingDistribution(true);
     try {
-      await Promise.all(updatePromises);
+      // Call bulk distribution API
+      const response = await bulkDistributeCustomers({
+        companyId: currentUser.companyId,
+        count: actualCount,
+        agentIds: selectedAgentIds,
+        targetStatus,
+        ownershipDays: 30,
+      });
 
-      const applyAssignments = (customers: Customer[]) => {
-        return customers.map((customer) => {
-          for (const agentIdStr in previewAssignments) {
-            const agentId = parseInt(agentIdStr, 10);
-            const assignedCustomers = previewAssignments[agentId];
-            if (
-              Array.isArray(assignedCustomers) &&
-              assignedCustomers.some((c) => c.id === customer.id)
-            ) {
-              return {
-                ...customer,
-                assignedTo: agentId,
-                lifecycleStatus: targetStatus,
-                dateAssigned: assignmentTimestamp,
-                ownershipExpires,
-                assignmentHistory: [
-                  ...(customer.assignmentHistory || []),
-                  agentId,
-                ],
-              };
-            }
-          }
-          return customer;
+      if (response?.ok) {
+        // Show success message
+        const { distributed, assignments, skipped } = response;
+        let message = `แจกลูกค้าสำเร็จ ${distributed.toLocaleString()} รายการ\n\n`;
+
+        // Show distribution per agent
+        const selectedAgents = telesaleStats.filter((a) =>
+          selectedAgentIds.includes(a.id),
+        );
+        selectedAgents.forEach((agent) => {
+          const count = assignments[agent.id] || 0;
+          message += `${agent.firstName} ${agent.lastName}: ${count.toLocaleString()} รายการ\n`;
         });
-      };
 
-      setCustomers((prevCustomers) => applyAssignments(prevCustomers));
-      setPoolCustomers((prev) => (prev.length ? applyAssignments(prev) : prev));
+        if (skipped > 0) {
+          message += `\nข้ามไป: ${skipped.toLocaleString()} รายการ`;
+        }
 
-      const skippedCount = skippedCustomers.length;
-      setDistributionResult({ success: totalToAssign, skipped: skippedCount });
-      setShowPreview(false);
-      setShowPreviewModal(false);
-      setPreviewAssignments({});
-      setSkippedCustomers([]);
-      setDistributionCount("");
-      setSelectedAgentIds([]);
+        alert(message);
+
+        // Reset form
+        setDistributionResult({ success: distributed, skipped });
+        setShowPreview(false);
+        setShowPreviewModal(false);
+        setPreviewAssignments({});
+        setSkippedCustomers([]);
+        setDistributionCount("");
+        setSelectedAgentIds([]);
+      } else {
+        throw new Error(response?.error || "Distribution failed");
+      }
     } catch (error) {
       console.error("Failed to distribute customers", error);
       alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
