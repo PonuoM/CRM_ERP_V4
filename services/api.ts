@@ -151,7 +151,7 @@ export async function getCustomerStats(companyId: number) {
   }
 
   // Use direct fetch for standalone PHP endpoint
-  const url = `${apiBasePath.replace(/\/$/, "")}/customer/stats.php?company_id=${companyId}`;
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
   console.log("API Service: calling getCustomerStats", url);
 
   const res = await fetch(
@@ -630,7 +630,7 @@ export async function getOrderStats(companyId: number, month?: string, year?: st
   if (month) params.set("month", month);
   if (year) params.set("year", year);
 
-  const res = await fetch(`${apiBasePath}/Orders/stats.php?${params.toString()}`, {
+  const res = await fetch(`${apiBasePath}/Orders/order_stats.php?${params.toString()}`, {
     method: "GET",
     headers,
   });
