@@ -6000,6 +6000,7 @@ const App: React.FC = () => {
           allCustomers={companyCustomers}
           allUsers={companyUsers}
           setCustomers={setCustomers}
+          currentUser={currentUser}
         />
       );
     }
@@ -6020,6 +6021,7 @@ const App: React.FC = () => {
           allCustomers={companyCustomers}
           allUsers={companyUsers}
           setCustomers={setCustomers}
+          currentUser={currentUser}
         />
       );
     }
@@ -6536,6 +6538,7 @@ const App: React.FC = () => {
             allCustomers={companyCustomers}
             allUsers={companyUsers}
             setCustomers={setCustomers}
+            currentUser={currentUser}
           />
         );
 

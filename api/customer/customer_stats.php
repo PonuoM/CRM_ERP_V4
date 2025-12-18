@@ -37,12 +37,51 @@ try {
         $grades[$key] = (int)$row['count'];
     }
 
+    // 3. Get Basket Statistics
+    // ตะกร้ารอแจก (waiting basket) - customers with assigned_to = NULL and not blocked and not in waiting basket
+    $stmtWaitingDistribute = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM customers 
+        WHERE company_id = ? 
+        AND assigned_to IS NULL 
+        AND (is_blocked IS NULL OR is_blocked = 0)
+        AND (is_in_waiting_basket IS NULL OR is_in_waiting_basket = 0)
+    ");
+    $stmtWaitingDistribute->execute([$companyId]);
+    $waitingDistributeCount = (int)$stmtWaitingDistribute->fetchColumn();
+
+    // ตะกร้าพักรายชื่อ (waiting basket) - customers in waiting basket
+    $stmtWaitingBasket = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM customers 
+        WHERE company_id = ? 
+        AND is_in_waiting_basket = 1
+        AND (is_blocked IS NULL OR is_blocked = 0)
+    ");
+    $stmtWaitingBasket->execute([$companyId]);
+    $waitingBasketCount = (int)$stmtWaitingBasket->fetchColumn();
+
+    // ตะกร้าบล็อค (blocked basket) - blocked customers
+    $stmtBlocked = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM customers 
+        WHERE company_id = ? 
+        AND is_blocked = 1
+    ");
+    $stmtBlocked->execute([$companyId]);
+    $blockedCount = (int)$stmtBlocked->fetchColumn();
+
     json_response([
         'ok' => true,
         'company_id' => $companyId,
         'stats' => [
             'totalCustomers' => (int)$totalCustomers,
-            'grades' => $grades
+            'grades' => $grades,
+            'baskets' => [
+                'waitingDistribute' => $waitingDistributeCount,
+                'waitingBasket' => $waitingBasketCount,
+                'blocked' => $blockedCount,
+            ]
         ]
     ]);
 

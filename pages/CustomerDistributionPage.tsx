@@ -23,13 +23,15 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
+import Spinner from "@/components/Spinner";
 
 interface CustomerDistributionPageProps {
   allCustomers: Customer[];
   allUsers: User[];
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
+  currentUser?: { id: number; companyId: number };
 }
 
 type DistributionMode = "average" | "backlog" | "gradeA";
@@ -45,11 +47,10 @@ const DateFilterButton: React.FC<{
 }> = ({ label, value, activeValue, onClick }) => (
   <button
     onClick={() => onClick(value)}
-    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-      activeValue === value
-        ? "bg-blue-600 text-white"
-        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-    }`}
+    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeValue === value
+      ? "bg-blue-600 text-white"
+      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+      }`}
   >
     {label}
   </button>
@@ -134,20 +135,20 @@ const normalizeApiCustomer = (api: any): Customer => {
 
   const tags: Tag[] = Array.isArray(api?.tags)
     ? api.tags
-        .map((raw: any) => {
-          const id = Number(raw?.id);
-          const name = raw?.name ?? "";
-          const type =
-            raw?.type === TagType.System ? TagType.System : TagType.User;
-          return Number.isFinite(id) && name ? { id, name, type } : undefined;
-        })
-        .filter((tag): tag is Tag => Boolean(tag))
+      .map((raw: any) => {
+        const id = Number(raw?.id);
+        const name = raw?.name ?? "";
+        const type =
+          raw?.type === TagType.System ? TagType.System : TagType.User;
+        return Number.isFinite(id) && name ? { id, name, type } : undefined;
+      })
+      .filter((tag): tag is Tag => Boolean(tag))
     : [];
 
   const assignmentHistory = Array.isArray(api?.assignment_history)
     ? api.assignment_history
-        .map((id: any) => Number(id))
-        .filter((id: number) => Number.isFinite(id))
+      .map((id: any) => Number(id))
+      .filter((id: number) => Number.isFinite(id))
     : [];
 
   // Resolve customer ID: prefer customer_id (PK), fallback to id or pk
@@ -224,7 +225,19 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   allCustomers,
   allUsers,
   setCustomers,
+  currentUser,
 }) => {
+  // Customer Stats from API
+  const [customerStats, setCustomerStats] = useState<{
+    totalCustomers: number;
+    grades: Record<string, number>;
+    baskets?: {
+      waitingDistribute: number;
+      waitingBasket: number;
+      blocked: number;
+    };
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
   // Pool source toggle (all | new_sale | waiting_return | stock)
   const [poolSource, setPoolSource] = useState<
     "all" | "new_sale" | "waiting_return" | "stock"
@@ -299,32 +312,50 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     };
   }, [poolSource, allCustomers]);
 
+  // Fetch customer stats from API
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setLoadingStats(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoadingStats(true);
+    getCustomerStats(currentUser.companyId)
+      .then((response) => {
+        if (!mounted) return;
+        if (response?.ok && response?.stats) {
+          setCustomerStats(response.stats);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch customer stats:", err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingStats(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.companyId]);
+
   // Base dataset used throughout the page
   const dataCustomers: Customer[] =
     poolSource === "all" ? allCustomers : poolCustomers;
 
-  // Basket summaries
-  const waitingBasketCount = useMemo(
-    () =>
-      dataCustomers.filter(
-        (c) => (c as any).isInWaitingBasket && !(c as any).isBlocked,
-      ).length,
-    [dataCustomers],
-  );
-  const toDistributeCount = useMemo(
-    () =>
-      dataCustomers.filter(
-        (c) =>
-          c.assignedTo === null &&
-          !(c as any).isBlocked &&
-          !(c as any).isInWaitingBasket,
-      ).length,
-    [dataCustomers],
-  );
-  const blockedCount = useMemo(
-    () => dataCustomers.filter((c) => (c as any).isBlocked).length,
-    [dataCustomers],
-  );
+  // Basket summaries from API (fallback to client-side calculation if API data not available)
+  const waitingBasketCount = customerStats?.baskets?.waitingBasket ?? dataCustomers.filter(
+    (c) => (c as any).isInWaitingBasket && !(c as any).isBlocked,
+  ).length;
+
+  const toDistributeCount = customerStats?.baskets?.waitingDistribute ?? dataCustomers.filter(
+    (c) =>
+      c.assignedTo === null &&
+      !(c as any).isBlocked &&
+      !(c as any).isInWaitingBasket,
+  ).length;
+
+  const blockedCount = customerStats?.baskets?.blocked ?? dataCustomers.filter((c) => (c as any).isBlocked).length;
 
   const getAgentWorkloadByGrade = (agentId: number) => {
     const agentCustomers = dataCustomers.filter(
@@ -891,6 +922,82 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const renderTabContent = () => {
     return (
       <div className="space-y-6">
+        {/* Customer Stats from API */}
+        <div className="p-6 bg-white rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+            <BarChart className="mr-2" />
+            สถิติลูกค้าทั้งหมด (จาก API)
+          </h3>
+          {loadingStats ? (
+            <div className="flex justify-center items-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : customerStats ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-600 font-medium">ลูกค้าทั้งหมด</p>
+                  <p className="text-2xl font-bold text-blue-700 mt-1">
+                    {customerStats.totalCustomers.toLocaleString()}
+                  </p>
+                </div>
+                {Object.entries(customerStats.grades).map(([grade, count]) => (
+                  <div
+                    key={grade}
+                    className="bg-gray-50 border border-gray-200 rounded-lg p-4"
+                  >
+                    <p className="text-sm text-gray-600 font-medium">เกรด {grade}</p>
+                    <p className="text-2xl font-bold text-gray-700 mt-1">
+                      {count.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {/* Basket Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-600 font-medium">ตะกร้ารอแจก</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-green-700 mt-1">
+                      {customerStats.baskets?.waitingDistribute?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-sm text-yellow-600 font-medium">ตะกร้าพักรายชื่อ</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-yellow-700 mt-1">
+                      {customerStats.baskets?.waitingBasket?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-sm text-red-600 font-medium">ตะกร้าบล็อค</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-red-700 mt-1">
+                      {customerStats.baskets?.blocked?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-500 text-center py-4">ไม่สามารถโหลดข้อมูลสถิติได้</p>
+          )}
+        </div>
+
         <div className="p-6 bg-white rounded-lg shadow-sm border">
           <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
             <ListChecks className="mr-2" />
@@ -1158,7 +1265,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             </table>
           </div>
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -1216,17 +1323,35 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้ารอแจก</p>
-          <p className="text-xl font-bold text-blue-600">{toDistributeCount}</p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-blue-600">{toDistributeCount.toLocaleString()}</p>
+          )}
         </div>
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้าพักรายชื่อ</p>
-          <p className="text-xl font-bold text-amber-600">
-            {waitingBasketCount}
-          </p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-amber-600">
+              {waitingBasketCount.toLocaleString()}
+            </p>
+          )}
         </div>
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้าบล็อค</p>
-          <p className="text-xl font-bold text-red-600">{blockedCount}</p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-red-600">{blockedCount.toLocaleString()}</p>
+          )}
         </div>
       </div>
 
