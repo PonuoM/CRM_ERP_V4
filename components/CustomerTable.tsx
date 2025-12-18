@@ -18,6 +18,12 @@ interface CustomerTableProps {
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
   allUsers?: User[];
   currentUser?: User;
+  // External Pagination Support
+  totalCount?: number;
+  controlledPage?: number;
+  controlledPageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
 }
 
 const NOOP_STORAGE: Storage = {
@@ -78,7 +84,15 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     onChangeOwner,
     allUsers = [],
     currentUser,
+
+    totalCount,
+    controlledPage,
+    controlledPageSize,
+    onPageChange,
+    onPageSizeChange,
   } = props;
+
+  const isExternal = typeof totalCount === 'number';
 
   const [showChangeOwnerModal, setShowChangeOwnerModal] = useState<string | null>(null);
   const [selectedOwnerId, setSelectedOwnerId] = useState<number | null>(null);
@@ -88,55 +102,78 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     ? `customerTable:${storageKey}`
     : null;
 
-  const [itemsPerPage, setItemsPerPage] = usePersistentState<number>(
+  const [internalItemsPerPage, setInternalItemsPerPage] = usePersistentState<number>(
     persistenceBaseKey ? `${persistenceBaseKey}:perPage` : "__customer_table:perPage",
     defaultItemsPerPage,
     { storage: persistenceBaseKey ? undefined : NOOP_STORAGE },
   );
-  const [currentPage, setCurrentPage] = usePersistentState<number>(
+  const [internalPage, setInternalPage] = usePersistentState<number>(
     persistenceBaseKey ? `${persistenceBaseKey}:page` : "__customer_table:page",
     1,
     { storage: persistenceBaseKey ? undefined : NOOP_STORAGE },
   );
 
+  const itemsPerPage = (isExternal && controlledPageSize) ? controlledPageSize : internalItemsPerPage;
+  const currentPage = (isExternal && controlledPage) ? controlledPage : internalPage;
+
   // Calculate pagination
   const safeItemsPerPage =
     itemsPerPage && itemsPerPage > 0 ? itemsPerPage : defaultItemsPerPage;
-  const totalItems = customers.length;
+
+  const totalItems = isExternal ? (totalCount ?? 0) : customers.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
+
+  // For internal: clamp page. For external: trust prop? Or clamp?
+  // Use effectivePage for rendering but currentPage for highlighting
   const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
+
   const startIndex = (effectivePage - 1) * safeItemsPerPage;
   const endIndex = startIndex + safeItemsPerPage;
-  const currentCustomers = customers.slice(startIndex, endIndex);
+
+  // If external, customers IS the current page. If internal, slice it.
+  const currentCustomers = isExternal ? customers : customers.slice(startIndex, endIndex);
 
   useEffect(() => {
-    if (!pageSizeOptions.includes(itemsPerPage)) {
-      const fallback = pageSizeOptions[0] ?? defaultItemsPerPage;
-      setItemsPerPage(fallback);
-      setCurrentPage(1);
+    if (!isExternal) {
+      if (!pageSizeOptions.includes(itemsPerPage)) {
+        const fallback = pageSizeOptions[0] ?? defaultItemsPerPage;
+        setInternalItemsPerPage(fallback);
+        setInternalPage(1);
+      }
     }
-  }, [itemsPerPage, pageSizeOptions, defaultItemsPerPage, setItemsPerPage, setCurrentPage]);
+  }, [itemsPerPage, pageSizeOptions, defaultItemsPerPage, setInternalItemsPerPage, setInternalPage, isExternal]);
 
   useEffect(() => {
-    setCurrentPage((prev) => {
-      const maxPage = Math.max(
-        1,
-        Math.ceil(customers.length / safeItemsPerPage),
-      );
-      if (!Number.isFinite(prev) || prev < 1) return 1;
-      return prev > maxPage ? maxPage : prev;
-    });
-  }, [customers.length, safeItemsPerPage, setCurrentPage]);
+    if (!isExternal) {
+      setInternalPage((prev) => {
+        const maxPage = Math.max(
+          1,
+          Math.ceil(customers.length / safeItemsPerPage),
+        );
+        if (!Number.isFinite(prev) || prev < 1) return 1;
+        return prev > maxPage ? maxPage : prev;
+      });
+    }
+  }, [customers.length, safeItemsPerPage, setInternalPage, isExternal]);
 
   const handlePageChange = (page: number) => {
     const maxPage = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
     const nextPage = Math.min(Math.max(page, 1), maxPage);
-    setCurrentPage(nextPage);
+    if (isExternal && onPageChange) {
+      onPageChange(nextPage);
+    } else {
+      setInternalPage(nextPage);
+    }
   };
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1);
+    if (isExternal && onPageSizeChange) {
+      onPageSizeChange(newItemsPerPage);
+      // Parent should reset page to 1
+    } else {
+      setInternalItemsPerPage(newItemsPerPage);
+      setInternalPage(1);
+    }
   };
 
   // Get eligible owners for a customer based on current user role

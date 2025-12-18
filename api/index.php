@@ -686,11 +686,65 @@ function handle_customers(PDO $pdo, ?string $id): void {
 
                         json_response($customers);
                     } else {
-                        $sql = 'SELECT * FROM customers WHERE 1';
+                        // Pagination parameters
+                        $page = isset($_GET['page']) ? (int)$_GET['page'] : null;
+                        $limit = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 50);
+                        if ($limit <= 0) $limit = 50;
+                        $offset = $page ? ($page - 1) * $limit : 0;
+
+                        $where = ['1'];
                         $params = [];
-                        if ($q !== '') { $sql .= ' AND (first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; }
-                        if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
-                        $sql .= ' ORDER BY date_assigned DESC LIMIT 200';
+                        
+                        if ($q !== '') { 
+                            $where[] = '(first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; 
+                            $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; 
+                        }
+                        if ($companyId) { 
+                            $where[] = 'company_id = ?'; 
+                            $params[] = $companyId; 
+                        }
+                        
+                        // Advanced filters
+                        $province = $_GET['province'] ?? null;
+                        $lifecycle = $_GET['lifecycle'] ?? null;
+                        $behavioral = $_GET['behavioral'] ?? null;
+                        $assignedTo = $_GET['assignedTo'] ?? null;
+
+                        if ($province && $province !== '') { 
+                            $where[] = 'province LIKE ?'; 
+                            $params[] = "%$province%"; 
+                        }
+                        if ($lifecycle && $lifecycle !== '') { 
+                            $where[] = 'lifecycle_status = ?'; 
+                            $params[] = $lifecycle; 
+                        }
+                        if ($behavioral && $behavioral !== '') { 
+                            $where[] = 'behavioral_status = ?'; 
+                            $params[] = $behavioral; 
+                        }
+                        if ($assignedTo && $assignedTo !== '' && $assignedTo !== 'all') { 
+                            $where[] = 'assigned_to = ?'; 
+                            $params[] = (int)$assignedTo; 
+                        }
+
+                        $whereSql = implode(' AND ', $where);
+
+                        // If pagination is requested, get total count
+                        $total = 0;
+                        if ($page) {
+                            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE $whereSql");
+                            $countStmt->execute($params);
+                            $total = (int)$countStmt->fetchColumn();
+                        }
+
+                        $sql = "SELECT * FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
+                        
+                        if ($page) {
+                            $sql .= " LIMIT $limit OFFSET $offset";
+                        } else {
+                            $sql .= " LIMIT 200";
+                        }
+
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
@@ -702,7 +756,12 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
 
-                        json_response($customers);
+                        if ($page) {
+                            json_response(['total' => $total, 'data' => $customers]);
+                        } else {
+                            json_response($customers);
+                        }
+
                     }
                 }
             } catch (Throwable $e) {

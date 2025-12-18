@@ -1309,10 +1309,11 @@ const App: React.FC = () => {
 
       const lazyLoad = async () => {
         try {
-          const [ctags, c] = await Promise.all([
+          const [ctags, cData] = await Promise.all([
             listCustomerTags(),
             listCustomers({ companyId: sessionUser.company_id }),
           ]);
+          const c = cData.data || [];
 
           if (cancelled) return;
 
@@ -3063,7 +3064,7 @@ const App: React.FC = () => {
           listOrders(currentUser.companyId),
           activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
-          }) : Promise.resolve([]),
+          }) : Promise.resolve({ total: 0, data: [] }),
           listActivities(),
           listCustomerTags(),
         ]);
@@ -3241,8 +3242,9 @@ const App: React.FC = () => {
         }
 
         // Map customers
-        const mappedCustomers = Array.isArray(refreshedCustomersRaw)
-          ? refreshedCustomersRaw.map((r: any) => {
+        const customersData = (refreshedCustomersRaw as any).data || [];
+        const mappedCustomers = Array.isArray(customersData)
+          ? customersData.map((r: any) => {
             const totalPurchases = Number(r.total_purchases || 0);
             const pk = r.customer_id ?? r.id ?? r.pk ?? null;
             const refId =
@@ -3348,7 +3350,7 @@ const App: React.FC = () => {
         listOrders(currentUser.companyId),
         activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
-        }) : Promise.resolve([]),
+        }) : Promise.resolve({ total: 0, data: [] }),
         listActivities(),
         listCustomerTags(),
       ]);
@@ -3414,8 +3416,9 @@ const App: React.FC = () => {
         });
       }
 
-      const mappedCustomers: Customer[] = Array.isArray(refreshedCustomersRaw)
-        ? refreshedCustomersRaw.map((r) => {
+      const customersData = (refreshedCustomersRaw as any).data || [];
+      const mappedCustomers: Customer[] = Array.isArray(customersData)
+        ? customersData.map((r) => {
           const resolvedId = String(r.id || r.customer_id);
           const totalPurchasesVal = Number(r.total_purchases || 0);
           return {
@@ -6243,7 +6246,7 @@ const App: React.FC = () => {
             try {
               const [act, c, ctags] = await Promise.all([
                 listActivities(),
-                activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve([]),
+                activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve({ total: 0, data: [] }),
                 listCustomerTags(),
               ]);
               setActivities(
@@ -6272,7 +6275,8 @@ const App: React.FC = () => {
                 }
               }
               // Use the same mapCustomer logic from load()
-              setCustomers(Array.isArray(c) ? c.map((r: any) => {
+              const cArray = (c as any).data || [];
+              setCustomers(Array.isArray(cArray) ? cArray.map((r: any) => {
                 const totalPurchasesVal = Number(r.total_purchases || 0);
                 const pk = r.customer_id ?? r.id ?? r.pk ?? null;
                 const refId =

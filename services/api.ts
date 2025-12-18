@@ -113,6 +113,12 @@ export async function listCustomers(params?: {
   userId?: number;
   source?: "new_sale" | "waiting_return" | "stock";
   freshDays?: number; // only for source=new_sale
+  province?: string;
+  lifecycle?: string;
+  behavioral?: string;
+  assignedTo?: number;
+  page?: number;
+  pageSize?: number;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -121,8 +127,21 @@ export async function listCustomers(params?: {
   if (params?.userId) qs.set("userId", String(params.userId));
   if (params?.source) qs.set("source", params.source);
   if (params?.freshDays != null) qs.set("freshDays", String(params.freshDays));
+  if (params?.province) qs.set("province", params.province);
+  if (params?.lifecycle) qs.set("lifecycle", params.lifecycle);
+  if (params?.behavioral) qs.set("behavioral", params.behavioral);
+  if (params?.assignedTo) qs.set("assignedTo", String(params.assignedTo));
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+
   const query = qs.toString();
-  return apiFetch(`customers${query ? `?${query}` : ""}`);
+  const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
+
+  // Normalize response to { total, data }
+  if (Array.isArray(response)) {
+    return { total: response.length, data: response };
+  }
+  return response as { total: number; data: any[] };
 }
 
 export async function listCustomersBySource(

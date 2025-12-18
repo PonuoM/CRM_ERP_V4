@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Customer, Order, ModalType } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
-import { getCustomerStats, getOrderStats } from '@/services/api';
+import { getCustomerStats, getOrderStats, listCustomers } from '@/services/api';
+import { mapCustomerFromApi } from '@/utils/customerMapper';
 import Spinner from '@/components/Spinner';
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
@@ -42,6 +43,11 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [apiCustomerStats, setApiCustomerStats] = useState<any>(null);
   const [apiOrderStats, setApiOrderStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
+
+  // Server-side Pagination State
+  const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
+  const [totalCustomersInDB, setTotalCustomersInDB] = useState<number>(0);
+  const [loadingCustomers, setLoadingCustomers] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchApiStats = async () => {
@@ -119,12 +125,57 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
     return customers;
   }, [allCustomers, selectedUser, searchTerm]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
-  const paginatedCustomers = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredCustomers, currentPage, itemsPerPage]);
+  // Server-side Fetch
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setLoadingCustomers(true);
+      try {
+        const res = await listCustomers({
+          companyId: currentUser.companyId,
+          page: currentPage,
+          pageSize: itemsPerPage,
+          q: searchTerm,
+          assignedTo: selectedUser !== 'all' ? selectedUser : undefined,
+          province: apProvince || undefined,
+          lifecycle: apLifecycle || undefined,
+          behavioral: apBehavioral || undefined,
+          // Note: apDateAssigned / apOwnership logic can be added here if backend supports it
+        });
+
+        // Handle result (normalized to { total, data })
+        const total = res.total || 0;
+        const data = res.data || [];
+
+        setTotalCustomersInDB(total);
+        setFetchedCustomers(data.map(r => mapCustomerFromApi(r)));
+      } catch (err) {
+        console.error("Failed to fetch customers", err);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+
+    // Debounce search slightly or just fetch
+    const timeout = setTimeout(fetchCustomers, 300);
+    return () => clearTimeout(timeout);
+  }, [
+    currentUser.companyId,
+    currentPage,
+    itemsPerPage,
+    searchTerm,
+    selectedUser,
+    apProvince,
+    apLifecycle,
+    apBehavioral,
+    // Trigger on advanced search application
+    apSelectedUser,
+    apName, // redundant with searchTerm if mapped?
+  ]);
+
+  // Use fetched customers for display
+  // const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const totalPages = Math.ceil(totalCustomersInDB / itemsPerPage);
+  const paginatedCustomers = fetchedCustomers; // Already paginated from API
 
   return (
     <div className="p-6">
@@ -192,7 +243,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ผลการค้นหา</p>
-              <p className="text-2xl font-semibold text-gray-900">{filteredCustomers.length.toLocaleString()}</p>
+              <p className="text-2xl font-semibold text-gray-900">{loadingCustomers ? <Spinner size="sm" /> : totalCustomersInDB.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -533,22 +584,40 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
 
 
       {/* Customers Table (shared with Telesale) */}
-      <CustomerTable
-        customers={filteredCustomers}
-        onViewCustomer={(c) => (onViewCustomer ? onViewCustomer(c) : setSelectedCustomer(c))}
-        openModal={(type, data) => { if (openModal) openModal(type, data); }}
-        pageSizeOptions={[5, 10, 20, 50, 100, 500]}
-        storageKey={`manageCustomers:${currentUser.id}`}
-        currentUserId={currentUser.id}
-        onUpsellClick={(customer) => {
-          if (onUpsellClick) {
-            onUpsellClick(customer);
-          }
-        }}
-        onChangeOwner={onChangeOwner}
-        allUsers={allUsers}
-        currentUser={currentUser}
-      />
+      <div className="relative">
+        {loadingCustomers && (
+          <div className="absolute inset-0 bg-white bg-opacity-50 z-10 flex items-center justify-center">
+            <Spinner size="lg" />
+          </div>
+        )}
+        <CustomerTable
+          customers={paginatedCustomers}
+          onViewCustomer={(c) => (onViewCustomer ? onViewCustomer(c) : setSelectedCustomer(c))}
+          openModal={(type, data) => { if (openModal) openModal(type, data); }}
+          pageSizeOptions={[5, 10, 20, 50, 100, 500]}
+          storageKey={`manageCustomers:${currentUser.id}`}
+          currentUserId={currentUser.id}
+          onUpsellClick={(customer) => {
+            if (onUpsellClick) {
+              onUpsellClick(customer);
+            }
+          }}
+          onChangeOwner={onChangeOwner}
+          allUsers={allUsers}
+          currentUser={currentUser}
+
+          // Server-side Pagination
+          totalCount={totalCustomersInDB}
+          controlledPage={currentPage}
+          controlledPageSize={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setItemsPerPage(size);
+            setCurrentPage(1);
+          }}
+        />
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-800">
