@@ -143,6 +143,32 @@ export async function listUsers(companyId?: number) {
   return apiFetch(`users${companyId ? `?${qs}` : ""}`);
 }
 
+export async function getCustomerStats(companyId: number) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Use direct fetch for standalone PHP endpoint
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/stats.php?company_id=${companyId}`;
+  console.log("API Service: calling getCustomerStats", url);
+
+  const res = await fetch(
+    url,
+    {
+      method: "GET",
+      headers,
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Stats fetch failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
 // Admin Page users (Active only)
 export interface AdminPageUser {
   id: number;

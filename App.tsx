@@ -727,6 +727,10 @@ const App: React.FC = () => {
     let cancelled = false;
     const load = async () => {
       try {
+        const isDashboard = activePage === 'Dashboard';
+        const isAdmin = sessionUser?.role === UserRole.Admin;
+        const shouldSkipCustomers = isAdmin && isDashboard;
+
         const [
           u,
           c,
@@ -745,7 +749,7 @@ const App: React.FC = () => {
           whs,
         ] = await Promise.all([
           listUsers(sessionUser?.company_id),
-          listCustomers({ companyId: sessionUser?.company_id }),
+          shouldSkipCustomers ? Promise.resolve([]) : listCustomers({ companyId: sessionUser?.company_id }),
           listOrders(sessionUser?.company_id),
           listProducts(sessionUser?.company_id),
           listPromotions(sessionUser?.company_id),
@@ -753,7 +757,7 @@ const App: React.FC = () => {
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory(),
           listAppointments(),
-          listCustomerTags(),
+          shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
           listActivities(),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
@@ -1289,6 +1293,118 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, []); // Load once on mount
+
+  // Lazy load customers for Admin when not on Dashboard
+  useEffect(() => {
+    if (!sessionUser?.company_id) return;
+
+    const isAdmin = sessionUser.role === UserRole.Admin;
+    const isDashboard = activePage === 'Dashboard';
+    const hasCustomers = customers.length > 0;
+
+    if (isAdmin && !isDashboard && !hasCustomers) {
+      console.log("Lazy loading customers...");
+      let cancelled = false;
+
+      const lazyLoad = async () => {
+        try {
+          const [ctags, c] = await Promise.all([
+            listCustomerTags(),
+            listCustomers({ companyId: sessionUser.company_id }),
+          ]);
+
+          if (cancelled) return;
+
+          const tagsByCustomer: Record<string, Tag[]> = {};
+          if (Array.isArray(ctags)) {
+            for (const row of ctags as any[]) {
+              const t: Tag = {
+                id: Number(row.id),
+                name: row.name,
+                type:
+                  (row.type as "SYSTEM" | "USER") === "SYSTEM"
+                    ? TagType.System
+                    : TagType.User,
+                color: row.color ?? undefined,
+              };
+              const cid = String(row.customer_id);
+              (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
+            }
+          }
+
+          const mapCustomerLocal = (r: any): Customer => {
+            const totalPurchases = Number(r.total_purchases || 0);
+            const pk = r.customer_id ?? r.id ?? r.pk ?? null;
+            const refId =
+              r.customer_ref_id ??
+              r.customer_ref ??
+              r.customer_refid ??
+              r.customerId ??
+              null;
+            const resolvedId =
+              pk != null ? String(pk) : refId != null ? String(refId) : "";
+
+            return {
+              id: resolvedId,
+              pk: pk != null ? Number(pk) : undefined,
+              customerId: refId ?? undefined,
+              customerRefId: refId ?? undefined,
+              firstName: r.first_name,
+              lastName: r.last_name,
+              phone: r.phone,
+              backupPhone: r.backup_phone ?? r.backupPhone ?? "",
+              email: r.email ?? undefined,
+              address: {
+                recipientFirstName: r.recipient_first_name || "",
+                recipientLastName: r.recipient_last_name || "",
+                street: r.street || "",
+                subdistrict: r.subdistrict || "",
+                district: r.district || "",
+                province: r.province || "",
+                postalCode: r.postal_code || "",
+              },
+              province: r.province || "",
+              companyId: r.company_id,
+              assignedTo:
+                r.assigned_to !== null && typeof r.assigned_to !== "undefined"
+                  ? Number(r.assigned_to)
+                  : null,
+              dateAssigned: r.date_assigned,
+              dateRegistered: r.date_registered ?? undefined,
+              followUpDate: r.follow_up_date ?? undefined,
+              ownershipExpires: r.ownership_expires ?? "",
+              lifecycleStatus:
+                normalizeLifecycleStatusValue(r.lifecycle_status) ??
+                CustomerLifecycleStatus.New,
+              behavioralStatus:
+                (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
+              grade: calculateCustomerGrade(totalPurchases),
+              tags: tagsByCustomer[resolvedId] || [],
+              assignmentHistory: [],
+              totalPurchases,
+              totalCalls: Number(r.total_calls || 0),
+              facebookName: r.facebook_name ?? undefined,
+              lineId: r.line_id ?? undefined,
+              isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
+              waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
+              isBlocked: Boolean(r.is_blocked ?? false),
+            };
+          };
+
+          const mapped = Array.isArray(c) ? c.map(mapCustomerLocal) : [];
+          setCustomers(mapped);
+          console.log(`Lazy loaded ${mapped.length} customers.`);
+        } catch (e) {
+          console.error("Lazy load failed", e);
+        }
+      };
+
+      lazyLoad();
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [sessionUser?.company_id, sessionUser?.role, activePage, customers.length]);
 
   // Refresh orders when navigating to pages that display orders
   useEffect(() => {

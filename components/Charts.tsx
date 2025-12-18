@@ -47,8 +47,11 @@ export const MonthlyOrdersChart: React.FC = () => {
   );
 };
 
+import Spinner from "./Spinner";
+
 interface CustomerGradeChartProps {
   grades: { label: string; value: number; total: number }[];
+  loading?: boolean;
 }
 
 const gradeColors: Record<string, string> = {
@@ -61,6 +64,7 @@ const gradeColors: Record<string, string> = {
 
 export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
   grades,
+  loading,
 }) => {
   const series = grades.map((g) => g.value);
   const labels = grades.map((g) => g.label);
@@ -79,6 +83,28 @@ export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
       offsetY: 0,
     },
     plotOptions: { pie: { donut: { size: "65%", labels: { show: true } } } },
+    dataLabels: {
+      enabled: true,
+      formatter: function (val: number) {
+        return val.toFixed(1) + "%";
+      },
+      style: {
+        fontSize: '12px',
+        fontFamily: 'Helvetica, Arial, sans-serif',
+        fontWeight: 'bold',
+        colors: ['#fff']
+      },
+      dropShadow: {
+        enabled: true,
+      }
+    },
+    tooltip: {
+      y: {
+        formatter: function (val: number) {
+          return val + " คน";
+        },
+      },
+    },
   };
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
@@ -86,12 +112,16 @@ export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
         สัดส่วนเกรดลูกค้า
       </h3>
       <div className="w-full overflow-hidden">
-        <ReactApexChart
-          options={options}
-          series={series}
-          type="donut"
-          height={260}
-        />
+        {loading ? (
+          <Spinner />
+        ) : (
+          <ReactApexChart
+            options={options}
+            series={series}
+            type="donut"
+            height={260}
+          />
+        )}
       </div>
     </div>
   );
