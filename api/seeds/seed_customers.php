@@ -67,12 +67,77 @@ try {
            echo "Inserted " . ($i + $currentBatchSize) . " records...\n";
            flush(); // Attempt to push output to browser
         }
+        
+        // --- Order Generation Logic ---
+        // 1. Fetch backend IDs (customer_id) for the batch we just inserted
+        // We can use the customer_ref_id range to find them efficiently
+        // The refIds are 'CUS-SEED-' . time() . '-' . ($i) to ($i + currentBatchSize - 1)
+        // Note: 'time()' might have changed if execution is slow, so we rely on the logic that strict uniqueness was handled by loop index
+        // Ideally, we'd capture the inserted IDs via returning, but MySQL specific features vary.
+        // Safer: SELECT customer_id FROM customers WHERE customer_ref_id IN (...) 
+        
+        $placeholders = implode(',', array_fill(0, count($params) / 7, '?')); // params has 7 fields per customer
+        // Re-extract refIds from the params array
+        $refIds = [];
+        for ($k = 0; $k < count($params); $k += 7) {
+            $refIds[] = $params[$k];
+        }
+        
+        $inQuery = implode(',', array_fill(0, count($refIds), '?'));
+        $stmtIds = $pdo->prepare("SELECT customer_id FROM customers WHERE customer_ref_id IN ($inQuery)");
+        $stmtIds->execute($refIds);
+        $customerIds = $stmtIds->fetchAll(PDO::FETCH_COLUMN);
+        
+        $orderValues = [];
+        $orderParams = [];
+        
+        $paymentMethods = ['COD', 'Transfer'];
+        $orderStatuses = ['Pending', 'Confirmed', 'Processing', 'Delivered', 'Cancelled'];
+        
+        foreach ($customerIds as $cid) {
+            // 70% chance to have orders
+            if (rand(1, 100) > 30) {
+                $numOrders = rand(1, 5); // 1-5 orders per customer
+                for ($o = 0; $o < $numOrders; $o++) {
+                    // Generate Order ID: O-Timestamp-Random
+                    $orderId = 'ORD-' . time() . '-' . $cid . '-' . $o . '-' . rand(100,999);
+                    $total = rand(500, 5000);
+                    $status = $orderStatuses[array_rand($orderStatuses)];
+                    $pm = $paymentMethods[array_rand($paymentMethods)];
+                    $date = date('Y-m-d H:i:s', strtotime('-' . rand(0, 365) . ' days'));
+                    
+                    // Fields: id, customer_id, company_id, order_date, total_amount, order_status, payment_method, payment_status, shipping_cost, delivery_date
+                    $orderValues[] = "(?, ?, ?, ?, ?, ?, ?, ?, 0, ?)";
+                    $orderParams[] = $orderId;
+                    $orderParams[] = $cid;
+                    $orderParams[] = $companyId;
+                    $orderParams[] = $date;
+                    $orderParams[] = $total;
+                    $orderParams[] = $status;
+                    $orderParams[] = $pm;
+                    $orderParams[] = ($status === 'Delivered') ? 'Paid' : 'Unpaid';
+                    $orderParams[] = date('Y-m-d H:i:s', strtotime($date . ' + 3 days'));
+                }
+            }
+        }
+        
+        if (!empty($orderValues)) {
+            $sqlOrder = "INSERT INTO orders (id, customer_id, company_id, order_date, total_amount, order_status, payment_method, payment_status, shipping_cost, delivery_date) VALUES " . implode(',', $orderValues);
+            $stmtOrder = $pdo->prepare($sqlOrder);
+            $stmtOrder->execute($orderParams);
+        }
+        // ------------------------------
+
+        if (($i + $currentBatchSize) % 10000 == 0) {
+            echo "Inserted and processed " . ($i + $currentBatchSize) . " records...\n";
+            flush();
+        }
     }
     
     $pdo->commit();
     $duration = microtime(true) - $startTime;
     
-    echo "Done! Inserted $totalRecords customers in " . round($duration, 2) . " seconds.\n";
+    echo "Done! Inserted $totalRecords customers and associated orders in " . round($duration, 2) . " seconds.\n";
 
 } catch (Exception $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
