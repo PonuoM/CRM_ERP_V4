@@ -664,8 +664,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       return;
     }
 
+    // Use distributionCount for confirmation instead of preview count
+    const actualCount = parseInt(distributionCount, 10);
     if (
-      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${totalToAssign} รายการหรือไม่?`)
+      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่?`)
     ) {
       return;
     }
