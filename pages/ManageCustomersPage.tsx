@@ -139,6 +139,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           province: apProvince || undefined,
           lifecycle: apLifecycle || undefined,
           behavioral: apBehavioral || undefined,
+          userId: currentUser.id, // For upsell check exclusion context
           // Note: apDateAssigned / apOwnership logic can be added here if backend supports it
         });
 

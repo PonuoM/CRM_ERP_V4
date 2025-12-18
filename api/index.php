@@ -737,7 +737,23 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $total = (int)$countStmt->fetchColumn();
                         }
 
-                        $sql = "SELECT * FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
+                        // Upsell Check Logic
+                        $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+                        $upsellClause = "";
+                        $upsellParams = [];
+                        
+                        // Condition: Pending, < 24 hrs
+                        $upsellCond = "o.order_status = 'Pending' AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND o.customer_id = customers.customer_id";
+
+                        if ($userId) {
+                            // Exclude orders created by this user
+                            $upsellCond .= " AND (o.creator_id IS NULL OR o.creator_id != $userId)";
+                        }
+
+                        // Subquery for select
+                        $isUpsellEligibleSql = "(SELECT COUNT(*) FROM orders o WHERE $upsellCond) > 0";
+
+                        $sql = "SELECT *, $isUpsellEligibleSql as is_upsell_eligible FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
                         
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";

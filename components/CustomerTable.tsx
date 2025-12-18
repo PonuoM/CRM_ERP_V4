@@ -3,7 +3,7 @@ import { Customer, ModalType, Tag, TagType, User, UserRole } from "../types";
 import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart, UserCog } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
 import usePersistentState from "@/utils/usePersistentState";
-import { checkUpsellEligibility } from "@/services/api";
+
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -249,46 +249,12 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   };
 
   const TagColumn: React.FC<{ customer: Customer }> = ({ customer }) => {
-    const [hasUpsell, setHasUpsell] = useState(false);
-    const [upsellLoading, setUpsellLoading] = useState(true);
-
-    useEffect(() => {
-      let mounted = true;
-      const checkUpsell = async () => {
-        try {
-          const customerId = customer.id || customer.customerId || customer.customerRefId;
-          if (!customerId) {
-            setHasUpsell(false);
-            setUpsellLoading(false);
-            return;
-          }
-          const result = await checkUpsellEligibility(customerId, currentUserId);
-          if (mounted) {
-            setHasUpsell(result.hasEligibleOrders);
-            setUpsellLoading(false);
-          }
-        } catch (error) {
-          console.error("Error checking upsell eligibility:", error);
-          if (mounted) {
-            setHasUpsell(false);
-            setUpsellLoading(false);
-          }
-        }
-      };
-
-      checkUpsell();
-      // Re-check every 30 seconds
-      const interval = setInterval(checkUpsell, 30000);
-
-      return () => {
-        mounted = false;
-        clearInterval(interval);
-      };
-    }, [customer.id, customer.customerId, customer.customerRefId, currentUserId]);
+    // Optimization: Use the pre-fetched isUpsellEligible flag from the API
+    // instead of making a separate API call for each row.
+    const showUpsellTag = customer.isUpsellEligible === true;
 
     const visibleTags = customer.tags.slice(0, 2);
     const hiddenCount = customer.tags.length - visibleTags.length;
-    const showUpsellTag = hasUpsell && !upsellLoading;
 
     return (
       <div className="flex items-center flex-wrap gap-1">

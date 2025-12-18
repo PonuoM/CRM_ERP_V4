@@ -76,5 +76,6 @@ export const mapCustomerFromApi = (r: any): Customer => {
         isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
         waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
         isBlocked: Boolean(r.is_blocked ?? false),
+        isUpsellEligible: Boolean(Number(r.is_upsell_eligible ?? 0)),
     };
 };

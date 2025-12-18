@@ -133,6 +133,8 @@ export async function listCustomers(params?: {
   if (params?.assignedTo) qs.set("assignedTo", String(params.assignedTo));
   if (params?.page) qs.set("page", String(params.page));
   if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  // Pass userId to context (e.g. for upsell exclusion)
+  if (params?.userId) qs.set("userId", String(params.userId));
 
   const query = qs.toString();
   const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
