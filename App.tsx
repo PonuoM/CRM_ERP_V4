@@ -729,7 +729,8 @@ const App: React.FC = () => {
       try {
         const isDashboard = activePage === 'Dashboard';
         const isAdmin = sessionUser?.role === UserRole.Admin;
-        const shouldSkipCustomers = isAdmin && isDashboard;
+        // Optimized: Skip loading customers unless we are on the Customers page
+        const shouldSkipCustomers = activePage !== 'Customers';
 
         const [
           u,
@@ -1302,8 +1303,10 @@ const App: React.FC = () => {
     const isDashboard = activePage === 'Dashboard';
     const hasCustomers = customers.length > 0;
 
-    if (isAdmin && !isDashboard && !hasCustomers) {
-      console.log("Lazy loading customers...");
+    // Optimized: Only lazy load customers when on the Customers page (ManageCustomersPage)
+    // and if we haven't loaded them yet.
+    if (isAdmin && activePage === 'Customers' && !hasCustomers) {
+      console.log("Lazy loading customers for ManageCustomersPage...");
       let cancelled = false;
 
       const lazyLoad = async () => {
@@ -3060,9 +3063,9 @@ const App: React.FC = () => {
         // Refresh orders, customers, and activities with proper mapping
         const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
           listOrders(currentUser.companyId),
-          listCustomers({
+          activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
-          }),
+          }) : Promise.resolve([]),
           listActivities(),
           listCustomerTags(),
         ]);
@@ -3345,9 +3348,9 @@ const App: React.FC = () => {
       // Refresh orders, customers, and activities with proper mapping
       const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
         listOrders(currentUser.companyId),
-        listCustomers({
+        activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
-        }),
+        }) : Promise.resolve([]),
         listActivities(),
         listCustomerTags(),
       ]);
@@ -6242,7 +6245,7 @@ const App: React.FC = () => {
             try {
               const [act, c, ctags] = await Promise.all([
                 listActivities(),
-                listCustomers({ companyId: sessionUser?.company_id }),
+                activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve([]),
                 listCustomerTags(),
               ]);
               setActivities(
