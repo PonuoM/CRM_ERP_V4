@@ -23,8 +23,9 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer, getCustomerStats } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
+import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
 
 interface CustomerDistributionPageProps {
@@ -560,94 +561,99 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       return;
     }
 
+
     const selectedAgents = telesaleAgents.filter((a) =>
       selectedAgentIds.includes(a.id),
     );
 
-    // For large distributions where customers aren't all loaded, show summary preview
-    if (count > availableCustomers.length) {
-      const countPerAgent = Math.floor(count / selectedAgents.length);
-      const remainder = count % selectedAgents.length;
+    // Fetch real customers from API for preview
+    const fetchPreviewCustomers = async () => {
+      try {
+        setLoadingPool(true);
 
-      const summaryAssignments: PreviewAssignments = {};
-      selectedAgents.forEach((agent, index) => {
-        const agentCount = countPerAgent + (index < remainder ? 1 : 0);
-        // Show only first 5 as preview sample
-        const previewCount = Math.min(agentCount, 5);
-        summaryAssignments[agent.id] = Array(previewCount).fill(null).map((_, i) => ({
-          id: `preview-${agent.id}-${i}`,
-          firstName: i === 0 ? `จะแจก ${agentCount.toLocaleString()} รายชื่อ` : `ตัวอย่าง`,
-          lastName: i === 0 ? `` : `รายชื่อที่ ${i}`,
-          phone: "xxx-xxx-xxxx",
-          address: { street: "", subdistrict: "", district: "", province: "", postalCode: "" },
-          province: "",
-          companyId: 0,
-          assignedTo: null,
-          dateAssigned: "",
-          ownershipExpires: "",
-          lifecycleStatus: "New" as any,
-          behavioralStatus: "Cold" as any,
-          grade: "D" as any,
-          tags: [],
-          assignmentHistory: [],
-          totalPurchases: 0,
-          totalCalls: 0,
-        }));
-      });
+        // Fetch customers from waiting basket (ready to distribute)
+        const response = await listCustomers({
+          companyId: currentUser.companyId,
+          page: 1,
+          pageSize: count, // Fetch exactly the number we need
+          // Filter for customers ready to distribute
+          assignedTo: null, // Not assigned
+          // Note: API should filter out blocked and in_waiting_basket automatically
+        });
 
-      setPreviewAssignments(summaryAssignments);
-      setSkippedCustomers([]);
-      setShowPreview(true);
-      setShowPreviewModal(true);
-      setDistributionResult(null);
-      return;
-    }
+        // Map API response to Customer objects
+        const fetchedCustomers = (response?.data || []).map(mapCustomerFromApi);
 
-    let distributableCustomers = [...availableCustomers];
+        if (fetchedCustomers.length === 0) {
+          alert("ไม่พบลูกค้าที่พร้อมแจก กรุณาตรวจสอบอีกครั้ง");
+          setLoadingPool(false);
+          return;
+        }
 
-    // Shuffle for fairness
-    distributableCustomers.sort(() => Math.random() - 0.5);
+        // Shuffle for fairness
+        const distributableCustomers = [...fetchedCustomers];
+        distributableCustomers.sort(() => Math.random() - 0.5);
 
-    const assignments: PreviewAssignments = {};
-    selectedAgents.forEach((agent) => (assignments[agent.id] = []));
-    const skipped: SkippedCustomer[] = [];
+        const assignments: PreviewAssignments = {};
+        selectedAgents.forEach((agent) => (assignments[agent.id] = []));
+        const skipped: SkippedCustomer[] = [];
+        const actualAssignmentCounts: Record<number, number> = {}; // Track actual counts
+        selectedAgents.forEach((agent) => (actualAssignmentCounts[agent.id] = 0));
 
-    let assignedCount = 0;
-    const customerPool = new Set(distributableCustomers);
+        let assignedCount = 0;
+        const customerPool = new Set(distributableCustomers);
 
-    while (assignedCount < count && customerPool.size > 0) {
-      let assignedInThisLoop = false;
-      for (const agent of selectedAgents) {
-        if (assignedCount >= count) break;
+        while (assignedCount < count && customerPool.size > 0) {
+          let assignedInThisLoop = false;
+          for (const agent of selectedAgents) {
+            if (assignedCount >= count) break;
 
-        for (const customer of customerPool) {
-          const hasHistory = customer.assignmentHistory?.includes(agent.id);
-          if (!hasHistory) {
-            assignments[agent.id].push(customer);
-            customerPool.delete(customer);
-            assignedCount++;
-            assignedInThisLoop = true;
+            for (const customer of customerPool) {
+              const hasHistory = customer.assignmentHistory?.includes(agent.id);
+              if (!hasHistory) {
+                // Track actual assignment count
+                actualAssignmentCounts[agent.id]++;
+
+                // Only add to preview if less than 10 items
+                if (assignments[agent.id].length < 10) {
+                  assignments[agent.id].push(customer);
+                }
+
+                customerPool.delete(customer);
+                assignedCount++;
+                assignedInThisLoop = true;
+                break;
+              }
+            }
+          }
+          if (!assignedInThisLoop) {
+            customerPool.forEach((c) =>
+              skipped.push({
+                customer: c,
+                reason: "เคยอยู่กับพนักงานทุกคนที่เลือกแล้ว",
+              }),
+            );
             break;
           }
         }
-      }
-      if (!assignedInThisLoop) {
-        customerPool.forEach((c) =>
-          skipped.push({
-            customer: c,
-            reason: "เคยอยู่กับพนักงานทุกคนที่เลือกแล้ว",
-          }),
-        );
-        break;
-      }
-    }
 
-    setPreviewAssignments(assignments);
-    setSkippedCustomers(skipped);
-    setShowPreview(true);
-    setShowPreviewModal(true);
-    setDistributionResult(null);
+        setPreviewAssignments(assignments);
+        setSkippedCustomers(skipped);
+        setShowPreview(true);
+        setShowPreviewModal(true);
+        setDistributionResult(null);
+        setLoadingPool(false);
+      } catch (error) {
+        console.error("Failed to fetch preview customers:", error);
+        alert("ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
+        setLoadingPool(false);
+      }
+    };
+
+    fetchPreviewCustomers();
+    return;
   };
+
 
   const handleExecuteDistribution = async () => {
     const totalToAssign = Object.values(
@@ -807,14 +813,14 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             <div className="grid grid-cols-1 gap-6">
               <div>
                 <h4 className="font-semibold mb-2">
-                  รายชื่อที่จะถูกแจก (
-                  {
-                    Object.values(
-                      previewAssignments as PreviewAssignments,
-                    ).flat().length
-                  }
-                  )
+                  รายชื่อที่จะถูกแจก ({distributionCount} รายชื่อ)
                 </h4>
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    <Info className="inline-block w-4 h-4 mr-1" />
+                    แสดงตัวอย่างเพียง 10 รายชื่อแรกต่อพนักงาน การแจกจริงจะใช้จำนวน {distributionCount} รายชื่อตามที่กำหนด
+                  </p>
+                </div>
                 <div className="space-y-4">
                   {Object.entries(previewAssignments as PreviewAssignments)
                     .filter(([agentId, customers]) => customers.length > 0)
@@ -832,7 +838,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                               ? `${agent.firstName} ${agent.lastName}`
                               : ""}{" "}
                             <span className="font-normal text-gray-500">
-                              ({customers.length} รายชื่อ)
+                              ({distributionCount} รายชื่อ)
                             </span>
                           </p>
                           <div className="max-h-64 overflow-y-auto pr-2">
