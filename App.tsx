@@ -1299,13 +1299,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!sessionUser?.company_id) return;
 
-    const isAdmin = sessionUser.role === UserRole.Admin;
-    const isDashboard = activePage === 'Dashboard';
     const hasCustomers = customers.length > 0;
 
     // Optimized: Only lazy load customers when on the Customers page (ManageCustomersPage)
     // and if we haven't loaded them yet.
-    if (isAdmin && activePage === 'Customers' && !hasCustomers) {
+    if (activePage === 'Customers' && !hasCustomers) {
       console.log("Lazy loading customers for ManageCustomersPage...");
       let cancelled = false;
 
