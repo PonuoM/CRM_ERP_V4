@@ -492,14 +492,33 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     const count = parseInt(countStr, 10);
-    if (!isNaN(count) && count > availableCustomers.length) {
+    // Use API data if available, fallback to client-side calculation
+    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+
+    if (!isNaN(count) && count > actualAvailableCount) {
       setDistributionCountError(
-        `จำนวนที่ต้องการแจก (${count}) มากกว่าลูกค้าที่พร้อมแจก (${availableCustomers.length})`,
+        `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
       );
     } else {
       setDistributionCountError("");
     }
   };
+
+  // Re-validate distribution count when API data loads
+  useEffect(() => {
+    if (distributionCount && customerStats?.baskets?.waitingDistribute) {
+      const count = parseInt(distributionCount, 10);
+      const actualAvailableCount = customerStats.baskets.waitingDistribute;
+
+      if (!isNaN(count) && count > actualAvailableCount) {
+        setDistributionCountError(
+          `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
+        );
+      } else {
+        setDistributionCountError("");
+      }
+    }
+  }, [customerStats?.baskets?.waitingDistribute, distributionCount]);
 
   const handleAgentSelection = (agentId: number) => {
     setSelectedAgentIds((prev) =>
@@ -527,10 +546,15 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
-    if (count > availableCustomers.length) {
-      // This case should be prevented by disabled button, but as a safeguard.
+
+    // Use API data for validation
+    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    if (count > actualAvailableCount) {
+      alert(`จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`);
       return;
     }
+
+
     if (selectedAgentIds.length === 0) {
       alert("กรุณาเลือกพนักงานเป้าหมาย");
       return;
@@ -539,6 +563,46 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const selectedAgents = telesaleAgents.filter((a) =>
       selectedAgentIds.includes(a.id),
     );
+
+    // For large distributions where customers aren't all loaded, show summary preview
+    if (count > availableCustomers.length) {
+      const countPerAgent = Math.floor(count / selectedAgents.length);
+      const remainder = count % selectedAgents.length;
+
+      const summaryAssignments: PreviewAssignments = {};
+      selectedAgents.forEach((agent, index) => {
+        const agentCount = countPerAgent + (index < remainder ? 1 : 0);
+        // Show only first 5 as preview sample
+        const previewCount = Math.min(agentCount, 5);
+        summaryAssignments[agent.id] = Array(previewCount).fill(null).map((_, i) => ({
+          id: `preview-${agent.id}-${i}`,
+          firstName: i === 0 ? `จะแจก ${agentCount.toLocaleString()} รายชื่อ` : `ตัวอย่าง`,
+          lastName: i === 0 ? `` : `รายชื่อที่ ${i}`,
+          phone: "xxx-xxx-xxxx",
+          address: { street: "", subdistrict: "", district: "", province: "", postalCode: "" },
+          province: "",
+          companyId: 0,
+          assignedTo: null,
+          dateAssigned: "",
+          ownershipExpires: "",
+          lifecycleStatus: "New" as any,
+          behavioralStatus: "Cold" as any,
+          grade: "D" as any,
+          tags: [],
+          assignmentHistory: [],
+          totalPurchases: 0,
+          totalCalls: 0,
+        }));
+      });
+
+      setPreviewAssignments(summaryAssignments);
+      setSkippedCustomers([]);
+      setShowPreview(true);
+      setShowPreviewModal(true);
+      setDistributionResult(null);
+      return;
+    }
+
     let distributableCustomers = [...availableCustomers];
 
     // Shuffle for fairness
@@ -1152,13 +1216,19 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 2. เลือกพนักงานเป้าหมาย
               </h3>
               <div className="mt-1 space-y-1">
-                <p className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
+                <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
                   มีรายชื่อพร้อมแจก:{" "}
-                  <span className="text-3xl font-extrabold text-green-700">
-                    {availableCustomers.length}
-                  </span>{" "}
-                  รายการ
-                </p>
+                  {loadingStats ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <>
+                      <span className="text-3xl font-extrabold text-green-700">
+                        {(customerStats?.baskets?.waitingDistribute ?? availableCustomers.length).toLocaleString()}
+                      </span>{" "}
+                      รายการ
+                    </>
+                  )}
+                </div>
                 <div className="text-xs text-gray-400">
                   <div>
                     แหล่งข้อมูล:{" "}
