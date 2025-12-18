@@ -854,6 +854,9 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   <p className="text-sm text-blue-700">
                     <Info className="inline-block w-4 h-4 mr-1" />
                     แสดงตัวอย่างเพียง 10 รายชื่อแรกต่อพนักงาน การแจกจริงจะใช้จำนวน {distributionCount} รายชื่อตามที่กำหนด
+                    {selectedAgentIds.length > 0 && (
+                      <> (คนละประมาณ {Math.floor(parseInt(distributionCount, 10) / selectedAgentIds.length).toLocaleString()} รายชื่อ)</>
+                    )}
                   </p>
                 </div>
                 <div className="space-y-4">
@@ -863,19 +866,22 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                       const agent = telesaleAgents.find(
                         (a) => a.id === parseInt(agentId),
                       );
+                      // Calculate actual count per agent
+                      const actualCountPerAgent = Math.floor(parseInt(distributionCount, 10) / selectedAgentIds.length);
+
                       return (
                         <div
                           key={agentId}
                           className="border rounded-lg p-4 bg-gray-50"
                         >
-                          <p className="font-medium text-gray-800 mb-3">
-                            {agent
-                              ? `${agent.firstName} ${agent.lastName}`
-                              : ""}{" "}
-                            <span className="font-normal text-gray-500">
-                              ({distributionCount} รายชื่อ)
+                          <h5 className="font-semibold text-lg mb-3 text-gray-700 flex items-center justify-between">
+                            <span>
+                              {agent?.firstName} {agent?.lastName}
                             </span>
-                          </p>
+                            <span className="text-sm font-normal text-blue-600">
+                              ({actualCountPerAgent.toLocaleString()} รายชื่อ)
+                            </span>
+                          </h5>
                           <div className="max-h-64 overflow-y-auto pr-2">
                             <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 pl-2">
                               {customers.map((c) => (
