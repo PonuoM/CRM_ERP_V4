@@ -745,13 +745,41 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         setSkippedCustomers([]);
         setDistributionCount("");
         setSelectedAgentIds([]);
+
+        // Refresh data
+        try {
+          // Set loading states
+          setLoadingStats(true);
+          setLoadingTelesaleStats(true);
+
+          // Refresh customer stats
+          const statsResponse = await getCustomerStats(currentUser.companyId);
+          if (statsResponse?.ok && statsResponse?.stats) {
+            setCustomerStats(statsResponse.stats);
+          }
+          setLoadingStats(false);
+
+          // Refresh telesale stats
+          const telesaleResponse = await getTelesaleUsers(currentUser.companyId);
+          if (telesaleResponse?.ok && telesaleResponse?.users) {
+            setTelesaleStats(telesaleResponse.users);
+          }
+          setLoadingTelesaleStats(false);
+        } catch (refreshError) {
+          console.error("Failed to refresh stats:", refreshError);
+          setLoadingStats(false);
+          setLoadingTelesaleStats(false);
+          // Don't show error to user, stats will refresh on next page load
+        }
+
+        // Stop loading after everything is done
+        setSavingDistribution(false);
       } else {
         throw new Error(response?.error || "Distribution failed");
       }
     } catch (error) {
       console.error("Failed to distribute customers", error);
       alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
-    } finally {
       setSavingDistribution(false);
     }
   };
@@ -901,8 +929,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 disabled={savingDistribution}
                 className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-green-100"
               >
-                <PlayCircle size={20} className="mr-2" />
-                {savingDistribution ? "กำลังบันทึก..." : "เริ่มแจกลูกค้า"}
+                {savingDistribution ? (
+                  <>
+                    <RefreshCw className="mr-2 animate-spin" size={20} />
+                    กำลังแจกลูกค้า...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="mr-2" size={20} />
+                    เริ่มแจกลูกค้า
+                  </>
+                )}
               </button>
             </div>
           </div>
