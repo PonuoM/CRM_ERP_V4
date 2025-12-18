@@ -51,11 +51,10 @@ const SummaryTable: React.FC<{ title: string, data: { label: string, value: numb
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers, openCreateOrderModal }) => {
     console.log("AdminDashboard: Rendered with user:", user);
     const [dbStats, setDbStats] = React.useState<{ totalCustomers: number; grades: Record<string, number> } | null>(null);
-    const [loadingStats, setLoadingStats] = React.useState(false);
+    const [loadingStats, setLoadingStats] = React.useState(!!user.companyId);
 
     React.useEffect(() => {
         if (user.companyId) {
-            setLoadingStats(true);
             console.log("AdminDashboard: fetching customer stats for company", user.companyId);
             getCustomerStats(user.companyId).then(res => {
                 console.log("AdminDashboard: retrieved stats", res);
