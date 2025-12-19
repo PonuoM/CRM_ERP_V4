@@ -557,7 +557,7 @@ export async function listOrders(params: {
   creatorId?: number;
   orderStatus?: string | string[];
   tab?: string;
-  includeTabCounts?: boolean;
+  signal?: AbortSignal;
 }): Promise<{
   ok: boolean;
   orders: any[];
@@ -573,7 +573,8 @@ export async function listOrders(params: {
   if (params.companyId) qs.set("companyId", String(params.companyId));
   if (params.page) qs.set("page", String(params.page));
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
-  if (params.includeTabCounts) qs.set("includeTabCounts", "true");
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
 
   // Add filter parameters
   if (params.orderId) qs.set("orderId", params.orderId);
@@ -602,7 +603,14 @@ export async function listOrders(params: {
   }
   if (params.tab) qs.set("tab", params.tab);
 
-  return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`);
+  return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: params.signal });
+}
+
+export async function getOrderCounts(companyId: number): Promise<{
+  ok: boolean;
+  tabCounts: Record<string, number>;
+}> {
+  return apiFetch(`order_counts?companyId=${companyId}`);
 }
 
 export async function getOrder(id: string) {

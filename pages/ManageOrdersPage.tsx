@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
-import { createExportLog, listOrderSlips, listOrders } from '../services/api';
+import { createExportLog, listOrderSlips, listOrders, getOrderCounts } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -71,7 +71,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [loading, setLoading] = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
   const [apiTotalPages, setApiTotalPages] = useState(1);
+
   const [countMap, setCountMap] = useState<Record<string, number>>({}); // Count per tab
+  const [countsLoading, setCountsLoading] = useState(false);
 
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
@@ -152,8 +154,28 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Determine filters based on Active Tab
 
 
+  // Fetch tab counts once on mount
+  useEffect(() => {
+    const fetchCounts = async () => {
+      if (!user?.companyId) return;
+      setCountsLoading(true);
+      try {
+        const res = await getOrderCounts(user.companyId);
+        if (res.ok && res.tabCounts) {
+          setTabCounts(prev => ({ ...prev, ...res.tabCounts }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch tab counts:', error);
+      } finally {
+        setCountsLoading(false);
+      }
+    };
+    fetchCounts();
+  }, [user?.companyId]);
+
   // Fetch orders from API
   useEffect(() => {
+    const controller = new AbortController();
     const fetchOrders = async () => {
       if (!user?.companyId) return;
 
@@ -178,7 +200,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
           // Send active tab to backend for specialized filtering logic
           tab: activeTab,
-          includeTabCounts: true,
         };
 
         // TODO: Backend currently might not support 'orderStatus' filter directly in listOrders signature (based on TelesaleOrdersPage experience).
@@ -187,7 +208,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         // It DOES NOT seem to support `orderStatus` yet based on my memory of listOrders in services/api.ts.
         // I should check `services/api.ts` to see if I need to add `orderStatus`.
 
-        const response = await listOrders(params);
+        const response = await listOrders({ ...params, signal: controller.signal });
 
         if (response.ok) {
           const mappedOrders = (response.orders || []).map((r: any) => ({
@@ -242,27 +263,32 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             } : undefined,
           }));
 
+
           setApiOrders(mappedOrders);
           setTotalOrders(response.pagination.total);
           setApiTotalPages(response.pagination.totalPages);
-          if (response.tabCounts) {
-            setTabCounts(prev => ({
-              ...prev,
-              ...response.tabCounts,
-              ...(activeTab === 'completed' ? { completed: response.pagination.total } : {})
-            }));
-          } else if (activeTab === 'completed') {
+
+          // Lazy load verified count if on completed tab (not returned by getOrderCounts)
+          if (activeTab === 'completed') {
             setTabCounts(prev => ({ ...prev, completed: response.pagination.total }));
           }
         }
-      } catch (error) {
-        console.error('Fetch orders failed:', error);
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Fetch orders failed:', error);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchOrders();
+
+    return () => {
+      controller.abort();
+    };
   }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   useEffect(() => {
@@ -1269,7 +1295,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <ListChecks size={16} />
           <span>รอตรวจสอบสลิป</span>
-          {(tabCounts['waitingVerifySlip'] || 0) > 0 && (
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['waitingVerifySlip'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-600">
               {tabCounts['waitingVerifySlip'] || 0}
             </span>
@@ -1284,7 +1312,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <ListChecks size={16} />
           <span>รอดึงข้อมูล</span>
-          {(tabCounts['waitingExport'] || 0) > 0 && (
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['waitingExport'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-600">
               {tabCounts['waitingExport'] || 0}
             </span>
@@ -1299,7 +1329,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <Package size={16} />
           <span>กำลังเตรียมสินค้า</span>
-          {(tabCounts['preparing'] || 0) > 0 && (
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['preparing'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-600">
               {tabCounts['preparing'] || 0}
             </span>
@@ -1314,7 +1346,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <Truck size={16} />
           <span>กำลังจัดส่ง</span>
-          {(tabCounts['shipping'] || 0) > 0 && (
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['shipping'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-600">
               {tabCounts['shipping'] || 0}
             </span>
@@ -1329,7 +1363,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <Clock size={16} />
           <span>รอตรวจสอบจากบัญชี</span>
-          {(tabCounts['awaiting_account'] || 0) > 0 && (
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['awaiting_account'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-600">
               {tabCounts['awaiting_account'] || 0}
             </span>
