@@ -1784,7 +1784,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
-                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action';
+                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,
+                               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
+                               c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
+                               c.province as customer_province, c.postal_code as customer_postal_code';
 
                 $sql = "SELECT $selectCols
                         FROM orders o

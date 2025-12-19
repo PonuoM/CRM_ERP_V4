@@ -222,6 +222,19 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
             trackingDetails: r.tracking_details || r.trackingDetails || [],
             boxes: r.boxes || [],
             reconcileAction: r.reconcile_action,
+            // Customer information from API
+            customerInfo: r.customer_first_name ? {
+              firstName: r.customer_first_name,
+              lastName: r.customer_last_name,
+              phone: r.customer_phone,
+              address: {
+                street: r.customer_street || '',
+                subdistrict: r.customer_subdistrict || '',
+                district: r.customer_district || '',
+                province: r.customer_province || '',
+                postalCode: r.customer_postal_code || '',
+              }
+            } : undefined,
           }));
 
           setApiOrders(mappedOrders);
