@@ -557,6 +557,7 @@ export async function listOrders(params: {
   creatorId?: number;
   orderStatus?: string | string[];
   tab?: string;
+  includeTabCounts?: boolean;
 }): Promise<{
   ok: boolean;
   orders: any[];
@@ -566,11 +567,13 @@ export async function listOrders(params: {
     total: number;
     totalPages: number;
   };
+  tabCounts?: Record<string, number>;
 }> {
   const qs = new URLSearchParams();
   if (params.companyId) qs.set("companyId", String(params.companyId));
   if (params.page) qs.set("page", String(params.page));
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params.includeTabCounts) qs.set("includeTabCounts", "true");
 
   // Add filter parameters
   if (params.orderId) qs.set("orderId", params.orderId);

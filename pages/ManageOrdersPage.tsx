@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
 import { createExportLog, listOrderSlips, listOrders } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
@@ -42,6 +42,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
@@ -89,14 +90,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (saved && typeof saved === 'object') {
         setActiveDatePreset(saved.activeDatePreset ?? 'today'); // Default to 'today' instead of 'all'
         setDateRange(saved.dateRange ?? { start: '', end: '' });
-        setActiveTab(
-          saved.activeTab === 'completed' ? 'completed' :
-            saved.activeTab === 'awaiting_account' ? 'awaiting_account' :
-              saved.activeTab === 'preparing' ? 'preparing' :
-                saved.activeTab === 'processed' ? 'preparing' : // Migrate old 'processed' to 'preparing'
-                  saved.activeTab === 'verified' ? 'verified' :
-                    saved.activeTab === 'shipping' ? 'shipping' : 'pending'
-        );
+
         setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
@@ -184,6 +178,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
           // Send active tab to backend for specialized filtering logic
           tab: activeTab,
+          includeTabCounts: true,
         };
 
         // TODO: Backend currently might not support 'orderStatus' filter directly in listOrders signature (based on TelesaleOrdersPage experience).
@@ -250,6 +245,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           setApiOrders(mappedOrders);
           setTotalOrders(response.pagination.total);
           setApiTotalPages(response.pagination.totalPages);
+          if (response.tabCounts) {
+            setTabCounts(response.tabCounts);
+          }
         }
       } catch (error) {
         console.error('Fetch orders failed:', error);
@@ -1265,9 +1263,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <ListChecks size={16} />
           <span>รอตรวจสอบสลิป</span>
-          {activeTab === 'waitingVerifySlip' && (
+          {(tabCounts['waitingVerifySlip'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-600">
-              {totalOrders}
+              {tabCounts['waitingVerifySlip'] || 0}
             </span>
           )}
         </button>
@@ -1280,39 +1278,39 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <ListChecks size={16} />
           <span>รอดึงข้อมูล</span>
-          {activeTab === 'waitingExport' && (
+          {(tabCounts['waitingExport'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-600">
-              {totalOrders}
+              {tabCounts['waitingExport'] || 0}
             </span>
           )}
         </button>
         <button
           onClick={() => setActiveTab('preparing')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'preparing'
-            ? 'border-b-2 border-green-600 text-green-600'
+            ? 'border-b-2 border-purple-600 text-purple-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <Package size={16} />
-          <span>กำลังจัดเตรียม</span>
-          {activeTab === 'preparing' && (
-            <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-600">
-              {totalOrders}
+          <span>กำลังเตรียมสินค้า</span>
+          {(tabCounts['preparing'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-600">
+              {tabCounts['preparing'] || 0}
             </span>
           )}
         </button>
         <button
           onClick={() => setActiveTab('shipping')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'shipping'
-            ? 'border-b-2 border-purple-600 text-purple-600'
+            ? 'border-b-2 border-indigo-600 text-indigo-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
-          <Send size={16} />
+          <Truck size={16} />
           <span>กำลังจัดส่ง</span>
-          {activeTab === 'shipping' && (
-            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-600">
-              {totalOrders}
+          {(tabCounts['shipping'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-600">
+              {tabCounts['shipping'] || 0}
             </span>
           )}
         </button>
@@ -1325,9 +1323,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <Clock size={16} />
           <span>รอตรวจสอบจากบัญชี</span>
-          {activeTab === 'awaiting_account' && (
+          {(tabCounts['awaiting_account'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-600">
-              {totalOrders}
+              {tabCounts['awaiting_account'] || 0}
             </span>
           )}
         </button>
@@ -1340,9 +1338,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <CheckCircle2 size={16} />
           <span>เสร็จสิ้น</span>
-          {activeTab === 'completed' && (
+          {(tabCounts['completed'] || 0) > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-              {totalOrders}
+              {tabCounts['completed'] || 0}
             </span>
           )}
         </button>

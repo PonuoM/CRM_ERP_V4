@@ -2183,7 +2183,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
                 
                 // Return paginated response
-                json_response([
+                $responsePayload = [
                     'ok' => true,
                     'orders' => $orders,
                     'pagination' => [
@@ -2192,7 +2192,64 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         'total' => $total,
                         'totalPages' => $totalPages
                     ]
-                ]);
+                ];
+
+                // Calculate counts for all tabs if requested
+                if (isset($_GET['includeTabCounts']) && $_GET['includeTabCounts'] === 'true') {
+                    $tabCounts = [];
+                    $tabs = ['waitingVerifySlip', 'waitingExport', 'preparing', 'shipping', 'awaiting_account', 'completed'];
+
+                    foreach ($tabs as $t) {
+                        $conds = ["o.company_id = ?"];
+                        $p = [$companyId];
+                        $conds[] = "o.id NOT REGEXP '^.+-[0-9]+$'";
+
+                        switch ($t) {
+                             case 'waitingVerifySlip':
+                                // Transfer + Pending Status
+                                $conds[] = 'o.order_status = ?';
+                                $p[] = 'Pending';
+                                $conds[] = 'o.payment_method = ?';
+                                $p[] = 'Transfer';
+                                break;
+                             case 'waitingExport':
+                                // Pending Status (All Payment Methods)
+                                $conds[] = 'o.order_status = ?';
+                                $p[] = 'Pending';
+                                break;
+                             case 'preparing':
+                                $conds[] = 'o.order_status IN (?, ?)';
+                                $p[] = 'Preparing';
+                                $p[] = 'Picking';
+                                break;
+                             case 'shipping':
+                                $conds[] = '(
+                                    o.order_status = "Shipping" OR 
+                                    o.order_status = "Preparing" OR
+                                    ((o.order_status = "Pending" OR o.order_status = "AwaitingVerification") AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
+                                )';
+                                $conds[] = 'o.payment_method != ?';
+                                $p[] = 'Transfer';
+                                break;
+                             case 'awaiting_account':
+                                // Simplified for badge: PaymentStatus = PreApproved
+                                $conds[] = 'o.payment_status = ?';
+                                $p[] = 'PreApproved'; 
+                                break;
+                             case 'completed':
+                                $conds[] = 'o.order_status = "Delivered"';
+                                break;
+                        }
+                        
+                        $sqlT = "SELECT COUNT(DISTINCT o.id) FROM orders o WHERE " . implode(' AND ', $conds);
+                        $stmtT = $pdo->prepare($sqlT);
+                        $stmtT->execute($p);
+                        $tabCounts[$t] = (int)$stmtT->fetchColumn();
+                    }
+                    $responsePayload['tabCounts'] = $tabCounts;
+                }
+
+                json_response($responsePayload);
             }
             break;
         case 'POST':
