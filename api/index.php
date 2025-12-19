@@ -2197,7 +2197,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 // Calculate counts for all tabs if requested
                 if (isset($_GET['includeTabCounts']) && $_GET['includeTabCounts'] === 'true') {
                     $tabCounts = [];
-                    $tabs = ['waitingVerifySlip', 'waitingExport', 'preparing', 'shipping', 'awaiting_account', 'completed'];
+                    // Exclude 'completed' from global counts for performance (loaded on demand)
+                    $tabs = ['waitingVerifySlip', 'waitingExport', 'preparing', 'shipping', 'awaiting_account'];
 
                     foreach ($tabs as $t) {
                         $conds = ["o.company_id = ?"];
