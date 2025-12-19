@@ -1912,44 +1912,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             // Or use the exact logic: Status=Shipping OR (Status IN (Pending, Awaiting) AND t.tracking_number IS NOT NULL)
                             // Getting checking tracking IS NOT NULL with left join can be tricky with Group By?
                             // Actually we have tracking_numbers group concat. 
-                            // Better: Status = Shipping OR (Status IN ('Preparing','Pending') AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
-                            $whereConditions[] = '(
-                                o.order_status = "Shipping" OR 
-                                o.order_status = "Preparing" OR
-                                ((o.order_status = "Pending" OR o.order_status = "AwaitingVerification") AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
-                            )';
-                            // Exclude Transfer from Shipping tab based on user requirement in frontend? 
-                            // Frontend said: if (o.paymentMethod === PaymentMethod.Transfer) return false;
-                            // So let's exclude Transfer here if that's the rule
-                            $whereConditions[] = 'o.payment_method != ?';
-                            $params[] = 'Transfer';
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Shipping';
                             break;
                             
                         case 'awaiting_account':
-                            // QualifiesForAccountReview logic
-                            // PreApproved OR (Approved/Paid AND Reconcile != Confirmed)
-                            // AND has tracking (for some)
-                            // This is complex. Let's start with PreApproved as base + Verified Transfer/PayAfter
-                            // Frontend logic:
-                            // 1. PreApproved -> True
-                            // 2. No Tracking -> False
-                            // 3. Approved/Paid -> Reconcile != Confirmed
-                            // 4. COD -> Amount > 0
-                            // 5. Transfer/PayAfter -> Verified
-                            
-                            // Simplified SQL approximation:
-                            $whereConditions[] = '(
-                                o.payment_status = "PreApproved" OR
-                                (
-                                    EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id) AND
-                                    (
-                                        (o.payment_status IN ("Approved", "Paid") AND (srl.confirmed_action IS NULL OR srl.confirmed_action != "Confirmed")) OR
-                                        (o.payment_method = "COD" AND o.amount_paid > 0) OR
-                                        (o.payment_method IN ("Transfer", "PayAfter") AND o.payment_status = "Verified")
-                                    )
-                                )
-                            )';
-                            // Exclude Claim/FreeGift
+                            $whereConditions[] = 'o.payment_status = "PreApproved"';
                             $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
                             break;
                             
@@ -2000,7 +1968,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
                 
                 // Add conditional joins for Tabs that rely on specific tables in their WHERE clauses
-                if ($manageTab === 'awaiting_account' || $manageTab === 'completed') {
+                if ($manageTab === 'completed') {
                      $countSql .= " LEFT JOIN statement_reconcile_logs srl ON (
                         srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
                         OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id

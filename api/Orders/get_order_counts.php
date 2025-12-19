@@ -38,27 +38,12 @@ function handle_order_counts($pdo) {
                 $p[] = 'Picking';
                 break;
                 case 'shipping':
-                $conds[] = '(
-                    o.order_status = "Shipping" OR 
-                    o.order_status = "Preparing" OR
-                    ((o.order_status = "Pending" OR o.order_status = "AwaitingVerification") AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
-                )';
-                $conds[] = 'o.payment_method != ?';
-                $p[] = 'Transfer';
+                $conds[] = 'o.order_status = ?';
+                $p[] = 'Shipping';
                 break;
                 case 'awaiting_account':
-                // Full Logic to match main query
-                $conds[] = '(
-                    o.payment_status = "PreApproved" OR
-                    (
-                        EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id) AND
-                        (
-                            (o.payment_status IN ("Approved", "Paid") AND (srl.confirmed_action IS NULL OR srl.confirmed_action != "Confirmed")) OR
-                            (o.payment_method = "COD" AND o.amount_paid > 0) OR
-                            (o.payment_method IN ("Transfer", "PayAfter") AND o.payment_status = "Verified")
-                        )
-                    )
-                )';
+                $conds[] = 'o.payment_status = ?';
+                $p[] = 'PreApproved';
                 $conds[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
                 break;
                 case 'completed':
@@ -67,7 +52,7 @@ function handle_order_counts($pdo) {
         }
         
         $tabSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
-        if ($t === 'awaiting_account' || $t === 'completed') {
+        if ($t === 'completed') {
                 $tabSql .= " LEFT JOIN statement_reconcile_logs srl ON (
                 srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
                 OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
