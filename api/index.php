@@ -1878,25 +1878,18 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($manageTab) {
                     switch ($manageTab) {
                         case 'waitingVerifySlip':
-                            // Transfer + PendingVerification + Pending Status (Strict)
+                            // Transfer + Pending Status (Ignore Payment Status)
                             $whereConditions[] = 'o.order_status = ?';
                             $params[] = 'Pending';
                             $whereConditions[] = 'o.payment_method = ?';
                             $params[] = 'Transfer';
-                            $whereConditions[] = 'o.payment_status = ?';
-                            $params[] = 'PendingVerification';
                             break;
                             
-                        case 'verified':
-                            // (COD) OR (PayAfter) OR (Transfer AND Verified/Paid) OR (Claim/FreeGift)
-                            // No Order Status filter (shows Pending, Preparing, etc.)
-                            
-                            $whereConditions[] = '(
-                                o.payment_method = "COD" OR 
-                                o.payment_method = "PayAfter" OR 
-                                (o.payment_method = "Transfer" AND o.payment_status IN ("Verified", "Paid")) OR
-                                o.payment_method IN ("Claim", "FreeGift")
-                            )';
+                        case 'waitingExport':
+                            // Pending Status (Ignore Payment Status)
+                            // Previously split by method, now just Pending to cover all.
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Pending';
                             break;
                             
                         case 'preparing':

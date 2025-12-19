@@ -38,7 +38,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = useState<'waitingVerifySlip' | 'verified' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('waitingVerifySlip');
+  const [activeTab, setActiveTab] = useState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
@@ -1272,15 +1272,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           )}
         </button>
         <button
-          onClick={() => setActiveTab('verified')}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'verified'
+          onClick={() => setActiveTab('waitingExport')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingExport'
             ? 'border-b-2 border-yellow-600 text-yellow-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <ListChecks size={16} />
           <span>รอดึงข้อมูล</span>
-          {activeTab === 'verified' && (
+          {activeTab === 'waitingExport' && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-600">
               {totalOrders}
             </span>
@@ -1349,7 +1349,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       </div>
 
       {/* แสดงตัวกรองวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" */}
-      {activeTab === 'verified' && (
+      {activeTab === 'waitingExport' && (
         <div className="bg-white p-4 rounded-lg shadow mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center mr-4">
@@ -1401,10 +1401,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               customers={customers}
               openModal={openModal}
               users={users}
-              selectable={activeTab === 'waitingVerifySlip' || activeTab === 'verified'}
+              selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
-              showShippingColumn={activeTab !== 'verified'}
+              showShippingColumn={activeTab !== 'waitingExport'}
               shippingEditable={false}
               shippingOptions={SHIPPING_PROVIDERS}
               shippingSavingIds={Array.from(shippingSavingIds)}
