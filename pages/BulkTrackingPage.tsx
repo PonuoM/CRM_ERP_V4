@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Order, OrderStatus } from '../types';
+import { patchOrder } from '../services/api';
 import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2 } from 'lucide-react';
 
 type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked';
@@ -445,32 +446,12 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
           for (const [orderId, provider] of shippingUpdates.entries()) {
             console.log(`Updating order ${orderId} with provider: ${provider}`);
 
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            const headers: Record<string, string> = {
-              'Content-Type': 'application/json',
-            };
-            if (token) {
-              headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const updatePromise = fetch(`api/index.php/orders/${encodeURIComponent(orderId)}`, {
-              method: 'PATCH',
-              headers,
-              body: JSON.stringify({
-                shipping_provider: provider,
-              }),
-            })
-              .then(async (response) => {
-                const data = await response.json();
-                if (response.ok) {
-                  console.log(`Successfully updated order ${orderId}:`, data);
-                } else {
-                  console.error(`Failed to update order ${orderId}:`, response.status, data);
-                }
-                return { orderId, success: response.ok, data };
+            const updatePromise = patchOrder(orderId, { shipping_provider: provider })
+              .then((data: any) => {
+                console.log(`Successfully updated order ${orderId}:`, data);
+                return { orderId, success: true, data };
               })
-              .catch((error) => {
+              .catch((error: any) => {
                 console.error(`Error updating shipping provider for order ${orderId}:`, error);
                 return { orderId, success: false, error };
               });

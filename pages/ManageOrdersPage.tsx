@@ -153,6 +153,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     Array.isArray(order.trackingNumbers) && order.trackingNumbers.some((tn) => (tn || '').trim().length > 0);
 
   const qualifiesForAccountReview = (order: Order) => {
+    // Claim and FreeGift skip accounting review entirely
+    if (order.paymentMethod === PaymentMethod.Claim || order.paymentMethod === PaymentMethod.FreeGift) {
+      return false;
+    }
+
     if (order.paymentStatus === PaymentStatus.PreApproved) {
       return true;
     }
@@ -208,7 +213,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // เสร็จสิ้น: รายการที่บัญชี Confirm Reconcile แล้ว
   const completedOrders = useMemo(() =>
     orders.filter(o =>
-      o.reconcileAction === 'Confirmed' &&
+      (
+        o.reconcileAction === 'Confirmed' ||
+        (
+          (o.paymentMethod === PaymentMethod.Claim || o.paymentMethod === PaymentMethod.FreeGift) &&
+          o.orderStatus === OrderStatus.Delivered
+        )
+      ) &&
       o.orderStatus !== OrderStatus.Cancelled
     ), [orders]
   );
@@ -231,6 +242,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             o.paymentStatus === PaymentStatus.Verified ||
             o.paymentStatus === PaymentStatus.Paid
           );
+        }
+        if (o.paymentMethod === PaymentMethod.Claim || o.paymentMethod === PaymentMethod.FreeGift) {
+          return true;
         }
         return false;
       }),
@@ -563,6 +577,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       case 'COD': return PaymentMethod.COD as any;
       case 'Transfer': return PaymentMethod.Transfer as any;
       case 'PayAfter': return PaymentMethod.PayAfter as any;
+      case 'Claim': return PaymentMethod.Claim as any;
+      case 'FreeGift': return PaymentMethod.FreeGift as any;
       default: return PaymentMethod.COD as any;
     }
   };

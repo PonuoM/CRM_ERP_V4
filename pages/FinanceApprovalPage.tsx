@@ -241,23 +241,29 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const fullOrdersMap = useMemo(() => {
     const map = new Map<string, Order>();
-    orders.forEach((o) => map.set(o.id, o));
+    if (Array.isArray(orders)) {
+      orders.forEach((o) => map.set(o.id, o));
+    }
     return map;
   }, [orders]);
 
   const customerMap = useMemo(() => {
     const map = new Map<string | number, any>();
-    customers.forEach((c: any) => {
-      if (c.id !== undefined) map.set(c.id, c);
-      if (c.pk !== undefined) map.set(c.pk, c);
-      if (c.customerId !== undefined) map.set(c.customerId, c);
-    });
+    if (Array.isArray(customers)) {
+      customers.forEach((c: any) => {
+        if (c.id !== undefined) map.set(c.id, c);
+        if (c.pk !== undefined) map.set(c.pk, c);
+        if (c.customerId !== undefined) map.set(c.customerId, c);
+      });
+    }
     return map;
   }, [customers]);
 
   const userMap = useMemo(() => {
     const map = new Map<number, User>();
-    users.forEach((u) => map.set(u.id, u));
+    if (Array.isArray(users)) {
+      users.forEach((u) => map.set(u.id, u));
+    }
     return map;
   }, [users]);
 
@@ -1215,8 +1221,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           {statusMessage && (
             <div
               className={`mt-3 px-3 py-2 rounded-md text-sm ${statusMessage.type === "error"
-                  ? "bg-red-50 text-red-700 border border-red-200"
-                  : "bg-green-50 text-green-700 border border-green-200"
+                ? "bg-red-50 text-red-700 border border-red-200"
+                : "bg-green-50 text-green-700 border border-green-200"
                 }`}
             >
               {statusMessage.text}
@@ -1384,10 +1390,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-medium ${outstanding > 0
-                            ? "text-red-600"
-                            : outstanding < 0
-                              ? "text-purple-600"
-                              : "text-green-600"
+                          ? "text-red-600"
+                          : outstanding < 0
+                            ? "text-purple-600"
+                            : "text-green-600"
                           }`}
                       >
                         {selectedOrder
@@ -1576,8 +1582,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               {codStatusMessage && (
                 <div
                   className={`rounded-md border px-3 py-2 text-xs mb-3 ${codStatusMessage.type === "success"
-                      ? "border-green-200 bg-green-50 text-green-700"
-                      : "border-red-200 bg-red-50 text-red-700"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
                     }`}
                 >
                   {codStatusMessage.text}
@@ -1610,8 +1616,8 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                     <span className="text-xs font-light">เงินต่าง</span>
                     <span
                       className={`font-medium ${selectedStatementCandidate.amountDiff === 0
-                          ? "text-green-600"
-                          : "text-orange-600"
+                        ? "text-green-600"
+                        : "text-orange-600"
                         }`}
                     >
                       {formatCurrency(selectedStatementCandidate.amountDiff)}
@@ -1645,9 +1651,9 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                       <div
                         key={candidate.statement.id}
                         className={`rounded-lg border px-3 py-2 text-xs transition cursor-pointer ${selectedStatementCandidate?.statement.id ===
-                            candidate.statement.id
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                          candidate.statement.id
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
                           }`}
                         onClick={() => {
                           setSelectedStatementCandidate(candidate);
@@ -1734,10 +1740,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                     </td>
                     <td
                       className={`px-3 py-2 text-right font-medium ${record.cod_amount - record.order_amount > 0
-                          ? "text-red-600"
-                          : record.cod_amount - record.order_amount < 0
-                            ? "text-purple-600"
-                            : "text-green-600"
+                        ? "text-red-600"
+                        : record.cod_amount - record.order_amount < 0
+                          ? "text-purple-600"
+                          : "text-green-600"
                         }`}
                     >
                       {formatCurrency(record.cod_amount - record.order_amount)}
@@ -1870,16 +1876,16 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               setSelectedIds([]);
             }}
             className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "slips"
-                ? "border-b-2 border-blue-600 text-blue-600"
-                : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-gray-500 hover:text-gray-700"
               }`}
           >
             <FileText size={16} />
             <span>Approve สลิป</span>
             <span
               className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "slips"
-                  ? "bg-blue-100 text-blue-600"
-                  : "bg-gray-100 text-gray-600"
+                ? "bg-blue-100 text-blue-600"
+                : "bg-gray-100 text-gray-600"
                 }`}
             >
               {statementRows.length}
@@ -1891,16 +1897,16 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               setSelectedIds([]);
             }}
             className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "transfers"
-                ? "border-b-2 border-green-600 text-green-600"
-                : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-green-600 text-green-600"
+              : "text-gray-500 hover:text-gray-700"
               }`}
           >
             <CheckCircle size={16} />
             <span>Approve COD</span>
             <span
               className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "transfers"
-                  ? "bg-green-100 text-green-600"
-                  : "bg-gray-100 text-gray-600"
+                ? "bg-green-100 text-green-600"
+                : "bg-gray-100 text-gray-600"
                 }`}
             >
               {
@@ -1918,16 +1924,16 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               setSelectedIds([]);
             }}
             className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === "payafter"
-                ? "border-b-2 border-purple-600 text-purple-600"
-                : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-purple-600 text-purple-600"
+              : "text-gray-500 hover:text-gray-700"
               }`}
           >
             <FileText size={16} />
             <span>Approve PayAfter</span>
             <span
               className={`px-2 py-0.5 rounded-full text-xs ${activeTab === "payafter"
-                  ? "bg-purple-100 text-purple-600"
-                  : "bg-gray-100 text-gray-600"
+                ? "bg-purple-100 text-purple-600"
+                : "bg-gray-100 text-gray-600"
                 }`}
             >
               {

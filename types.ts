@@ -332,6 +332,8 @@ export enum PaymentMethod {
   COD = "COD",
   Transfer = "Transfer",
   PayAfter = "หลังจากรับสินค้า",
+  Claim = "Claim",
+  FreeGift = "FreeGift",
 }
 
 export enum OrderStatus {

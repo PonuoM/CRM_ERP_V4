@@ -532,6 +532,12 @@ const App: React.FC = () => {
     if (value === "payafter" || value === "pay_after" || value === "pay-after" || value === "เก็บเงินปลายทางแบบผ่อน") {
       return PaymentMethod.PayAfter as any;
     }
+    if (value === "claim" || value === "ส่งเคลม") {
+      return PaymentMethod.Claim as any;
+    }
+    if (value === "freegift" || value === "free_gift" || value === "ส่งของแถม") {
+      return PaymentMethod.FreeGift as any;
+    }
     return PaymentMethod.COD as any;
   };
   const mapTrackingDetailsFromApi = (raw: any): any[] => {

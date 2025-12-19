@@ -230,7 +230,7 @@ try {
     ) r ON r.order_id = o.id
     WHERE o.company_id = :companyId
       {$orderBankFilter}
-      AND o.payment_method = 'Transfer'
+      AND (o.payment_method = 'Transfer' OR os.total_slip > 0)
       AND o.order_status NOT IN ('Cancelled', 'Returned')
       AND (
         o.transfer_date BETWEEN :rangeStart AND :rangeEnd

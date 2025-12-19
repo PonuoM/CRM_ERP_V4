@@ -1739,6 +1739,45 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     slipPreview || currentOrder.slipUrl || slips.length > 0,
   );
 
+  // [PREVENTION] Lock editing if order is processed (Preparing or higher) or Verified
+  // RESTRICTION: Applies to Admin, Telesale, Supervisor.
+  // EXEMPTION: Backoffice, Finance, AdminControl, SuperAdmin can still edit.
+  const isLocked = useMemo(() => {
+    // If user role is privileged, do not lock
+    if (
+      currentUser &&
+      [
+        UserRole.Backoffice,
+        UserRole.Finance,
+        UserRole.AdminControl,
+        UserRole.SuperAdmin,
+      ].includes(currentUser.role)
+    ) {
+      return false;
+    }
+
+    const lockedStatuses = [
+      OrderStatus.Preparing,
+      OrderStatus.Picking,
+      OrderStatus.Shipping,
+      OrderStatus.Delivered,
+      OrderStatus.Returned,
+      OrderStatus.Confirmed, // User said "After pulling data", Confirmed often means ready to pull. Including it for safety.
+    ];
+    const lockedPaymentStatuses = [
+      PaymentStatus.Verified,
+      PaymentStatus.Approved,
+      PaymentStatus.Paid,
+      PaymentStatus.PreApproved,
+    ];
+
+    return (
+      lockedStatuses.includes(currentOrder.orderStatus) ||
+      lockedPaymentStatuses.includes(currentOrder.paymentStatus)
+    );
+  }, [currentOrder.orderStatus, currentOrder.paymentStatus, currentUser]);
+
+
   const handleAcceptSlip = async () => {
     const totalAmount = Number(calculatedTotals.totalAmount || 0);
 
@@ -1867,13 +1906,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     setCurrentOrder((prev) => ({
       ...prev,
-
       amountPaid: newAmount,
-
       paymentStatus: newPaymentStatus,
-
-      codAmount:
-        prev.paymentMethod === PaymentMethod.COD ? newAmount : prev.codAmount,
     }));
   };
 
@@ -1942,6 +1976,26 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         currentOrder.shippingCost,
         currentOrder.billDiscount,
       );
+
+      // [PREVENTION] AwaitingVerification requires Amount Paid > 0
+      if (currentOrder.orderStatus === OrderStatus.AwaitingVerification) {
+        const checkAmount = Number(currentOrder.amountPaid || 0);
+        if (checkAmount <= 0) {
+          alert("กรุณาระบุยอดชำระเงิน (Amount Paid) ก่อนบันทึกสถานะรอตรวจสอบจากบัญชี");
+          return;
+        }
+      }
+
+      // [PREVENTION] PreApproved requires PaymentStatus != Unpaid
+      if (
+        currentOrder.orderStatus === OrderStatus.PreApproved &&
+        currentOrder.paymentStatus === PaymentStatus.Unpaid
+      ) {
+        alert(
+          "ไม่สามารถกำหนดสถานะเป็น PreApproved ได้ เนื่องจากสถานะการชำระเงินยังเป็น Unpaid",
+        );
+        return;
+      }
 
       if (Math.abs(codTotal - orderTotal) > 0.1) {
         // Floating point tolerance
@@ -2426,12 +2480,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         value={
                           currentOrder.shippingAddress?.recipientFirstName || ""
                         }
+                        disabled={isLocked}
                         onChange={(e) =>
                           updateShippingAddress({
                             recipientFirstName: e.target.value,
                           })
                         }
-                        className="w-full p-2 text-sm border rounded"
+                        className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
 
                       <input
@@ -2439,22 +2494,24 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                         value={
                           currentOrder.shippingAddress?.recipientLastName || ""
                         }
+                        disabled={isLocked}
                         onChange={(e) =>
                           updateShippingAddress({
                             recipientLastName: e.target.value,
                           })
                         }
-                        className="w-full p-2 text-sm border rounded"
+                        className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
                     </div>
 
                     <input
                       placeholder="ที่อยู่ (บ้านเลขที่ ซอย ถนน)"
                       value={currentOrder.shippingAddress?.street || ""}
+                      disabled={isLocked}
                       onChange={(e) =>
                         updateShippingAddress({ street: e.target.value })
                       }
-                      className="w-full p-2 text-sm border rounded"
+                      className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                     />
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -2466,6 +2523,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             currentOrder.shippingAddress?.province ||
                             ""
                           }
+                          disabled={isLocked}
                           onChange={(e) => {
                             const val = e.target.value;
 
@@ -2488,8 +2546,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => setShowProvinceDropdown(true)}
-                          className="w-full p-2 text-sm border rounded"
+                          onFocus={() => !isLocked && setShowProvinceDropdown(true)}
+                          className={`w-full p-2 text-sm border rounded ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                         />
 
                         {showProvinceDropdown && (
@@ -2546,9 +2604,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => setShowDistrictDropdown(true)}
-                          disabled={!selectedProvince}
-                          className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+                          onFocus={() => !isLocked && setShowDistrictDropdown(true)}
+                          disabled={!selectedProvince || isLocked}
+                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${isLocked ? "cursor-not-allowed" : ""}`}
                         />
 
                         {showDistrictDropdown && selectedProvince && (
@@ -2604,9 +2662,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               });
                             }
                           }}
-                          onFocus={() => setShowSubDistrictDropdown(true)}
-                          disabled={!selectedDistrict}
-                          className="w-full p-2 text-sm border rounded disabled:bg-gray-100"
+                          onFocus={() => !isLocked && setShowSubDistrictDropdown(true)}
+                          disabled={!selectedDistrict || isLocked}
+                          className={`w-full p-2 text-sm border rounded disabled:bg-gray-100 ${isLocked ? "cursor-not-allowed" : ""}`}
                         />
 
                         {showSubDistrictDropdown && selectedDistrict && (
@@ -3209,11 +3267,12 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           type="number"
                           inputMode="decimal"
                           value={currentOrder.amountPaid ?? ""}
+                          disabled={isLocked}
                           onFocus={(e) => e.currentTarget.select()}
                           onChange={(e) =>
                             handleAmountPaidChange(Number(e.target.value))
                           }
-                          className="w-full p-2 border rounded-md"
+                          className={`w-full p-2 border rounded-md ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                         />
                       </div>
 
@@ -3234,12 +3293,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                   )}
 
                 {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
-                  currentOrder.paymentMethod === PaymentMethod.PayAfter) && (
+                  currentOrder.paymentMethod === PaymentMethod.PayAfter ||
+                  currentOrder.paymentMethod === PaymentMethod.COD) && (
                     <>
                       <div className="space-y-4 mt-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            รายการสลิปที่โอนเงิน
+                            หลักฐานการชำระเงิน / สลิป
                           </label>
 
                           {slips.length > 0 ? (
@@ -3319,7 +3379,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           {index + 1}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                          {canEditSlips && !isSlipLocked ? (
+                                          {canEditSlips && !isSlipLocked && !isLocked ? (
                                             <select
                                               value={slip.bankAccountId || ""}
                                               onChange={async (e) => {
@@ -3365,7 +3425,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           )}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                          {canEditSlips && !isSlipLocked ? (
+                                          {canEditSlips && !isSlipLocked && !isLocked ? (
                                             <input
                                               type="datetime-local"
                                               value={toLocalDatetimeString(
@@ -3395,7 +3455,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                           )}
                                         </td>
                                         <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
-                                          {canEditSlips && !isSlipLocked ? (
+                                          {canEditSlips && !isSlipLocked && !isLocked ? (
                                             <input
                                               type="number"
                                               step="0.01"
@@ -3458,7 +3518,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                               PaymentStatus.Approved,
                                               PaymentStatus.Paid,
                                             ].includes(currentOrder.paymentStatus);
-                                            if (!isOrderCompleted && !isConfirmed) {
+                                            if (!isOrderCompleted && !isConfirmed && !isLocked) {
                                               return (
                                                 <button
                                                   onClick={() =>
@@ -3494,7 +3554,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                               <input
                                                 type="checkbox"
                                                 checked={isChecked}
-                                                disabled={!isComplete}
+                                                disabled={!isComplete || isLocked}
                                                 onChange={(e) => {
                                                   if (!isComplete) return;
                                                   const checked = e.target.checked;
@@ -3547,32 +3607,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </div>
                           )}
 
-                          {![
-                            PaymentStatus.Verified,
-                            PaymentStatus.PreApproved,
-                            PaymentStatus.Approved,
-                            PaymentStatus.Paid,
-                          ].includes(currentOrder.paymentStatus) && (
-                              <div className="mt-3 flex justify-end">
-                                <div className="flex items-center space-x-2">
-                                  <label
-                                    htmlFor={slipUploadInputId}
-                                    className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                  >
-                                    <Image size={16} className="mr-2" />
-                                    อัปโหลดสลิปเพิ่มเติม
-                                  </label>
-                                  <input
-                                    id={slipUploadInputId}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={handleSlipUpload}
-                                    className="hidden"
-                                  />
-                                </div>
+                          {!isLocked && (
+                            <div className="mt-3 flex justify-end">
+                              <div className="flex items-center space-x-2">
+                                <label
+                                  htmlFor={slipUploadInputId}
+                                  className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                >
+                                  <Image size={16} className="mr-2" />
+                                  อัปโหลดสลิปเพิ่มเติม
+                                </label>
+                                <input
+                                  id={slipUploadInputId}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  onChange={handleSlipUpload}
+                                  className="hidden"
+                                  disabled={isLocked}
+                                />
                               </div>
-                            )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Validation Summary */}
@@ -3655,7 +3711,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               return (
                                 <button
                                   onClick={handleAcceptSlip}
-                                  disabled={isConfirmed || !canConfirm}
+                                  disabled={isConfirmed || !canConfirm || isLocked}
                                   className={`group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl text-white shadow-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2
                                   ${isConfirmed || canConfirm
                                       ? "bg-gradient-to-br from-emerald-500 to-green-600 shadow-green-500/40"
@@ -3681,6 +3737,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               currentOrder.orderStatus === OrderStatus.Pending && (
                                 <button
                                   onClick={handleCancelVerification}
+                                  disabled={isLocked}
                                   className="ml-3 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                                 >
                                   <XCircle size={16} className="mr-2" />
@@ -3858,7 +3915,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               multiple
                               onChange={handleSlipUpload}
                               disabled={
-                                currentOrder.paymentStatus === PaymentStatus.Paid
+                                currentOrder.paymentStatus === PaymentStatus.Paid || isLocked
                               }
                               className="hidden"
                             />
@@ -4167,7 +4224,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </td>
 
                             <td className="px-3 py-2 text-right">
-                              {showInputs ? (
+                              {showInputs && !isLocked ? (
                                 <input
                                   type="number"
                                   min={0}
@@ -4188,7 +4245,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </td>
 
                             <td className="px-3 py-2 text-right">
-                              {showInputs ? (
+                              {showInputs && !isLocked ? (
                                 <input
                                   type="number"
                                   min={0}
@@ -4209,7 +4266,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             </td>
 
                             <td className="px-3 py-2 text-right text-red-600">
-                              {showInputs ? (
+                              {showInputs && !isLocked ? (
                                 <input
                                   type="number"
                                   min={0}
@@ -4326,14 +4383,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       e.target.value as OrderStatus,
                     )
                   }
-                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                  disabled={isLocked}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                 >
                   {Object.values(OrderStatus)
 
                     .filter((status) => {
                       if (showInputs) {
                         // If modifiable, only allow keeping current status or cancelling
-
+                        // and exclude 'Completed' status
                         return (
                           status === currentOrder.orderStatus ||
                           status === OrderStatus.Cancelled
@@ -4369,7 +4427,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                     handleFieldChange("trackingNumbers", deduped);
                   }}
-                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                  disabled={isLocked}
+                  className={`w-full p-2 border border-gray-300 rounded-md shadow-sm ${isLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   placeholder="TH123, TH456"
                 />
               </div>

@@ -1909,6 +1909,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     } else if ($paymentMethodStr === 'PayAfter' || $paymentMethodStr === 'pay_after' || $paymentMethodStr === 'pay-after' || 
                                $paymentMethodStr === 'หลังจากรับสินค้า' || $paymentMethodStr === 'รับสินค้าก่อน' || $paymentMethodStr === 'ผ่อนชำระ' || $paymentMethodStr === 'ผ่อน') {
                         $paymentMethod = 'PayAfter';
+                    } else if ($paymentMethodStr === 'Claim' || $paymentMethodStr === 'claim' || $paymentMethodStr === 'ส่งเคลม') {
+                        $paymentMethod = 'Claim';
+                    } else if ($paymentMethodStr === 'FreeGift' || $paymentMethodStr === 'free_gift' || $paymentMethodStr === 'freegift' || $paymentMethodStr === 'ส่งของแถม') {
+                        $paymentMethod = 'FreeGift';
                     } else {
                         // If value doesn't match any known pattern, log warning and set to null
                         error_log('Warning: Unknown payment method value: ' . $paymentMethodStr);
@@ -2054,7 +2058,19 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         json_response(['error' => 'DUPLICATE_ORDER', 'message' => 'Order ID already exists: ' . $mainOrderId], 400);
                         return;
                     }
-                        }
+                    // If validation error (e.g. data truncated), rethrow
+                    throw $e;
+                }
+
+                // DEBUG: Check what was inserted
+                /*
+                try {
+                    $chk = $pdo->prepare("SELECT payment_method FROM orders WHERE id = ?");
+                    $chk->execute([$mainOrderId]);
+                    $res = $chk->fetch(PDO::FETCH_ASSOC);
+                    // Debug logic removed for production
+                } catch (Throwable $e) {}
+                */
 
                 // Insert order_boxes for per-box COD/collection tracking
                 $boxIns = $pdo->prepare('INSERT INTO order_boxes (order_id, sub_order_id, box_number, payment_method, collection_amount, cod_amount, collected_amount, waived_amount, status) VALUES (?,?,?,?,?,?,?,?,?)');
@@ -2277,7 +2293,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
             break;
         case 'PUT':
         case 'PATCH':
-            if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            if (!$id) {
+                error_log("PATCH/PUT called without ID");
+                json_response(['error' => 'ID_REQUIRED'], 400);
+            }
+            // error_log("PATCH/PUT Received for ID: " . $id);
             $in = json_input();
             // Normalize incoming values: treat empty strings as NULL so they won't overwrite existing values
             $orderStatus   = array_key_exists('orderStatus', $in) ? trim((string)$in['orderStatus']) : null; if ($orderStatus === '')   $orderStatus = null;
@@ -2329,8 +2349,30 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $lockStmt->execute([$id]);
                 $existingOrder = $lockStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$existingOrder) {
+                    error_log("Order NOT FOUND in database for ID: " . $id);
                     $pdo->rollBack();
                     json_response(['error' => 'NOT_FOUND'], 404);
+                }
+                // error_log("Order Found: " . json_encode($existingOrder));
+
+                // [PREVENTION] AwaitingVerification requires Amount Paid > 0
+                $statusTarget = $orderStatus ?? $existingOrder['order_status'];
+                if ($statusTarget === 'AwaitingVerification') {
+                     $valAmount = $amountPaid !== null ? (float)$amountPaid : (float)($existingOrder['amount_paid'] ?? 0);
+                     if ($valAmount <= 0.0) {
+                         $pdo->rollBack();
+                         json_response(['error' => 'PAYMENT_REQUIRED', 'message' => 'Status cannot be AwaitingVerification without specifying Amount Paid'], 400); 
+                     }
+                }
+
+                // [PREVENTION] PreApproved requires PaymentStatus != Unpaid
+                if ($statusTarget === 'PreApproved') {
+                     // Check effective payment status
+                     $effectivePaymentStatus = $paymentStatus ?? $existingOrder['payment_status'];
+                     if ($effectivePaymentStatus === 'Unpaid') {
+                          $pdo->rollBack();
+                          json_response(['error' => 'PAYMENT_REQUIRED', 'message' => 'Status cannot be PreApproved if Payment Status is Unpaid'], 400);
+                     }
                 }
 
                 $previousStatus = (string)($existingOrder['order_status'] ?? '');
@@ -2467,10 +2509,29 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 // Auto-update order_status to Shipping when tracking is added and order is Picking or Preparing
                 // Only if order_status is not explicitly set in the request
+                // Auto-update logic when tracking is added
                 if ($hasTrackingUpdate && $orderStatus === null) {
                     $currentStatus = strtoupper((string)($updatedOrder['order_status'] ?? $previousStatus));
-                    // If order is Picking or Preparing, and has tracking, change to Shipping
-                    if (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
+                    $currentPaymentMethod = (string)($updatedOrder['payment_method'] ?? $existingOrder['payment_method'] ?? '');
+
+                    // Special handling for Claim and FreeGift
+                    if ($currentPaymentMethod === 'Claim' || $currentPaymentMethod === 'FreeGift') {
+                         $autoCompleteStmt = $pdo->prepare('UPDATE orders SET order_status = ?, payment_status = ?, amount_paid = 0 WHERE id = ?');
+                         $autoCompleteStmt->execute(['Delivered', 'Approved', $id]);
+                         
+                         $newStatus = 'Delivered';
+                         $newPaymentStatus = 'Approved';
+                         
+                         $updatedOrder['order_status'] = 'Delivered';
+                         $updatedOrder['payment_status'] = 'Approved';
+                         $updatedOrder['amount_paid'] = 0;
+                         
+                         // Update variables to trigger history log and downstream logic
+                         $orderStatus = 'Delivered';
+                         $paymentStatus = 'Approved';
+                    } 
+                    // Existing logic: Auto-update to Shipping if Picking/Preparing
+                    elseif (($currentStatus === 'PICKING' || $currentStatus === 'PREPARING')) {
                         $autoShippingStmt = $pdo->prepare('UPDATE orders SET order_status = ? WHERE id = ?');
                         $autoShippingStmt->execute(['Shipping', $id]);
                         $newStatus = 'Shipping';

@@ -8346,6 +8346,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       <option value={PaymentMethod.PayAfter}>
                         รับสินค้าก่อน
                       </option>
+                      <option value={PaymentMethod.Claim}>ส่งเคลม</option>
+                      <option value={PaymentMethod.FreeGift}>ส่งของแถม</option>
                     </select>
                   </div>
 

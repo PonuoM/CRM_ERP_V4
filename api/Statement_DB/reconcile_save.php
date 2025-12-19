@@ -257,6 +257,7 @@ try {
     $reconcileType = isset($item["reconcile_type"]) ? $item["reconcile_type"] : "Order";
     $confirmedAmount = isset($item["confirmed_amount"]) ? (float) $item["confirmed_amount"] : null;
     $autoMatched = isset($item["auto_matched"]) ? (int) $item["auto_matched"] : 0;
+    $orderId = isset($item["order_id"]) ? $item["order_id"] : "";
 
     // Fetch statement details
     $stmtFetchSql->execute([':id' => $statementId]);
@@ -282,7 +283,7 @@ try {
       $orderStmt = $pdo->prepare("
         SELECT id, total_amount, amount_paid, payment_method, payment_status, order_status
         FROM orders
-        WHERE id = :id AND company_id = :companyId AND payment_method = 'Transfer'
+        WHERE id = :id AND company_id = :companyId
         FOR UPDATE
       ");
       $orderStmt->execute([
@@ -291,7 +292,7 @@ try {
       ]);
       $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
       if (!$order) {
-        throw new RuntimeException("Order not found or not a transfer order: {$orderId}");
+        throw new RuntimeException("Order not found: {$orderId}");
       }
     }
 

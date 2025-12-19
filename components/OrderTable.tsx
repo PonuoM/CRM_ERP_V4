@@ -102,6 +102,12 @@ export const getPaymentMethodChip = (method: PaymentMethod | undefined | null) =
     methodStr === "หลังจากรับสินค้า" || methodStr === "รับสินค้าก่อน" || methodStr === "ผ่อนชำระ") {
     return <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">จ่ายหลังส่ง</span>;
   }
+  if (method === PaymentMethod.Claim || methodStr === "Claim" || methodStr === "claim" || methodStr === "ส่งเคลม") {
+    return <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ส่งเคลม</span>;
+  }
+  if (method === PaymentMethod.FreeGift || methodStr === "FreeGift" || methodStr === "freegift" || methodStr === "ส่งของแถม") {
+    return <span className="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">ส่งของแถม</span>;
+  }
 
   return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
 };

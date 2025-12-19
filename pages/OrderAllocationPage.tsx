@@ -37,7 +37,7 @@ const OrderAllocationPage: React.FC = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([] as any);
   const [orders, setOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
-  const [status, setStatus] = useState<'PENDING'|'ALLOCATED'|'PICKED'|'SHIPPED'|'CANCELLED'>('PENDING');
+  const [status, setStatus] = useState<'PENDING' | 'ALLOCATED' | 'PICKED' | 'SHIPPED' | 'CANCELLED'>('PENDING');
   const [loading, setLoading] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [lotOptions, setLotOptions] = useState<Record<string, ProductLot[]>>({});
@@ -167,44 +167,52 @@ const OrderAllocationPage: React.FC = () => {
     [],
   );
 
-  useEffect(() => { (async () => {
-    try {
-      setLoading(true);
-      const [ws, os, cs, as] = await Promise.all([
-        listWarehouses(),
-        listOrders(),
-        listCustomers({}),
-        listAllocations({ status }),
-      ]);
-      setWarehouses(ws as any);
-      setOrders(os as any);
-      setCustomers(cs as any);
-      setAllocations(as as any);
-    } finally { setLoading(false); }
-  })(); }, [status]);
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const [ws, os, cs, as] = await Promise.all([
+          listWarehouses(),
+          listOrders(),
+          listCustomers({}),
+          listAllocations({ status }),
+        ]);
+        setWarehouses(Array.isArray(ws) ? ws : []);
+        setOrders(Array.isArray(os) ? os : []);
+        setCustomers(Array.isArray(cs) ? cs : []);
+        setAllocations(Array.isArray(as) ? as : []);
+      } finally { setLoading(false); }
+    })();
+  }, [status]);
 
   useEffect(() => {
-    allocations.forEach((a) => {
-      if (a.warehouse_id) {
-        loadLots(a.product_id, a.warehouse_id);
-      }
-    });
+    if (Array.isArray(allocations)) {
+      allocations.forEach((a) => {
+        if (a.warehouse_id) {
+          loadLots(a.product_id, a.warehouse_id);
+        }
+      });
+    }
   }, [allocations, loadLots]);
 
   const orderMap = useMemo(() => {
     const m = new Map<string, any>();
-    (orders || []).forEach((o: any) => m.set(String(o.id), o));
+    if (Array.isArray(orders)) {
+      orders.forEach((o: any) => m.set(String(o.id), o));
+    }
     return m;
   }, [orders]);
 
   const customerMap = useMemo(() => {
     const m = new Map<string, any>();
-    (customers || []).forEach((c: any) => {
-      const key = c.customer_id ?? c.customerId ?? c.id;
-      if (key !== undefined && key !== null && String(key).trim() !== '') {
-        m.set(String(key), c);
-      }
-    });
+    if (Array.isArray(customers)) {
+      customers.forEach((c: any) => {
+        const key = c.customer_id ?? c.customerId ?? c.id;
+        if (key !== undefined && key !== null && String(key).trim() !== '') {
+          m.set(String(key), c);
+        }
+      });
+    }
     return m;
   }, [customers]);
 
@@ -253,7 +261,7 @@ const OrderAllocationPage: React.FC = () => {
       }
       grouped.get(a.order_id)!.push(a);
     });
-    
+
     // Convert to array and sort
     return Array.from(grouped.entries()).map(([orderId, items]) => {
       const order = orderMap.get(String(orderId));
@@ -274,12 +282,12 @@ const OrderAllocationPage: React.FC = () => {
         : undefined;
       const orderLevelWarehouse = orderWarehouseValue ?? uniformPendingWarehouse ?? order?.warehouse_id ?? (items.find((item) => item.warehouse_id != null)?.warehouse_id ?? null) ?? suggested ?? null;
       const headerSelectValue = orderLevelWarehouse != null ? String(orderLevelWarehouse) : '';
-      
+
       // Calculate totals for the order
       const totalRequired = items.reduce((sum, item) => sum + item.required_quantity, 0);
       const totalAllocated = items.reduce((sum, item) => sum + item.allocated_quantity, 0);
       const isFullyAllocated = items.every(item => item.allocated_quantity >= item.required_quantity);
-      
+
       return {
         orderId,
         order,
@@ -368,7 +376,7 @@ const OrderAllocationPage: React.FC = () => {
     setConfirmingOrderId(orderId);
     const successfulItems: Allocation[] = [];
     const failedItems: { item: Allocation; error: string }[] = [];
-    
+
     try {
       for (const item of selectedItems) {
         try {
@@ -405,7 +413,7 @@ const OrderAllocationPage: React.FC = () => {
           console.error('Failed to allocate item', item.id, itemError);
           const errorMessage = itemError?.data?.message || itemError?.message || 'ไม่ทราบสาเหตุ';
           let userMessage = '';
-          
+
           if (errorMessage.includes('INSUFFICIENT_STOCK')) {
             const productName = (item as any).product_name || `สินค้า #${item.product_id}`;
             userMessage = `${productName}: สต็อกไม่พอ (ต้องการ ${item.required_quantity})`;
@@ -414,7 +422,7 @@ const OrderAllocationPage: React.FC = () => {
           } else {
             userMessage = `เกิดข้อผิดพลาด: ${errorMessage}`;
           }
-          
+
           failedItems.push({ item, error: userMessage });
         }
       }
@@ -462,7 +470,7 @@ const OrderAllocationPage: React.FC = () => {
   // Function to allocate and confirm all items in an order immediately
   const handleAllocateAndConfirm = async (orderData: any) => {
     const { orderId, items, order, suggested, orderWarehouseValue } = orderData;
-    
+
     const warehouseId =
       orderWarehouseValue ??
       (orderData.headerWarehouseSelectValue ? Number(orderData.headerWarehouseSelectValue) : null) ??
@@ -490,7 +498,7 @@ const OrderAllocationPage: React.FC = () => {
       for (const item of items) {
         try {
           const quantity = item.allocated_quantity > 0 ? item.allocated_quantity : item.required_quantity;
-          
+
           const payload: any = {
             warehouseId,
             allocatedQuantity: quantity,
@@ -547,7 +555,7 @@ const OrderAllocationPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <label className="text-sm text-[#4e7397]">สถานะ:</label>
             <select value={status} onChange={e => setStatus(e.target.value as any)} className="border rounded px-2 py-1">
-              {['PENDING','ALLOCATED','PICKED','SHIPPED','CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
+              {['PENDING', 'ALLOCATED', 'PICKED', 'SHIPPED', 'CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>
@@ -572,7 +580,7 @@ const OrderAllocationPage: React.FC = () => {
               <tr><td className="p-3" colSpan={6}>ไม่พบรายการ</td></tr>
             ) : ordersWithAllocations.map(orderData => {
               const { orderId, order, customer, suggested, items, totalRequired, totalAllocated, isFullyAllocated, isExpanded, orderWarehouseValue, headerWarehouseSelectValue } = orderData;
-              
+
               return (
                 <React.Fragment key={orderId}>
                   <tr className="border-t hover:bg-gray-50">
@@ -595,8 +603,8 @@ const OrderAllocationPage: React.FC = () => {
                     <td className="p-2 align-top">
                       {customer
                         ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() ||
-                          customer.customer_id ||
-                          customer.id
+                        customer.customer_id ||
+                        customer.id
                         : '-'}
                     </td>
                     <td className="p-2 align-top">
@@ -673,7 +681,7 @@ const OrderAllocationPage: React.FC = () => {
                       )}
                     </td>
                   </tr>
-                  
+
                   {/* Expanded row showing item details */}
                   {isExpanded && (
                     <tr>
@@ -808,33 +816,33 @@ const OrderAllocationPage: React.FC = () => {
                                 </div>
                               );
                             })}
-                          <div className="flex items-center justify-between mt-4">
-                            <span className="text-xs text-gray-500">เลือกแถวและกดยืนยันเพื่อบันทึกการจัดสรร</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => selectAllocationItems(items.map((item) => item.id), true)}
-                                className="px-2 py-1 border rounded text-xs text-gray-600"
-                              >
-                                เลือกทั้งหมด
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleResetSelections(orderData)}
-                                className="px-2 py-1 border rounded text-xs text-gray-600"
-                              >
-                                ล้างค่า
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmSelected(orderData)}
-                                disabled={confirmingOrderId === orderId || !items.some((item) => selectedAllocIds.has(item.id))}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-xs disabled:opacity-50"
-                              >
-                                {confirmingOrderId === orderId ? 'กำลังยืนยัน...' : 'ยืนยันการจัดสรร'}
-                              </button>
+                            <div className="flex items-center justify-between mt-4">
+                              <span className="text-xs text-gray-500">เลือกแถวและกดยืนยันเพื่อบันทึกการจัดสรร</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => selectAllocationItems(items.map((item) => item.id), true)}
+                                  className="px-2 py-1 border rounded text-xs text-gray-600"
+                                >
+                                  เลือกทั้งหมด
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetSelections(orderData)}
+                                  className="px-2 py-1 border rounded text-xs text-gray-600"
+                                >
+                                  ล้างค่า
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmSelected(orderData)}
+                                  disabled={confirmingOrderId === orderId || !items.some((item) => selectedAllocIds.has(item.id))}
+                                  className="px-3 py-1 bg-blue-600 text-white rounded text-xs disabled:opacity-50"
+                                >
+                                  {confirmingOrderId === orderId ? 'กำลังยืนยัน...' : 'ยืนยันการจัดสรร'}
+                                </button>
+                              </div>
                             </div>
-                          </div>
                           </div>
                         </div>
                       </td>
