@@ -1768,8 +1768,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $paymentMethod = $_GET['paymentMethod'] ?? null;
                 $paymentStatus = $_GET['paymentStatus'] ?? null;
                 $customerName = $_GET['customerName'] ?? null;
+                $customerName = $_GET['customerName'] ?? null;
+                $customerPhone = $_GET['customerPhone'] ?? null;
                 $customerPhone = $_GET['customerPhone'] ?? null;
                 $creatorId = $_GET['creatorId'] ?? null;
+                $orderStatus = $_GET['orderStatus'] ?? null;
+                $manageTab = $_GET['tab'] ?? null;
                 
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
@@ -1827,6 +1831,17 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $whereConditions[] = 'o.order_date >= ?';
                     $params[] = $orderDateStart . ' 00:00:00';
                 }
+
+                if ($orderStatus) {
+                    if (is_array($orderStatus)) {
+                        $placeholders = str_repeat('?,', count($orderStatus) - 1) . '?';
+                        $whereConditions[] = "o.order_status IN ($placeholders)";
+                        $params = array_merge($params, $orderStatus);
+                    } else {
+                        $whereConditions[] = 'o.order_status = ?';
+                        $params[] = $orderStatus;
+                    }
+                }
                 
                 if ($orderDateEnd) {
                     $whereConditions[] = 'o.order_date <= ?';
@@ -1849,8 +1864,107 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
                 
                 if ($paymentStatus) {
-                    $whereConditions[] = 'o.payment_status = ?';
-                    $params[] = $paymentStatus;
+                    if (is_array($paymentStatus)) {
+                        $placeholders = str_repeat('?,', count($paymentStatus) - 1) . '?';
+                        $whereConditions[] = "o.payment_status IN ($placeholders)";
+                        $params = array_merge($params, $paymentStatus);
+                    } else {
+                        $whereConditions[] = 'o.payment_status = ?';
+                        $params[] = $paymentStatus;
+                    }
+                }
+                
+                // Tab-specific filters for ManageOrdersPage
+                if ($manageTab) {
+                    switch ($manageTab) {
+                        case 'waitingVerifySlip':
+                            // Transfer + PendingVerification + Pending Status (Strict)
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Pending';
+                            $whereConditions[] = 'o.payment_method = ?';
+                            $params[] = 'Transfer';
+                            $whereConditions[] = 'o.payment_status = ?';
+                            $params[] = 'PendingVerification';
+                            break;
+                            
+                        case 'verified':
+                            // (COD) OR (PayAfter) OR (Transfer AND Verified/Paid) OR (Claim/FreeGift)
+                            // No Order Status filter (shows Pending, Preparing, etc.)
+                            
+                            $whereConditions[] = '(
+                                o.payment_method = "COD" OR 
+                                o.payment_method = "PayAfter" OR 
+                                (o.payment_method = "Transfer" AND o.payment_status IN ("Verified", "Paid")) OR
+                                o.payment_method IN ("Claim", "FreeGift")
+                            )';
+                            break;
+                            
+                        case 'preparing':
+                            // Preparing OR Picking
+                            $whereConditions[] = 'o.order_status IN (?, ?)';
+                            $params[] = 'Preparing';
+                            $params[] = 'Picking';
+                            // And NO tracking number (handled by NOT having tracking numbers usually)
+                            // But status Preparing/Picking implies internal process
+                            break;
+                            
+                        case 'shipping':
+                            // Shipping status OR (Pending/AwaitingVerification AND has tracking)
+                            // For simplicity and performance, let's rely on standard status flow or simple checks
+                            // Or use the exact logic: Status=Shipping OR (Status IN (Pending, Awaiting) AND t.tracking_number IS NOT NULL)
+                            // Getting checking tracking IS NOT NULL with left join can be tricky with Group By?
+                            // Actually we have tracking_numbers group concat. 
+                            // Better: Status = Shipping OR (Status IN ('Preparing','Pending') AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
+                            $whereConditions[] = '(
+                                o.order_status = "Shipping" OR 
+                                o.order_status = "Preparing" OR
+                                ((o.order_status = "Pending" OR o.order_status = "AwaitingVerification") AND EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id))
+                            )';
+                            // Exclude Transfer from Shipping tab based on user requirement in frontend? 
+                            // Frontend said: if (o.paymentMethod === PaymentMethod.Transfer) return false;
+                            // So let's exclude Transfer here if that's the rule
+                            $whereConditions[] = 'o.payment_method != ?';
+                            $params[] = 'Transfer';
+                            break;
+                            
+                        case 'awaiting_account':
+                            // QualifiesForAccountReview logic
+                            // PreApproved OR (Approved/Paid AND Reconcile != Confirmed)
+                            // AND has tracking (for some)
+                            // This is complex. Let's start with PreApproved as base + Verified Transfer/PayAfter
+                            // Frontend logic:
+                            // 1. PreApproved -> True
+                            // 2. No Tracking -> False
+                            // 3. Approved/Paid -> Reconcile != Confirmed
+                            // 4. COD -> Amount > 0
+                            // 5. Transfer/PayAfter -> Verified
+                            
+                            // Simplified SQL approximation:
+                            $whereConditions[] = '(
+                                o.payment_status = "PreApproved" OR
+                                (
+                                    EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id) AND
+                                    (
+                                        (o.payment_status IN ("Approved", "Paid") AND (srl.confirmed_action IS NULL OR srl.confirmed_action != "Confirmed")) OR
+                                        (o.payment_method = "COD" AND o.amount_paid > 0) OR
+                                        (o.payment_method IN ("Transfer", "PayAfter") AND o.payment_status = "Verified")
+                                    )
+                                )
+                            )';
+                            // Exclude Claim/FreeGift
+                            $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
+                            break;
+                            
+                        case 'completed':
+                            // Reconcile Confirmed OR (Claim/FreeGift AND Delivered)
+                            // AND Not Cancelled
+                            $whereConditions[] = 'o.order_status != "Cancelled"';
+                            $whereConditions[] = '(
+                                srl.confirmed_action = "Confirmed" OR
+                                (o.payment_method IN ("Claim", "FreeGift") AND o.order_status = "Delivered")
+                            )';
+                            break;
+                    }
                 }
                 
                 if ($customerName) {

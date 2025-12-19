@@ -551,10 +551,12 @@ export async function listOrders(params: {
   deliveryDateStart?: string;
   deliveryDateEnd?: string;
   paymentMethod?: string;
-  paymentStatus?: string;
+  paymentStatus?: string | string[];
   customerName?: string;
   customerPhone?: string;
   creatorId?: number;
+  orderStatus?: string | string[];
+  tab?: string;
 }): Promise<{
   ok: boolean;
   orders: any[];
@@ -578,10 +580,24 @@ export async function listOrders(params: {
   if (params.deliveryDateStart) qs.set("deliveryDateStart", params.deliveryDateStart);
   if (params.deliveryDateEnd) qs.set("deliveryDateEnd", params.deliveryDateEnd);
   if (params.paymentMethod) qs.set("paymentMethod", params.paymentMethod);
-  if (params.paymentStatus) qs.set("paymentStatus", params.paymentStatus);
+  if (params.paymentStatus) {
+    if (Array.isArray(params.paymentStatus)) {
+      params.paymentStatus.forEach(s => qs.append("paymentStatus[]", s));
+    } else {
+      qs.set("paymentStatus", params.paymentStatus);
+    }
+  }
   if (params.customerName) qs.set("customerName", params.customerName);
   if (params.customerPhone) qs.set("customerPhone", params.customerPhone);
   if (params.creatorId) qs.set("creatorId", String(params.creatorId));
+  if (params.orderStatus) {
+    if (Array.isArray(params.orderStatus)) {
+      params.orderStatus.forEach(s => qs.append("orderStatus[]", s));
+    } else {
+      qs.set("orderStatus", params.orderStatus);
+    }
+  }
+  if (params.tab) qs.set("tab", params.tab);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`);
 }
