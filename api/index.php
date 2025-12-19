@@ -1985,13 +1985,21 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 // Get total count before pagination
                 $countSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
-                if ($trackingNumber || $customerName || $customerPhone) {
-                    if ($trackingNumber) {
-                        $countSql .= " LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
-                    }
-                    if ($customerName || $customerPhone) {
-                        $countSql .= " LEFT JOIN customers c ON o.customer_id = c.customer_id";
-                    }
+                
+                // Add conditional joins for filters
+                if ($trackingNumber) {
+                    $countSql .= " LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
+                }
+                if ($customerName || $customerPhone) {
+                    $countSql .= " LEFT JOIN customers c ON o.customer_id = c.customer_id";
+                }
+                
+                // Add conditional joins for Tabs that rely on specific tables in their WHERE clauses
+                if ($manageTab === 'awaiting_account' || $manageTab === 'completed') {
+                     $countSql .= " LEFT JOIN statement_reconcile_logs srl ON (
+                        srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
+                        OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
+                     )";
                 }
                 if (!empty($whereConditions)) {
                     $countSql .= ' WHERE ' . implode(' AND ', $whereConditions);
@@ -2233,16 +2241,35 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $p[] = 'Transfer';
                                 break;
                              case 'awaiting_account':
-                                // Simplified for badge: PaymentStatus = PreApproved
-                                $conds[] = 'o.payment_status = ?';
-                                $p[] = 'PreApproved'; 
+
+                                // Full Logic to match main query
+                                $conds[] = '(
+                                    o.payment_status = "PreApproved" OR
+                                    (
+                                        EXISTS(SELECT 1 FROM order_tracking_numbers WHERE parent_order_id = o.id) AND
+                                        (
+                                            (o.payment_status IN ("Approved", "Paid") AND (srl.confirmed_action IS NULL OR srl.confirmed_action != "Confirmed")) OR
+                                            (o.payment_method = "COD" AND o.amount_paid > 0) OR
+                                            (o.payment_method IN ("Transfer", "PayAfter") AND o.payment_status = "Verified")
+                                        )
+                                    )
+                                )';
+                                $conds[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
                                 break;
                              case 'completed':
                                 $conds[] = 'o.order_status = "Delivered"';
                                 break;
                         }
                         
-                        $sqlT = "SELECT COUNT(DISTINCT o.id) FROM orders o WHERE " . implode(' AND ', $conds);
+                        $tabSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
+                        if ($t === 'awaiting_account' || $t === 'completed') {
+                             $tabSql .= " LEFT JOIN statement_reconcile_logs srl ON (
+                                srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
+                                OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
+                             )";
+                        }
+                        
+                        $sqlT = $tabSql . " WHERE " . implode(' AND ', $conds);
                         $stmtT = $pdo->prepare($sqlT);
                         $stmtT->execute($p);
                         $tabCounts[$t] = (int)$stmtT->fetchColumn();
