@@ -530,7 +530,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                       )}
                     </td>
                   )}
-                  <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers.join(', ') || '-'}</td>
+                  <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers?.join(', ') || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {/* Always allow managing (e.g., upload slip) */}
                     <button onClick={() => openModal('manageOrder', order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>

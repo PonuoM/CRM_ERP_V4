@@ -1753,6 +1753,24 @@ function handle_orders(PDO $pdo, ?string $id): void {
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 
+                // Pagination parameters
+                $page = max(1, (int)($_GET['page'] ?? 1));
+                $pageSize = min(100, max(1, (int)($_GET['pageSize'] ?? 50)));
+                $offset = ($page - 1) * $pageSize;
+                
+                // Filter parameters
+                $orderId = $_GET['orderId'] ?? null;
+                $trackingNumber = $_GET['trackingNumber'] ?? null;
+                $orderDateStart = $_GET['orderDateStart'] ?? null;
+                $orderDateEnd = $_GET['orderDateEnd'] ?? null;
+                $deliveryDateStart = $_GET['deliveryDateStart'] ?? null;
+                $deliveryDateEnd = $_GET['deliveryDateEnd'] ?? null;
+                $paymentMethod = $_GET['paymentMethod'] ?? null;
+                $paymentStatus = $_GET['paymentStatus'] ?? null;
+                $customerName = $_GET['customerName'] ?? null;
+                $customerPhone = $_GET['customerPhone'] ?? null;
+                $creatorId = $_GET['creatorId'] ?? null;
+                
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $ordersColumns);
@@ -1774,7 +1792,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         LEFT JOIN statement_reconcile_logs srl ON (
                             srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
                             OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
-                        )";
+                        )
+                        LEFT JOIN customers c ON o.customer_id = c.customer_id";
                 
                 $params = [];
                 $whereConditions = [];
@@ -1790,13 +1809,95 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $params[] = $companyId;
                 }
                 
+                // Apply filters
+                if ($orderId) {
+                    $whereConditions[] = 'o.id LIKE ?';
+                    $params[] = '%' . $orderId . '%';
+                }
+                
+                if ($trackingNumber) {
+                    $whereConditions[] = 't.tracking_number LIKE ?';
+                    $params[] = '%' . $trackingNumber . '%';
+                }
+                
+                if ($orderDateStart) {
+                    $whereConditions[] = 'o.order_date >= ?';
+                    $params[] = $orderDateStart . ' 00:00:00';
+                }
+                
+                if ($orderDateEnd) {
+                    $whereConditions[] = 'o.order_date <= ?';
+                    $params[] = $orderDateEnd . ' 23:59:59';
+                }
+                
+                if ($deliveryDateStart) {
+                    $whereConditions[] = 'o.delivery_date >= ?';
+                    $params[] = $deliveryDateStart . ' 00:00:00';
+                }
+                
+                if ($deliveryDateEnd) {
+                    $whereConditions[] = 'o.delivery_date <= ?';
+                    $params[] = $deliveryDateEnd . ' 23:59:59';
+                }
+                
+                if ($paymentMethod) {
+                    $whereConditions[] = 'o.payment_method = ?';
+                    $params[] = $paymentMethod;
+                }
+                
+                if ($paymentStatus) {
+                    $whereConditions[] = 'o.payment_status = ?';
+                    $params[] = $paymentStatus;
+                }
+                
+                if ($customerName) {
+                    $whereConditions[] = '(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, " ", c.last_name) LIKE ?)';
+                    $nameLike = '%' . $customerName . '%';
+                    $params[] = $nameLike;
+                    $params[] = $nameLike;
+                    $params[] = $nameLike;
+                }
+                
+                if ($customerPhone) {
+                    $phoneDigits = preg_replace('/\D/', '', $customerPhone);
+                    $whereConditions[] = 'REPLACE(REPLACE(REPLACE(c.phone, "-", ""), " ", ""), "(", "") LIKE ?';
+                    $params[] = '%' . $phoneDigits . '%';
+                }
+                
+                if ($creatorId) {
+                    $whereConditions[] = 'o.creator_id = ?';
+                    $params[] = $creatorId;
+                }
+                
                 if (!empty($whereConditions)) {
                     $sql .= ' WHERE ' . implode(' AND ', $whereConditions);
                 }
                 
+                // Get total count before pagination
+                $countSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
+                if ($trackingNumber || $customerName || $customerPhone) {
+                    if ($trackingNumber) {
+                        $countSql .= " LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
+                    }
+                    if ($customerName || $customerPhone) {
+                        $countSql .= " LEFT JOIN customers c ON o.customer_id = c.customer_id";
+                    }
+                }
+                if (!empty($whereConditions)) {
+                    $countSql .= ' WHERE ' . implode(' AND ', $whereConditions);
+                }
+                $countStmt = $pdo->prepare($countSql);
+                if (!empty($params)) {
+                    $countStmt->execute($params);
+                } else {
+                    $countStmt->execute();
+                }
+                $total = (int)$countStmt->fetchColumn();
+                $totalPages = ceil($total / $pageSize);
+                
                 $sql .= ' GROUP BY o.id
                           ORDER BY o.order_date DESC
-                          LIMIT 5000';
+                          LIMIT ' . $pageSize . ' OFFSET ' . $offset;
                 
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
@@ -1971,7 +2072,17 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $order['boxes'] = $boxesMap[$order['id']] ?? [];
                 }
                 
-                json_response($orders);
+                // Return paginated response
+                json_response([
+                    'ok' => true,
+                    'orders' => $orders,
+                    'pagination' => [
+                        'page' => $page,
+                        'pageSize' => $pageSize,
+                        'total' => $total,
+                        'totalPages' => $totalPages
+                    ]
+                ]);
             }
             break;
         case 'POST':
