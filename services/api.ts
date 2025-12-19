@@ -191,7 +191,6 @@ export async function getCustomerStats(companyId: number) {
 
   // Use direct fetch for standalone PHP endpoint
   const url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
-  console.log("API Service: calling getCustomerStats", url);
 
   const res = await fetch(
     url,

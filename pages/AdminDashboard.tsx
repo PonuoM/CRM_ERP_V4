@@ -49,20 +49,17 @@ const SummaryTable: React.FC<{ title: string, data: { label: string, value: numb
 
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers, openCreateOrderModal }) => {
-    console.log("AdminDashboard: Rendered with user:", user);
     const [dbStats, setDbStats] = React.useState<{ totalCustomers: number; grades: Record<string, number> } | null>(null);
     const [orderStats, setOrderStats] = React.useState<{ totalOrders: number; totalRevenue: number; avgOrderValue: number; statusCounts: Record<string, number>; monthlyCounts: Record<string, number> } | null>(null);
     const [loadingStats, setLoadingStats] = React.useState(!!user.companyId);
 
     React.useEffect(() => {
         if (user.companyId) { // Only dependency is companyId, effectively "on load" for a logged-in user context
-            console.log("AdminDashboard: fetching stats for company", user.companyId);
 
             Promise.all([
                 getCustomerStats(user.companyId),
                 getOrderStats(user.companyId)
             ]).then(([custRes, orderRes]) => {
-                console.log("AdminDashboard: retrieved stats", custRes, orderRes);
                 if (custRes.ok && custRes.stats) {
                     setDbStats(custRes.stats);
                 }
