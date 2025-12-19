@@ -1273,11 +1273,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
               </h3>
               <div className="mt-1 space-y-1">
                 <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
-                  มีรายชื่อพร้อมแจก:{" "}
                   {loadingStats ? (
-                    <Spinner size="sm" />
+                    <>
+                      มีรายชื่อพร้อมแจก:{" "}
+                      <span className="text-3xl font-extrabold text-green-700 inline-flex items-center gap-2">
+                        <Spinner size="sm" />
+                      </span>{" "}
+                      รายการ
+                    </>
                   ) : (
                     <>
+                      มีรายชื่อพร้อมแจก:{" "}
                       <span className="text-3xl font-extrabold text-green-700">
                         {(customerStats?.baskets?.waitingDistribute ?? availableCustomers.length).toLocaleString()}
                       </span>{" "}
