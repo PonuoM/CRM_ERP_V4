@@ -10,8 +10,11 @@ import {
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
+import { getOrderStats, getCustomerStats } from "@/services/api";
+import Spinner from "@/components/Spinner";
 
 interface SalesDashboardProps {
+  user?: any; // Accepting user for companyId
   orders?: Order[];
   customers?: Customer[];
 }
@@ -27,6 +30,7 @@ const legendStyles = `
   }
   .apexcharts-legend-series {
     flex-shrink: 0 !important;
+    min-width: 0 !important;
   }
   .apexcharts-canvas {
     width: 100% !important;
@@ -36,6 +40,7 @@ const legendStyles = `
 
 // A lightweight, international-friendly sales overview that focuses on layout only.
 const SalesDashboard: React.FC<SalesDashboardProps> = ({
+  user,
   orders = [],
   customers = [],
 }) => {
@@ -48,36 +53,50 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [chartKey, setChartKey] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  const [orderStats, setOrderStats] = useState<any>(null);
+  const [customerStats, setCustomerStats] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const fetchStats = async () => {
+    if (!user?.companyId) return;
+
+    setLoading(true);
+    try {
+      const [oStats, cStats] = await Promise.all([
+        getOrderStats(user.companyId, month, year),
+        getCustomerStats(user.companyId)
+      ]);
+
+      if (oStats.ok) setOrderStats(oStats.stats);
+      if (cStats.ok) setCustomerStats(cStats.stats);
+
+    } catch (error) {
+      console.error("SalesDashboard fetch error", error);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
   // Function to refresh the chart
   const refreshChart = () => {
     setIsRefreshing(true);
     setChartKey((prev) => prev + 1);
-    // Simulate refresh delay and reset loading state
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 500);
+    fetchStats();
   };
 
-  // Auto-refresh chart when page loads or when orders data changes
+  // Auto-refresh chart when page loads or when filters change
   useEffect(() => {
-    refreshChart();
-  }, [orders]);
+    fetchStats();
+  }, [user?.companyId, month, year]);
 
   const { monthlySales, monthlyOrders, customersCount, performancePct } =
     useMemo(() => {
-      const start = new Date(Number(year), Number(month) - 1, 1);
-      const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+      // Use API stats if available, fall back to "0" or mocked props if needed (though we expect API now)
+      const monthlySales = orderStats?.totalRevenue || 0;
+      const monthlyOrdersCount = orderStats?.totalOrders || 0;
+      const customersCount = customerStats?.totalCustomers || 0;
 
-      const monthlyOrders = orders.filter((o) => {
-        const d = new Date(o.orderDate);
-        return d >= start && d <= end;
-      });
-
-      const monthlySales = monthlyOrders.reduce(
-        (sum, o) => sum + (o.totalAmount || 0),
-        0,
-      );
-      const customersCount = customers.length;
       // Simple placeholder: performance as a ratio of monthly sales to an arbitrary target value
       const performanceTarget = 100000; // arbitrary target for layout purposes only
       const performancePct =
@@ -85,11 +104,11 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
 
       return {
         monthlySales,
-        monthlyOrders: monthlyOrders.length,
+        monthlyOrders: monthlyOrdersCount,
         customersCount,
         performancePct,
       };
-    }, [orders, customers, month, year]);
+    }, [orderStats, customerStats]);
 
   const monthOptions = Array.from({ length: 12 }, (_, i) =>
     String(i + 1).padStart(2, "0"),
@@ -98,6 +117,16 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
     String(new Date().getFullYear()),
     String(new Date().getFullYear() - 1),
   ];
+
+  const paymentCounts = orderStats?.paymentMethodCounts || {};
+  const renderLoadingSpinner = () => (
+    <div className="flex items-center">
+      <svg className="animate-spin h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+    </div>
+  );
 
   return (
     <>
@@ -148,25 +177,25 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <StatCard
             title="ยอดขายรายเดือน"
-            value={`฿${monthlySales.toLocaleString()}`}
+            value={loading ? renderLoadingSpinner() : `฿${monthlySales.toLocaleString()}`}
             subtext="อัปเดตล่าสุด"
             icon={DollarSign}
           />
           <StatCard
             title="จำนวนออเดอร์"
-            value={monthlyOrders.toString()}
+            value={loading ? renderLoadingSpinner() : monthlyOrders.toString()}
             subtext="ช่วงนี้"
             icon={ShoppingCart}
           />
           <StatCard
             title="ประสิทธิภาพ"
-            value={`${performancePct.toFixed(2)}%`}
+            value={loading ? renderLoadingSpinner() : `${performancePct.toFixed(2)}%`}
             subtext="เทียบเป้าหมาย"
             icon={TrendingUp}
           />
           <StatCard
             title="ลูกค้า"
-            value={customersCount.toString()}
+            value={loading ? renderLoadingSpinner() : customersCount.toString()}
             subtext="ทั้งหมด"
             icon={UsersIcon}
           />
@@ -182,11 +211,10 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               <button
                 onClick={refreshChart}
                 disabled={isRefreshing}
-                className={`p-2 rounded-md transition-colors ${
-                  isRefreshing
+                className={`p-2 rounded-md transition-colors ${isRefreshing
                     ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                     : "hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-                }`}
+                  }`}
                 title={isRefreshing ? "กำลังรีเฟรช..." : "รีเฟรชกราฟ"}
               >
                 <RefreshCw
@@ -195,7 +223,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               </button>
             </div>
             <div className="w-full">
-              <MonthlyOrdersChart key={chartKey} />
+              <MonthlyOrdersChart key={chartKey} data={orderStats?.monthlyCounts} loading={loading} />
             </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -203,14 +231,20 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               สถานะการชำระเงิน
             </h3>
             <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">ชำระแล้ว</span>
-                <span className="font-medium">—</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">เก็บเงินปลายทาง</span>
-                <span className="font-medium">—</span>
-              </div>
+              {loading ? (
+                <Spinner />
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">ชำระแล้ว (Transfer)</span>
+                    <span className="font-medium">{paymentCounts['Transfer'] || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">เก็บเงินปลายทาง (COD)</span>
+                    <span className="font-medium">{paymentCounts['COD'] || 0}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

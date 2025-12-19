@@ -664,6 +664,48 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
   const showInputs = isModifiable && isEditing;
 
+  const sortedItemsWithIndex = useMemo(() => {
+    const items = currentOrder.items || [];
+    // Map items to include their original index
+    const itemsWithIndex = items.map((item, index) => ({ item, index }));
+
+    // Group children by parentItemId
+    const childrenMap = new Map<number, typeof itemsWithIndex>();
+    itemsWithIndex.forEach((entry) => {
+      const parentId = (entry.item as any).parentItemId;
+      if (parentId) {
+        if (!childrenMap.has(parentId)) {
+          childrenMap.set(parentId, []);
+        }
+        childrenMap.get(parentId)?.push(entry);
+      }
+    });
+
+    const sorted: typeof itemsWithIndex = [];
+    const processedChildren = new Set<number>();
+
+    // Iterate through items to build sorted list
+    itemsWithIndex.forEach((entry) => {
+      // If it's a child, skip (will be added after parent)
+      if ((entry.item as any).parentItemId) return;
+
+      // Add parent/regular item
+      sorted.push(entry);
+
+      // Check if this item is a parent and add its children immediately after
+      const itemId = entry.item.id;
+      if (childrenMap.has(itemId)) {
+        const children = childrenMap.get(itemId) || [];
+        children.forEach((child) => {
+          sorted.push(child);
+          processedChildren.add(child.index);
+        });
+      }
+    });
+
+    return sorted;
+  }, [currentOrder.items]);
+
   const handleAddItem = () => {
     if (!currentUser) return;
 
@@ -1876,11 +1918,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     try {
       await patchOrder(currentOrder.id, {
         paymentStatus: PaymentStatus.PendingVerification,
+        amountPaid: null,
       });
 
       const updated = {
         ...currentOrder,
         paymentStatus: PaymentStatus.PendingVerification,
+        amountPaid: null as any,
       };
 
       setCurrentOrder(updated);
@@ -1891,8 +1935,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     }
   };
 
-  const handleAmountPaidChange = (amount: number) => {
-    const newAmount = Math.max(0, amount);
 
     let newPaymentStatus = currentOrder.paymentStatus;
 
@@ -1936,6 +1978,18 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           : prev.codAmount;
 
       return { ...prev, boxes, codAmount: codTotal };
+    });
+  };
+
+  const handleBoxTrackingChange = (boxNumber: number, value: string) => {
+    setCurrentOrder((prev) => {
+      const boxes = (prev.boxes || []).map((box) => {
+        if (box.boxNumber === boxNumber) {
+          return { ...box, trackingNumber: value };
+        }
+        return box;
+      });
+      return { ...prev, boxes };
     });
   };
 
@@ -2182,25 +2236,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     currentOrder.billDiscount,
   ]);
 
-  const remainingBalance = useMemo(() => {
-    const paid = currentOrder.amountPaid || 0;
 
-    return calculatedTotals.totalAmount - paid; // negative means overpaid
-  }, [calculatedTotals.totalAmount, currentOrder.amountPaid]);
-
-  const derivedAmountStatus = useMemo(() => {
-    const diff = remainingBalance;
-
-    const paid = currentOrder.amountPaid || 0;
-
-    if (!paid || paid === 0) return "Unpaid";
-
-    if (diff > 0) return "Partial";
-
-    if (diff === 0) return "Paid";
-
-    return "Overpaid";
-  }, [remainingBalance, currentOrder.amountPaid]);
 
   const handleDuplicateItem = (item: any, count: number) => {
     if (count <= 0) return;
@@ -2763,7 +2799,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                 <tbody>
                   {(() => {
                     let rowNumber = 0; // Counter for non-child items only
-                    return currentOrder.items.map((item, index) => {
+                    return sortedItemsWithIndex.map(({ item, index }) => {
                       // Increment row number only for non-child items
                       if (!(item as any).parentItemId) {
                         rowNumber++;
@@ -3239,8 +3275,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center justify-between mb-2 text-xs">
-                  <span className="text-gray-500">สถานะการชำระ</span>
 
                   <span
                     className={`px - 2 py - 0.5 rounded - full ${derivedAmountStatus === "Paid" ? "bg-green-100 text-green-700" : derivedAmountStatus === "Unpaid" ? "bg-gray-100 text-gray-700" : derivedAmountStatus === "Partial" ? "bg-yellow-100 text-yellow-700" : "bg-purple-100 text-purple-700"} `}
@@ -3648,13 +3682,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               </span>
                               <span className="text-sm font-bold text-green-600">
                                 ฿
-                                {slips
-                                  .filter((s: any) => s.checked)
-                                  .reduce(
-                                    (sum, s) => sum + (Number(s.amount) || 0),
-                                    0,
-                                  )
-                                  .toLocaleString()}
+                                {(Number(currentOrder.amountPaid) || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="border-t border-gray-200 my-2 pt-2 flex justify-between items-center">
@@ -3746,49 +3774,13 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               )}
                           </div>
                         )}
-                    </>
-                  )}
 
-                {false &&
-                  currentOrder.paymentMethod === PaymentMethod.PayAfter && (
-                    <>
-                      <div className="space-y-2">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">
-                            บันทึกยอดชำระ
-                          </label>
 
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={currentOrder.amountPaid ?? ""}
-                            onFocus={(e) => e.currentTarget.select()}
-                            onChange={(e) =>
-                              handleAmountPaidChange(Number(e.target.value))
-                            }
-                            className="w-full p-2 border rounded-md"
-                            disabled={
-                              currentOrder.paymentStatus === PaymentStatus.Paid
-                            }
-                          />
-                        </div>
 
-                        <div className="flex justify-between font-semibold">
-                          <span className="text-red-600">ยอดค้างชำระ</span>
 
-                          <span className="text-red-600">
-                            ฿{remainingBalance.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* ส่วนอัปโหลดสลิปสำหรับ PayAfter */}
 
-                      <div className="space-y-2 mt-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">
-                            หลักฐานการชำระเงิน
-                          </label>
+                      {/* แสดงข้อมูลธนาคารและเวลาโอน (ถ้ามี) */}
 
                           {slips.length > 0 ? (
                             <div className="flex flex-wrap gap-3 mb-2">
@@ -3978,38 +3970,49 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               ข้อมูลการตรวจสอบสลิป
                             </h4>
 
-                            <div className="text-xs text-green-700 space-y-1">
-                              <p>
-                                ผู้ตรวจสอบ:{" "}
-                                {currentOrder.verificationInfo.verifiedByName}
-                              </p>
+                            <div className="text-xs text-blue-700 space-y-1">
+                              {currentOrder.bankAccountId &&
+                                (() => {
+                                  const bankAccount = bankAccounts.find(
+                                    (ba) => ba.id === currentOrder.bankAccountId,
+                                  );
 
-                              <p>
-                                วันที่ตรวจสอบ:{" "}
-                                {new Date(
-                                  currentOrder.verificationInfo.verifiedAt,
-                                ).toLocaleString("th-TH")}
-                              </p>
+                                  return (
+                                    <p>
+                                      ธนาคาร:{" "}
+                                      {bankAccount
+                                        ? `${bankAccount.bank} ${bankAccount.bank_number} `
+                                        : `ID: ${currentOrder.bankAccountId} `}
+                                    </p>
+                                  );
+                                })()}
+
+                              {currentOrder.transferDate && (
+                                <p>
+                                  เวลาโอน:{" "}
+                                  {new Date(
+                                    currentOrder.transferDate,
+                                  ).toLocaleString("th-TH", {
+                                    year: "numeric",
+
+                                    month: "2-digit",
+
+                                    day: "2-digit",
+
+                                    hour: "2-digit",
+
+                                    minute: "2-digit",
+                                  })}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
 
-                        {/* ปุ่มยืนยันสลิปสำหรับ Backoffice/Admin */}
+                      {/* แสดงข้อมูลการตรวจสอบสลิป (ถ้ามี) */}
 
-                        {canVerifySlip &&
-                          slips.length > 0 &&
-                          currentOrder.paymentStatus !== PaymentStatus.Paid && (
-                            <div className="flex justify-end">
-                              <button
-                                onClick={handleAcceptSlip}
-                                className="mt-2 group relative inline-flex items-center justify-center px-8 py-3 border-2 border-white/20 overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-xl shadow-green-500/40 transition-all duration-300 hover:to-green-700 hover:shadow-green-500/60 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2"
-                              >
-                                <CheckCircle className="mr-2 h-5 w-5" />
-                                <span className="font-bold">ยืนยันสลิป</span>
-                              </button>
-                            </div>
-                          )}
-                      </div>
+
+
                     </>
                   )}
 
@@ -4368,6 +4371,36 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               </div>
             )}
 
+
+          {(currentOrder.paymentMethod === PaymentMethod.Transfer ||
+            currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
+            currentOrder.boxes &&
+            currentOrder.boxes.length > 0 && (
+              <InfoCard icon={Truck} title="Tracking รายกล่อง">
+                <div className="flex flex-wrap gap-2">
+                  {currentOrder.boxes.map((box) => {
+                    const hasTracking = !!box.trackingNumber;
+                    return (
+                      <div
+                        key={box.boxNumber}
+                        className={`flex items-center px-2 py-1 rounded text-xs border ${hasTracking
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-gray-50 border-gray-200 text-gray-500"
+                          }`}
+                      >
+                        <span className="font-medium mr-2">
+                          กล่อง {box.boxNumber}:
+                        </span>
+                        <span>
+                          {hasTracking ? box.trackingNumber : "ยังไม่มี"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </InfoCard>
+            )}
+
           <InfoCard icon={Truck} title="การจัดส่ง">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -4581,10 +4614,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             </div>
           </div>
         )}
-      </Modal>
+      </Modal >
 
       {/* Product Selector Modal */}
-      <ProductSelectorModal
+      < ProductSelectorModal
         isOpen={productSelectorOpen}
         onClose={closeProductSelector}
         tab={selectorTab}

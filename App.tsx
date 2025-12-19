@@ -733,6 +733,11 @@ const App: React.FC = () => {
     let cancelled = false;
     const load = async () => {
       try {
+        const isDashboard = activePage === 'Dashboard';
+        const isAdmin = sessionUser?.role === UserRole.Admin;
+        // Optimized: Skip loading customers unless we are on the Customers page
+        const shouldSkipCustomers = activePage !== 'Customers';
+
         const [
           u,
           c,
@@ -751,7 +756,7 @@ const App: React.FC = () => {
           whs,
         ] = await Promise.all([
           listUsers(sessionUser?.company_id),
-          listCustomers({ companyId: sessionUser?.company_id }),
+          shouldSkipCustomers ? Promise.resolve([]) : listCustomers({ companyId: sessionUser?.company_id }),
           listOrders(sessionUser?.company_id),
           listProducts(sessionUser?.company_id),
           listPromotions(sessionUser?.company_id),
@@ -759,7 +764,7 @@ const App: React.FC = () => {
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory(),
           listAppointments(),
-          listCustomerTags(),
+          shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
           listActivities(),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
@@ -1300,6 +1305,119 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, []); // Load once on mount
+
+  // Lazy load customers for Admin when not on Dashboard
+  useEffect(() => {
+    if (!sessionUser?.company_id) return;
+
+    const hasCustomers = customers.length > 0;
+
+    // Optimized: Only lazy load customers when on the Customers page (ManageCustomersPage)
+    // and if we haven't loaded them yet.
+    if (activePage === 'Customers' && !hasCustomers) {
+      console.log("Lazy loading customers for ManageCustomersPage...");
+      let cancelled = false;
+
+      const lazyLoad = async () => {
+        try {
+          const [ctags, cData] = await Promise.all([
+            listCustomerTags(),
+            listCustomers({ companyId: sessionUser.company_id }),
+          ]);
+          const c = cData.data || [];
+
+          if (cancelled) return;
+
+          const tagsByCustomer: Record<string, Tag[]> = {};
+          if (Array.isArray(ctags)) {
+            for (const row of ctags as any[]) {
+              const t: Tag = {
+                id: Number(row.id),
+                name: row.name,
+                type:
+                  (row.type as "SYSTEM" | "USER") === "SYSTEM"
+                    ? TagType.System
+                    : TagType.User,
+                color: row.color ?? undefined,
+              };
+              const cid = String(row.customer_id);
+              (tagsByCustomer[cid] = tagsByCustomer[cid] || []).push(t);
+            }
+          }
+
+          const mapCustomerLocal = (r: any): Customer => {
+            const totalPurchases = Number(r.total_purchases || 0);
+            const pk = r.customer_id ?? r.id ?? r.pk ?? null;
+            const refId =
+              r.customer_ref_id ??
+              r.customer_ref ??
+              r.customer_refid ??
+              r.customerId ??
+              null;
+            const resolvedId =
+              pk != null ? String(pk) : refId != null ? String(refId) : "";
+
+            return {
+              id: resolvedId,
+              pk: pk != null ? Number(pk) : undefined,
+              customerId: refId ?? undefined,
+              customerRefId: refId ?? undefined,
+              firstName: r.first_name,
+              lastName: r.last_name,
+              phone: r.phone,
+              backupPhone: r.backup_phone ?? r.backupPhone ?? "",
+              email: r.email ?? undefined,
+              address: {
+                recipientFirstName: r.recipient_first_name || "",
+                recipientLastName: r.recipient_last_name || "",
+                street: r.street || "",
+                subdistrict: r.subdistrict || "",
+                district: r.district || "",
+                province: r.province || "",
+                postalCode: r.postal_code || "",
+              },
+              province: r.province || "",
+              companyId: r.company_id,
+              assignedTo:
+                r.assigned_to !== null && typeof r.assigned_to !== "undefined"
+                  ? Number(r.assigned_to)
+                  : null,
+              dateAssigned: r.date_assigned,
+              dateRegistered: r.date_registered ?? undefined,
+              followUpDate: r.follow_up_date ?? undefined,
+              ownershipExpires: r.ownership_expires ?? "",
+              lifecycleStatus:
+                normalizeLifecycleStatusValue(r.lifecycle_status) ??
+                CustomerLifecycleStatus.New,
+              behavioralStatus:
+                (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
+              grade: calculateCustomerGrade(totalPurchases),
+              tags: tagsByCustomer[resolvedId] || [],
+              assignmentHistory: [],
+              totalPurchases,
+              totalCalls: Number(r.total_calls || 0),
+              facebookName: r.facebook_name ?? undefined,
+              lineId: r.line_id ?? undefined,
+              isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
+              waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
+              isBlocked: Boolean(r.is_blocked ?? false),
+            };
+          };
+
+          const mapped = Array.isArray(c) ? c.map(mapCustomerLocal) : [];
+          setCustomers(mapped);
+          console.log(`Lazy loaded ${mapped.length} customers.`);
+        } catch (e) {
+          console.error("Lazy load failed", e);
+        }
+      };
+
+      lazyLoad();
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [sessionUser?.company_id, sessionUser?.role, activePage, customers.length]);
 
   // Refresh orders when navigating to pages that display orders
   useEffect(() => {
@@ -2955,9 +3073,9 @@ const App: React.FC = () => {
         // Refresh orders, customers, and activities with proper mapping
         const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
           listOrders(currentUser.companyId),
-          listCustomers({
+          activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
-          }),
+          }) : Promise.resolve({ total: 0, data: [] }),
           listActivities(),
           listCustomerTags(),
         ]);
@@ -3135,8 +3253,9 @@ const App: React.FC = () => {
         }
 
         // Map customers
-        const mappedCustomers = Array.isArray(refreshedCustomersRaw)
-          ? refreshedCustomersRaw.map((r: any) => {
+        const customersData = (refreshedCustomersRaw as any).data || [];
+        const mappedCustomers = Array.isArray(customersData)
+          ? customersData.map((r: any) => {
             const totalPurchases = Number(r.total_purchases || 0);
             const pk = r.customer_id ?? r.id ?? r.pk ?? null;
             const refId =
@@ -3240,9 +3359,9 @@ const App: React.FC = () => {
       // Refresh orders, customers, and activities with proper mapping
       const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
         listOrders(currentUser.companyId),
-        listCustomers({
+        activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
-        }),
+        }) : Promise.resolve({ total: 0, data: [] }),
         listActivities(),
         listCustomerTags(),
       ]);
@@ -3308,8 +3427,9 @@ const App: React.FC = () => {
         });
       }
 
-      const mappedCustomers: Customer[] = Array.isArray(refreshedCustomersRaw)
-        ? refreshedCustomersRaw.map((r) => {
+      const customersData = (refreshedCustomersRaw as any).data || [];
+      const mappedCustomers: Customer[] = Array.isArray(customersData)
+        ? customersData.map((r) => {
           const resolvedId = String(r.id || r.customer_id);
           const totalPurchasesVal = Number(r.total_purchases || 0);
           return {
@@ -5733,7 +5853,11 @@ const App: React.FC = () => {
     // Global entries: simple, international dashboards for layout-only views
     if (activePage === "Sales Overview") {
       return (
-        <SalesDashboard orders={companyOrders} customers={companyCustomers} />
+        <SalesDashboard
+          user={currentUser}
+          orders={companyOrders}
+          customers={companyCustomers}
+        />
       );
     }
     if (activePage === "Calls Overview") {
@@ -5887,6 +6011,7 @@ const App: React.FC = () => {
           allCustomers={companyCustomers}
           allUsers={companyUsers}
           setCustomers={setCustomers}
+          currentUser={currentUser}
         />
       );
     }
@@ -5907,6 +6032,7 @@ const App: React.FC = () => {
           allCustomers={companyCustomers}
           allUsers={companyUsers}
           setCustomers={setCustomers}
+          currentUser={currentUser}
         />
       );
     }
@@ -6133,7 +6259,7 @@ const App: React.FC = () => {
             try {
               const [act, c, ctags] = await Promise.all([
                 listActivities(),
-                listCustomers({ companyId: sessionUser?.company_id }),
+                activePage === 'Customers' ? listCustomers({ companyId: sessionUser?.company_id }) : Promise.resolve({ total: 0, data: [] }),
                 listCustomerTags(),
               ]);
               setActivities(
@@ -6162,7 +6288,8 @@ const App: React.FC = () => {
                 }
               }
               // Use the same mapCustomer logic from load()
-              setCustomers(Array.isArray(c) ? c.map((r: any) => {
+              const cArray = (c as any).data || [];
+              setCustomers(Array.isArray(cArray) ? cArray.map((r: any) => {
                 const totalPurchasesVal = Number(r.total_purchases || 0);
                 const pk = r.customer_id ?? r.id ?? r.pk ?? null;
                 const refId =
@@ -6422,6 +6549,7 @@ const App: React.FC = () => {
             allCustomers={companyCustomers}
             allUsers={companyUsers}
             setCustomers={setCustomers}
+            currentUser={currentUser}
           />
         );
 

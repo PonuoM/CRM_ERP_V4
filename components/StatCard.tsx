@@ -3,7 +3,7 @@ import { LucideProps } from 'lucide-react';
 
 interface StatCardProps {
   title: string;
-  value: string;
+  value: React.ReactNode;
   subtext: string;
   icon: React.ComponentType<LucideProps>;
 }
@@ -17,9 +17,9 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, subtext, icon: Icon }
         <Icon className="w-6 h-6 text-gray-400" />
       </div>
       <div className="flex items-center text-xs text-green-600 mt-2">
-         {/* In a real app, this could be a trending icon */}
-         <div className="w-2 h-2 bg-green-500 rounded-full mr-1.5"></div> 
-         <span>{subtext}</span>
+        {/* In a real app, this could be a trending icon */}
+        <div className="w-2 h-2 bg-green-500 rounded-full mr-1.5"></div>
+        <span>{subtext}</span>
       </div>
     </div>
   );

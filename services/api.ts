@@ -113,6 +113,21 @@ export async function listCustomers(params?: {
   userId?: number;
   source?: "new_sale" | "waiting_return" | "stock";
   freshDays?: number; // only for source=new_sale
+  province?: string;
+  lifecycle?: string;
+  behavioral?: string;
+  assignedTo?: number;
+  page?: number;
+  pageSize?: number;
+  // Advanced filters
+  name?: string;
+  phone?: string;
+  grade?: string;
+  hasOrders?: "all" | "yes" | "no";
+  dateAssignedStart?: string;
+  dateAssignedEnd?: string;
+  ownershipStart?: string;
+  ownershipEnd?: string;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -121,8 +136,32 @@ export async function listCustomers(params?: {
   if (params?.userId) qs.set("userId", String(params.userId));
   if (params?.source) qs.set("source", params.source);
   if (params?.freshDays != null) qs.set("freshDays", String(params.freshDays));
+  if (params?.province) qs.set("province", params.province);
+  if (params?.lifecycle) qs.set("lifecycle", params.lifecycle);
+  if (params?.behavioral) qs.set("behavioral", params.behavioral);
+  if (params?.assignedTo) qs.set("assignedTo", String(params.assignedTo));
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  // Pass userId to context (e.g. for upsell exclusion)
+  if (params?.userId) qs.set("userId", String(params.userId));
+  // Advanced filters
+  if (params?.name) qs.set("name", params.name);
+  if (params?.phone) qs.set("phone", params.phone);
+  if (params?.grade) qs.set("grade", params.grade);
+  if (params?.hasOrders && params.hasOrders !== "all") qs.set("hasOrders", params.hasOrders);
+  if (params?.dateAssignedStart) qs.set("dateAssignedStart", params.dateAssignedStart);
+  if (params?.dateAssignedEnd) qs.set("dateAssignedEnd", params.dateAssignedEnd);
+  if (params?.ownershipStart) qs.set("ownershipStart", params.ownershipStart);
+  if (params?.ownershipEnd) qs.set("ownershipEnd", params.ownershipEnd);
+
   const query = qs.toString();
-  return apiFetch(`customers${query ? `?${query}` : ""}`);
+  const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
+
+  // Normalize response to { total, data }
+  if (Array.isArray(response)) {
+    return { total: response.length, data: response };
+  }
+  return response as { total: number; data: any[] };
 }
 
 export async function listCustomersBySource(
@@ -141,6 +180,81 @@ export async function listUsers(companyId?: number) {
   const qs = new URLSearchParams();
   if (companyId) qs.set("companyId", String(companyId));
   return apiFetch(`users${companyId ? `?${qs}` : ""}`);
+}
+
+export async function getCustomerStats(companyId: number) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Use direct fetch for standalone PHP endpoint
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
+  console.log("API Service: calling getCustomerStats", url);
+
+  const res = await fetch(
+    url,
+    {
+      method: "GET",
+      headers,
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Stats fetch failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
+export async function getTelesaleUsers(companyId: number) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${apiBasePath.replace(/\/$/, "")}/User_DB/telesale.php?company_id=${companyId}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Telesale users fetch failed: ${res.statusText}`);
+  }
+
+  return await res.json();
+}
+
+export async function bulkDistributeCustomers(payload: {
+  companyId: number;
+  count: number;
+  agentIds: number[];
+  targetStatus: string;
+  ownershipDays: number;
+}) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: any = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${apiBasePath.replace(/\/$/, "")}/customer/bulk_distribute.php`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Bulk distribution failed: ${res.statusText}`);
+  }
+
+  return await res.json();
 }
 
 // Admin Page users (Active only)
@@ -592,6 +706,23 @@ export async function listCustomerBlocks(customerId?: string) {
   const qs = new URLSearchParams();
   if (customerId) qs.set("customerId", customerId);
   return apiFetch(`customer_blocks${customerId ? `?${qs}` : ""}`);
+}
+
+export async function getOrderStats(companyId: number, month?: string, year?: string) {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const params = new URLSearchParams();
+  params.set("company_id", String(companyId));
+  if (month) params.set("month", month);
+  if (year) params.set("year", year);
+
+  const res = await fetch(`${apiBasePath}/Orders/order_stats.php?${params.toString()}`, {
+    method: "GET",
+    headers,
+  });
+  return res.json();
 }
 
 export async function unblockCustomerBlock(id: number, unblockedBy: number) {

@@ -2,32 +2,48 @@ import React from "react";
 import { CustomerGrade, OrderStatus } from "../types";
 import ReactApexChart from "react-apexcharts";
 
-export const MonthlyOrdersChart: React.FC = () => {
+interface MonthlyOrdersChartProps {
+  data?: Record<string, number>;
+  loading?: boolean;
+}
+
+export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, loading }) => {
+  // Process data if available, otherwise default to empty or maybe a fallback
+  const processData = () => {
+    if (!data) return { labels: [], values: [] };
+    // Sort keys just in case
+    const sortedKeys = Object.keys(data).sort();
+    // Take last 12 months or similar logic if needed, but API usually returns last 12
+    return {
+      labels: sortedKeys, // "2024-01", "2024-02"
+      values: sortedKeys.map(k => data[k])
+    };
+  };
+
+  const { labels, values } = processData();
+
   const series = [
-    { name: "Orders", data: [10, 22, 15, 30, 18, 26, 20, 32, 28, 25, 30, 35] },
+    { name: "Orders", data: values.length ? values : [] },
   ];
+
   const options: any = {
     chart: { type: "line", toolbar: { show: false } },
     stroke: { curve: "smooth", width: 3 },
     colors: ["#34D399"],
     xaxis: {
-      categories: [
-        "01",
-        "02",
-        "03",
-        "04",
-        "05",
-        "06",
-        "07",
-        "08",
-        "09",
-        "10",
-        "11",
-        "12",
-      ],
+      categories: labels, // YYYY-MM
     },
     grid: { borderColor: "#E5E7EB" },
     legend: { show: false },
+    noData: {
+      text: loading ? ' ' : 'No Data',
+      align: 'center',
+      verticalAlign: 'middle',
+      style: {
+        color: '#888',
+        fontSize: '14px',
+      }
+    }
   };
   return (
     <div className="bg-white p-2 pt-0 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
@@ -35,20 +51,29 @@ export const MonthlyOrdersChart: React.FC = () => {
         className="w-full overflow-hidden"
         style={{ maxWidth: "100%", width: "100%" }}
       >
-        <ReactApexChart
-          options={options}
-          series={series}
-          type="line"
-          height={250}
-          width="100%"
-        />
+        {loading ? (
+          <div className="h-[250px] flex justify-center items-center">
+            <Spinner />
+          </div>
+        ) : (
+          <ReactApexChart
+            options={options}
+            series={series}
+            type="line"
+            height={250}
+            width="100%"
+          />
+        )}
       </div>
     </div>
   );
 };
 
+import Spinner from "./Spinner";
+
 interface CustomerGradeChartProps {
   grades: { label: string; value: number; total: number }[];
+  loading?: boolean;
 }
 
 const gradeColors: Record<string, string> = {
@@ -56,11 +81,11 @@ const gradeColors: Record<string, string> = {
   [CustomerGrade.B]: "#6EE7B7",
   [CustomerGrade.C]: "#FCD34D",
   [CustomerGrade.D]: "#FCA5A5",
-  [CustomerGrade.E]: "#F87171",
 };
 
 export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
   grades,
+  loading,
 }) => {
   const series = grades.map((g) => g.value);
   const labels = grades.map((g) => g.label);
@@ -79,6 +104,28 @@ export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
       offsetY: 0,
     },
     plotOptions: { pie: { donut: { size: "65%", labels: { show: true } } } },
+    dataLabels: {
+      enabled: true,
+      formatter: function (val: number) {
+        return val.toFixed(1) + "%";
+      },
+      style: {
+        fontSize: '12px',
+        fontFamily: 'Helvetica, Arial, sans-serif',
+        fontWeight: 'bold',
+        colors: ['#fff']
+      },
+      dropShadow: {
+        enabled: true,
+      }
+    },
+    tooltip: {
+      y: {
+        formatter: function (val: number) {
+          return val + " คน";
+        },
+      },
+    },
   };
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
@@ -86,12 +133,16 @@ export const CustomerGradeChart: React.FC<CustomerGradeChartProps> = ({
         สัดส่วนเกรดลูกค้า
       </h3>
       <div className="w-full overflow-hidden">
-        <ReactApexChart
-          options={options}
-          series={series}
-          type="donut"
-          height={260}
-        />
+        {loading ? (
+          <Spinner />
+        ) : (
+          <ReactApexChart
+            options={options}
+            series={series}
+            type="donut"
+            height={260}
+          />
+        )}
       </div>
     </div>
   );

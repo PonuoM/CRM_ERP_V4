@@ -23,13 +23,16 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, bulkDistributeCustomers } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
+import { mapCustomerFromApi } from "@/utils/customerMapper";
+import Spinner from "@/components/Spinner";
 
 interface CustomerDistributionPageProps {
   allCustomers: Customer[];
   allUsers: User[];
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
+  currentUser?: { id: number; companyId: number };
 }
 
 type DistributionMode = "average" | "backlog" | "gradeA";
@@ -45,11 +48,10 @@ const DateFilterButton: React.FC<{
 }> = ({ label, value, activeValue, onClick }) => (
   <button
     onClick={() => onClick(value)}
-    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-      activeValue === value
-        ? "bg-blue-600 text-white"
-        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-    }`}
+    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeValue === value
+      ? "bg-blue-600 text-white"
+      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+      }`}
   >
     {label}
   </button>
@@ -134,20 +136,20 @@ const normalizeApiCustomer = (api: any): Customer => {
 
   const tags: Tag[] = Array.isArray(api?.tags)
     ? api.tags
-        .map((raw: any) => {
-          const id = Number(raw?.id);
-          const name = raw?.name ?? "";
-          const type =
-            raw?.type === TagType.System ? TagType.System : TagType.User;
-          return Number.isFinite(id) && name ? { id, name, type } : undefined;
-        })
-        .filter((tag): tag is Tag => Boolean(tag))
+      .map((raw: any) => {
+        const id = Number(raw?.id);
+        const name = raw?.name ?? "";
+        const type =
+          raw?.type === TagType.System ? TagType.System : TagType.User;
+        return Number.isFinite(id) && name ? { id, name, type } : undefined;
+      })
+      .filter((tag): tag is Tag => Boolean(tag))
     : [];
 
   const assignmentHistory = Array.isArray(api?.assignment_history)
     ? api.assignment_history
-        .map((id: any) => Number(id))
-        .filter((id: number) => Number.isFinite(id))
+      .map((id: any) => Number(id))
+      .filter((id: number) => Number.isFinite(id))
     : [];
 
   // Resolve customer ID: prefer customer_id (PK), fallback to id or pk
@@ -224,7 +226,24 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   allCustomers,
   allUsers,
   setCustomers,
+  currentUser,
 }) => {
+  // Customer Stats from API
+  const [customerStats, setCustomerStats] = useState<{
+    totalCustomers: number;
+    grades: Record<string, number>;
+    baskets?: {
+      waitingDistribute: number;
+      waitingBasket: number;
+      blocked: number;
+    };
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  // Telesale User Stats from API
+  const [telesaleStats, setTelesaleStats] = useState<any[]>([]);
+  const [loadingTelesaleStats, setLoadingTelesaleStats] = useState(true);
+
   // Pool source toggle (all | new_sale | waiting_return | stock)
   const [poolSource, setPoolSource] = useState<
     "all" | "new_sale" | "waiting_return" | "stock"
@@ -299,32 +318,77 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     };
   }, [poolSource, allCustomers]);
 
+  // Fetch customer stats from API
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setLoadingStats(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoadingStats(true);
+    getCustomerStats(currentUser.companyId)
+      .then((response) => {
+        if (!mounted) return;
+        if (response?.ok && response?.stats) {
+          setCustomerStats(response.stats);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch customer stats:", err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingStats(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.companyId]);
+
+  // Fetch telesale user stats from API
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setLoadingTelesaleStats(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoadingTelesaleStats(true);
+    getTelesaleUsers(currentUser.companyId)
+      .then((response) => {
+        if (!mounted) return;
+        if (response?.ok && response?.users) {
+          setTelesaleStats(response.users);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch telesale stats:", err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingTelesaleStats(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.companyId]);
+
   // Base dataset used throughout the page
   const dataCustomers: Customer[] =
     poolSource === "all" ? allCustomers : poolCustomers;
 
-  // Basket summaries
-  const waitingBasketCount = useMemo(
-    () =>
-      dataCustomers.filter(
-        (c) => (c as any).isInWaitingBasket && !(c as any).isBlocked,
-      ).length,
-    [dataCustomers],
-  );
-  const toDistributeCount = useMemo(
-    () =>
-      dataCustomers.filter(
-        (c) =>
-          c.assignedTo === null &&
-          !(c as any).isBlocked &&
-          !(c as any).isInWaitingBasket,
-      ).length,
-    [dataCustomers],
-  );
-  const blockedCount = useMemo(
-    () => dataCustomers.filter((c) => (c as any).isBlocked).length,
-    [dataCustomers],
-  );
+  // Basket summaries from API (fallback to client-side calculation if API data not available)
+  const waitingBasketCount = customerStats?.baskets?.waitingBasket ?? dataCustomers.filter(
+    (c) => (c as any).isInWaitingBasket && !(c as any).isBlocked,
+  ).length;
+
+  const toDistributeCount = customerStats?.baskets?.waitingDistribute ?? dataCustomers.filter(
+    (c) =>
+      c.assignedTo === null &&
+      !(c as any).isBlocked &&
+      !(c as any).isInWaitingBasket,
+  ).length;
+
+  const blockedCount = customerStats?.baskets?.blocked ?? dataCustomers.filter((c) => (c as any).isBlocked).length;
 
   const getAgentWorkloadByGrade = (agentId: number) => {
     const agentCustomers = dataCustomers.filter(
@@ -461,14 +525,33 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     const count = parseInt(countStr, 10);
-    if (!isNaN(count) && count > availableCustomers.length) {
+    // Use API data if available, fallback to client-side calculation
+    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+
+    if (!isNaN(count) && count > actualAvailableCount) {
       setDistributionCountError(
-        `จำนวนที่ต้องการแจก (${count}) มากกว่าลูกค้าที่พร้อมแจก (${availableCustomers.length})`,
+        `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
       );
     } else {
       setDistributionCountError("");
     }
   };
+
+  // Re-validate distribution count when API data loads
+  useEffect(() => {
+    if (distributionCount && customerStats?.baskets?.waitingDistribute) {
+      const count = parseInt(distributionCount, 10);
+      const actualAvailableCount = customerStats.baskets.waitingDistribute;
+
+      if (!isNaN(count) && count > actualAvailableCount) {
+        setDistributionCountError(
+          `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
+        );
+      } else {
+        setDistributionCountError("");
+      }
+    }
+  }, [customerStats?.baskets?.waitingDistribute, distributionCount]);
 
   const handleAgentSelection = (agentId: number) => {
     setSelectedAgentIds((prev) =>
@@ -481,10 +564,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   };
 
   const handleSelectAllAgents = () => {
-    if (selectedAgentIds.length === telesaleAgents.length) {
+    if (selectedAgentIds.length === telesaleStats.length) {
       setSelectedAgentIds([]);
     } else {
-      setSelectedAgentIds(telesaleAgents.map((a) => a.id));
+      setSelectedAgentIds(telesaleStats.map((a) => a.id));
     }
     setShowPreview(false);
     setShowPreviewModal(false);
@@ -496,154 +579,207 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
       return;
     }
-    if (count > availableCustomers.length) {
-      // This case should be prevented by disabled button, but as a safeguard.
+
+    // Use API data for validation
+    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    if (count > actualAvailableCount) {
+      alert(`จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`);
       return;
     }
+
+
     if (selectedAgentIds.length === 0) {
       alert("กรุณาเลือกพนักงานเป้าหมาย");
       return;
     }
 
+
     const selectedAgents = telesaleAgents.filter((a) =>
       selectedAgentIds.includes(a.id),
     );
-    let distributableCustomers = [...availableCustomers];
 
-    // Shuffle for fairness
-    distributableCustomers.sort(() => Math.random() - 0.5);
+    // Fetch real customers from API for preview
+    const fetchPreviewCustomers = async () => {
+      try {
+        setLoadingPool(true);
 
-    const assignments: PreviewAssignments = {};
-    selectedAgents.forEach((agent) => (assignments[agent.id] = []));
-    const skipped: SkippedCustomer[] = [];
+        // Fetch customers from waiting basket (ready to distribute)
+        const response = await listCustomers({
+          companyId: currentUser.companyId,
+          page: 1,
+          pageSize: count, // Fetch exactly the number we need
+          // Filter for customers ready to distribute
+          assignedTo: null, // Not assigned
+          // Note: API should filter out blocked and in_waiting_basket automatically
+        });
 
-    let assignedCount = 0;
-    const customerPool = new Set(distributableCustomers);
+        // Map API response to Customer objects
+        const fetchedCustomers = (response?.data || []).map(mapCustomerFromApi);
 
-    while (assignedCount < count && customerPool.size > 0) {
-      let assignedInThisLoop = false;
-      for (const agent of selectedAgents) {
-        if (assignedCount >= count) break;
+        if (fetchedCustomers.length === 0) {
+          alert("ไม่พบลูกค้าที่พร้อมแจก กรุณาตรวจสอบอีกครั้ง");
+          setLoadingPool(false);
+          return;
+        }
 
-        for (const customer of customerPool) {
-          const hasHistory = customer.assignmentHistory?.includes(agent.id);
-          if (!hasHistory) {
-            assignments[agent.id].push(customer);
-            customerPool.delete(customer);
-            assignedCount++;
-            assignedInThisLoop = true;
+        // Shuffle for fairness
+        const distributableCustomers = [...fetchedCustomers];
+        distributableCustomers.sort(() => Math.random() - 0.5);
+
+        const assignments: PreviewAssignments = {};
+        selectedAgents.forEach((agent) => (assignments[agent.id] = []));
+        const skipped: SkippedCustomer[] = [];
+        const actualAssignmentCounts: Record<number, number> = {}; // Track actual counts
+        selectedAgents.forEach((agent) => (actualAssignmentCounts[agent.id] = 0));
+
+        let assignedCount = 0;
+        const customerPool = new Set(distributableCustomers);
+
+        while (assignedCount < count && customerPool.size > 0) {
+          let assignedInThisLoop = false;
+          for (const agent of selectedAgents) {
+            if (assignedCount >= count) break;
+
+            for (const customer of customerPool) {
+              const hasHistory = customer.assignmentHistory?.includes(agent.id);
+              if (!hasHistory) {
+                // Track actual assignment count
+                actualAssignmentCounts[agent.id]++;
+
+                // Only add to preview if less than 10 items
+                if (assignments[agent.id].length < 10) {
+                  assignments[agent.id].push(customer);
+                }
+
+                customerPool.delete(customer);
+                assignedCount++;
+                assignedInThisLoop = true;
+                break;
+              }
+            }
+          }
+          if (!assignedInThisLoop) {
+            customerPool.forEach((c) =>
+              skipped.push({
+                customer: c,
+                reason: "เคยอยู่กับพนักงานทุกคนที่เลือกแล้ว",
+              }),
+            );
             break;
           }
         }
-      }
-      if (!assignedInThisLoop) {
-        customerPool.forEach((c) =>
-          skipped.push({
-            customer: c,
-            reason: "เคยอยู่กับพนักงานทุกคนที่เลือกแล้ว",
-          }),
-        );
-        break;
-      }
-    }
 
-    setPreviewAssignments(assignments);
-    setSkippedCustomers(skipped);
-    setShowPreview(true);
-    setShowPreviewModal(true);
-    setDistributionResult(null);
+        setPreviewAssignments(assignments);
+        setSkippedCustomers(skipped);
+        setShowPreview(true);
+        setShowPreviewModal(true);
+        setDistributionResult(null);
+        setLoadingPool(false);
+      } catch (error) {
+        console.error("Failed to fetch preview customers:", error);
+        alert("ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
+        setLoadingPool(false);
+      }
+    };
+
+    fetchPreviewCustomers();
+    return;
   };
 
+
   const handleExecuteDistribution = async () => {
-    const totalToAssign = Object.values(
-      previewAssignments as PreviewAssignments,
-    ).flat().length;
-    if (totalToAssign === 0) {
-      alert("กรุณาสร้างรายการที่ต้องการแจกก่อน");
+    const actualCount = parseInt(distributionCount, 10);
+
+    if (isNaN(actualCount) || actualCount <= 0) {
+      alert("กรุณาใส่จำนวนลูกค้าที่ต้องการแจกให้ถูกต้อง");
+      return;
+    }
+
+    if (selectedAgentIds.length === 0) {
+      alert("กรุณาเลือกพนักงานเป้าหมาย");
       return;
     }
 
     if (
-      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${totalToAssign} รายการหรือไม่?`)
+      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่?`)
     ) {
-      return;
-    }
-
-    const now = new Date();
-    const assignmentTimestamp = now.toISOString();
-    const ownershipDeadline = new Date(now.getTime());
-    ownershipDeadline.setDate(ownershipDeadline.getDate() + 30); // เริ่มต้น 30 วัน เมื่อแจกรายวัน
-    const ownershipExpires = ownershipDeadline.toISOString();
-
-    const updatePromises: Promise<unknown>[] = [];
-    for (const agentIdStr in previewAssignments as PreviewAssignments) {
-      const agentId = parseInt(agentIdStr, 10);
-      const customers = (previewAssignments as PreviewAssignments)[agentId];
-      if (!Array.isArray(customers)) continue;
-      customers.forEach((customer) => {
-        updatePromises.push(
-          updateCustomer(String(customer.id), {
-            assignedTo: agentId,
-            lifecycleStatus: targetStatus,
-            dateAssigned: assignmentTimestamp,
-            ownershipExpires,
-            is_in_waiting_basket: 0,
-            is_blocked: 0,
-          }),
-        );
-      });
-    }
-
-    if (updatePromises.length === 0) {
-      alert("ไม่พบลูกค้าที่ต้องการแจก กรุณาตรวจสอบอีกครั้ง");
       return;
     }
 
     setSavingDistribution(true);
     try {
-      await Promise.all(updatePromises);
+      // Call bulk distribution API
+      const response = await bulkDistributeCustomers({
+        companyId: currentUser.companyId,
+        count: actualCount,
+        agentIds: selectedAgentIds,
+        targetStatus,
+        ownershipDays: 30,
+      });
 
-      const applyAssignments = (customers: Customer[]) => {
-        return customers.map((customer) => {
-          for (const agentIdStr in previewAssignments) {
-            const agentId = parseInt(agentIdStr, 10);
-            const assignedCustomers = previewAssignments[agentId];
-            if (
-              Array.isArray(assignedCustomers) &&
-              assignedCustomers.some((c) => c.id === customer.id)
-            ) {
-              return {
-                ...customer,
-                assignedTo: agentId,
-                lifecycleStatus: targetStatus,
-                dateAssigned: assignmentTimestamp,
-                ownershipExpires,
-                assignmentHistory: [
-                  ...(customer.assignmentHistory || []),
-                  agentId,
-                ],
-              };
-            }
-          }
-          return customer;
+      if (response?.ok) {
+        // Show success message
+        const { distributed, assignments, skipped } = response;
+        let message = `แจกลูกค้าสำเร็จ ${distributed.toLocaleString()} รายการ\n\n`;
+
+        // Show distribution per agent
+        const selectedAgents = telesaleStats.filter((a) =>
+          selectedAgentIds.includes(a.id),
+        );
+        selectedAgents.forEach((agent) => {
+          const count = assignments[agent.id] || 0;
+          message += `${agent.firstName} ${agent.lastName}: ${count.toLocaleString()} รายการ\n`;
         });
-      };
 
-      setCustomers((prevCustomers) => applyAssignments(prevCustomers));
-      setPoolCustomers((prev) => (prev.length ? applyAssignments(prev) : prev));
+        if (skipped > 0) {
+          message += `\nข้ามไป: ${skipped.toLocaleString()} รายการ`;
+        }
 
-      const skippedCount = skippedCustomers.length;
-      setDistributionResult({ success: totalToAssign, skipped: skippedCount });
-      setShowPreview(false);
-      setShowPreviewModal(false);
-      setPreviewAssignments({});
-      setSkippedCustomers([]);
-      setDistributionCount("");
-      setSelectedAgentIds([]);
+        alert(message);
+
+        // Reset form
+        setDistributionResult({ success: distributed, skipped });
+        setShowPreview(false);
+        setShowPreviewModal(false);
+        setPreviewAssignments({});
+        setSkippedCustomers([]);
+        setDistributionCount("");
+        setSelectedAgentIds([]);
+
+        // Refresh data
+        try {
+          // Set loading states
+          setLoadingStats(true);
+          setLoadingTelesaleStats(true);
+
+          // Refresh customer stats
+          const statsResponse = await getCustomerStats(currentUser.companyId);
+          if (statsResponse?.ok && statsResponse?.stats) {
+            setCustomerStats(statsResponse.stats);
+          }
+          setLoadingStats(false);
+
+          // Refresh telesale stats
+          const telesaleResponse = await getTelesaleUsers(currentUser.companyId);
+          if (telesaleResponse?.ok && telesaleResponse?.users) {
+            setTelesaleStats(telesaleResponse.users);
+          }
+          setLoadingTelesaleStats(false);
+        } catch (refreshError) {
+          console.error("Failed to refresh stats:", refreshError);
+          setLoadingStats(false);
+          setLoadingTelesaleStats(false);
+          // Don't show error to user, stats will refresh on next page load
+        }
+
+        // Stop loading after everything is done
+        setSavingDistribution(false);
+      } else {
+        throw new Error(response?.error || "Distribution failed");
+      }
     } catch (error) {
       console.error("Failed to distribute customers", error);
       alert("ไม่สามารถบันทึกการแจกลูกค้าได้ กรุณาลองใหม่อีกครั้ง");
-    } finally {
       setSavingDistribution(false);
     }
   };
@@ -712,14 +848,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             <div className="grid grid-cols-1 gap-6">
               <div>
                 <h4 className="font-semibold mb-2">
-                  รายชื่อที่จะถูกแจก (
-                  {
-                    Object.values(
-                      previewAssignments as PreviewAssignments,
-                    ).flat().length
-                  }
-                  )
+                  รายชื่อที่จะถูกแจก ({distributionCount} รายชื่อ)
                 </h4>
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    <Info className="inline-block w-4 h-4 mr-1" />
+                    แสดงตัวอย่างเพียง 10 รายชื่อแรกต่อพนักงาน การแจกจริงจะใช้จำนวน {distributionCount} รายชื่อตามที่กำหนด
+                    {selectedAgentIds.length > 0 && (
+                      <> (คนละประมาณ {Math.floor(parseInt(distributionCount, 10) / selectedAgentIds.length).toLocaleString()} รายชื่อ)</>
+                    )}
+                  </p>
+                </div>
                 <div className="space-y-4">
                   {Object.entries(previewAssignments as PreviewAssignments)
                     .filter(([agentId, customers]) => customers.length > 0)
@@ -727,19 +866,22 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                       const agent = telesaleAgents.find(
                         (a) => a.id === parseInt(agentId),
                       );
+                      // Calculate actual count per agent
+                      const actualCountPerAgent = Math.floor(parseInt(distributionCount, 10) / selectedAgentIds.length);
+
                       return (
                         <div
                           key={agentId}
                           className="border rounded-lg p-4 bg-gray-50"
                         >
-                          <p className="font-medium text-gray-800 mb-3">
-                            {agent
-                              ? `${agent.firstName} ${agent.lastName}`
-                              : ""}{" "}
-                            <span className="font-normal text-gray-500">
-                              ({customers.length} รายชื่อ)
+                          <h5 className="font-semibold text-lg mb-3 text-gray-700 flex items-center justify-between">
+                            <span>
+                              {agent?.firstName} {agent?.lastName}
                             </span>
-                          </p>
+                            <span className="text-sm font-normal text-blue-600">
+                              ({actualCountPerAgent.toLocaleString()} รายชื่อ)
+                            </span>
+                          </h5>
                           <div className="max-h-64 overflow-y-auto pr-2">
                             <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 pl-2">
                               {customers.map((c) => (
@@ -793,8 +935,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 disabled={savingDistribution}
                 className="bg-green-100 text-green-700 font-semibold text-lg rounded-md py-3 px-8 flex items-center hover:bg-green-200 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-green-100"
               >
-                <PlayCircle size={20} className="mr-2" />
-                {savingDistribution ? "กำลังบันทึก..." : "เริ่มแจกลูกค้า"}
+                {savingDistribution ? (
+                  <>
+                    <RefreshCw className="mr-2 animate-spin" size={20} />
+                    กำลังแจกลูกค้า...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="mr-2" size={20} />
+                    เริ่มแจกลูกค้า
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -891,6 +1042,82 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const renderTabContent = () => {
     return (
       <div className="space-y-6">
+        {/* Customer Stats from API */}
+        <div className="p-6 bg-white rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+            <BarChart className="mr-2" />
+            สถิติลูกค้าทั้งหมด (จาก API)
+          </h3>
+          {loadingStats ? (
+            <div className="flex justify-center items-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : customerStats ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-600 font-medium">ลูกค้าทั้งหมด</p>
+                  <p className="text-2xl font-bold text-blue-700 mt-1">
+                    {customerStats.totalCustomers.toLocaleString()}
+                  </p>
+                </div>
+                {Object.entries(customerStats.grades).map(([grade, count]) => (
+                  <div
+                    key={grade}
+                    className="bg-gray-50 border border-gray-200 rounded-lg p-4"
+                  >
+                    <p className="text-sm text-gray-600 font-medium">เกรด {grade}</p>
+                    <p className="text-2xl font-bold text-gray-700 mt-1">
+                      {count.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {/* Basket Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-600 font-medium">ตะกร้ารอแจก</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-green-700 mt-1">
+                      {customerStats.baskets?.waitingDistribute?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-sm text-yellow-600 font-medium">ตะกร้าพักรายชื่อ</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-yellow-700 mt-1">
+                      {customerStats.baskets?.waitingBasket?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-sm text-red-600 font-medium">ตะกร้าบล็อค</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-red-700 mt-1">
+                      {customerStats.baskets?.blocked?.toLocaleString() || '0'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-500 text-center py-4">ไม่สามารถโหลดข้อมูลสถิติได้</p>
+          )}
+        </div>
+
         <div className="p-6 bg-white rounded-lg shadow-sm border">
           <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
             <ListChecks className="mr-2" />
@@ -1045,13 +1272,19 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 2. เลือกพนักงานเป้าหมาย
               </h3>
               <div className="mt-1 space-y-1">
-                <p className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
+                <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
                   มีรายชื่อพร้อมแจก:{" "}
-                  <span className="text-3xl font-extrabold text-green-700">
-                    {availableCustomers.length}
-                  </span>{" "}
-                  รายการ
-                </p>
+                  {loadingStats ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <>
+                      <span className="text-3xl font-extrabold text-green-700">
+                        {(customerStats?.baskets?.waitingDistribute ?? availableCustomers.length).toLocaleString()}
+                      </span>{" "}
+                      รายการ
+                    </>
+                  )}
+                </div>
                 <div className="text-xs text-gray-400">
                   <div>
                     แหล่งข้อมูล:{" "}
@@ -1109,8 +1342,8 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     <input
                       type="checkbox"
                       checked={
-                        selectedAgentIds.length === telesaleAgents.length &&
-                        telesaleAgents.length > 0
+                        selectedAgentIds.length === telesaleStats.length &&
+                        telesaleStats.length > 0
                       }
                       onChange={handleSelectAllAgents}
                       className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
@@ -1126,39 +1359,54 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 </tr>
               </thead>
               <tbody className="text-gray-700">
-                {telesaleAgents.map((agent) => {
-                  const workload = getAgentWorkloadByGrade(agent.id);
-                  return (
-                    <tr
-                      key={agent.id}
-                      className={`border-b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"}`}
-                    >
-                      <td className="px-4 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedAgentIds.includes(agent.id)}
-                          onChange={() => handleAgentSelection(agent.id)}
-                          className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
-                        />
-                      </td>
-                      {/* FIX: Replaced non-existent 'name' property with 'firstName' and 'lastName' for the user object. */}
-                      <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName}`}</td>
-                      <td className="px-6 py-2 text-center font-bold">
-                        {workload.total}
-                      </td>
-                      {gradeOrder.map((grade, index) => (
-                        <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
-                          {workload[grade] ?? 0}
+                {loadingTelesaleStats ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center">
+                      <div className="flex justify-center items-center">
+                        <Spinner size="lg" />
+                      </div>
+                    </td>
+                  </tr>
+                ) : telesaleStats.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                      ไม่พบพนักงาน Telesale
+                    </td>
+                  </tr>
+                ) : (
+                  telesaleStats.map((agent) => {
+                    const gradeDistribution = agent.gradeDistribution || {};
+                    return (
+                      <tr
+                        key={agent.id}
+                        className={`border-b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"}`}
+                      >
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedAgentIds.includes(agent.id)}
+                            onChange={() => handleAgentSelection(agent.id)}
+                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
+                          />
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
+                        <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName}`}</td>
+                        <td className="px-6 py-2 text-center font-bold">
+                          {agent.totalCustomers}
+                        </td>
+                        {gradeOrder.map((grade, index) => (
+                          <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
+                            {gradeDistribution[grade] ?? 0}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -1216,17 +1464,35 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้ารอแจก</p>
-          <p className="text-xl font-bold text-blue-600">{toDistributeCount}</p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-blue-600">{toDistributeCount.toLocaleString()}</p>
+          )}
         </div>
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้าพักรายชื่อ</p>
-          <p className="text-xl font-bold text-amber-600">
-            {waitingBasketCount}
-          </p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-amber-600">
+              {waitingBasketCount.toLocaleString()}
+            </p>
+          )}
         </div>
         <div className="p-3 rounded-md border bg-white">
           <p className="text-xs text-gray-500 mb-1">ตะกร้าบล็อค</p>
-          <p className="text-xl font-bold text-red-600">{blockedCount}</p>
+          {loadingStats ? (
+            <div className="flex justify-center items-center h-7">
+              <Spinner size="sm" />
+            </div>
+          ) : (
+            <p className="text-xl font-bold text-red-600">{blockedCount.toLocaleString()}</p>
+          )}
         </div>
       </div>
 

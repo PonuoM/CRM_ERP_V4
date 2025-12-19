@@ -686,11 +686,152 @@ function handle_customers(PDO $pdo, ?string $id): void {
 
                         json_response($customers);
                     } else {
-                        $sql = 'SELECT * FROM customers WHERE 1';
+                        // Pagination parameters
+                        $page = isset($_GET['page']) ? (int)$_GET['page'] : null;
+                        $limit = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 50);
+                        if ($limit <= 0) $limit = 50;
+                        $offset = $page ? ($page - 1) * $limit : 0;
+
+                        $where = ['1'];
                         $params = [];
-                        if ($q !== '') { $sql .= ' AND (first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; }
-                        if ($companyId) { $sql .= ' AND company_id = ?'; $params[] = $companyId; }
-                        $sql .= ' ORDER BY date_assigned DESC LIMIT 200';
+                        
+                        if ($q !== '') { 
+                            $where[] = '(first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; 
+                            $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; 
+                        }
+                        if ($companyId) { 
+                            $where[] = 'company_id = ?'; 
+                            $params[] = $companyId; 
+                        }
+                        
+                        // Advanced filters
+                        $province = $_GET['province'] ?? null;
+                        $lifecycle = $_GET['lifecycle'] ?? null;
+                        $behavioral = $_GET['behavioral'] ?? null;
+                        $assignedTo = $_GET['assignedTo'] ?? null;
+
+                        if ($province && $province !== '') { 
+                            $where[] = 'province LIKE ?'; 
+                            $params[] = "%$province%"; 
+                        }
+                        if ($lifecycle && $lifecycle !== '') { 
+                            $where[] = 'lifecycle_status = ?'; 
+                            $params[] = $lifecycle; 
+                        }
+                        if ($behavioral && $behavioral !== '') { 
+                            $where[] = 'behavioral_status = ?'; 
+                            $params[] = $behavioral; 
+                        }
+                        if ($assignedTo && $assignedTo !== '' && $assignedTo !== 'all') { 
+                            $where[] = 'assigned_to = ?'; 
+                            $params[] = (int)$assignedTo; 
+                        }
+
+                        // Additional advanced filters
+                        $name = $_GET['name'] ?? null;
+                        $phone = $_GET['phone'] ?? null;
+                        $grade = $_GET['grade'] ?? null;
+                        $hasOrders = $_GET['hasOrders'] ?? null;
+                        $dateAssignedStart = $_GET['dateAssignedStart'] ?? null;
+                        $dateAssignedEnd = $_GET['dateAssignedEnd'] ?? null;
+                        $ownershipStart = $_GET['ownershipStart'] ?? null;
+                        $ownershipEnd = $_GET['ownershipEnd'] ?? null;
+
+                        if ($name && $name !== '') {
+                            $where[] = '(first_name LIKE ? OR last_name LIKE ?)';
+                            $params[] = "%$name%";
+                            $params[] = "%$name%";
+                        }
+
+                        if ($phone && $phone !== '') {
+                            $where[] = 'phone LIKE ?';
+                            $params[] = "%$phone%";
+                        }
+
+                        if ($grade && $grade !== '') {
+                            // Grade is calculated from total_purchases
+                            // A+: >= 50000, A: >= 10000, B: >= 5000, C: >= 2000, D: < 2000
+                            switch ($grade) {
+                                case 'A+':
+                                    $where[] = 'total_purchases >= 50000';
+                                    break;
+                                case 'A':
+                                    $where[] = 'total_purchases >= 10000 AND total_purchases < 50000';
+                                    break;
+                                case 'B':
+                                    $where[] = 'total_purchases >= 5000 AND total_purchases < 10000';
+                                    break;
+                                case 'C':
+                                    $where[] = 'total_purchases >= 2000 AND total_purchases < 5000';
+                                    break;
+                                case 'D':
+                                    $where[] = 'total_purchases < 2000';
+                                    break;
+                            }
+                        }
+
+                        if ($hasOrders && $hasOrders !== 'all') {
+                            if ($hasOrders === 'yes') {
+                                $where[] = 'EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.customer_id)';
+                            } elseif ($hasOrders === 'no') {
+                                $where[] = 'NOT EXISTS (SELECT 1 FROM orders WHERE orders.customer_id = customers.customer_id)';
+                            }
+                        }
+
+                        if ($dateAssignedStart && $dateAssignedStart !== '') {
+                            $where[] = 'date_assigned >= ?';
+                            $params[] = $dateAssignedStart . ' 00:00:00';
+                        }
+
+                        if ($dateAssignedEnd && $dateAssignedEnd !== '') {
+                            $where[] = 'date_assigned <= ?';
+                            $params[] = $dateAssignedEnd . ' 23:59:59';
+                        }
+
+                        if ($ownershipStart && $ownershipStart !== '') {
+                            $where[] = 'ownership_expires >= ?';
+                            $params[] = $ownershipStart . ' 00:00:00';
+                        }
+
+                        if ($ownershipEnd && $ownershipEnd !== '') {
+                            $where[] = 'ownership_expires <= ?';
+                            $params[] = $ownershipEnd . ' 23:59:59';
+                        }
+
+                        $whereSql = implode(' AND ', $where);
+
+                        // If pagination is requested, get total count
+                        $total = 0;
+                        if ($page) {
+                            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE $whereSql");
+                            $countStmt->execute($params);
+                            $total = (int)$countStmt->fetchColumn();
+                        }
+
+                        // Upsell Check Logic
+                        $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+                        $upsellClause = "";
+                        $upsellParams = [];
+                        
+                        // Condition: Pending, < 24 hrs
+                        $upsellCond = "o.order_status = 'Pending' AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND o.customer_id = customers.customer_id";
+
+                        if ($userId) {
+                            // Exclude orders created by this user
+                            $upsellCond .= " AND (o.creator_id IS NULL OR o.creator_id != $userId)";
+                        }
+
+                        // Subquery for select
+                        $isUpsellEligibleSql = "(SELECT COUNT(*) FROM orders o WHERE $upsellCond) > 0";
+
+                        $sql = "SELECT *, $isUpsellEligibleSql as is_upsell_eligible FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
+                        
+                        if ($page) {
+                            $sql .= " LIMIT $limit OFFSET $offset";
+                        } else {
+                            $sql .= " LIMIT 200";
+                        }
+
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
@@ -702,7 +843,12 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
 
-                        json_response($customers);
+                        if ($page) {
+                            json_response(['total' => $total, 'data' => $customers]);
+                        } else {
+                            json_response($customers);
+                        }
+
                     }
                 }
             } catch (Throwable $e) {
@@ -2003,15 +2149,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                     $codAmountValue = $boxTotal;
                 } else {
-                    if ($boxCount !== 1 || $maxItemBoxNumber > 1) {
-                        $pdo->rollBack();
-                        json_response(['error' => 'NON_COD_SINGLE_BOX_ONLY', 'message' => 'ออเดอร์ที่ไม่ใช่ COD ต้องมี 1 กล่อง'], 400);
-                        return;
-                    }
-                    // Force single box for non-COD with full amount
-                    $normalizedBoxes = [1 => ['box_number' => 1, 'collection_amount' => $totalAmount]];
-                    $boxCount = 1;
-                    $boxTotal = $totalAmount;
+                    // Non-COD: Allow multiple boxes. No strict validation on box count.
+                    // We keep normalizedBoxes as is (from user input or default).
                     $codAmountValue = null;
                 }
 
@@ -2683,8 +2822,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                     // 1. Clear old allocations and items to prevent duplicates/conflicts
                     // 1. Clear old allocations and items to prevent duplicates/conflicts (Check Main ID and Sub-IDs)
-                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
-                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
 
                     // 2. Prepare insert statement (same as POST)
                     $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');

@@ -253,6 +253,7 @@ export interface Customer {
   isInWaitingBasket?: boolean; // อยู่ในตะกร้ารอ 30 วันหรือไม่
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
   isBlocked?: boolean; // ระงับการใช้งานหรือไม่
+  isUpsellEligible?: boolean; // Eligible for upsell (Pending order < 24 hrs)
 }
 
 export interface SalesImportRow {

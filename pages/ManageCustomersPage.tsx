@@ -1,6 +1,9 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Customer, Order, ModalType } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
+import { getCustomerStats, getOrderStats, listCustomers } from '@/services/api';
+import { mapCustomerFromApi } from '@/utils/customerMapper';
+import Spinner from '@/components/Spinner';
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
 type DateRangeFilter = { start: string; end: string };
@@ -35,6 +38,38 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+
+  // API Stats State
+  const [apiCustomerStats, setApiCustomerStats] = useState<any>(null);
+  const [apiOrderStats, setApiOrderStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState<boolean>(false);
+
+  // Server-side Pagination State
+  const [fetchedCustomers, setFetchedCustomers] = useState<Customer[]>([]);
+  const [totalCustomersInDB, setTotalCustomersInDB] = useState<number>(0);
+  const [loadingCustomers, setLoadingCustomers] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchApiStats = async () => {
+      if (!currentUser?.companyId) return;
+      setLoadingStats(true);
+      try {
+        const [cRes, oRes] = await Promise.all([
+          getCustomerStats(currentUser.companyId),
+          getOrderStats(currentUser.companyId)
+        ]);
+        if (cRes?.ok) setApiCustomerStats(cRes.stats);
+        if (oRes?.ok) setApiOrderStats(oRes.stats);
+      } catch (error) {
+        console.error("Failed to fetch page stats", error);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+    fetchApiStats();
+  }, [currentUser.companyId]);
+
+  // ... (existing state for filters: fName, fPhone, etc.)
   const [fName, setFName] = useState<string>('');
   const [fPhone, setFPhone] = useState<string>('');
   const [fProvince, setFProvince] = useState<string>('');
@@ -73,14 +108,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const filteredCustomers = useMemo(() => {
     let customers = allCustomers;
 
-    // Debug: Log filtering info
-    console.log('Debug - Total customers:', allCustomers.length);
-    console.log('Debug - Selected user:', selectedUser);
-
     // Filter by user
     if (selectedUser !== 'all') {
       customers = customers.filter(customer => customer.assignedTo === selectedUser);
-      console.log('Debug - Customers after user filter:', customers.length);
     }
 
     // Filter by search term
@@ -90,42 +120,78 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
         customer.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.phone.includes(searchTerm)
       );
-      console.log('Debug - Customers after search filter:', customers.length);
     }
 
     return customers;
   }, [allCustomers, selectedUser, searchTerm]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
-  const paginatedCustomers = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredCustomers, currentPage, itemsPerPage]);
+  // Server-side Fetch
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setLoadingCustomers(true);
+      try {
+        const res = await listCustomers({
+          companyId: currentUser.companyId,
+          page: currentPage,
+          pageSize: itemsPerPage,
+          q: searchTerm,
+          assignedTo: selectedUser !== 'all' ? selectedUser : undefined,
+          province: apProvince || undefined,
+          lifecycle: apLifecycle || undefined,
+          behavioral: apBehavioral || undefined,
+          userId: currentUser.id, // For upsell check exclusion context
+          // Advanced filters
+          name: apName || undefined,
+          phone: apPhone || undefined,
+          grade: apGrade || undefined,
+          hasOrders: apHasOrders !== 'all' ? apHasOrders : undefined,
+          dateAssignedStart: apDateAssigned.start || undefined,
+          dateAssignedEnd: apDateAssigned.end || undefined,
+          ownershipStart: apOwnership.start || undefined,
+          ownershipEnd: apOwnership.end || undefined,
+        });
 
-  // Get customer stats
-  const customerStats = useMemo(() => {
-    const stats = {
-      total: allCustomers.length,
-      withOrders: 0,
-      withoutOrders: 0,
-      byUser: {} as Record<string, number>
+        // Handle result (normalized to { total, data })
+        const total = res.total || 0;
+        const data = res.data || [];
+
+        setTotalCustomersInDB(total);
+        setFetchedCustomers(data.map(r => mapCustomerFromApi(r)));
+      } catch (err) {
+        console.error("Failed to fetch customers", err);
+      } finally {
+        setLoadingCustomers(false);
+      }
     };
 
-    allCustomers.forEach(customer => {
-      const hasOrders = allOrders.some(order => order.customerId === customer.id);
-      if (hasOrders) {
-        stats.withOrders++;
-      } else {
-        stats.withoutOrders++;
-      }
+    // Debounce search slightly or just fetch
+    const timeout = setTimeout(fetchCustomers, 300);
+    return () => clearTimeout(timeout);
+  }, [
+    currentUser.companyId,
+    currentUser.id,
+    currentPage,
+    itemsPerPage,
+    searchTerm,
+    selectedUser,
+    apProvince,
+    apLifecycle,
+    apBehavioral,
+    apSelectedUser,
+    apName,
+    apPhone,
+    apGrade,
+    apHasOrders,
+    apDateAssigned.start,
+    apDateAssigned.end,
+    apOwnership.start,
+    apOwnership.end,
+  ]);
 
-      const userId = customer.assignedTo || 'unassigned';
-      stats.byUser[userId] = (stats.byUser[userId] || 0) + 1;
-    });
-
-    return stats;
-  }, [allCustomers, allOrders]);
+  // Use fetched customers for display
+  // const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const totalPages = Math.ceil(totalCustomersInDB / itemsPerPage);
+  const paginatedCustomers = fetchedCustomers; // Already paginated from API
 
   return (
     <div className="p-6">
@@ -145,7 +211,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ลูกค้าทั้งหมด</p>
-              <p className="text-2xl font-semibold text-gray-900">{customerStats.total.toLocaleString()}</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {loadingStats ? <Spinner size="sm" /> : (apiCustomerStats?.totalCustomers?.toLocaleString() || allCustomers.length.toLocaleString())}
+              </p>
             </div>
           </div>
         </div>
@@ -158,8 +226,10 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
               </svg>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">มีออเดอร์</p>
-              <p className="text-2xl font-semibold text-gray-900">{customerStats.withOrders.toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-600">ยอดขายรวม</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {loadingStats ? <Spinner size="sm" /> : `฿${(apiOrderStats?.totalRevenue || 0).toLocaleString()}`}
+              </p>
             </div>
           </div>
         </div>
@@ -168,12 +238,14 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
           <div className="flex items-center">
             <div className="p-2 bg-yellow-100 rounded-lg">
               <svg className="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">ยังไม่มีออเดอร์</p>
-              <p className="text-2xl font-semibold text-gray-900">{customerStats.withoutOrders.toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-600">ออเดอร์ทั้งหมด</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {loadingStats ? <Spinner size="sm" /> : (apiOrderStats?.totalOrders || 0).toLocaleString()}
+              </p>
             </div>
           </div>
         </div>
@@ -187,7 +259,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ผลการค้นหา</p>
-              <p className="text-2xl font-semibold text-gray-900">{filteredCustomers.length.toLocaleString()}</p>
+              <p className="text-2xl font-semibold text-gray-900">{loadingCustomers ? <Spinner size="sm" /> : totalCustomersInDB.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -528,22 +600,40 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
 
 
       {/* Customers Table (shared with Telesale) */}
-      <CustomerTable
-        customers={filteredCustomers}
-        onViewCustomer={(c) => (onViewCustomer ? onViewCustomer(c) : setSelectedCustomer(c))}
-        openModal={(type, data) => { if (openModal) openModal(type, data); }}
-        pageSizeOptions={[5, 10, 20, 50, 100, 500]}
-        storageKey={`manageCustomers:${currentUser.id}`}
-        currentUserId={currentUser.id}
-        onUpsellClick={(customer) => {
-          if (onUpsellClick) {
-            onUpsellClick(customer);
-          }
-        }}
-        onChangeOwner={onChangeOwner}
-        allUsers={allUsers}
-        currentUser={currentUser}
-      />
+      <div className="relative">
+        {loadingCustomers && (
+          <div className="absolute inset-0 bg-white bg-opacity-50 z-10 flex items-center justify-center">
+            <Spinner size="lg" />
+          </div>
+        )}
+        <CustomerTable
+          customers={paginatedCustomers}
+          onViewCustomer={(c) => (onViewCustomer ? onViewCustomer(c) : setSelectedCustomer(c))}
+          openModal={(type, data) => { if (openModal) openModal(type, data); }}
+          pageSizeOptions={[5, 10, 20, 50, 100, 500]}
+          storageKey={`manageCustomers:${currentUser.id}`}
+          currentUserId={currentUser.id}
+          onUpsellClick={(customer) => {
+            if (onUpsellClick) {
+              onUpsellClick(customer);
+            }
+          }}
+          onChangeOwner={onChangeOwner}
+          allUsers={allUsers}
+          currentUser={currentUser}
+
+          // Server-side Pagination
+          totalCount={totalCustomersInDB}
+          controlledPage={currentPage}
+          controlledPageSize={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setItemsPerPage(size);
+            setCurrentPage(1);
+          }}
+        />
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-800">
