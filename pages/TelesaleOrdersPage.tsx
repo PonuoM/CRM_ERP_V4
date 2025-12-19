@@ -89,6 +89,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   const [loading, setLoading] = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
   const [apiTotalPages, setApiTotalPages] = useState(1);
+  const [pendingSlipTotal, setPendingSlipTotal] = useState(0);
+  const [allOrdersTotal, setAllOrdersTotal] = useState(0);
 
   // Load saved filters (key depends on user)
   useEffect(() => {
@@ -178,7 +180,8 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           deliveryDateStart: afDeliveryDate.start || undefined,
           deliveryDateEnd: afDeliveryDate.end || undefined,
           paymentMethod: afPaymentMethod || undefined,
-          paymentStatus: afPaymentStatus || undefined,
+          // If on pendingSlip tab, filter by PendingVerification status
+          paymentStatus: activeTab === 'pendingSlip' ? 'PendingVerification' : (afPaymentStatus || undefined),
           customerName: afCustomerName || undefined,
           customerPhone: afCustomerPhone || undefined,
         });
@@ -250,19 +253,60 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     };
 
     fetchOrders();
-  }, [user?.companyId, user?.id, currentPage, itemsPerPage, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [user?.companyId, user?.id, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+
+  // Fetch pending slip count for badge (only when not on pendingSlip tab)
+  useEffect(() => {
+    const fetchPendingSlipCount = async () => {
+      if (!user?.companyId || activeTab === 'pendingSlip') return;
+
+      try {
+        const response = await listOrders({
+          companyId: user.companyId,
+          page: 1,
+          pageSize: 1, // We only need the count
+          creatorId: user.id,
+          paymentStatus: 'PendingVerification',
+        });
+
+        if (response.ok) {
+          setPendingSlipTotal(response.pagination.total);
+        }
+      } catch (error) {
+        console.error('Failed to fetch pending slip count:', error);
+      }
+    };
+
+    fetchPendingSlipCount();
+  }, [user?.companyId, user?.id, activeTab]);
+
+  // Fetch all orders count for badge (only when not on all tab)
+  useEffect(() => {
+    const fetchAllOrdersCount = async () => {
+      if (!user?.companyId || activeTab === 'all') return;
+
+      try {
+        const response = await listOrders({
+          companyId: user.companyId,
+          page: 1,
+          pageSize: 1, // We only need the count
+          creatorId: user.id,
+          // No paymentStatus filter - get all orders
+        });
+
+        if (response.ok) {
+          setAllOrdersTotal(response.pagination.total);
+        }
+      } catch (error) {
+        console.error('Failed to fetch all orders count:', error);
+      }
+    };
+
+    fetchAllOrdersCount();
+  }, [user?.companyId, user?.id, activeTab]);
 
   // Always use API orders (no fallback to props)
   const displayedOrders = apiOrders;
-
-  // Count for pending slip orders (client-side for tab badge)
-  const pendingSlipCount = useMemo(() => {
-    return displayedOrders.filter(o => {
-      if (o.paymentMethod !== PaymentMethod.PayAfter) return false;
-      const hasSlip = (o.slipUrl && o.slipUrl.trim() !== '') || (o.slips && o.slips.length > 0);
-      return !hasSlip;
-    }).length;
-  }, [displayedOrders]);
 
   // Advanced filter badge count
   const advancedCount = useMemo(() => {
@@ -403,7 +447,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           <List size={16} />
           <span>ออเดอร์ทั้งหมด</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'all' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
-            }`}>{totalOrders}</span>
+            }`}>{activeTab === 'all' ? totalOrders : allOrdersTotal}</span>
         </button>
         <button
           onClick={() => setActiveTab('pendingSlip')}
@@ -415,7 +459,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           <CreditCard size={16} />
           <span>รอสลิป</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-            }`}>{pendingSlipCount}</span>
+            }`}>{activeTab === 'pendingSlip' ? totalOrders : pendingSlipTotal}</span>
         </button>
       </div>
 
