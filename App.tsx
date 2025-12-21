@@ -6454,7 +6454,6 @@ const App: React.FC = () => {
       case "CreateOrder":
         return (
           <CreateOrderPage
-            customers={companyCustomers}
             products={companyProducts}
             promotions={promotions}
             pages={pages}

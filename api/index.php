@@ -1883,18 +1883,23 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($manageTab) {
                     switch ($manageTab) {
                         case 'waitingVerifySlip':
-                            // Transfer + Pending Status (Ignore Payment Status)
+                            // Transfer + Pending Status (Exclude Verified, include NULLs)
                             $whereConditions[] = 'o.order_status = ?';
                             $params[] = 'Pending';
                             $whereConditions[] = 'o.payment_method = ?';
                             $params[] = 'Transfer';
+                            $whereConditions[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
+                            $params[] = 'Verified';
                             break;
                             
                         case 'waitingExport':
-                            // Pending Status (Ignore Payment Status)
-                            // Previously split by method, now just Pending to cover all.
+                            // Pending Status
+                            // For Transfer, must be Verified. For others (COD), just Pending.
                             $whereConditions[] = 'o.order_status = ?';
                             $params[] = 'Pending';
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'Transfer';
+                            $params[] = 'Verified';
                             break;
                             
                         case 'preparing':

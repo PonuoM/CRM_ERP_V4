@@ -21,16 +21,22 @@ function handle_order_counts($pdo) {
 
         switch ($t) {
                 case 'waitingVerifySlip':
-                // Transfer + Pending Status
+                // Transfer + Pending Status (Exclude Verified, include NULLs)
                 $conds[] = 'o.order_status = ?';
                 $p[] = 'Pending';
                 $conds[] = 'o.payment_method = ?';
                 $p[] = 'Transfer';
+                $conds[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
+                $p[] = 'Verified';
                 break;
                 case 'waitingExport':
-                // Pending Status (All Payment Methods)
+                // Pending Status
+                // For Transfer, must be Verified. For others (COD), just Pending.
                 $conds[] = 'o.order_status = ?';
                 $p[] = 'Pending';
+                $conds[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                $p[] = 'Transfer';
+                $p[] = 'Verified';
                 break;
                 case 'preparing':
                 $conds[] = 'o.order_status IN (?, ?)';

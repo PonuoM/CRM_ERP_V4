@@ -27,6 +27,7 @@ import {
   addUpsellItems,
   createOrderSlip,
   listOrderSlips,
+  listCustomers,
 } from "../services/api";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
 import ProductSelectorModal from "../components/ProductSelectorModal";
@@ -132,8 +133,6 @@ const sanitizeSavedAddress = (addr: any) => ({
 });
 
 interface CreateOrderPageProps {
-  customers: Customer[];
-
   products: Product[];
 
   promotions: Promotion[];
@@ -358,8 +357,6 @@ const OrderSummary: React.FC<{
 };
 
 export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
-  customers,
-
   products,
 
   promotions,
@@ -541,6 +538,41 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     boxes: [{ boxNumber: 1, codAmount: 0 }],
   });
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<Customer[]>([]);
+  const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
+
+  // Debounced customer search
+  useEffect(() => {
+    if (!searchTerm || isCreatingNewCustomer || searchTerm.length < 2) {
+      setSearchResults([]);
+      setIsSearchingCustomers(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingCustomers(true);
+      try {
+        const response = await listCustomers({
+          q: searchTerm,
+          pageSize: 50,
+        });
+        if (response && response.data) {
+          setSearchResults(response.data.map((item: any) => mapCustomerData(item)));
+        } else {
+          setSearchResults([]);
+        }
+      } catch (error) {
+        console.error("Search customers failed:", error);
+        setSearchResults([]);
+      } finally {
+        setIsSearchingCustomers(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, isCreatingNewCustomer]);
 
   const [expandedPromotions, setExpandedPromotions] = useState<Set<number>>(
     new Set(),
@@ -1689,8 +1721,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     });
   };
 
-  const [searchTerm, setSearchTerm] = useState("");
-
   const [numBoxes, setNumBoxes] = useState(1);
 
   // Product selector modal state
@@ -2562,22 +2592,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     return Number((totalRounded - codRounded).toFixed(2));
   }, [totalAmount, codTotal]);
 
-  // Search results
-
-  const searchResults = useMemo(() => {
-    if (!searchTerm || isCreatingNewCustomer) return [];
-
-    const lowerSearchTerm = searchTerm.toLowerCase();
-
-    return customers.filter(
-      (c) =>
-        `${c.firstName} ${c.lastName}`
-
-          .toLowerCase()
-
-          .includes(lowerSearchTerm) || c.phone.includes(searchTerm),
-    );
-  }, [searchTerm, customers, isCreatingNewCustomer]);
+  // Search results handled by useEffect above
 
   // Handler for address option selection
 
@@ -6740,9 +6755,35 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
                     )}
 
+                    {isSearchingCustomers && (
+                      <div className="mt-2 text-sm text-blue-600 flex items-center">
+                        <svg
+                          className="animate-spin h-4 w-4 mr-2"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="none"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        กำลังค้นหา...
+                      </div>
+                    )}
+
                     {searchResults.length > 0 &&
                       !selectedCustomer &&
-                      !loadingCustomerData && (
+                      !loadingCustomerData &&
+                      !isSearchingCustomers && (
                         <ul className="mt-2 border border-gray-300 rounded-md bg-white max-h-48 overflow-auto">
                           {searchResults.map((c) => (
                             <li
