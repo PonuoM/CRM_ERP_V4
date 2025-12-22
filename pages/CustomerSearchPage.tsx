@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Customer, Order, User, Address, UserRole } from "../types";
+import { listOrders } from "../services/api";
+import { mapOrderFromApi } from "../utils/orderMapper";
 import {
   Search,
   Trash2,
@@ -31,13 +33,54 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
+  const [hasSearched, setHasSearched] = useState(false);
+  const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
 
-  const handleSearch = () => {
+  const fetchCustomerOrders = useCallback(async (customer: Customer) => {
+    setLoadingOrders(true);
+    try {
+      // Fetch specifically for this customer by phone (most reliable unique key exposed)
+      const res = await listOrders({
+        customerPhone: customer.phone,
+        pageSize: 100 // Reasonable limit for history
+      });
+      if (res.ok && Array.isArray(res.orders)) {
+        // Filter out sub-orders if any, similar to App.tsx logic
+        const mainOrders = res.orders.filter((order: any) => {
+          const orderId = String(order.id || "");
+          return !/-\d+$/.test(orderId);
+        });
+        setFetchedOrders(mainOrders.map(mapOrderFromApi));
+      } else {
+        setFetchedOrders([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch customer orders", error);
+      setFetchedOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      fetchCustomerOrders(selectedCustomer);
+    } else {
+      setFetchedOrders([]);
+    }
+  }, [selectedCustomer, fetchCustomerOrders]);
+
+  const handleSearch = async () => {
     setSelectedCustomer(null);
+    setHighlightedOrderId(null);
     if (!searchTerm.trim()) {
       setSearchResults([]);
+      setHasSearched(false);
       return;
     }
+    setHasSearched(true);
     const lowercasedTerm = searchTerm.toLowerCase();
     const foundCustomers = customers.filter(
       (c) =>
@@ -48,8 +91,35 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     if (foundCustomers.length === 1) {
       setSelectedCustomer(foundCustomers[0]);
       setSearchResults([]);
-    } else {
+    } else if (foundCustomers.length > 1) {
       setSearchResults(foundCustomers);
+    } else {
+      // No customer found by name/phone, try searching by Order ID
+      try {
+        const res = await listOrders({ orderId: searchTerm.trim() });
+        if (res.ok && Array.isArray(res.orders) && res.orders.length > 0) {
+          const order = res.orders[0]; // Assuming unique order ID matches or taking first
+          // Find customer by ID or Phone
+          const customer = customers.find(c =>
+            String(c.id) === String(order.customer_id) ||
+            String(c.pk) === String(order.customer_id) ||
+            c.phone === order.customer_phone
+          );
+
+          if (customer) {
+            setSelectedCustomer(customer);
+            setHighlightedOrderId(String(order.id));
+            setSearchResults([]);
+          } else {
+            setSearchResults([]);
+          }
+        } else {
+          setSearchResults([]);
+        }
+      } catch (e) {
+        console.error("Order search failed", e);
+        setSearchResults([]);
+      }
     }
   };
 
@@ -57,24 +127,38 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     setSearchTerm("");
     setSearchResults([]);
     setSelectedCustomer(null);
+    setHasSearched(false);
+    setHighlightedOrderId(null);
   };
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
     setSearchResults([]);
+    setHighlightedOrderId(null);
   };
 
   const customerDetails = useMemo(() => {
     if (!selectedCustomer) return null;
 
-    const customerOrders = orders
-      .filter((o) => String(o.customerId) === String(selectedCustomer.id) || String(o.customerId) === String(selectedCustomer.pk))
+    // Use fetched orders if available, otherwise fallback to props (though props likely empty)
+    // We prioritize fetchedOrders because they are loaded on demand for the search result
+    const sourceOrders = fetchedOrders.length > 0 ? fetchedOrders : orders;
+
+    const customerOrders = sourceOrders
+      .filter((o) => String(o.customerId) === String(selectedCustomer.id) || String(o.customerId) === String(selectedCustomer.pk) || o.shippingAddress?.province === selectedCustomer.province) // Loose match fallback? No, strict is better. stick to ID match if possible, but phone fetch is source of truth.
+      // Actually, since we fetch BY PHONE, fetchedOrders are already filtered.
+      // We just need to sort them.
+      .filter(o => fetchedOrders.length > 0 ? true : (String(o.customerId) === String(selectedCustomer.id) || String(o.customerId) === String(selectedCustomer.pk)))
       .sort(
         (a, b) =>
           new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime(),
       );
+
     const totalPurchase = customerOrders.reduce(
-      (sum, order) => sum + order.totalAmount,
+      (sum, order) => {
+        const orderTotal = order.items.reduce((itemSum, item) => itemSum + (item.quantity * item.pricePerUnit - item.discount), 0);
+        return sum + orderTotal;
+      },
       0,
     );
     const assignedUser = users.find(
@@ -92,7 +176,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
       orderCount: customerOrders.length,
       assignedManager: assignedManagerName,
     };
-  }, [selectedCustomer, orders, users]);
+  }, [selectedCustomer, orders, users, fetchedOrders]);
 
   const isOrderRecent = (orderDate: string) => {
     const ninetyDaysAgo = new Date();
@@ -311,55 +395,53 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {customerDetails.orders.flatMap((order) => {
-                      // Match creator by id (ensure type compatibility)
-                      const creator = users.find((u) => {
-                        if (!order.creatorId) return false;
-                        if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
-                          return u.id === order.creatorId;
-                        }
-                        return String(u.id) === String(order.creatorId);
-                      });
-                      const creatorName = creator
-                        ? `${creator.firstName} ${creator.lastName}`
-                        : "N/A";
-                      const isRecent = isOrderRecent(order.orderDate);
-                      return order.items.map((item) => (
-                        <tr
-                          key={`${order.id}-${item.id}`}
-                          className={`border-t ${isRecent ? "bg-blue-50" : "bg-white"}`}
-                        >
-                          <td className="px-6 py-4 text-gray-800">
-                            {getThaiBuddhistDate(order.orderDate)}
-                          </td>
-                          <td className="px-6 py-4 text-gray-800">
-                            {item.productName}
-                          </td>
-                          <td className="px-6 py-4 text-center text-gray-800">
-                            {item.quantity}
-                          </td>
-                          <td className="px-6 py-4 text-right font-semibold text-gray-800">
-                            {(
-                              item.quantity * item.pricePerUnit -
-                              item.discount
-                            ).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-gray-800">
-                            {creatorName}
-                          </td>
-                          <td className="px-6 py-4 text-gray-800">
-                            {creator?.role || "N/A"}
-                          </td>
-                          <td className="px-6 py-4 text-gray-800">
-                            {order.salesChannel || "-"}
-                          </td>
-                          <td className="px-6 py-4 text-gray-800">
-                            {order.orderStatus || "-"}
-                          </td>
-                        </tr>
-                      ));
-                    })}
-                    {customerDetails.orders.length === 0 && (
+                    {customerDetails.orders.length > 0 ? (
+                      customerDetails.orders.map((order) => {
+                        const creator = users.find((u) => {
+                          if (!order.creatorId) return false;
+                          if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
+                            return u.id === order.creatorId;
+                          }
+                          return String(u.id) === String(order.creatorId);
+                        });
+                        const creatorName = creator
+                          ? `${creator.firstName} ${creator.lastName}`
+                          : "N/A";
+                        const isHighlighted = highlightedOrderId === String(order.id);
+                        return (
+                          <tr
+                            key={order.id}
+                            id={`order-${order.id}`}
+                            className={`border-t ${isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200' : 'bg-white'}`}
+                          >
+                            <td className="px-6 py-4 text-gray-800">
+                              {getThaiBuddhistDate(order.orderDate)}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
+                              {order.items.map(item => item.productName).join(', ')}
+                            </td>
+                            <td className="px-6 py-4 text-center text-gray-800">
+                              {order.items.reduce((sum, item) => sum + item.quantity, 0)}
+                            </td>
+                            <td className="px-6 py-4 text-right font-semibold text-gray-800">
+                              {order.items.reduce((sum, item) => sum + (item.quantity * item.pricePerUnit - item.discount), 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
+                              {creatorName}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
+                              {creator?.role || "N/A"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
+                              {order.salesChannel || "-"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
+                              {order.orderStatus || "-"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
                       <tr>
                         <td
                           colSpan={8}
@@ -375,9 +457,10 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
             </div>
           </div>
         ) : (
-          searchResults.length === 0 && (
+          searchResults.length === 0 && hasSearched && (
             <div className="mt-6 text-center text-gray-500">
-              {/* This is the initial state before search */}
+              <p>ไม่พบข้อมูลลูกค้าที่ตรงกับคำค้นหา: "{searchTerm}"</p>
+              <p className="text-xs mt-2">จำนวนลูกค้าทั้งหมดในระบบ: {customers.length} คน</p>
             </div>
           )
         )}
@@ -386,7 +469,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
         <footer className="text-center mt-10 text-xs text-gray-500">
           <p>Powered by Thanu Suriwong</p>
           <p>© 2025 Customer Service. All rights reserved.</p>
-          <p>อัปเดตล่าสุด: 20/09/2568 15:15 • เวอร์ชั่น 0.1.0</p>
+          <p>อัปเดตล่าสุด: 22/12/2568 10:13 • เวอร์ชั่น 0.1.1</p>
         </footer>
       </div>
     </div>

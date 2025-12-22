@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder } from '../services/api';
-import { X, User, MapPin, Box } from 'lucide-react';
+import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
 
 interface OrderDetailModalProps {
     isOpen: boolean;
@@ -11,6 +11,7 @@ interface OrderDetailModalProps {
 const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, orderId }) => {
     const [order, setOrder] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [viewingImage, setViewingImage] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen && orderId) {
@@ -147,6 +148,42 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                                     </span>
                                 </div>
                             </div>
+
+                            {/* Proof of Payment Images */}
+                            {(() => {
+                                const images = [
+                                    ...(order.slips?.map((s: any) => s.url) || []),
+                                    order.slipUrl
+                                ].filter(Boolean);
+
+                                if (images.length === 0) return null;
+
+                                return (
+                                    <div className="border-t pt-4">
+                                        <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                            <ImageIcon size={16} /> หลักฐานการโอนเงิน
+                                        </h4>
+                                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                            {images.map((img: string, idx: number) => (
+                                                <div
+                                                    key={idx}
+                                                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 cursor-zoom-in relative group"
+                                                    onClick={() => setViewingImage(img)}
+                                                >
+                                                    <img
+                                                        src={img}
+                                                        alt="Slip"
+                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                                        onError={(e) => {
+                                                            (e.target as HTMLImageElement).src = 'https://placehold.co/400?text=No+Image';
+                                                        }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     ) : (
                         <div className="text-center text-gray-500">ไม่พบข้อมูล</div>
@@ -159,6 +196,27 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
                     </button>
                 </div>
             </div>
+
+            {/* Lightbox */}
+            {viewingImage && (
+                <div
+                    className="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center p-4"
+                    onClick={() => setViewingImage(null)}
+                >
+                    <button
+                        className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors bg-white/10 rounded-full p-2"
+                        onClick={() => setViewingImage(null)}
+                    >
+                        <X size={24} />
+                    </button>
+                    <img
+                        src={viewingImage}
+                        alt="Full size"
+                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </div>
     );
 };

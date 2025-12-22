@@ -211,9 +211,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ลูกค้าทั้งหมด</p>
-              <p className="text-2xl font-semibold text-gray-900">
+              <div className="text-2xl font-semibold text-gray-900">
                 {loadingStats ? <Spinner size="sm" /> : (apiCustomerStats?.totalCustomers?.toLocaleString() || allCustomers.length.toLocaleString())}
-              </p>
+              </div>
             </div>
           </div>
         </div>
@@ -227,9 +227,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ยอดขายรวม</p>
-              <p className="text-2xl font-semibold text-gray-900">
+              <div className="text-2xl font-semibold text-gray-900">
                 {loadingStats ? <Spinner size="sm" /> : `฿${(apiOrderStats?.totalRevenue || 0).toLocaleString()}`}
-              </p>
+              </div>
             </div>
           </div>
         </div>
@@ -243,9 +243,9 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ออเดอร์ทั้งหมด</p>
-              <p className="text-2xl font-semibold text-gray-900">
+              <div className="text-2xl font-semibold text-gray-900">
                 {loadingStats ? <Spinner size="sm" /> : (apiOrderStats?.totalOrders || 0).toLocaleString()}
-              </p>
+              </div>
             </div>
           </div>
         </div>
@@ -259,7 +259,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">ผลการค้นหา</p>
-              <p className="text-2xl font-semibold text-gray-900">{loadingCustomers ? <Spinner size="sm" /> : totalCustomersInDB.toLocaleString()}</p>
+              <div className="text-2xl font-semibold text-gray-900">{loadingCustomers ? <Spinner size="sm" /> : totalCustomersInDB.toLocaleString()}</div>
             </div>
           </div>
         </div>
