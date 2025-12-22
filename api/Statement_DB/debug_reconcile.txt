@@ -114,3 +114,47 @@ Payload: Array
 )
 
 Process Item: StmtId=103, Type=Suspense, Amount=1800
+Start 2025-12-22 14:17:04
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 1
+    [bank_account_id] => 1
+    [start_date] => 2025-12-01
+    [end_date] => 2025-12-22
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 72
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1215.00
+                )
+
+        )
+
+)
+
+Process Item: StmtId=72, Type=Suspense, Amount=1215
+Start 2025-12-22 14:19:53
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 1
+    [bank_account_id] => 1
+    [start_date] => 2025-11-01
+    [end_date] => 2025-11-30
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 71
+                    [reconcile_type] => Suspense
+                    [confirmed_amount] => 1195.00
+                )
+
+        )
+
+)
+
+Process Item: StmtId=71, Type=Suspense, Amount=1195
