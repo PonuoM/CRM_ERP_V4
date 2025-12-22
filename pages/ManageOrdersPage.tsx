@@ -43,6 +43,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [refreshCounter, setRefreshCounter] = useState(0); // For triggering refresh on modal close
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
@@ -297,10 +298,24 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     return () => {
       controller.abort();
     };
-  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, refreshCounter]);
 
   useEffect(() => {
     setSelectedIds([]);
+  }, [activeTab]);
+
+  // Listen for modal close event to refresh data
+  useEffect(() => {
+    const handleModalClose = () => {
+      console.log('DEBUG: Modal closed, triggering refresh for tab:', activeTab);
+      setRefreshCounter(prev => prev + 1);
+    };
+
+    window.addEventListener('orderModalClosed', handleModalClose);
+
+    return () => {
+      window.removeEventListener('orderModalClosed', handleModalClose);
+    };
   }, [activeTab]);
 
   const hasTrackingNumbers = (order: Order) =>

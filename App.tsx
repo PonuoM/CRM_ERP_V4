@@ -2211,7 +2211,12 @@ const App: React.FC = () => {
     }
   };
 
-  const closeModal = () => setModalState({ type: null, data: null });
+  const closeModal = () => {
+    setModalState({ type: null, data: null });
+
+    // Dispatch custom event to trigger refresh in ManageOrdersPage
+    window.dispatchEvent(new CustomEvent('orderModalClosed'));
+  };
 
   // Fetch warehouse data when currentUser changes
   React.useEffect(() => {
