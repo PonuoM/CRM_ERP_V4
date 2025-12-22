@@ -172,7 +172,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }
     };
     fetchCounts();
-  }, [user?.companyId]);
+  }, [user?.companyId, refreshCounter]);
 
   // Fetch orders from API
   useEffect(() => {
@@ -989,6 +989,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setTimeout(() => {
           onProcessOrders(selectedIds);
           setSelectedIds([]);
+          // Trigger refresh to update the grid and tab counts
+          setRefreshCounter(prev => prev + 1);
         }, 0);
 
       } catch (error) {
