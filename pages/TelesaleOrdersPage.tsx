@@ -4,13 +4,15 @@ import { User, Order, Customer, ModalType, PaymentMethod, PaymentStatus } from '
 import OrderTable from '../components/OrderTable';
 import { CreditCard, List, History, ListChecks, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import usePersistentState from '../utils/usePersistentState';
+import { listOrders } from '../services/api';
+import Spinner from '../components/Spinner';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
 
 interface TelesaleOrdersPageProps {
   user: User;
-  users: User[]; // Add users prop
-  orders: Order[];
+  users: User[];
+  orders?: Order[]; // Make optional for backward compatibility
   customers: Customer[];
   openModal: (type: ModalType, data: Order) => void;
   onCancelOrder: (orderId: string) => void;
@@ -82,6 +84,14 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     initialPagination.page
   );
 
+  // API data states
+  const [apiOrders, setApiOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [apiTotalPages, setApiTotalPages] = useState(1);
+  const [pendingSlipTotal, setPendingSlipTotal] = useState(0);
+  const [allOrdersTotal, setAllOrdersTotal] = useState(0);
+
   // Load saved filters (key depends on user)
   useEffect(() => {
     try {
@@ -151,38 +161,154 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     } catch { }
   }, [activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, itemsPerPage, currentPage, filterStorageKey]);
 
-  const myOrders = useMemo(() => {
-    return orders.filter(order => {
-      // Include orders where user is the original creator
-      if (order.creatorId === user.id) {
-        return true;
+  // Fetch orders from API
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (!user?.companyId) return;
+
+      setLoading(true);
+      try {
+        const response = await listOrders({
+          companyId: user.companyId,
+          page: currentPage,
+          pageSize: itemsPerPage,
+          creatorId: user.id, // Filter by current user
+          orderId: afOrderId || undefined,
+          trackingNumber: afTracking || undefined,
+          orderDateStart: afOrderDate.start || undefined,
+          orderDateEnd: afOrderDate.end || undefined,
+          deliveryDateStart: afDeliveryDate.start || undefined,
+          deliveryDateEnd: afDeliveryDate.end || undefined,
+          paymentMethod: afPaymentMethod || undefined,
+          // If on pendingSlip tab, filter by PendingVerification status
+          paymentStatus: activeTab === 'pendingSlip' ? 'PendingVerification' : (afPaymentStatus || undefined),
+          customerName: afCustomerName || undefined,
+          customerPhone: afCustomerPhone || undefined,
+        });
+
+        if (response.ok) {
+          // Map API response to frontend format
+          const mappedOrders = (response.orders || []).map((r: any) => ({
+            id: r.id,
+            customerId: r.customer_id,
+            companyId: r.company_id,
+            creatorId: r.creator_id,
+            orderDate: r.order_date,
+            deliveryDate: r.delivery_date,
+            shippingAddress: {
+              recipientFirstName: r.recipient_first_name || '',
+              recipientLastName: r.recipient_last_name || '',
+              street: r.street || '',
+              subdistrict: r.subdistrict || '',
+              district: r.district || '',
+              province: r.province || '',
+              postalCode: r.postal_code || '',
+            },
+            shippingProvider: r.shipping_provider,
+            shippingCost: Number(r.shipping_cost || 0),
+            billDiscount: Number(r.bill_discount || 0),
+            totalAmount: Number(r.total_amount || 0),
+            paymentMethod: r.payment_method,
+            paymentStatus: r.payment_status,
+            orderStatus: r.order_status,
+            trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
+            amountPaid: r.amount_paid ? Number(r.amount_paid) : undefined,
+            codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
+            slipUrl: r.slip_url,
+            salesChannel: r.sales_channel,
+            salesChannelPageId: r.sales_channel_page_id,
+            warehouseId: r.warehouse_id,
+            bankAccountId: r.bank_account_id,
+            transferDate: r.transfer_date,
+            items: r.items || [],
+            slips: r.slips || [],
+            trackingDetails: r.tracking_details || r.trackingDetails || [],
+            boxes: r.boxes || [],
+            reconcileAction: r.reconcile_action,
+            // Customer information from API
+            customerInfo: r.customer_first_name ? {
+              firstName: r.customer_first_name,
+              lastName: r.customer_last_name,
+              phone: r.customer_phone,
+              address: {
+                street: r.customer_street || '',
+                subdistrict: r.customer_subdistrict || '',
+                district: r.customer_district || '',
+                province: r.customer_province || '',
+                postalCode: r.customer_postal_code || '',
+              }
+            } : undefined,
+          }));
+
+          setApiOrders(mappedOrders);
+          setTotalOrders(response.pagination.total);
+          setApiTotalPages(response.pagination.totalPages);
+        }
+      } catch (error) {
+        console.error('Failed to fetch orders:', error);
+        setApiOrders([]);
+      } finally {
+        setLoading(false);
       }
-      // Include orders where user is creator of any items (for upsell)
-      if (order.items && Array.isArray(order.items)) {
-        return order.items.some((item: any) => item.creatorId === user.id);
+    };
+
+    fetchOrders();
+  }, [user?.companyId, user?.id, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+
+  // Fetch pending slip count for badge (only when not on pendingSlip tab)
+  useEffect(() => {
+    const fetchPendingSlipCount = async () => {
+      if (!user?.companyId || activeTab === 'pendingSlip') return;
+
+      try {
+        const response = await listOrders({
+          companyId: user.companyId,
+          page: 1,
+          pageSize: 1, // We only need the count
+          creatorId: user.id,
+          paymentStatus: 'PendingVerification',
+        });
+
+        if (response.ok) {
+          setPendingSlipTotal(response.pagination.total);
+        }
+      } catch (error) {
+        console.error('Failed to fetch pending slip count:', error);
       }
-      return false;
-    });
-  }, [orders, user.id]);
+    };
 
-  const pendingSlipOrders = useMemo(() => {
-    return myOrders.filter(o => {
-      // Must be PayAfter
-      if (o.paymentMethod !== PaymentMethod.PayAfter) return false;
+    fetchPendingSlipCount();
+  }, [user?.companyId, user?.id, activeTab]);
 
-      // Must NOT have slip
-      const hasSlip = (o.slipUrl && o.slipUrl.trim() !== '') || (o.slips && o.slips.length > 0);
-      if (hasSlip) return false;
+  // Fetch all orders count for badge (only when not on all tab)
+  useEffect(() => {
+    const fetchAllOrdersCount = async () => {
+      if (!user?.companyId || activeTab === 'all') return;
 
-      return true;
-    });
-  }, [myOrders]);
+      try {
+        const response = await listOrders({
+          companyId: user.companyId,
+          page: 1,
+          pageSize: 1, // We only need the count
+          creatorId: user.id,
+          // No paymentStatus filter - get all orders
+        });
 
-  const displayedOrders = activeTab === 'pendingSlip' ? pendingSlipOrders : myOrders;
+        if (response.ok) {
+          setAllOrdersTotal(response.pagination.total);
+        }
+      } catch (error) {
+        console.error('Failed to fetch all orders count:', error);
+      }
+    };
 
-  // payTab is always 'all' now - payment status filtering is done via advanced filters
+    fetchAllOrdersCount();
+  }, [user?.companyId, user?.id, activeTab]);
 
-  // Advanced filter badge count (based on applied values; exclude implied status)
+  // Always use API orders (no fallback to props)
+  const displayedOrders = apiOrders;
+
+  // Advanced filter badge count
   const advancedCount = useMemo(() => {
     const base = [
       afOrderId,
@@ -219,6 +345,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     setAfPaymentStatus('' as any);
     setAfCustomerName('');
     setAfCustomerPhone('');
+    setCurrentPage(1); // Reset to first page
   };
 
   // Apply (Search) filters action
@@ -232,6 +359,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
     setShowAdvanced(false);
+    setCurrentPage(1); // Reset to first page when applying filters
   };
 
   // Click outside to collapse advanced panel
@@ -253,58 +381,12 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     return m;
   }, [customers]);
 
-  const finalOrders = useMemo(() => {
-    let list = displayedOrders.slice();
-    const idTerm = afOrderId.trim().toLowerCase();
-    const trackTerm = afTracking.trim().toLowerCase();
-    if (idTerm) list = list.filter(o => o.id.toLowerCase().includes(idTerm));
-    if (trackTerm) list = list.filter(o => (o.trackingNumbers || []).some(t => t.toLowerCase().includes(trackTerm)));
-    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
-    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
-    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
-    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
-    if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
-    if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
-    const nameTerm = afCustomerName.trim().toLowerCase();
-    if (nameTerm) {
-      list = list.filter(o => {
-        const c = customerById.get(o.customerId as any);
-        if (!c) return false;
-        const full = `${(c.firstName || '').toString()} ${(c.lastName || '').toString()}`.toLowerCase();
-        return full.includes(nameTerm) || (c.firstName || '').toString().toLowerCase().includes(nameTerm) || (c.lastName || '').toString().toLowerCase().includes(nameTerm);
-      });
-    }
-    const phoneTerm = afCustomerPhone.replace(/\D/g, '');
-    if (phoneTerm) {
-      list = list.filter(o => {
-        const c = customerById.get(o.customerId as any);
-        if (!c) return false;
-        const p = ((c.phone || '') as any).toString().replace(/\D/g, '');
-        return p.includes(phoneTerm);
-      });
-    }
-    return list;
-  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, payTab, afCustomerName, afCustomerPhone, customerById]);
-
-  const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[0];
-  const totalItems = finalOrders.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
-
-  useEffect(() => {
-    setCurrentPage((prev) => {
-      const next = Math.min(Math.max(prev, 1), totalPages);
-      return next === prev ? prev : next;
-    });
-  }, [totalPages, setCurrentPage]);
-
+  // Use server-side pagination data
+  const totalItems = totalOrders;
+  const totalPages = apiTotalPages;
   const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
-  const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;
-  const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
-
-  const paginatedOrders = useMemo(() => finalOrders.slice(startIndex, startIndex + safeItemsPerPage), [finalOrders, startIndex, safeItemsPerPage]);
-
-  const displayStart = totalItems === 0 ? 0 : startIndex + 1;
-  const displayEnd = totalItems === 0 ? 0 : endIndex;
+  const displayStart = totalItems === 0 ? 0 : (effectivePage - 1) * itemsPerPage + 1;
+  const displayEnd = totalItems === 0 ? 0 : Math.min(effectivePage * itemsPerPage, totalItems);
 
   const handlePageChange = (page: number) => {
     const next = Math.min(Math.max(page, 1), totalPages);
@@ -365,7 +447,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           <List size={16} />
           <span>ออเดอร์ทั้งหมด</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'all' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
-            }`}>{myOrders.length}</span>
+            }`}>{activeTab === 'all' ? totalOrders : allOrdersTotal}</span>
         </button>
         <button
           onClick={() => setActiveTab('pendingSlip')}
@@ -377,7 +459,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           <CreditCard size={16} />
           <span>รอสลิป</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-            }`}>{pendingSlipOrders.length}</span>
+            }`}>{activeTab === 'pendingSlip' ? totalOrders : pendingSlipTotal}</span>
         </button>
       </div>
 
@@ -472,14 +554,20 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
       </div>
 
       <div className="bg-white rounded-lg shadow">
-        <OrderTable
-          orders={paginatedOrders}
-          customers={customers}
-          openModal={openModal}
-          user={user}
-          users={users} // Pass users to OrderTable
-          onCancelOrder={onCancelOrder}
-        />
+        {loading ? (
+          <div className="p-8">
+            <Spinner size="md" />
+          </div>
+        ) : (
+          <OrderTable
+            orders={displayedOrders}
+            customers={customers}
+            openModal={openModal}
+            user={user}
+            users={users}
+            onCancelOrder={onCancelOrder}
+          />
+        )}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
           <div className="text-sm text-gray-700">
             Showing {displayStart} to {displayEnd} of {totalItems} entries
@@ -488,7 +576,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-700">Lines per page</span>
               <select
-                value={safeItemsPerPage}
+                value={itemsPerPage}
                 onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
                 className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
               >

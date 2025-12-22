@@ -191,7 +191,6 @@ export async function getCustomerStats(companyId: number) {
 
   // Use direct fetch for standalone PHP endpoint
   const url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
-  console.log("API Service: calling getCustomerStats", url);
 
   const res = await fetch(
     url,
@@ -544,10 +543,78 @@ export async function updatePage(
   });
 }
 
-export async function listOrders(companyId?: number) {
+export async function listOrders(params: {
+  companyId?: number;
+  page?: number;
+  pageSize?: number;
+  // Filter parameters
+  orderId?: string;
+  trackingNumber?: string;
+  orderDateStart?: string;
+  orderDateEnd?: string;
+  deliveryDateStart?: string;
+  deliveryDateEnd?: string;
+  paymentMethod?: string;
+  paymentStatus?: string | string[];
+  customerName?: string;
+  customerPhone?: string;
+  creatorId?: number;
+  orderStatus?: string | string[];
+  tab?: string;
+  signal?: AbortSignal;
+}): Promise<{
+  ok: boolean;
+  orders: any[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  tabCounts?: Record<string, number>;
+}> {
   const qs = new URLSearchParams();
-  if (companyId) qs.set("companyId", String(companyId));
-  return apiFetch(`orders${companyId ? `?${qs}` : ""}`);
+  if (params.companyId) qs.set("companyId", String(params.companyId));
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+
+  // Add filter parameters
+  if (params.orderId) qs.set("orderId", params.orderId);
+  if (params.trackingNumber) qs.set("trackingNumber", params.trackingNumber);
+  if (params.orderDateStart) qs.set("orderDateStart", params.orderDateStart);
+  if (params.orderDateEnd) qs.set("orderDateEnd", params.orderDateEnd);
+  if (params.deliveryDateStart) qs.set("deliveryDateStart", params.deliveryDateStart);
+  if (params.deliveryDateEnd) qs.set("deliveryDateEnd", params.deliveryDateEnd);
+  if (params.paymentMethod) qs.set("paymentMethod", params.paymentMethod);
+  if (params.paymentStatus) {
+    if (Array.isArray(params.paymentStatus)) {
+      params.paymentStatus.forEach(s => qs.append("paymentStatus[]", s));
+    } else {
+      qs.set("paymentStatus", params.paymentStatus);
+    }
+  }
+  if (params.customerName) qs.set("customerName", params.customerName);
+  if (params.customerPhone) qs.set("customerPhone", params.customerPhone);
+  if (params.creatorId) qs.set("creatorId", String(params.creatorId));
+  if (params.orderStatus) {
+    if (Array.isArray(params.orderStatus)) {
+      params.orderStatus.forEach(s => qs.append("orderStatus[]", s));
+    } else {
+      qs.set("orderStatus", params.orderStatus);
+    }
+  }
+  if (params.tab) qs.set("tab", params.tab);
+
+  return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: params.signal });
+}
+
+export async function getOrderCounts(companyId: number): Promise<{
+  ok: boolean;
+  tabCounts: Record<string, number>;
+}> {
+  return apiFetch(`order_counts?companyId=${companyId}`);
 }
 
 export async function getOrder(id: string) {

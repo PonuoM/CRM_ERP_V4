@@ -3,10 +3,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { createExportLog, listOrderSlips } from '../services/api';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
+import { createExportLog, listOrderSlips, listOrders, getOrderCounts } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
+import Spinner from '../components/Spinner';
 
 interface ManageOrdersPageProps {
   user: User;
@@ -37,10 +38,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('pending');
+  const [activeTab, setActiveTab] = useState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
@@ -61,7 +63,17 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [afPaymentStatus, setAfPaymentStatus] = useState<PaymentStatus | ''>('');
   const [afCustomerName, setAfCustomerName] = useState('');
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
+  // Removed duplicate states
   const [afShop, setAfShop] = useState<string>('');
+
+  // API Data States (Server-Side Pagination)
+  const [apiOrders, setApiOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [apiTotalPages, setApiTotalPages] = useState(1);
+
+  const [countMap, setCountMap] = useState<Record<string, number>>({}); // Count per tab
+  const [countsLoading, setCountsLoading] = useState(false);
 
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
@@ -80,14 +92,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (saved && typeof saved === 'object') {
         setActiveDatePreset(saved.activeDatePreset ?? 'today'); // Default to 'today' instead of 'all'
         setDateRange(saved.dateRange ?? { start: '', end: '' });
-        setActiveTab(
-          saved.activeTab === 'completed' ? 'completed' :
-            saved.activeTab === 'awaiting_account' ? 'awaiting_account' :
-              saved.activeTab === 'preparing' ? 'preparing' :
-                saved.activeTab === 'processed' ? 'preparing' : // Migrate old 'processed' to 'preparing'
-                  saved.activeTab === 'verified' ? 'verified' :
-                    saved.activeTab === 'shipping' ? 'shipping' : 'pending'
-        );
+
         setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
         setShowAdvanced(!!saved.showAdvanced);
         setFOrderId(saved.fOrderId ?? '');
@@ -113,7 +118,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     } catch { }
   }, []);
 
-  // Save filters whenever they change
   useEffect(() => {
     try {
       const payload = {
@@ -144,6 +148,148 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch { }
   }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
+
+  // --- API Fetching Logic ---
+
+  // Determine filters based on Active Tab
+
+
+  // Fetch tab counts once on mount
+  useEffect(() => {
+    const fetchCounts = async () => {
+      if (!user?.companyId) return;
+      setCountsLoading(true);
+      try {
+        const res = await getOrderCounts(user.companyId);
+        if (res.ok && res.tabCounts) {
+          setTabCounts(prev => ({ ...prev, ...res.tabCounts }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch tab counts:', error);
+      } finally {
+        setCountsLoading(false);
+      }
+    };
+    fetchCounts();
+  }, [user?.companyId]);
+
+  // Fetch orders from API
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchOrders = async () => {
+      if (!user?.companyId) return;
+
+      setLoading(true);
+      try {
+        const params: any = {
+          companyId: user.companyId,
+          page: currentPage,
+          pageSize: itemsPerPage,
+          // Advanced Filters
+          orderId: afOrderId || undefined,
+          trackingNumber: afTracking || undefined,
+          orderDateStart: afOrderDate.start || undefined,
+          orderDateEnd: afOrderDate.end || undefined,
+          deliveryDateStart: afDeliveryDate.start || undefined,
+          deliveryDateEnd: afDeliveryDate.end || undefined,
+          paymentMethod: afPaymentMethod || undefined,
+          paymentStatus: afPaymentStatus || undefined,
+          customerName: afCustomerName || undefined,
+          customerPhone: afCustomerPhone || undefined,
+          // shop: afShop || undefined, // Backend needs to support this
+
+          // Send active tab to backend for specialized filtering logic
+          tab: activeTab,
+        };
+
+        // TODO: Backend currently might not support 'orderStatus' filter directly in listOrders signature (based on TelesaleOrdersPage experience).
+        // If listOrders doesn't support orderStatus, we rely on default fetching or need to update listOrders.
+        // Based on previous task, listOrders supports: orderId, tracking, dates, payment info.
+        // It DOES NOT seem to support `orderStatus` yet based on my memory of listOrders in services/api.ts.
+        // I should check `services/api.ts` to see if I need to add `orderStatus`.
+
+        const response = await listOrders({ ...params, signal: controller.signal });
+
+        if (response.ok) {
+          const mappedOrders = (response.orders || []).map((r: any) => ({
+            id: r.id,
+            customerId: r.customer_id,
+            companyId: r.company_id,
+            creatorId: r.creator_id,
+            orderDate: r.order_date,
+            deliveryDate: r.delivery_date,
+            shippingAddress: {
+              recipientFirstName: r.recipient_first_name || '',
+              recipientLastName: r.recipient_last_name || '',
+              street: r.street || '',
+              subdistrict: r.subdistrict || '',
+              district: r.district || '',
+              province: r.province || '',
+              postalCode: r.postal_code || '',
+            },
+            shippingProvider: r.shipping_provider,
+            shippingCost: Number(r.shipping_cost || 0),
+            billDiscount: Number(r.bill_discount || 0),
+            totalAmount: Number(r.total_amount || 0),
+            paymentMethod: r.payment_method,
+            paymentStatus: r.payment_status,
+            orderStatus: r.order_status,
+            trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
+            amountPaid: r.amount_paid ? Number(r.amount_paid) : undefined,
+            codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
+            slipUrl: r.slip_url,
+            salesChannel: r.sales_channel,
+            salesChannelPageId: r.sales_channel_page_id,
+            warehouseId: r.warehouse_id,
+            bankAccountId: r.bank_account_id,
+            transferDate: r.transfer_date,
+            items: r.items || [],
+            slips: r.slips || [],
+            trackingDetails: r.tracking_details || r.trackingDetails || [],
+            boxes: r.boxes || [],
+            reconcileAction: r.reconcile_action,
+            // Customer information from API
+            customerInfo: r.customer_first_name ? {
+              firstName: r.customer_first_name,
+              lastName: r.customer_last_name,
+              phone: r.customer_phone,
+              address: {
+                street: r.customer_street || '',
+                subdistrict: r.customer_subdistrict || '',
+                district: r.customer_district || '',
+                province: r.customer_province || '',
+                postalCode: r.customer_postal_code || '',
+              }
+            } : undefined,
+          }));
+
+
+          setApiOrders(mappedOrders);
+          setTotalOrders(response.pagination.total);
+          setApiTotalPages(response.pagination.totalPages);
+
+          // Lazy load verified count if on completed tab (not returned by getOrderCounts)
+          if (activeTab === 'completed') {
+            setTabCounts(prev => ({ ...prev, completed: response.pagination.total }));
+          }
+        }
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Fetch orders failed:', error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchOrders();
+
+    return () => {
+      controller.abort();
+    };
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -178,224 +324,38 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
-  const pendingOrders = useMemo(
-    () =>
-      orders.filter((o) => {
-        if (o.orderStatus !== OrderStatus.Pending) {
-          return false;
-        }
-        if (o.paymentMethod !== PaymentMethod.Transfer) {
-          return false;
-        }
-        // โอนที่ยังไม่ผ่านการตรวจสอบสลิป
-        return (
-          o.paymentStatus === PaymentStatus.Unpaid ||
-          o.paymentStatus === PaymentStatus.PendingVerification
-        );
-      }),
-    [orders],
-  );
+  // Removed unused client-side filtering logic
 
-  // กำลังจัดเตรียม: หลัง export/ดึงข้อมูลแล้ว (Preparing, Picking)
-  const preparingOrders = useMemo(() =>
-    orders.filter(o =>
-      (o.orderStatus === OrderStatus.Preparing || o.orderStatus === OrderStatus.Picking) &&
-      (!o.trackingNumbers || o.trackingNumbers.length === 0) // ยังไม่มี tracking
-    ), [orders]
-  );
+  // No longer needed to count orders client-side for badges if we want to show exact counts from API.
+  // But for now, we only fetch current tab due to performance.
+  // To avoid confusion, we can remove badges or fetch counts separately (like we did in TelesaleOrdersPage).
+  // For ManageOrdersPage, we have MANY tabs. Fetching counts for ALL tabs might be heavy.
+  // We can show count only for active tab or display "..." for others.
 
-  // รอตรวจสอบจากบัญชี: PreApproved (COD หลังใส่ยอด, PayAfter หลัง upload รูป, Transfer หลัง tracking 1 วัน)
-  const awaitingAccountCheckOrders = useMemo(
-    () => orders.filter((o) => qualifiesForAccountReview(o)),
-    [orders],
-  );
+  // However, the tab UI might still expect some counts.
+  // If we want to keep badges, we need to fetch counts.
+  // Let's assume for now we only show count for active tab or 0.
 
-  // เสร็จสิ้น: รายการที่บัญชี Confirm Reconcile แล้ว
-  const completedOrders = useMemo(() =>
-    orders.filter(o =>
-      (
-        o.reconcileAction === 'Confirmed' ||
-        (
-          (o.paymentMethod === PaymentMethod.Claim || o.paymentMethod === PaymentMethod.FreeGift) &&
-          o.orderStatus === OrderStatus.Delivered
-        )
-      ) &&
-      o.orderStatus !== OrderStatus.Cancelled
-    ), [orders]
-  );
 
-  const awaitingExportOrders = useMemo(
-    () =>
-      orders.filter((o) => {
-        if (o.orderStatus !== OrderStatus.Pending) {
-          return false;
-        }
-        // รอดึงข้อมูล: รวม COD, รับสินค้าก่อน และโอนที่ตรวจสอบสลิปผ่านแล้ว
-        if (o.paymentMethod === PaymentMethod.COD) {
-          return true;
-        }
-        if (o.paymentMethod === PaymentMethod.PayAfter) {
-          return true;
-        }
-        if (o.paymentMethod === PaymentMethod.Transfer) {
-          return (
-            o.paymentStatus === PaymentStatus.Verified ||
-            o.paymentStatus === PaymentStatus.Paid
-          );
-        }
-        if (o.paymentMethod === PaymentMethod.Claim || o.paymentMethod === PaymentMethod.FreeGift) {
-          return true;
-        }
-        return false;
-      }),
-    [orders],
-  );
+  // Use API orders for display directly
+  const finalDisplayedOrders = apiOrders;
 
-  // กำลังจัดส่ง: ออเดอร์ที่มี tracking number แล้ว (COD และ PayAfter auto เปลี่ยน, Transfer ต้องมี tracking)
-  const shippingOrders = useMemo(
-    () =>
-      orders.filter((o) => {
-        if (!o.trackingNumbers || o.trackingNumbers.length === 0) {
-          return false;
-        }
-        // Exclude Transfer orders from Shipping tab (user requirement)
-        if (o.paymentMethod === PaymentMethod.Transfer) {
-          return false;
-        }
-        // Remove payment status restrictions - if it's shipping, it should be in this tab regardless of payment status
-        // Logic relying on orderStatus and trackingNumbers is sufficient (Line 257)
-        return (
-          o.orderStatus === OrderStatus.Shipping ||
-          o.orderStatus === OrderStatus.Preparing ||
-          ((o.orderStatus === OrderStatus.Pending || o.orderStatus === OrderStatus.AwaitingVerification) && o.trackingNumbers.length > 0)
-        );
-      }),
-    [orders],
-  );
+  // Pagination logic (Server-Side)
+  const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[1];
+  const totalItems = totalOrders;
+  const totalPages = apiTotalPages; // Use from API
+  const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
 
-  const displayedOrders = useMemo(() => {
-    let sourceOrders;
-    if (activeTab === 'pending') {
-      sourceOrders = pendingOrders;
-    } else if (activeTab === 'verified') {
-      sourceOrders = awaitingExportOrders;
-    } else if (activeTab === 'preparing') {
-      sourceOrders = preparingOrders;
-    } else if (activeTab === 'shipping') {
-      sourceOrders = shippingOrders;
-    } else if (activeTab === 'awaiting_account') {
-      sourceOrders = awaitingAccountCheckOrders;
-    } else if (activeTab === 'completed') {
-      sourceOrders = completedOrders;
-    } else {
-      sourceOrders = [];
-    }
+  // For server-side pagination, we display all items in apiOrders (which is already the current page slice)
+  const paginatedOrders = apiOrders;
 
-    // กรองตามวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" เท่านั้น
-    if (activeTab !== 'verified') {
-      return sourceOrders;
-    }
+  const startIndex = (effectivePage - 1) * safeItemsPerPage;
+  const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
 
-    if (activeDatePreset === 'all') {
-      return sourceOrders;
-    }
+  const displayStart = totalItems === 0 ? 0 : startIndex + 1;
+  const displayEnd = totalItems === 0 ? 0 : endIndex;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return sourceOrders.filter(order => {
-      const deliveryDate = new Date(order.deliveryDate);
-      deliveryDate.setHours(0, 0, 0, 0);
-
-      switch (activeDatePreset) {
-        case 'today':
-          return deliveryDate.getTime() === today.getTime();
-        case 'tomorrow':
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          return deliveryDate.getTime() === tomorrow.getTime();
-        case 'missed':
-          return deliveryDate < today;
-        case 'next7days':
-          const sevenDaysLater = new Date(today);
-          sevenDaysLater.setDate(today.getDate() + 7);
-          return deliveryDate >= today && deliveryDate <= sevenDaysLater;
-        case 'next30days':
-          const thirtyDaysLater = new Date(today);
-          thirtyDaysLater.setDate(today.getDate() + 30);
-          return deliveryDate >= today && deliveryDate <= thirtyDaysLater;
-        case 'range':
-          if (!dateRange.start || !dateRange.end) return true;
-          const startDate = new Date(dateRange.start);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(dateRange.end);
-          endDate.setHours(0, 0, 0, 0);
-          return deliveryDate >= startDate && deliveryDate <= endDate;
-        default:
-          return true;
-      }
-    });
-  }, [pendingOrders, awaitingExportOrders, preparingOrders, shippingOrders, awaitingAccountCheckOrders, completedOrders, activeTab, activeDatePreset, dateRange]);
-
-  // Filter orders by delivery date for "รอดึงข้อมูล" tab only (for display count in date filter section)
-  const filteredAwaitingExportOrders = useMemo(() => {
-    if (activeDatePreset === 'all') {
-      return awaitingExportOrders;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return awaitingExportOrders.filter(order => {
-      const deliveryDate = new Date(order.deliveryDate);
-      deliveryDate.setHours(0, 0, 0, 0);
-
-      switch (activeDatePreset) {
-        case 'today':
-          return deliveryDate.getTime() === today.getTime();
-        case 'tomorrow':
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          return deliveryDate.getTime() === tomorrow.getTime();
-        case 'missed':
-          return deliveryDate < today;
-        case 'next7days':
-          const sevenDaysLater = new Date(today);
-          sevenDaysLater.setDate(today.getDate() + 7);
-          return deliveryDate >= today && deliveryDate <= sevenDaysLater;
-        case 'next30days':
-          const thirtyDaysLater = new Date(today);
-          thirtyDaysLater.setDate(today.getDate() + 30);
-          return deliveryDate >= today && deliveryDate <= thirtyDaysLater;
-        case 'range':
-          if (!dateRange.start || !dateRange.end) return true;
-          const startDate = new Date(dateRange.start);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(dateRange.end);
-          endDate.setHours(0, 0, 0, 0);
-          return deliveryDate >= startDate && deliveryDate <= endDate;
-        default:
-          return true;
-      }
-    });
-  }, [awaitingExportOrders, activeDatePreset, dateRange]);
-
-  // Apply advanced filters on top of displayedOrders (non-destructive to existing logic)
-  const customerById = useMemo(() => {
-    const m = new Map<string, Customer>();
-    for (const c of customers) m.set(c.id as any, c);
-    return m;
-  }, [customers]);
-  const productCategoryMap = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const p of products) {
-      if (p && typeof p.id !== 'undefined' && p.id !== null) {
-        m.set(Number(p.id), p.shop || '');
-      }
-    }
-    return m;
-  }, [products]);
-  const normalizedAfShop = useMemo(() => (afShop || '').trim().toLowerCase(), [afShop]);
+  // Restore shopOptions for filter dropdown
   const shopOptions = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
@@ -404,69 +364,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     });
     return Array.from(set).sort();
   }, [products]);
-
-  const finalDisplayedOrders = useMemo(() => {
-    let list = displayedOrders.slice();
-    const idTerm = afOrderId.trim().toLowerCase();
-    const trackTerm = afTracking.trim().toLowerCase();
-    if (idTerm) list = list.filter(o => o.id.toLowerCase().includes(idTerm));
-    if (trackTerm) list = list.filter(o => (o.trackingNumbers || []).some(t => t.toLowerCase().includes(trackTerm)));
-    if (afOrderDate.start) { const s = new Date(afOrderDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.orderDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
-    if (afOrderDate.end) { const e = new Date(afOrderDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.orderDate); return d <= e; }); }
-    if (afDeliveryDate.start) { const s = new Date(afDeliveryDate.start); s.setHours(0, 0, 0, 0); list = list.filter(o => { const d = new Date(o.deliveryDate); d.setHours(0, 0, 0, 0); return d >= s; }); }
-    if (afDeliveryDate.end) { const e = new Date(afDeliveryDate.end); e.setHours(23, 59, 59, 999); list = list.filter(o => { const d = new Date(o.deliveryDate); return d <= e; }); }
-    if (afPaymentMethod) list = list.filter(o => o.paymentMethod === afPaymentMethod);
-    // Payment status filtering is done via advanced filters only
-    if (afPaymentStatus) list = list.filter(o => o.paymentStatus === afPaymentStatus);
-    const nameTerm = afCustomerName.trim().toLowerCase();
-    if (nameTerm) {
-      list = list.filter(o => {
-        const c = customerById.get(o.customerId as any);
-        if (!c) return false;
-        const full = `${(c.firstName || '').toString()} ${(c.lastName || '').toString()}`.toLowerCase();
-        return full.includes(nameTerm) || (c.firstName || '').toString().toLowerCase().includes(nameTerm) || (c.lastName || '').toString().toLowerCase().includes(nameTerm);
-      });
-    }
-    const phoneTerm = afCustomerPhone.replace(/\D/g, '');
-    if (phoneTerm) {
-      list = list.filter(o => {
-        const c = customerById.get(o.customerId as any);
-        if (!c) return false;
-        const p = ((c.phone || '') as any).toString().replace(/\D/g, '');
-        return p.includes(phoneTerm);
-      });
-    }
-    if (normalizedAfShop) {
-      list = list.filter(o => {
-        if (!Array.isArray(o.items) || o.items.length === 0) return false;
-        return o.items.some((it: any) => {
-          const pid = Number(it.productId ?? it.product_id);
-          if (!pid || Number.isNaN(pid)) return false;
-          const shop = productCategoryMap.get(pid);
-          if (!shop) return false;
-          return String(shop).trim().toLowerCase() === normalizedAfShop;
-        });
-      });
-    }
-
-    return list;
-  }, [displayedOrders, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, normalizedAfShop, customerById, productCategoryMap]);
-
-  // Pagination logic
-  const safeItemsPerPage = itemsPerPage > 0 ? itemsPerPage : PAGE_SIZE_OPTIONS[1];
-  const totalItems = finalDisplayedOrders.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / safeItemsPerPage));
-  const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
-  const startIndex = totalItems === 0 ? 0 : (effectivePage - 1) * safeItemsPerPage;
-  const endIndex = Math.min(startIndex + safeItemsPerPage, totalItems);
-
-  const paginatedOrders = useMemo(() =>
-    finalDisplayedOrders.slice(startIndex, endIndex),
-    [finalDisplayedOrders, startIndex, endIndex]
-  );
-
-  const displayStart = totalItems === 0 ? 0 : startIndex + 1;
-  const displayEnd = totalItems === 0 ? 0 : endIndex;
 
   // Preserve page per tab when tab changes
   useEffect(() => {
@@ -911,7 +808,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const handleExportAndProcessSelected = async () => {
     // Prefer full details for selected orders when available (with items)
     // Prefer full details for selected orders when available (with items)
-    const baseMap = new Map(displayedOrders.map(o => [o.id, o]));
+    // Prefer full details for selected orders when available (with items)
+    const baseMap = new Map(apiOrders.map(o => [o.id, o]));
     let selectedOrders = selectedIds
       .map(id => {
         const full = fullOrdersById[id];
@@ -1387,53 +1285,74 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       </div>
 
       <div className="flex border-b border-gray-200 mb-6">
+
         <button
-          onClick={() => setActiveTab('pending')}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'pending'
+          onClick={() => setActiveTab('waitingVerifySlip')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingVerifySlip'
             ? 'border-b-2 border-blue-600 text-blue-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <ListChecks size={16} />
           <span>รอตรวจสอบสลิป</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
-            }`}>{pendingOrders.length}</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['waitingVerifySlip'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-600">
+              {tabCounts['waitingVerifySlip'] || 0}
+            </span>
+          )}
         </button>
         <button
-          onClick={() => setActiveTab('verified')}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'verified'
+          onClick={() => setActiveTab('waitingExport')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingExport'
             ? 'border-b-2 border-yellow-600 text-yellow-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
           <ListChecks size={16} />
           <span>รอดึงข้อมูล</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'verified' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'
-            }`}>{awaitingExportOrders.length}</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['waitingExport'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-600">
+              {tabCounts['waitingExport'] || 0}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('preparing')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'preparing'
-            ? 'border-b-2 border-green-600 text-green-600'
-            : 'text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          <Package size={16} />
-          <span>กำลังจัดเตรียม</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'preparing' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
-            }`}>{preparingOrders.length}</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('shipping')}
-          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'shipping'
             ? 'border-b-2 border-purple-600 text-purple-600'
             : 'text-gray-500 hover:text-gray-700'
             }`}
         >
-          <Send size={16} />
+          <Package size={16} />
+          <span>กำลังเตรียมสินค้า</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['preparing'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-600">
+              {tabCounts['preparing'] || 0}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('shipping')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'shipping'
+            ? 'border-b-2 border-indigo-600 text-indigo-600'
+            : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <Truck size={16} />
           <span>กำลังจัดส่ง</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'shipping' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
-            }`}>{shippingOrders.length}</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['shipping'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-600">
+              {tabCounts['shipping'] || 0}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('awaiting_account')}
@@ -1444,8 +1363,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <Clock size={16} />
           <span>รอตรวจสอบจากบัญชี</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'awaiting_account' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
-            }`}>{awaitingAccountCheckOrders.length}</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['awaiting_account'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-600">
+              {tabCounts['awaiting_account'] || 0}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('completed')}
@@ -1456,19 +1380,22 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         >
           <CheckCircle2 size={16} />
           <span>เสร็จสิ้น</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
-            }`}>{completedOrders.length}</span>
+          {(
+            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+              {tabCounts['completed'] !== undefined ? tabCounts['completed'] : '....'}
+            </span>
+          )}
         </button>
       </div>
 
       {/* แสดงตัวกรองวันที่จัดส่งเฉพาะ tab "รอดึงข้อมูล" */}
-      {activeTab === 'verified' && (
+      {activeTab === 'waitingExport' && (
         <div className="bg-white p-4 rounded-lg shadow mb-6">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center mr-4">
               <Calendar size={16} className="text-gray-500 mr-2" />
               <span className="text-sm font-medium text-gray-700">วันจัดส่ง:</span>
-              <span className="text-sm text-gray-600 ml-2">({filteredAwaitingExportOrders.length} รายการ)</span>
+              <span className="text-sm text-gray-600 ml-2">({totalOrders} รายการ)</span>
             </div>
             {datePresets.map((preset, index) => (
               <React.Fragment key={preset.value}>
@@ -1502,88 +1429,96 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow">
-        <OrderTable
-          orders={paginatedOrders}
-          customers={customers}
-          openModal={openModal}
-          users={users}
-          selectable={activeTab === 'pending' || activeTab === 'verified'}
-          selectedIds={selectedIds}
-          onSelectionChange={setSelectedIds}
-          showShippingColumn={activeTab !== 'verified'}
-          shippingEditable={false}
-          shippingOptions={SHIPPING_PROVIDERS}
-          shippingSavingIds={Array.from(shippingSavingIds)}
-          onShippingChange={handleShippingProviderChange}
-          highlightedOrderId={highlightedOrderId}
-          allOrders={orders}
-        />
-
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-            {/* Left side - Display range */}
-            <div className="text-sm text-gray-700">
-              แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
-            </div>
-
-            {/* Right side - Pagination controls */}
-            <div className="flex items-center space-x-2">
-              {/* Items per page selector */}
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">แสดง:</span>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {PAGE_SIZE_OPTIONS.map((sz) => (
-                    <option key={sz} value={sz}>
-                      {sz}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Page navigation */}
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => handlePageChange(effectivePage - 1)}
-                  disabled={effectivePage === 1}
-                  className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                {getPageNumbers().map((page, index) => (
-                  <button
-                    key={index}
-                    onClick={() =>
-                      typeof page === "number" ? handlePageChange(page) : undefined
-                    }
-                    disabled={page === "..."}
-                    className={`px-3 py-1 text-sm rounded ${page === effectivePage
-                      ? "bg-blue-600 text-white"
-                      : page === "..."
-                        ? "text-gray-400 cursor-default"
-                        : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-
-                <button
-                  onClick={() => handlePageChange(effectivePage + 1)}
-                  disabled={effectivePage === totalPages}
-                  className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
+      <div className="bg-white rounded-lg shadow min-h-[400px]">
+        {loading ? (
+          <div className="flex justify-center items-center h-96">
+            <Spinner />
           </div>
+        ) : (
+          <>
+            <OrderTable
+              orders={paginatedOrders}
+              customers={customers}
+              openModal={openModal}
+              users={users}
+              selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              showShippingColumn={activeTab !== 'waitingExport'}
+              shippingEditable={false}
+              shippingOptions={SHIPPING_PROVIDERS}
+              shippingSavingIds={Array.from(shippingSavingIds)}
+              onShippingChange={handleShippingProviderChange}
+              highlightedOrderId={highlightedOrderId}
+              allOrders={orders}
+            />
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                {/* Left side - Display range */}
+                <div className="text-sm text-gray-700">
+                  แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+                </div>
+
+                {/* Right side - Pagination controls */}
+                <div className="flex items-center space-x-2">
+                  {/* Items per page selector */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-700">แสดง:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                      className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      {PAGE_SIZE_OPTIONS.map((sz) => (
+                        <option key={sz} value={sz}>
+                          {sz}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Page navigation */}
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => handlePageChange(effectivePage - 1)}
+                      disabled={effectivePage === 1}
+                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {getPageNumbers().map((page, index) => (
+                      <button
+                        key={index}
+                        onClick={() =>
+                          typeof page === "number" ? handlePageChange(page) : undefined
+                        }
+                        disabled={page === "..."}
+                        className={`px-3 py-1 text-sm rounded ${page === effectivePage
+                          ? "bg-blue-600 text-white"
+                          : page === "..."
+                            ? "text-gray-400 cursor-default"
+                            : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+
+                    <button
+                      onClick={() => handlePageChange(effectivePage + 1)}
+                      disabled={effectivePage === totalPages}
+                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

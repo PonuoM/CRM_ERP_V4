@@ -108,6 +108,11 @@ try {
     case 'orders':
         handle_orders($pdo, $id);
         break;
+    case 'order_counts':
+        require_once __DIR__ . '/Orders/get_order_counts.php';
+        handle_order_counts($pdo);
+        break;
+
     case 'accounting_orders_sent':
         require_once __DIR__ . '/Accounting/sent_orders.php';
         handle_sent_orders($pdo);
@@ -1767,6 +1772,28 @@ function handle_orders(PDO $pdo, ?string $id): void {
             } else {
                 $companyId = $_GET['companyId'] ?? null;
                 
+                // Pagination parameters
+                $page = max(1, (int)($_GET['page'] ?? 1));
+                $pageSize = min(100, max(1, (int)($_GET['pageSize'] ?? 50)));
+                $offset = ($page - 1) * $pageSize;
+                
+                // Filter parameters
+                $orderId = $_GET['orderId'] ?? null;
+                $trackingNumber = $_GET['trackingNumber'] ?? null;
+                $orderDateStart = $_GET['orderDateStart'] ?? null;
+                $orderDateEnd = $_GET['orderDateEnd'] ?? null;
+                $deliveryDateStart = $_GET['deliveryDateStart'] ?? null;
+                $deliveryDateEnd = $_GET['deliveryDateEnd'] ?? null;
+                $paymentMethod = $_GET['paymentMethod'] ?? null;
+                $paymentStatus = $_GET['paymentStatus'] ?? null;
+                $customerName = $_GET['customerName'] ?? null;
+                $customerName = $_GET['customerName'] ?? null;
+                $customerPhone = $_GET['customerPhone'] ?? null;
+                $customerPhone = $_GET['customerPhone'] ?? null;
+                $creatorId = $_GET['creatorId'] ?? null;
+                $orderStatus = $_GET['orderStatus'] ?? null;
+                $manageTab = $_GET['tab'] ?? null;
+                
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $ordersColumns);
@@ -1780,7 +1807,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
-                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action';
+                               MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,
+                               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
+                               c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
+                               c.province as customer_province, c.postal_code as customer_postal_code';
 
                 $sql = "SELECT $selectCols
                         FROM orders o
@@ -1788,7 +1818,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         LEFT JOIN statement_reconcile_logs srl ON (
                             srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
                             OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
-                        )";
+                        )
+                        LEFT JOIN customers c ON o.customer_id = c.customer_id";
                 
                 $params = [];
                 $whereConditions = [];
@@ -1804,13 +1835,179 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $params[] = $companyId;
                 }
                 
+                // Apply filters
+                if ($orderId) {
+                    $whereConditions[] = 'o.id LIKE ?';
+                    $params[] = '%' . $orderId . '%';
+                }
+                
+                if ($trackingNumber) {
+                    $whereConditions[] = 't.tracking_number LIKE ?';
+                    $params[] = '%' . $trackingNumber . '%';
+                }
+                
+                if ($orderDateStart) {
+                    $whereConditions[] = 'o.order_date >= ?';
+                    $params[] = $orderDateStart . ' 00:00:00';
+                }
+
+                if ($orderStatus) {
+                    if (is_array($orderStatus)) {
+                        $placeholders = str_repeat('?,', count($orderStatus) - 1) . '?';
+                        $whereConditions[] = "o.order_status IN ($placeholders)";
+                        $params = array_merge($params, $orderStatus);
+                    } else {
+                        $whereConditions[] = 'o.order_status = ?';
+                        $params[] = $orderStatus;
+                    }
+                }
+                
+                if ($orderDateEnd) {
+                    $whereConditions[] = 'o.order_date <= ?';
+                    $params[] = $orderDateEnd . ' 23:59:59';
+                }
+                
+                if ($deliveryDateStart) {
+                    $whereConditions[] = 'o.delivery_date >= ?';
+                    $params[] = $deliveryDateStart . ' 00:00:00';
+                }
+                
+                if ($deliveryDateEnd) {
+                    $whereConditions[] = 'o.delivery_date <= ?';
+                    $params[] = $deliveryDateEnd . ' 23:59:59';
+                }
+                
+                if ($paymentMethod) {
+                    $whereConditions[] = 'o.payment_method = ?';
+                    $params[] = $paymentMethod;
+                }
+                
+                if ($paymentStatus) {
+                    if (is_array($paymentStatus)) {
+                        $placeholders = str_repeat('?,', count($paymentStatus) - 1) . '?';
+                        $whereConditions[] = "o.payment_status IN ($placeholders)";
+                        $params = array_merge($params, $paymentStatus);
+                    } else {
+                        $whereConditions[] = 'o.payment_status = ?';
+                        $params[] = $paymentStatus;
+                    }
+                }
+                
+                // Tab-specific filters for ManageOrdersPage
+                if ($manageTab) {
+                    switch ($manageTab) {
+                        case 'waitingVerifySlip':
+                            // Transfer + Pending Status (Exclude Verified, include NULLs)
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Pending';
+                            $whereConditions[] = 'o.payment_method = ?';
+                            $params[] = 'Transfer';
+                            $whereConditions[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
+                            $params[] = 'Verified';
+                            break;
+                            
+                        case 'waitingExport':
+                            // Pending Status
+                            // For Transfer, must be Verified. For others (COD), just Pending.
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Pending';
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'Transfer';
+                            $params[] = 'Verified';
+                            break;
+                            
+                        case 'preparing':
+                            // Preparing OR Picking
+                            $whereConditions[] = 'o.order_status IN (?, ?)';
+                            $params[] = 'Preparing';
+                            $params[] = 'Picking';
+                            // And NO tracking number (handled by NOT having tracking numbers usually)
+                            // But status Preparing/Picking implies internal process
+                            break;
+                            
+                        case 'shipping':
+                            // Shipping status OR (Pending/AwaitingVerification AND has tracking)
+                            // For simplicity and performance, let's rely on standard status flow or simple checks
+                            // Or use the exact logic: Status=Shipping OR (Status IN (Pending, Awaiting) AND t.tracking_number IS NOT NULL)
+                            // Getting checking tracking IS NOT NULL with left join can be tricky with Group By?
+                            // Actually we have tracking_numbers group concat. 
+                            $whereConditions[] = 'o.order_status = ?';
+                            $params[] = 'Shipping';
+                            break;
+                            
+                        case 'awaiting_account':
+                            $whereConditions[] = 'o.payment_status = "PreApproved"';
+                            $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
+                            break;
+                            
+                        case 'completed':
+                            // Reconcile Confirmed OR (Claim/FreeGift AND Delivered)
+                            // AND Not Cancelled
+                            $whereConditions[] = 'o.order_status != "Cancelled"';
+                            $whereConditions[] = '(
+                                srl.confirmed_action = "Confirmed" OR
+                                (o.payment_method IN ("Claim", "FreeGift") AND o.order_status = "Delivered")
+                            )';
+                            break;
+                    }
+                }
+                
+                if ($customerName) {
+                    $whereConditions[] = '(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, " ", c.last_name) LIKE ?)';
+                    $nameLike = '%' . $customerName . '%';
+                    $params[] = $nameLike;
+                    $params[] = $nameLike;
+                    $params[] = $nameLike;
+                }
+                
+                if ($customerPhone) {
+                    $phoneDigits = preg_replace('/\D/', '', $customerPhone);
+                    $whereConditions[] = 'REPLACE(REPLACE(REPLACE(c.phone, "-", ""), " ", ""), "(", "") LIKE ?';
+                    $params[] = '%' . $phoneDigits . '%';
+                }
+                
+                if ($creatorId) {
+                    $whereConditions[] = 'o.creator_id = ?';
+                    $params[] = $creatorId;
+                }
+                
                 if (!empty($whereConditions)) {
                     $sql .= ' WHERE ' . implode(' AND ', $whereConditions);
                 }
                 
+                // Get total count before pagination
+                $countSql = "SELECT COUNT(DISTINCT o.id) FROM orders o";
+                
+                // Add conditional joins for filters
+                if ($trackingNumber) {
+                    $countSql .= " LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id";
+                }
+                if ($customerName || $customerPhone) {
+                    $countSql .= " LEFT JOIN customers c ON o.customer_id = c.customer_id";
+                }
+                
+                // Add conditional joins for Tabs that rely on specific tables in their WHERE clauses
+                if ($manageTab === 'completed') {
+                     $countSql .= " LEFT JOIN statement_reconcile_logs srl ON (
+                        srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
+                        OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
+                     )";
+                }
+                if (!empty($whereConditions)) {
+                    $countSql .= ' WHERE ' . implode(' AND ', $whereConditions);
+                }
+                $countStmt = $pdo->prepare($countSql);
+                if (!empty($params)) {
+                    $countStmt->execute($params);
+                } else {
+                    $countStmt->execute();
+                }
+                $total = (int)$countStmt->fetchColumn();
+                $totalPages = ceil($total / $pageSize);
+                
                 $sql .= ' GROUP BY o.id
                           ORDER BY o.order_date DESC
-                          LIMIT 5000';
+                          LIMIT ' . $pageSize . ' OFFSET ' . $offset;
                 
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
@@ -1985,7 +2182,21 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $order['boxes'] = $boxesMap[$order['id']] ?? [];
                 }
                 
-                json_response($orders);
+                // Return paginated response
+                $responsePayload = [
+                    'ok' => true,
+                    'orders' => $orders,
+                    'pagination' => [
+                        'page' => $page,
+                        'pageSize' => $pageSize,
+                        'total' => $total,
+                        'totalPages' => $totalPages
+                    ]
+                ];
+
+
+
+                json_response($responsePayload);
             }
             break;
         case 'POST':
@@ -7107,5 +7318,7 @@ function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): vo
     
     json_response(['error' => 'NOT_FOUND'], 404);
 }
+
+
 
 ?>

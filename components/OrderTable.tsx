@@ -419,13 +419,11 @@ const OrderTable: React.FC<OrderTableProps> = ({
           </thead>
           <tbody>
             {orders.map((order) => {
-              // Match customer by pk (customer_id) or id (string)
-              const customer = customers.find((c) => {
-                // Try matching by pk (number) first, then by id (string)
+              // Use customerInfo from order if available, otherwise lookup from customers array
+              const customer = (order as any).customerInfo || customers.find((c) => {
                 if (c.pk && typeof order.customerId === 'number') {
                   return c.pk === order.customerId;
                 }
-                // Fallback to string comparison
                 return String(c.id) === String(order.customerId) ||
                   String(c.pk) === String(order.customerId);
               });
@@ -435,29 +433,13 @@ const OrderTable: React.FC<OrderTableProps> = ({
                   console.warn('Order missing creatorId:', order.id);
                   return false;
                 }
-                // Try number comparison first
                 if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
                   return u.id === order.creatorId;
                 }
-                // Fallback to string comparison
-                const match = String(u.id) === String(order.creatorId);
-                if (!match && order.creatorId) {
-                  console.debug('Seller not found:', {
-                    orderId: order.id,
-                    creatorId: order.creatorId,
-                    creatorIdType: typeof order.creatorId,
-                    userId: u.id,
-                    userIdType: typeof u.id,
-                    usersCount: users?.length,
-                    availableUserIds: users?.map(u => u.id).slice(0, 5)
-                  });
-                }
-                return match;
+                return String(u.id) === String(order.creatorId);
               });
               const paid = (order.amountPaid ?? 0) as number;
-              // Calculate actual total from items (more accurate)
               const actualTotal = computeOrderTotal(order);
-              // Calculate combined total including upsell orders for payment comparison
               const combinedTotal = getCombinedTotalAmount(order);
               const diff = combinedTotal - paid;
               const paidText = `฿${(paid || 0).toLocaleString()}`;
@@ -530,7 +512,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                       )}
                     </td>
                   )}
-                  <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers.join(', ') || '-'}</td>
+                  <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers?.join(', ') || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {/* Always allow managing (e.g., upload slip) */}
                     <button onClick={() => openModal('manageOrder', order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>

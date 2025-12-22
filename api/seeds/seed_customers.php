@@ -99,8 +99,8 @@ try {
             if (rand(1, 100) > 30) {
                 $numOrders = rand(1, 5); // 1-5 orders per customer
                 for ($o = 0; $o < $numOrders; $o++) {
-                    // Generate Order ID: O-Timestamp-Random
-                    $orderId = 'ORD-' . time() . '-' . $cid . '-' . $o . '-' . rand(100,999);
+                    // Generate Order ID: avoid ending with -number to prevent sub-order filter
+                    $orderId = 'ORD-' . time() . '-' . $cid . 'x' . $o . 'r' . rand(100,999);
                     $total = rand(500, 5000);
                     $status = $orderStatuses[array_rand($orderStatuses)];
                     $pm = $paymentMethods[array_rand($paymentMethods)];

@@ -64,13 +64,6 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
     // Set time to end of day for end date to allow full day usage
     endDateObj.setHours(23, 59, 59, 999);
 
-    console.log(`Checking expiration for promotion ${promotion.id}:`, {
-      endDate: endDate,
-      endDateObj: endDateObj,
-      currentDate: currentDate,
-      isExpired: endDateObj < currentDate
-    });
-
     return endDateObj < currentDate;
   };
 
@@ -80,13 +73,6 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
     const active = promotion.active;
     const result = active && !expired;
 
-    console.log(`Promotion ${promotion.id} (${promotion.name}):`, {
-      active: active,
-      endDate: promotion.end_date || promotion.endDate,
-      expired: expired,
-      result: result
-    });
-
     return result;
   };
 
@@ -94,7 +80,6 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
     switch (currentView) {
       case 'active':
         const activePromotions = promotions.filter(p => isPromotionTrulyActive(p));
-        console.log('Active promotions:', activePromotions.map(p => ({ id: p.id, name: p.name, active: p.active })));
         return (
           <ActivePromotionsPage
             promotions={activePromotions}
@@ -104,7 +89,6 @@ const PromotionsPage: React.FC<PromotionsPageProps> = ({ view }) => {
         );
       case 'history':
         const historyPromotions = promotions.filter(p => !isPromotionTrulyActive(p));
-        console.log('History promotions:', historyPromotions.map(p => ({ id: p.id, name: p.name, active: p.active })));
         return (
           <PromotionHistoryPage
             promotions={historyPromotions}

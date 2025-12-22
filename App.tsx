@@ -36,7 +36,7 @@ import {
 import {
   listUsers,
   listCustomers,
-  listOrders,
+  // listOrders removed - now fetched only in TelesaleOrdersPage
   listProducts,
   listPromotions,
   listPages,
@@ -758,7 +758,8 @@ const App: React.FC = () => {
         ] = await Promise.all([
           listUsers(sessionUser?.company_id),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomers({ companyId: sessionUser?.company_id }),
-          listOrders(sessionUser?.company_id),
+          // Orders are now fetched only in TelesaleOrdersPage
+          Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           listProducts(sessionUser?.company_id),
           listPromotions(sessionUser?.company_id),
           listPages(sessionUser?.company_id, undefined, undefined, true),
@@ -1425,13 +1426,13 @@ const App: React.FC = () => {
 
     if (!needsRefresh) return;
 
-    // Refresh orders data
-    listOrders(sessionUser.company_id)
+    // Orders are now fetched only in TelesaleOrdersPage - skip refresh
+    Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } })
       .then((o) => {
-        if (!Array.isArray(o)) return;
+        if (!o || !Array.isArray(o.orders)) return;
 
         // Filter out sub orders (orders with -1, -2, -3, etc. suffix) before mapping
-        const mainOrders = o.filter((order: any) => {
+        const mainOrders = o.orders.filter((order: any) => {
           const orderId = String(order.id || "");
           return !/-\d+$/.test(orderId);
         });
@@ -3051,7 +3052,8 @@ const App: React.FC = () => {
 
         // Refresh orders, customers, and activities with proper mapping
         const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
-          listOrders(currentUser.companyId),
+          // Orders are now fetched only in TelesaleOrdersPage
+          Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           activePage === 'Customers' ? listCustomers({
             companyId: currentUser.companyId,
           }) : Promise.resolve({ total: 0, data: [] }),
@@ -3337,7 +3339,8 @@ const App: React.FC = () => {
     try {
       // Refresh orders, customers, and activities with proper mapping
       const [refreshedOrdersRaw, refreshedCustomersRaw, refreshedActivitiesRaw, refreshedCustomerTagsRaw] = await Promise.all([
-        listOrders(currentUser.companyId),
+        // Orders are now fetched only in TelesaleOrdersPage
+        Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
         activePage === 'Customers' ? listCustomers({
           companyId: currentUser.companyId,
         }) : Promise.resolve({ total: 0, data: [] }),
@@ -6430,7 +6433,6 @@ const App: React.FC = () => {
       case "CreateOrder":
         return (
           <CreateOrderPage
-            customers={companyCustomers}
             products={companyProducts}
             promotions={promotions}
             pages={pages}
