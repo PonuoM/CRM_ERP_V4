@@ -2252,12 +2252,11 @@ const App: React.FC = () => {
   };
 
   const handleUpdateOrder = async (updatedOrder: Order) => {
-    console.log("DEBUG: handleUpdateOrder triggered in App.tsx", updatedOrder);
     // Relaxed check: String comparison
     let originalOrder = orders.find((o) => String(o.id) === String(updatedOrder.id));
 
     if (!originalOrder) {
-      console.warn("DEBUG: originalOrder not found in local state for id", updatedOrder.id, "Available IDs:", orders.map(o => o.id));
+      // originalOrder not found in local state - proceed without diffing logic
       // Fallback: Proceed without originalOrder diffing logic
       // We can't do detailed activity logs or auto-status updates based on diff, but we can still save the order.
       // Create a dummy originalOrder to prevent crashes, or restructure the code to skip diff blocks.

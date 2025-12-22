@@ -307,7 +307,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Listen for modal close event to refresh data
   useEffect(() => {
     const handleModalClose = () => {
-      console.log('DEBUG: Modal closed, triggering refresh for tab:', activeTab);
       setRefreshCounter(prev => prev + 1);
     };
 
@@ -1474,6 +1473,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               onShippingChange={handleShippingProviderChange}
               highlightedOrderId={highlightedOrderId}
               allOrders={orders}
+              isWaitingVerifySlipTab={activeTab === 'waitingVerifySlip'}
             />
 
             {/* Pagination Controls */}
