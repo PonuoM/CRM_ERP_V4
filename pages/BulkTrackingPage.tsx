@@ -43,22 +43,28 @@ const parseOrderIdInput = (input: string) => {
 };
 
 const detectShippingProvider = (trackingNumber: string): string => {
-  const trimmed = trackingNumber.trim();
+  const trimmed = trackingNumber.trim().toUpperCase();
   if (!trimmed) return '-';
 
-  // Flash Express: starts with TH, ends with A or P
-  if (/^TH.*[AP]$/i.test(trimmed)) {
+  // Flash Express: Starts with TH, followed by at least 10 alphanumerics (Usually 13-16 chars)
+  if (/^TH[0-9A-Z]{10,}$/.test(trimmed)) {
     return 'Flash Express';
   }
 
-  // J&T: 12 digits
+  // J&T Express: Exactly 12 digits (Common starts: 8, 6, 5)
   if (/^\d{12}$/.test(trimmed)) {
     return 'J&T Express';
   }
 
-  // Kerry Express: starts with JST, ends with A followed by digit
-  if (/^JST.*A\d$/i.test(trimmed)) {
+  // Kerry Express: Starts with prefix, followed by numbers/alphanumerics
+  // Common prefixes: KER, KEA, KEX, JST (from original code), KBK
+  if (/^(KER|KEA|KEX|KBK|JST)[0-9A-Z]+$/.test(trimmed)) {
     return 'Kerry Express';
+  }
+
+  // Thailand Post: Standard format XX123456789TH
+  if (/^[A-Z]{2}\d{9}TH$/.test(trimmed)) {
+    return 'Thailand Post';
   }
 
   return 'Aiport';

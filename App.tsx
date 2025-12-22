@@ -738,7 +738,7 @@ const App: React.FC = () => {
         const isDashboard = activePage === 'Dashboard';
         const isAdmin = sessionUser?.role === UserRole.Admin;
         // Optimized: Skip loading customers unless we are on the Customers page
-        const shouldSkipCustomers = activePage !== 'Customers';
+        const shouldSkipCustomers = activePage !== 'Customers' && activePage !== 'Search';
 
         const [
           u,
@@ -1312,7 +1312,7 @@ const App: React.FC = () => {
 
     // Optimized: Only lazy load customers when on the Customers page (ManageCustomersPage)
     // and if we haven't loaded them yet.
-    if (activePage === 'Customers' && !hasCustomers) {
+    if ((activePage === 'Customers' || activePage === 'Search') && !hasCustomers) {
       console.log("Lazy loading customers for ManageCustomersPage...");
       let cancelled = false;
 
