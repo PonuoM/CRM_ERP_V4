@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Warehouse, Product } from '../types';
-import { X, Plus, Trash2, Package, Calendar, DollarSign, FileText } from 'lucide-react';
+import { X, Plus, Trash2, Package, Calendar, DollarSign, FileText, Search, Filter } from 'lucide-react';
 import { listProductLots, createProductLot, updateProductLot, deleteProductLot } from '@/services/api';
 
 interface Lot {
@@ -24,15 +24,20 @@ interface LotManagementModalProps {
   onSave: () => void;
 }
 
-const LotManagementModal: React.FC<LotManagementModalProps> = ({ 
-  product, 
-  warehouses, 
-  onClose, 
-  onSave 
+const LotManagementModal: React.FC<LotManagementModalProps> = ({
+  product,
+  warehouses,
+  onClose,
+  onSave
 }) => {
   const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter State
+  const [filterWarehouseId, setFilterWarehouseId] = useState<number | ''>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // โหลดข้อมูล Lot ของสินค้า
   useEffect(() => {
@@ -55,6 +60,25 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
     }
   }, [product.id]);
 
+  // Apply Filters
+  const filteredLots = useMemo(() => {
+    return lots.filter(lot => {
+      // 1. Filter by Warehouse
+      if (filterWarehouseId !== '' && lot.warehouse_id !== filterWarehouseId) {
+        return false;
+      }
+      // 2. Filter by Status
+      if (filterStatus !== '' && lot.status !== filterStatus) {
+        return false;
+      }
+      // 3. Filter by Search Term (Lot Number)
+      if (searchTerm && !lot.lot_number.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
+  }, [lots, filterWarehouseId, filterStatus, searchTerm]);
+
   // เพิ่ม Lot ใหม่
   const addNewLot = () => {
     const newLot: Lot = {
@@ -70,18 +94,29 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
       notes: ''
     };
     setLots([...lots, newLot]);
+
+    // Reset filters to show the new lot if hidden?
+    // Or just let it be added to the list. If it doesn't match filter, it might disappear from view (which can be confusing).
+    // Let's clear filters when adding new lot to ensure it's seen.
+    if (filterWarehouseId !== '' || filterStatus !== '' || searchTerm !== '') {
+      // Optional: decide if we want to clear filters or pre-fill the new lot with filter values.
+      // Pre-fill might be better UX.
+      if (typeof filterWarehouseId === 'number') {
+        newLot.warehouse_id = filterWarehouseId;
+      }
+    }
   };
 
   // อัปเดตข้อมูล Lot
   const updateLot = (index: number, field: keyof Lot, value: any) => {
     const updatedLots = [...lots];
     updatedLots[index] = { ...updatedLots[index], [field]: value };
-    
+
     // ถ้าเปลี่ยนจำนวนรับเข้า ให้อัปเดตจำนวนคงเหลือด้วย (ถ้ายังไม่เคยมีการใช้)
     if (field === 'quantity_received' && !updatedLots[index].id) {
       updatedLots[index].quantity_remaining = value;
     }
-    
+
     setLots(updatedLots);
   };
 
@@ -94,7 +129,7 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
   const handleSave = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // ตรวจสอบข้อมูลก่อนบันทึก
       for (const lot of lots) {
@@ -105,7 +140,9 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
         }
       }
 
-      // บันทึก Lot ทั้งหมด
+      // บันทึก Lot ทั้งหมด (เฉพาะที่ถูกแก้ไขหรือสร้างใหม่ จริงๆควรเช็ค diff แต่ API น่าจะรับได้)
+      // Note: listProductLots return all lots. Re-saving all might be inefficient if list is huge, 
+      // but for now it ensures consistency.
       for (const lot of lots) {
         if (lot.id) {
           // อัปเดต Lot ที่มีอยู่แล้ว
@@ -150,18 +187,21 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
-        <header className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-            <Package className="mr-3 text-gray-600"/>
-            จัดการ Lot สินค้า: {product.sku} - {product.name}
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+        <header className="flex justify-between items-center p-4 border-b bg-gray-50">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center">
+              <Package className="mr-3 text-blue-600" />
+              จัดการ Lot สินค้า: {product.sku}
+            </h2>
+            <p className="text-sm text-gray-500 ml-9">{product.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 bg-white rounded-full p-1 hover:bg-gray-200 transition-colors">
             <X size={24} />
           </button>
         </header>
 
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 m-4">
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 m-4 mb-0">
             <div className="flex">
               <div className="ml-3">
                 <p className="text-sm text-red-700">{error}</p>
@@ -170,199 +210,257 @@ const LotManagementModal: React.FC<LotManagementModalProps> = ({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-900">รายการ Lot</h3>
+        <div className="p-4 bg-white border-b space-y-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">ค้นหา Lot Number</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลข Lot..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="w-[200px]">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">คลังสินค้า</label>
+              <select
+                value={filterWarehouseId}
+                onChange={(e) => setFilterWarehouseId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">ทั้งหมด</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-[150px]">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">สถานะ</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">ทั้งหมด</option>
+                <option value="Active">ใช้งาน (Active)</option>
+                <option value="Depleted">หมด (Depleted)</option>
+                <option value="Expired">หมดอายุ (Expired)</option>
+              </select>
+            </div>
             <button
               onClick={addNewLot}
-              className="bg-green-600 text-white px-4 py-2 rounded-md flex items-center hover:bg-green-700"
+              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-green-700 font-medium shadow-sm h-[38px]"
             >
-              <Plus size={16} className="mr-2"/>
+              <Plus size={18} className="mr-1.5" />
               เพิ่ม Lot ใหม่
             </button>
           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-sm font-semibold text-gray-700">รายการ Lot ({filteredLots.length})</h3>
+          </div>
 
           {loading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              <p className="mt-2 text-gray-600">กำลังโหลดข้อมูล...</p>
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="mt-3 text-gray-500 text-sm">กำลังโหลดข้อมูล...</p>
             </div>
-          ) : lots.length === 0 ? (
-            <div className="text-center py-10 text-gray-500 border-2 border-dashed rounded-lg">
-              <Package size={48} className="mx-auto mb-4 text-gray-300"/>
-              <p>ยังไม่มีข้อมูล Lot</p>
-              <p className="text-sm mt-2">คลิก "เพิ่ม Lot ใหม่" เพื่อเพิ่มข้อมูล Lot ของสินค้า</p>
+          ) : filteredLots.length === 0 ? (
+            <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-300 rounded-xl bg-white">
+              <Package size={48} className="mx-auto mb-3 text-gray-300" />
+              <p className="font-medium">ไม่พบข้อมูล Lot ตามเงื่อนไข</p>
+              <p className="text-sm mt-1 text-gray-400">ลองปรับตัวกรอง หรือคลิก "เพิ่ม Lot ใหม่"</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {lots.map((lot, index) => (
-                <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between items-start mb-4">
-                    <h4 className="font-medium text-gray-800">
-                      {lot.id ? `Lot: ${lot.lot_number}` : `Lot ใหม่ #${index + 1}`}
-                    </h4>
-                    <div className="flex space-x-2">
-                      {lot.id && (
+              {filteredLots.map((lot, index) => {
+                // Find functionality index in original array if needed, but managing state locally via ID or mapped index
+                // Here we map over filteredLots. Updating filtered items needs to update original 'lots'.
+                // We need to know the index in the original 'lots' array to update correctly.
+                const originalIndex = lots.findIndex(l => l === lot); // Simple object reference check works if not mutated deeply elsewhere
+
+                return (
+                  <div key={index} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                      <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                        <span className="bg-gray-100 px-2 py-0.5 rounded text-sm border font-mono">
+                          {lot.id ? lot.lot_number : `New Draft`}
+                        </span>
+                        {lot.status === 'Active' && <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full border border-green-200">ใช้งาน</span>}
+                        {lot.status === 'Depleted' && <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full border border-gray-200">หมด</span>}
+                        {lot.status === 'Expired' && <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full border border-red-200">หมดอายุ</span>}
+                      </h4>
+                      <div className="flex space-x-2">
+                        {lot.id && (
+                          <button
+                            onClick={() => handleDeleteLot(lot.id!)}
+                            className="text-gray-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors"
+                            title="ลบ Lot"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleDeleteLot(lot.id!)}
-                          className="text-red-600 hover:text-red-800"
-                          title="ลบ Lot"
+                          onClick={() => removeLot(originalIndex)}
+                          className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                          title="ปิด/ยกเลิกการแก้ไข"
                         >
-                          <Trash2 size={16} />
+                          <X size={18} />
                         </button>
-                      )}
-                      <button
-                        onClick={() => removeLot(index)}
-                        className="text-gray-600 hover:text-gray-800"
-                        title="ลบจากฟอร์ม"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                        <Package size={16} className="mr-1 text-gray-400"/>
-                        Lot Number
-                      </label>
-                      <input
-                        type="text"
-                        value={lot.lot_number}
-                        onChange={(e) => updateLot(index, 'lot_number', e.target.value)}
-                        className="w-full p-2 border rounded-md"
-                        placeholder="เช่น LOT-2024-001"
-                        disabled={!!lot.id}
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">คลังสินค้า</label>
-                      <select
-                        value={lot.warehouse_id}
-                        onChange={(e) => updateLot(index, 'warehouse_id', parseInt(e.target.value))}
-                        className="w-full p-2 border rounded-md"
-                        disabled={!!lot.id}
-                      >
-                        {warehouses.map(warehouse => (
-                          <option key={warehouse.id} value={warehouse.id}>
-                            {warehouse.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนรับเข้า</label>
-                      <input
-                        type="number"
-                        value={lot.quantity_received}
-                        onChange={(e) => updateLot(index, 'quantity_received', parseFloat(e.target.value) || 0)}
-                        className="w-full p-2 border rounded-md"
-                        min="0"
-                        disabled={!!lot.id}
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                        <Calendar size={16} className="mr-1 text-gray-400"/>
-                        วันที่รับเข้า
-                      </label>
-                      <input
-                        type="date"
-                        value={lot.purchase_date}
-                        onChange={(e) => updateLot(index, 'purchase_date', e.target.value)}
-                        className="w-full p-2 border rounded-md"
-                        disabled={!!lot.id}
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">วันหมดอายุ</label>
-                      <input
-                        type="date"
-                        value={lot.expiry_date || ''}
-                        onChange={(e) => updateLot(index, 'expiry_date', e.target.value)}
-                        className="w-full p-2 border rounded-md"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                        <DollarSign size={16} className="mr-1 text-gray-400"/>
-                        ต้นทุนต่อหน่วย
-                      </label>
-                      <input
-                        type="number"
-                        value={lot.unit_cost}
-                        onChange={(e) => updateLot(index, 'unit_cost', parseFloat(e.target.value) || 0)}
-                        className="w-full p-2 border rounded-md"
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ</label>
-                      <select
-                        value={lot.status}
-                        onChange={(e) => updateLot(index, 'status', e.target.value as 'Active' | 'Depleted' | 'Expired')}
-                        className="w-full p-2 border rounded-md"
-                      >
-                        <option value="Active">ใช้งาน</option>
-                        <option value="Depleted">หมด</option>
-                        <option value="Expired">หมดอายุ</option>
-                      </select>
-                    </div>
-                    
-                    <div className="md:col-span-2 lg:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                        <FileText size={16} className="mr-1 text-gray-400"/>
-                        หมายเหตุ
-                      </label>
-                      <textarea
-                        value={lot.notes || ''}
-                        onChange={(e) => updateLot(index, 'notes', e.target.value)}
-                        className="w-full p-2 border rounded-md"
-                        rows={2}
-                        placeholder="หมายเหตุเพิ่มเติม..."
-                      />
-                    </div>
-                  </div>
-                  
-                  {lot.id && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">จำนวนคงเหลือ:</span>
-                        <span className="font-medium">{lot.quantity_remaining}</span>
-                      </div>
-                      <div className="flex justify-between text-sm mt-1">
-                        <span className="text-gray-500">คลังสินค้า:</span>
-                        <span className="font-medium">{getWarehouseName(lot.warehouse_id)}</span>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center">
+                          <Package size={14} className="mr-1" />
+                          Lot Number
+                        </label>
+                        <input
+                          type="text"
+                          value={lot.lot_number}
+                          onChange={(e) => updateLot(originalIndex, 'lot_number', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          placeholder="เช่น LOT-2024-001"
+                          disabled={!!lot.id}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">คลังสินค้า</label>
+                        <select
+                          value={lot.warehouse_id}
+                          onChange={(e) => updateLot(originalIndex, 'warehouse_id', parseInt(e.target.value))}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          disabled={!!lot.id}
+                        >
+                          {warehouses.map(warehouse => (
+                            <option key={warehouse.id} value={warehouse.id}>
+                              {warehouse.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">จำนวนรับเข้า</label>
+                        <input
+                          type="number"
+                          value={lot.quantity_received}
+                          onChange={(e) => updateLot(originalIndex, 'quantity_received', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          min="0"
+                          disabled={!!lot.id}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center">
+                          <Calendar size={14} className="mr-1" />
+                          วันที่รับเข้า
+                        </label>
+                        <input
+                          type="date"
+                          value={lot.purchase_date}
+                          onChange={(e) => updateLot(originalIndex, 'purchase_date', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          disabled={!!lot.id}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">วันหมดอายุ</label>
+                        <input
+                          type="date"
+                          value={lot.expiry_date || ''}
+                          onChange={(e) => updateLot(originalIndex, 'expiry_date', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center">
+                          <DollarSign size={14} className="mr-1" />
+                          ต้นทุนต่อหน่วย
+                        </label>
+                        <input
+                          type="number"
+                          value={lot.unit_cost}
+                          onChange={(e) => updateLot(originalIndex, 'unit_cost', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">สถานะ</label>
+                        <select
+                          value={lot.status}
+                          onChange={(e) => updateLot(originalIndex, 'status', e.target.value as 'Active' | 'Depleted' | 'Expired')}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                        >
+                          <option value="Active">ใช้งาน</option>
+                          <option value="Depleted">หมด</option>
+                          <option value="Expired">หมดอายุ</option>
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-2 lg:col-span-3">
+                        <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center">
+                          <FileText size={14} className="mr-1" />
+                          หมายเหตุ
+                        </label>
+                        <textarea
+                          value={lot.notes || ''}
+                          onChange={(e) => updateLot(originalIndex, 'notes', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors"
+                          rows={2}
+                          placeholder="หมายเหตุเพิ่มเติม..."
+                        />
+                      </div>
+                    </div>
+
+                    {lot.id && (
+                      <div className="mt-4 pt-3 border-t border-gray-100 bg-blue-50/50 -mx-5 -mb-5 p-3 rounded-b-xl flex items-center justify-between">
+                        <div className="flex gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500 text-xs">คงเหลือ:</span>
+                            <span className="font-bold ml-2 text-blue-700 text-lg">{lot.quantity_remaining}</span>
+                          </div>
+                          <div className="border-l border-gray-300 pl-4">
+                            <span className="text-gray-500 text-xs">คลัง:</span>
+                            <span className="font-medium ml-2 text-gray-700">{getWarehouseName(lot.warehouse_id)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        <footer className="p-4 border-t flex justify-end space-x-3">
+        <footer className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
           <button
             onClick={onClose}
-            className="bg-gray-200 text-gray-700 font-semibold text-sm rounded-md py-2 px-4 hover:bg-gray-300"
+            className="bg-white border border-gray-300 text-gray-700 font-medium text-sm rounded-lg py-2.5 px-5 hover:bg-gray-50 shadow-sm transition-colors"
           >
             ยกเลิก
           </button>
           <button
             onClick={handleSave}
             disabled={loading}
-            className="bg-green-600 text-white font-semibold text-sm rounded-md py-2 px-4 hover:bg-green-700 disabled:opacity-50"
+            className="bg-blue-600 text-white font-medium text-sm rounded-lg py-2.5 px-6 hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-colors"
           >
-            {loading ? 'กำลังบันทึก...' : 'บันทึก'}
+            {loading ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
           </button>
         </footer>
       </div>
