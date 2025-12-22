@@ -2199,6 +2199,184 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 json_response($responsePayload);
             }
             break;
+
+        case 'PUT':
+            if (!$id) {
+                json_response(['error' => 'MISSING_ID'], 400);
+            }
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data) {
+                json_response(['error' => 'INVALID_JSON'], 400);
+            }
+
+            try {
+                $pdo->beginTransaction();
+                
+                // 1. Update main order fields
+                $updateFields = [];
+                $params = [];
+                
+                $allowedFields = [
+                    'order_status' => 'orderStatus',
+                    'payment_status' => 'paymentStatus', 
+                    'payment_method' => 'paymentMethod',
+                    'sales_channel' => 'salesChannel',
+                    'sales_channel_page_id' => 'salesChannelPageId', 
+                    'delivery_date' => 'deliveryDate',
+                    'transfer_date' => 'transferDate',
+                    'shipping_cost' => 'shippingCost',
+                    'bill_discount' => 'billDiscount',
+                    'total_amount' => 'totalAmount',
+                    'amount_paid' => 'amountPaid',
+                    'cod_amount' => 'codAmount',
+                    // Shipping Address
+                    'recipient_first_name' => ['shippingAddress', 'recipientFirstName'],
+                    'recipient_last_name' => ['shippingAddress', 'recipientLastName'],
+                    'street' => ['shippingAddress', 'street'],
+                    'subdistrict' => ['shippingAddress', 'subdistrict'],
+                    'district' => ['shippingAddress', 'district'],
+                    'province' => ['shippingAddress', 'province'],
+                    'postal_code' => ['shippingAddress', 'postalCode'],
+                    'shipping_provider' => 'shippingProvider',
+                    'tracking_numbers' => 'trackingNumbers', // Special handling maybe?
+                    'notes' => 'notes',
+                ];
+
+                foreach ($allowedFields as $dbCol => $jsonKey) {
+                    $val = null;
+                    if (is_array($jsonKey)) {
+                        // Nested key e.g. shippingAddress.street
+                        $parent = $data[$jsonKey[0]] ?? [];
+                        if (isset($parent[$jsonKey[1]])) {
+                            $val = $parent[$jsonKey[1]];
+                        }
+                    } else {
+                        if (array_key_exists($jsonKey, $data)) {
+                            $val = $data[$jsonKey];
+                        }
+                    }
+                    
+                    if ($val !== null) {
+                        if ($dbCol === 'tracking_numbers' && is_array($val)) {
+                            // Skip tracking_numbers column update if it's an array, 
+                            // we might need to update the tracking table separately or comma join
+                            // For now let's just not update the deprecated column if it exists
+                            // Or comma join if the table uses it
+                            continue; 
+                        }
+                        if ($dbCol === 'sales_channel_page_id' && $val === '') $val = null;
+                        
+                        $updateFields[] = "$dbCol = ?";
+                        $params[] = $val;
+                    }
+                }
+                
+                if (!empty($data['updatedBy'])) {
+                     $updateFields[] = "updated_by = ?";
+                     $params[] = $data['updatedBy'];
+                }
+                
+                if (!empty($updateFields)) {
+                    $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
+                    $params[] = $id;
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                }
+                
+                // 2. Insert/Update Tracking Numbers
+                // For simplicity, we can wipe and recreate tracking numbers for this order
+                if (isset($data['trackingNumbers']) && is_array($data['trackingNumbers'])) {
+                    // Delete existing
+                    $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$id]);
+                    
+                    // Insert new
+                    $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number) VALUES (?, ?, ?)");
+                    foreach ($data['trackingNumbers'] as $trackNum) {
+                        if (trim($trackNum)) {
+                            $trackStmt->execute([$id, $id, trim($trackNum)]);
+                        }
+                    }
+                }
+
+                // 3. Handle Items (Optional: If provided)
+                // 3. Handle Items
+                if (isset($data['items']) && is_array($data['items'])) {
+                    // Fetch existing item IDs (check both order_id and parent_order_id to catch legacy items)
+                    $stmt = $pdo->prepare("SELECT id FROM order_items WHERE order_id = ? OR parent_order_id = ?");
+                    $stmt->execute([$id, $id]);
+                    $existingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                    $incomingIds = [];
+
+                    foreach ($data['items'] as $item) {
+                         $netTotal = calculate_order_item_net_total($item);
+                         
+                         // Determine if item is new or existing
+                         if (isset($item['id']) && in_array($item['id'], $existingIds)) {
+                             // UPDATE existing
+                             $incomingIds[] = $item['id'];
+                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=? WHERE id=? AND order_id=?";
+                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
+                             $pdo->prepare($updateSql)->execute([
+                                 $item['quantity'] ?? 0,
+                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                 $item['discount'] ?? 0,
+                                 $netTotal,
+                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                 $isFreebie ? 1 : 0,
+                                 $item['id'],
+                                 $id
+                             ]);
+                         } else {
+                             // INSERT new item (if id is missing or not in existingIds)
+                             // Note: Front-end might send a temp ID for new items, so we ignore it if it's not in DB
+                             $insertSql = "INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                             
+                             $parentId = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
+                             $isPromo = $item['isPromotionParent'] ?? $item['is_promotion_parent'] ?? 0;
+                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
+                             
+                             $pdo->prepare($insertSql)->execute([
+                                 $id,
+                                 $id, // parent_order_id maps to order_id here
+                                 $item['productId'] ?? $item['product_id'] ?? null,
+                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
+                                 $item['quantity'] ?? 0,
+                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                 $item['discount'] ?? 0,
+                                 $netTotal,
+                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                 $parentId,
+                                 $isPromo,
+                                 $isFreebie ? 1 : 0
+                             ]);
+                         }
+                    }
+
+                    // DELETE removed items
+                    // Any existing ID that is NOT in incomingIds should be deleted
+                    $itemsToDelete = array_diff($existingIds, $incomingIds);
+                    if (!empty($itemsToDelete)) {
+                        $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
+                        $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND order_id = ?";
+                        $deleteParams = array_merge($itemsToDelete, [$id]);
+                        $pdo->prepare($deleteSql)->execute($deleteParams);
+                    }
+                }
+
+                $pdo->commit();
+                
+                // Return updated order
+                $o = get_order($pdo, $id);
+                json_response($o);
+
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                error_log("Update order failed: " . $e->getMessage());
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
+            }
+            break;
         case 'POST':
             $in = json_input();
             error_log('Order creation request: ' . json_encode($in));

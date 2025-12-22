@@ -660,6 +660,13 @@ export async function createCustomer(payload: any) {
   });
 }
 
+export async function updateOrder(id: string | number, data: any) {
+  return apiFetch(`orders/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function createOrder(payload: any) {
   return apiFetch("orders", { method: "POST", body: JSON.stringify(payload) });
 }

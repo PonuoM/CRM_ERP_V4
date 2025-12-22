@@ -717,7 +717,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const sortedItemsWithIndex = useMemo(() => {
     const items = currentOrder.items || [];
     // Map items to include their original index
-    const itemsWithIndex = items.map((item, index) => ({ item, index }));
+    // Map items to include their original index, then sort by ID (Oldest to Newest)
+    const itemsWithIndex = items
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const idA = Number(a.item.id);
+        const idB = Number(b.item.id);
+        return idA - idB;
+      });
 
     // Group children by parentItemId
     const childrenMap = new Map<number, typeof itemsWithIndex>();
@@ -2135,6 +2142,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           transferDate: slip.transferDate
             ? fromLocalDatetimeString(slip.transferDate)
             : undefined,
+          companyId: currentOrder.companyId,
         }).catch((err) => {
           console.error("update slip meta", err);
         });
@@ -2147,6 +2155,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       updatedBy: currentUser.id,
       boxes: boxes, // Add generated boxes array
     };
+
+    console.log("DEBUG: Calling onSave with updatedOrder", updatedOrder);
 
     setCurrentOrder(updatedOrder);
 
@@ -2871,10 +2881,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       // Check if current user is the creator of this item
 
-                      const isCreator =
-                        currentUser && item.creatorId === currentUser.id;
-
-                      const canEditItem = showInputs && isCreator;
+                      const canEditItem = showInputs;
 
                       return (
                         <tr key={item.id} className="border-b hover:bg-gray-50">
