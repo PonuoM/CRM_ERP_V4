@@ -4503,22 +4503,42 @@ function get_order(PDO $pdo, string $id): ?array {
     $o = $stmt->fetch();
     if (!$o) return null;
     
-    // Fetch customer phone if available
+    // Fetch full customer details
     if (!empty($o['customer_id'])) {
         try {
-            $custStmt = $pdo->prepare('SELECT phone, backup_phone FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
+            $custStmt = $pdo->prepare('SELECT * FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
             $custStmt->execute([$o['customer_id'], $o['customer_id']]);
             $cust = $custStmt->fetch();
             if ($cust) {
+                $o['customer'] = $cust;
+                // Keep for backward compatibility
                 $o['customer_phone'] = $cust['phone'];
                 $o['customer_backup_phone'] = $cust['backup_phone'];
+            }
+        } catch (Throwable $e) { /* ignore */ }
+    }
+
+    // Fetch order creator name
+    if (!empty($o['creator_id'])) {
+        try {
+            $userStmt = $pdo->prepare('SELECT first_name, last_name FROM users WHERE id = ?');
+            $userStmt->execute([$o['creator_id']]);
+            $userData = $userStmt->fetch();
+            if ($userData) {
+                $o['creator_name'] = trim(($userData['first_name'] ?? '') . ' ' . ($userData['last_name'] ?? ''));
             }
         } catch (Throwable $e) { /* ignore */ }
     }
     
     // Fetch items from main order and all sub orders
     // Use parent_order_id to find all items for this order group
-    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.parent_order_id = ? OR oi.order_id = ? ORDER BY oi.order_id, oi.id");
+    $items = $pdo->prepare("
+        SELECT oi.*, u.first_name as creator_first_name, u.last_name as creator_last_name 
+        FROM order_items oi 
+        LEFT JOIN users u ON u.id = oi.creator_id
+        WHERE oi.parent_order_id = ? OR oi.order_id = ? 
+        ORDER BY oi.order_id, oi.id
+    ");
     $items->execute([$mainOrderId, $mainOrderId]);
     $allItems = $items->fetchAll();
     foreach ($allItems as &$itemRow) {
@@ -4575,6 +4595,19 @@ function get_order(PDO $pdo, string $id): ?array {
         $sl->execute($allOrderIds);
         $o['slips'] = $sl->fetchAll();
     } catch (Throwable $e) { /* ignore if table not present */ }
+
+    // Fetch activities related to this order
+    try {
+        $actStmt = $pdo->prepare("
+            SELECT id, customer_id, timestamp, type, description, actor_name 
+            FROM activities 
+            WHERE description LIKE ? 
+            ORDER BY timestamp DESC
+        ");
+        $actStmt->execute(['%' . $mainOrderId . '%']);
+        $o['activities'] = $actStmt->fetchAll();
+    } catch (Throwable $e) { /* ignore */ }
+
     return $o;
 }
 

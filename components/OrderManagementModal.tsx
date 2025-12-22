@@ -64,6 +64,7 @@ import {
   fromLocalDatetimeString,
 } from "../utils/datetime";
 import resolveApiBasePath from "../utils/apiBasePath";
+import APP_BASE_PATH from "../appBasePath";
 
 interface OrderManagementModalProps {
   order: Order;
@@ -167,11 +168,13 @@ const computeOrderTotal = (order: Order) => {
   });
 
   const itemsTotal = nonFreebieItems.reduce((sum, item) => {
-    const net =
-      (item as any).netTotal ??
-      item.pricePerUnit * item.quantity - (item.discount || 0);
+    const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
+    const qty = Number(item.quantity || (item as any).quantity || 0);
+    const disc = Number(item.discount || (item as any).discount || 0);
 
-    return sum + (Number.isFinite(net) ? net : 0);
+    const net = (item as any).netTotal ?? (item as any).net_total ?? (price * qty - disc);
+
+    return sum + (Number.isFinite(Number(net)) ? Number(net) : 0);
   }, 0);
 
   const shipping = Number(order.shippingCost || 0);
@@ -228,8 +231,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   backdropClassName,
 }) => {
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
-
   const [isEditing, setIsEditing] = useState(false);
+  const [fetchedCustomer, setFetchedCustomer] = useState<Customer | null>(null);
+  const [fetchedActivities, setFetchedActivities] = useState<Activity[]>([]);
 
   const [provinces, setProvinces] = useState<any[]>([]);
 
@@ -594,6 +598,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     };
   }, []);
 
+  const resolveSlipUrl = (url: string | undefined | null) => {
+    if (!url) return "";
+    if (url.startsWith("http") || url.startsWith("data:")) return url;
+
+    // Check if running in dev mode (local)
+    // We use a type assertion for import.meta.env to avoid TS errors if types aren't fully set up
+    const isDev = (import.meta as any).env?.DEV;
+
+    if (isDev) {
+      // On local, do NOT prepend APP_BASE_PATH
+      return url.startsWith("/") ? url : `/${url}`;
+    }
+
+    // On server, prepend APP_BASE_PATH
+    // Ensure APP_BASE_PATH has trailing slash and url doesn't have leading slash to avoid double slash
+    const basePath = APP_BASE_PATH.endsWith("/") ? APP_BASE_PATH : `${APP_BASE_PATH}/`;
+    const cleanUrl = url.startsWith("/") ? url.slice(1) : url;
+
+    return `${basePath}${cleanUrl}`;
+  };
+
   const deliveryDateInputValue = useMemo(
     () =>
       normalizeDateInputValue(currentOrder.deliveryDate || order.deliveryDate),
@@ -638,8 +663,32 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const hydrated = {
       ...order,
-
-      deliveryDate: normalizedDelivery || order.deliveryDate,
+      items: Array.isArray(order.items)
+        ? order.items.map((it: any, i: number) => ({
+          id: Number(it.id ?? i + 1),
+          productId: Number(it.product_id ?? it.productId),
+          productName: String(it.product_name ?? it.productName ?? ""),
+          quantity: Number(it.quantity ?? 0),
+          pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
+          discount: Number(it.discount ?? 0),
+          isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
+          boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
+          creatorId: Number(it.creator_id ?? it.creatorId),
+          sku: it.sku,
+          parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
+          isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+          creatorName: it.creatorName ?? (it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined),
+        }))
+        : [],
+      customerId: (order as any).customer_id ?? order.customerId,
+      orderDate: (order as any).order_date ?? order.orderDate,
+      shippingCost: Number((order as any).shipping_cost ?? order.shippingCost ?? 0),
+      billDiscount: Number((order as any).bill_discount ?? order.billDiscount ?? 0),
+      totalAmount: Number((order as any).total_amount ?? order.totalAmount ?? 0),
+      paymentMethod: (order as any).payment_method ?? order.paymentMethod,
+      paymentStatus: (order as any).payment_status ?? order.paymentStatus,
+      orderStatus: (order as any).order_status ?? order.orderStatus,
+      deliveryDate: normalizedDelivery || ((order as any).delivery_date ?? order.deliveryDate),
     };
 
     const computedTotal = computeOrderTotal(hydrated as Order);
@@ -999,30 +1048,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   useEffect(() => {
     let cancelled = false;
 
-    const needsItems = !order.items || order.items.length === 0;
-
-    const needsBoxes =
-      !Array.isArray((order as any).boxes) ||
-      (order as any).boxes.length === 0 ||
-      (Array.isArray((order as any).boxes) &&
-        (order as any).boxes.every(
-          (b: any) =>
-            Number(
-              b.collectionAmount ??
-              b.codAmount ??
-              b.cod_amount ??
-              b.collection_amount ??
-              0,
-            ) === 0,
-        ));
-
-    const needsSlip = typeof order.slipUrl === "undefined";
-
-    // Guard against duplicate requests for the same order ID
-    if (!needsItems && !needsBoxes && !needsSlip) return;
-    if (lastFetchedOrderId.current === order.id) return;
-
-    lastFetchedOrderId.current = order.id;
+    // Always fetch full details when opening the modal for a new order ID
+    // to ensure we have enriched data (customer details, items, boxes, activities)
 
     (async () => {
       try {
@@ -1036,134 +1063,123 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
             ? r.tracking_details
             : [];
 
+        if (r.customer) {
+          setFetchedCustomer({
+            id: String(r.customer.customer_id),
+            pk: r.customer.customer_id,
+            firstName: r.customer.first_name || "",
+            lastName: r.customer.last_name || "",
+            phone: r.customer.phone || "",
+            backupPhone: r.customer.backup_phone,
+            address: {
+              street: r.customer.street || "",
+              subdistrict: r.customer.subdistrict || "",
+              district: r.customer.district || "",
+              province: r.customer.province || "",
+              postalCode: r.customer.postal_code || "",
+            },
+          } as Customer);
+        } else if (r.customer_id) {
+          // Fallback: fetch customer if not returned in order call
+          try {
+            const cRes = await apiFetch(`customers/${encodeURIComponent(r.customer_id)}`);
+            if (cRes) {
+              setFetchedCustomer({
+                id: String(cRes.customer_id || cRes.pk || r.customer_id),
+                pk: Number(cRes.customer_id || cRes.pk || r.customer_id),
+                firstName: cRes.first_name || "",
+                lastName: cRes.last_name || "",
+                phone: cRes.phone || "",
+                backupPhone: cRes.backup_phone,
+                address: {
+                  street: cRes.street || "",
+                  subdistrict: cRes.subdistrict || "",
+                  district: cRes.district || "",
+                  province: cRes.province || "",
+                  postalCode: cRes.postal_code || "",
+                },
+              } as Customer);
+            }
+          } catch (err) {
+            console.error("Failed fetching fallback customer", err);
+          }
+        }
+
+        if (Array.isArray(r.activities)) {
+          setFetchedActivities(
+            r.activities.map((a: any) => ({
+              id: Number(a.id),
+              customerId: String(a.customer_id),
+              timestamp: a.timestamp,
+              type: a.type as ActivityType,
+              description: a.description,
+              actorName: a.actor_name,
+            })),
+          );
+        }
+
         setCurrentOrder((prev) => ({
           ...prev,
-
-          slipUrl: r.slip_url ?? prev.slipUrl,
-
-          amountPaid:
-            typeof r.amount_paid !== "undefined"
-              ? Number(r.amount_paid)
-              : prev.amountPaid,
-
-          codAmount:
-            typeof r.cod_amount !== "undefined"
-              ? Number(r.cod_amount)
-              : (prev as any).codAmount,
-
-          bankAccountId:
-            typeof r.bank_account_id !== "undefined"
-              ? Number(r.bank_account_id)
-              : prev.bankAccountId,
-
-          transferDate: r.transfer_date ?? prev.transferDate,
+          customerId: r.customer_id ?? r.customerId ?? prev.customerId,
+          // Map all fields from API response to ensure we have full data
+          orderStatus: r.order_status ?? r.orderStatus ?? prev.orderStatus,
+          paymentStatus: r.payment_status ?? r.paymentStatus ?? prev.paymentStatus,
+          paymentMethod: r.payment_method ?? r.paymentMethod ?? prev.paymentMethod,
+          shippingCost: Number(r.shipping_cost ?? r.shippingCost ?? prev.shippingCost ?? 0),
+          billDiscount: Number(r.bill_discount ?? r.billDiscount ?? prev.billDiscount ?? 0),
+          totalAmount: Number(r.total_amount ?? r.totalAmount ?? prev.totalAmount ?? 0),
+          amountPaid: Number(r.amount_paid ?? r.amountPaid ?? prev.amountPaid ?? 0),
+          codAmount: Number(r.cod_amount ?? r.codAmount ?? prev.codAmount ?? 0),
+          slipUrl: r.slip_url ?? r.slipUrl ?? prev.slipUrl,
+          bankAccountId: Number(r.bank_account_id ?? r.bankAccountId ?? prev.bankAccountId),
+          transferDate: r.transfer_date ?? r.transferDate ?? prev.transferDate,
+          notes: r.notes ?? prev.notes,
+          salesChannel: r.sales_channel ?? r.salesChannel ?? prev.salesChannel,
+          salesChannelPageId: Number(r.sales_channel_page_id ?? r.salesChannelPageId ?? prev.salesChannelPageId),
+          warehouseId: Number(r.warehouse_id ?? r.warehouseId ?? prev.warehouseId),
 
           shippingAddress: {
-            recipientFirstName: mergeAddressPart(
-              r.recipient_first_name,
-              prev.shippingAddress?.recipientFirstName,
-            ),
-
-            recipientLastName: mergeAddressPart(
-              r.recipient_last_name,
-              prev.shippingAddress?.recipientLastName,
-            ),
-
-            street: mergeAddressPart(r.street, prev.shippingAddress?.street),
-
-            subdistrict: mergeAddressPart(
-              r.subdistrict,
-              prev.shippingAddress?.subdistrict,
-            ),
-
-            district: mergeAddressPart(
-              r.district,
-              prev.shippingAddress?.district,
-            ),
-
-            province: mergeAddressPart(
-              r.province,
-              prev.shippingAddress?.province,
-            ),
-
-            postalCode: mergeAddressPart(
-              r.postal_code,
-              prev.shippingAddress?.postalCode,
-            ),
+            recipientFirstName: r.recipient_first_name ?? r.recipientFirstName ?? prev.shippingAddress?.recipientFirstName,
+            recipientLastName: r.recipient_last_name ?? r.recipientLastName ?? prev.shippingAddress?.recipientLastName,
+            street: r.street ?? prev.shippingAddress?.street,
+            subdistrict: r.subdistrict ?? prev.shippingAddress?.subdistrict,
+            district: r.district ?? prev.shippingAddress?.district,
+            province: r.province ?? prev.shippingAddress?.province,
+            postalCode: r.postal_code ?? r.postalCode ?? prev.shippingAddress?.postalCode,
           },
 
           items: Array.isArray(r.items)
             ? r.items.map((it: any, i: number) => ({
               id: Number(it.id ?? i + 1),
-
-              productId:
-                typeof it.product_id !== "undefined" && it.product_id !== null
-                  ? Number(it.product_id)
-                  : undefined,
-
-              productName: String(it.product_name ?? ""),
-
+              productId: Number(it.product_id ?? it.productId),
+              productName: String(it.product_name ?? it.productName ?? ""),
               quantity: Number(it.quantity ?? 0),
-
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-
+              pricePerUnit: Number(it.price_per_unit ?? it.pricePerUnit ?? 0),
               discount: Number(it.discount ?? 0),
-
-              isFreebie: !!(it.is_freebie ?? 0),
-
-              boxNumber: Number(it.box_number ?? 0),
-
-              creatorId:
-                typeof it.creator_id !== "undefined" && it.creator_id !== null
-                  ? Number(it.creator_id)
-                  : undefined,
+              isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
+              boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
+              creatorId: Number(it.creator_id ?? it.creatorId),
+              sku: it.sku,
+              parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
+              isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+              // Augmented data
+              creatorName: it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined,
             }))
             : prev.items,
 
           boxes: Array.isArray(r.boxes)
-            ? r.boxes.map((b: any) => {
-              const boxNum = Number(b.box_number ?? 0);
-
-              const trackingForBox = trackingDetails.find((t: any) => {
-                if (
-                  typeof t.box_number !== "undefined" &&
-                  t.box_number !== null
-                ) {
-                  return Number(t.box_number) === boxNum;
-                }
-
-                return false;
-              });
-
-              return {
-                boxNumber: boxNum,
-
-                codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
-
-                collectionAmount: Number(
-                  b.collection_amount ?? b.cod_amount ?? 0,
-                ),
-
-                collectedAmount: Number(b.collected_amount ?? 0),
-
-                waivedAmount: Number(b.waived_amount ?? 0),
-
-                paymentMethod: b.payment_method ?? prev.paymentMethod,
-
-                status: b.status ?? undefined,
-
-                subOrderId: b.sub_order_id ?? undefined,
-
-                trackingNumber: trackingForBox
-                  ? String(
-                    trackingForBox.tracking_number ??
-                    trackingForBox.trackingNumber ??
-                    "",
-                  )
-                  : undefined,
-              };
-            })
-            : (prev as any).boxes,
+            ? r.boxes.map((b: any) => ({
+              boxNumber: Number(b.box_number ?? b.boxNumber ?? 1),
+              codAmount: Number(b.cod_amount ?? b.codAmount ?? b.collection_amount ?? 0),
+              collectionAmount: Number(b.collection_amount ?? b.collectionAmount ?? b.cod_amount ?? 0),
+              collectedAmount: Number(b.collected_amount ?? b.collectedAmount ?? 0),
+              waivedAmount: Number(b.waived_amount ?? b.waivedAmount ?? 0),
+              paymentMethod: b.payment_method ?? b.paymentMethod,
+              status: b.status,
+              subOrderId: b.sub_order_id ?? b.subOrderId,
+              trackingNumber: b.tracking_number ?? b.trackingNumber,
+            }))
+            : prev.boxes,
 
           trackingNumbers: Array.isArray(r.trackingNumbers)
             ? r.trackingNumbers
@@ -1173,45 +1189,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         }));
 
         if (Array.isArray(r.slips)) {
-          try {
-            const nextSlips = r.slips.map((s: any) => ({
-              id: Number(s.id),
-
-              url: String(s.url),
-
-              uploadedBy:
-                typeof s.uploadedBy !== "undefined"
-                  ? Number(s.uploadedBy)
-                  : typeof s.uploaded_by !== "undefined"
-                    ? Number(s.uploaded_by)
-                    : undefined,
-
-              uploadedByName:
-                s.uploadedByName ?? s.uploaded_by_name ?? s.upload_by_name,
-
-              createdAt: s.createdAt ?? s.created_at,
-
-              amount:
-                typeof s.amount !== "undefined" ? Number(s.amount) : undefined,
-
-              bankAccountId:
-                typeof s.bank_account_id !== "undefined"
-                  ? Number(s.bank_account_id)
-                  : typeof s.bankAccountId !== "undefined"
-                    ? Number(s.bankAccountId)
-                    : undefined,
-
-              transferDate: s.transfer_date ?? s.transferDate,
-            }));
-
-            setSlips(nextSlips);
-
-            if (!currentOrder.slipUrl && !slipPreview && nextSlips.length > 0) {
-              setSlipPreview(nextSlips[0].url);
-            }
-          } catch {
-            /* ignore */
-          }
+          setSlips(r.slips.map((s: any) => ({
+            id: Number(s.id),
+            url: String(s.url),
+            uploadedBy: Number(s.uploaded_by ?? s.uploadedBy ?? s.upload_by),
+            uploadedByName: s.uploaded_by_name ?? s.uploadedByName ?? s.upload_by_name,
+            createdAt: s.created_at ?? s.createdAt,
+            amount: Number(s.amount),
+            bankAccountId: Number(s.bank_account_id ?? s.bankAccountId),
+            transferDate: s.transfer_date ?? s.transferDate,
+          })));
         }
       } catch (e) {
         console.error("Failed loading order details", e);
@@ -1221,7 +1208,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [order]);
+  }, [order.id]);
 
   // Ensure slip history is available even when the minimal order payload already has a slipUrl
 
@@ -1330,28 +1317,42 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   }, [order.id]);
 
   const customer = useMemo(() => {
+    // Priority: 1. Customer fetched specifically for this order
+    if (fetchedCustomer) return fetchedCustomer;
+
+    const cid = currentOrder.customerId || (order as any).customer_id || order.customerId;
+    if (!cid) return null;
+
+    // 2. Find in customers prop
     return customers.find((c) => {
-      if (c.pk && typeof order.customerId === "number") {
-        return c.pk === order.customerId;
+      if (c.pk && typeof cid === "number") {
+        return c.pk === cid;
       }
 
       return (
-        String(c.id) === String(order.customerId) ||
-        String(c.pk) === String(order.customerId)
+        String(c.id) === String(cid) ||
+        String(c.pk) === String(cid)
       );
     });
-  }, [customers, order.customerId]);
+  }, [customers, currentOrder.customerId, order, fetchedCustomer]);
 
   const orderActivities = useMemo(() => {
-    return activities
+    // Merge fetched activities with prop activities
+    const combined = [...fetchedActivities];
+    activities.forEach((a) => {
+      if (
+        !combined.some((ca) => ca.id === a.id) &&
+        a.description.includes(order.id)
+      ) {
+        combined.push(a);
+      }
+    });
 
-      .filter((a) => a.description.includes(order.id))
-
-      .sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      );
-  }, [activities, order.id]);
+    return combined.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+  }, [activities, order.id, fetchedActivities]);
 
   const slipUploadInputId = useMemo(
     () => `slip - upload - ${order.id} `,
@@ -2004,18 +2005,25 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     billDiscount: number,
   ) => {
     const goodsSum = items.reduce(
-      (acc, item) =>
-        acc +
-        (item.isFreebie ? 0 : (item.quantity || 0) * (item.pricePerUnit || 0)),
+      (acc, item) => {
+        const isFreebie = item.isFreebie || (item as any).is_freebie;
+        const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
+        const qty = Number(item.quantity || (item as any).quantity || 0);
+        return acc + (isFreebie ? 0 : qty * price);
+      },
       0,
     );
     const itemsDiscount = items.reduce(
-      (acc, item) => acc + (item.isFreebie ? 0 : item.discount || 0),
+      (acc, item) => {
+        const isFreebie = item.isFreebie || (item as any).is_freebie;
+        const disc = Number(item.discount || (item as any).discount || 0);
+        return acc + (isFreebie ? 0 : disc);
+      },
       0,
     );
     const subTotal = goodsSum - itemsDiscount;
-    const billDiscountAmount = (subTotal * (billDiscount || 0)) / 100;
-    return subTotal + (shippingCost || 0) - billDiscountAmount;
+    const billDiscountAmount = (subTotal * (Number(billDiscount) || 0)) / 100;
+    return subTotal + (Number(shippingCost) || 0) - billDiscountAmount;
   };
 
   const handleSave = async () => {
@@ -2201,24 +2209,27 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     // Filter out freebie items AND child items before calculating totals
     const nonFreebieItems = currentOrder.items.filter((item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
-      const isChild = item.parentItemId; // Child items should not be counted
+      const isChild = item.parentItemId || (item as any).parent_item_id; // Child items should not be counted
       return !isFreebie && !isChild;
     });
 
     const itemsSubtotal = nonFreebieItems.reduce((sum, item) => {
-      const itemTotal = item.pricePerUnit * item.quantity - item.discount;
+      const price = Number(item.pricePerUnit || (item as any).price_per_unit || 0);
+      const qty = Number(item.quantity || (item as any).quantity || 0);
+      const disc = Number(item.discount || (item as any).discount || 0);
+      const itemTotal = price * qty - disc;
 
       return sum + itemTotal;
     }, 0);
 
     const itemsDiscount = nonFreebieItems.reduce(
-      (sum, item) => sum + item.discount,
+      (sum, item) => sum + (Number(item.discount || (item as any).discount) || 0),
       0,
     );
 
-    const shippingCost = currentOrder.shippingCost || 0;
+    const shippingCost = Number(currentOrder.shippingCost || 0);
 
-    const billDiscount = currentOrder.billDiscount || 0;
+    const billDiscount = Number(currentOrder.billDiscount || 0);
 
     const totalAmount = itemsSubtotal - billDiscount + shippingCost;
 
@@ -2849,9 +2860,14 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       const isFreebie =
                         (item as any).isFreebie || (item as any).is_freebie;
+                      const itemPrice = Number(item.pricePerUnit ?? (item as any).price_per_unit ?? 0);
+                      const itemQty = Number(item.quantity ?? (item as any).quantity ?? 0);
+                      const itemDisc = Number(item.discount ?? (item as any).discount ?? 0);
+                      const itemName = item.productName || (item as any).product_name || "";
+
                       const itemTotal = isFreebie
                         ? 0
-                        : item.pricePerUnit * item.quantity - item.discount;
+                        : itemPrice * itemQty - itemDisc;
 
                       // Check if current user is the creator of this item
 
@@ -2914,7 +2930,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                     : ""
                                 }
                               >
-                                {item.productName}
+                                {itemName}
                               </span>
                             </div>
                           </td>
@@ -2924,7 +2940,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               <input
                                 type="number"
                                 min="1"
-                                value={item.quantity}
+                                value={item.quantity ?? (item as any).quantity}
                                 onChange={(e) => {
                                   const newQuantity = Math.max(
                                     1,
@@ -2962,14 +2978,15 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 const parent = currentOrder.items.find(
                                   (p) => p.id === (item as any).parentItemId,
                                 );
-                                const parentQty = parent?.quantity || 1;
-                                const originalQty =
-                                  (item as any).originalQuantity ||
-                                  item.quantity;
+                                const parentQty = Number(parent?.quantity) || 1;
+                                const originalQty = Number(
+                                  (item as any).originalQuantity ??
+                                  item.quantity ?? 0
+                                );
                                 return originalQty * parentQty;
                               })()
                             ) : (
-                              item.quantity
+                              Number(item.quantity) || 0
                             )}{" "}
                           </td>
 
@@ -2979,7 +2996,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             ) : canEditItem ? (
                               <input
                                 type="number"
-                                value={item.pricePerUnit}
+                                value={item.pricePerUnit ?? (item as any).price_per_unit}
                                 onChange={(e) =>
                                   handleItemChange(
                                     index,
@@ -2990,7 +3007,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 className="w-20 border rounded px-1 text-right"
                               />
                             ) : (
-                              `฿${isFreebie ? 0 : Number(item.pricePerUnit ?? 0).toLocaleString()} `
+                              `฿${isFreebie ? 0 : itemPrice.toLocaleString()} `
                             )}
                           </td>
 
@@ -3000,7 +3017,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                             ) : canEditItem ? (
                               <input
                                 type="number"
-                                value={item.discount}
+                                value={item.discount ?? (item as any).discount}
                                 onChange={(e) =>
                                   handleItemChange(
                                     index,
@@ -3011,7 +3028,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 className="w-20 border rounded px-1 text-right text-red-600"
                               />
                             ) : (
-                              `-฿${Number(item.discount ?? 0).toLocaleString()} `
+                              `-฿${itemDisc.toLocaleString()} `
                             )}
                           </td>
 
@@ -3125,9 +3142,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           <td className="px-3 py-2 text-xs text-gray-600">
                             {(item as any).parentItemId
                               ? ""
-                              : itemCreator
-                                ? `${itemCreator.firstName} ${itemCreator.lastName} `
-                                : "-"}
+                              : (item as any).creatorName
+                                ? (item as any).creatorName
+                                : itemCreator
+                                  ? `${itemCreator.firstName} ${itemCreator.lastName} `
+                                  : "-"}
                           </td>
 
                           {showInputs && (
@@ -3833,7 +3852,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                         uploadedByName,
                                       })
                                     }
-                                    src={slip.url}
+                                    src={resolveSlipUrl(slip.url)}
                                     alt="Slip preview"
                                     className="w-full h-full object-contain cursor-pointer"
                                   />
@@ -4496,7 +4515,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-center bg-gray-50 rounded-md p-2 border">
                   <img
-                    src={lightboxSlip.url}
+                    src={resolveSlipUrl(lightboxSlip.url)}
                     alt="Slip"
                     className="max-h-[70vh] object-contain rounded"
                   />
