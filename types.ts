@@ -254,6 +254,11 @@ export interface Customer {
   waitingBasketStartDate?: string; // วันที่เริ่มต้นในตะกร้ารอ
   isBlocked?: boolean; // ระงับการใช้งานหรือไม่
   isUpsellEligible?: boolean; // Eligible for upsell (Pending order < 24 hrs)
+  firstOrderDate?: string; // วันที่สั่งซื้อครั้งแรก
+  lastOrderDate?: string; // วันที่สั่งซื้อล่าสุด
+  orderCount?: number; // จำนวนออเดอร์
+  isNewCustomer?: boolean; // ลูกค้าใหม่
+  isRepeatCustomer?: boolean; // ลูกค้าเก่า
 }
 
 export interface SalesImportRow {

@@ -36,8 +36,7 @@ BEGIN
     -- Move expired customers into waiting basket
     UPDATE customers
     SET is_in_waiting_basket = 1,
-        waiting_basket_start_date = NOW(),
-        lifecycle_status = 'FollowUp'
+        waiting_basket_start_date = NOW()
     WHERE COALESCE(is_blocked, 0) = 0
       AND COALESCE(is_in_waiting_basket, 0) = 0
       AND ownership_expires IS NOT NULL

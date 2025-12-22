@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from "react";
+﻿import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Customer,
   User,
@@ -13,9 +13,13 @@ import {
   Users,
   Check,
   AlertTriangle,
+  Search,
   Info,
   ListChecks,
   History,
+} from "lucide-react";
+import resolveApiBasePath from "../utils/apiBasePath";
+import {
   Award,
   PlayCircle,
   BarChart,
@@ -23,7 +27,7 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, bulkDistributeCustomers } from "@/services/api";
+import { listCustomersBySource, updateCustomer, getCustomerStats, listCustomers, getTelesaleUsers, bulkDistributeCustomers, unblockCustomerBlock } from "@/services/api";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Spinner from "@/components/Spinner";
@@ -273,11 +277,13 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showSkippedModal, setShowSkippedModal] = useState(false);
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
   const [distributionResult, setDistributionResult] = useState<{
     success: number;
     skipped: number;
   } | null>(null);
   const [savingDistribution, setSavingDistribution] = useState(false);
+  const [displayCount, setDisplayCount] = useState<number>(0);
 
   const telesaleAgents = useMemo(() => {
     return allUsers.filter(
@@ -286,7 +292,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   }, [allUsers]);
 
   const adminUserIds = useMemo(
-    () => allUsers.filter((u) => u.role === UserRole.Admin).map((u) => u.id),
+    () => allUsers.filter((u) => u.role === UserRole.Admin || (u.role as any) === "Admin Page").map((u) => u.id),
     [allUsers],
   );
 
@@ -298,12 +304,14 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       return;
     }
     setLoadingPool(true);
+    const startFetch = Date.now();
     // Note: company filter can be added if needed
     listCustomersBySource(poolSource)
-      .then((rows: any[]) => {
+      .then((response: any) => {
         if (!mounted) return;
+        const rows = Array.isArray(response) ? response : (response?.data || []);
         const mapped = Array.isArray(rows)
-          ? rows.map((row) => normalizeApiCustomer(row))
+          ? rows.map((row: any) => normalizeApiCustomer(row))
           : [];
         setPoolCustomers(mapped);
       })
@@ -390,6 +398,8 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
   const blockedCount = customerStats?.baskets?.blocked ?? dataCustomers.filter((c) => (c as any).isBlocked).length;
 
+  const assignedCount = (customerStats?.totalCustomers ?? dataCustomers.length) - toDistributeCount - waitingBasketCount - blockedCount;
+
   const getAgentWorkloadByGrade = (agentId: number) => {
     const agentCustomers = dataCustomers.filter(
       (c) => c.assignedTo === agentId,
@@ -417,16 +427,29 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   const availableCustomers = useMemo(() => {
     let customers = dataCustomers.filter((c) => {
       const assignedId = c.assignedTo;
+      // Consider both "Admin" from enum and "Admin Page" from DB
       const isAssignedToAdmin =
         typeof assignedId === "number" && adminUserIds.includes(assignedId);
+
+      // For New Sale tab, we might show customers already assigned to Admin (for re-assignment)
+      // but for Stock and Return, we usually want unassigned only.
+      // However, the API already filters assignedTo IS NULL for those.
       const eligibleAssignment =
         assignedId === null || (poolSource === "new_sale" && isAssignedToAdmin);
 
-      return (
-        eligibleAssignment &&
-        !Boolean((c as any).isBlocked) &&
-        !Boolean((c as any).isInWaitingBasket)
-      );
+      if (!eligibleAssignment) return false;
+      if (Boolean((c as any).isBlocked)) return false;
+
+      // Tab-specific waiting basket logic
+      if (poolSource === "waiting_return") {
+        return Boolean((c as any).isInWaitingBasket);
+      } else if (poolSource === "all") {
+        // For 'All', we follow the same logic as 'waitingDistribute' stat (usually excludes basket)
+        return !Boolean((c as any).isInWaitingBasket);
+      } else {
+        // For 'Stock' and 'New Sale', exclude basket
+        return !Boolean((c as any).isInWaitingBasket);
+      }
     });
 
     // กรองตามประเภทลูกค้า
@@ -511,6 +534,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     adminUserIds,
   ]);
 
+  // Sync displayCount when loading finishes or source changes
+  // Defined here so it can safely access availableCustomers
+  useEffect(() => {
+    if (!loadingPool && !loadingStats) {
+      const actualCount = poolSource === "all"
+        ? (customerStats?.baskets?.waitingDistribute ?? availableCustomers.length)
+        : availableCustomers.length;
+      setDisplayCount(actualCount);
+    }
+  }, [loadingPool, loadingStats, poolSource, customerStats, availableCustomers.length]);
+
   const handleDistributionCountChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -530,7 +564,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     if (!isNaN(count) && count > actualAvailableCount) {
       setDistributionCountError(
-        `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
+        `จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`,
       );
     } else {
       setDistributionCountError("");
@@ -545,7 +579,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
       if (!isNaN(count) && count > actualAvailableCount) {
         setDistributionCountError(
-          `จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`,
+          `จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`,
         );
       } else {
         setDistributionCountError("");
@@ -583,7 +617,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     // Use API data for validation
     const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
     if (count > actualAvailableCount) {
-      alert(`จำนวนที่ต้องการแจก (${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก (${actualAvailableCount.toLocaleString()})`);
+      alert(`จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`);
       return;
     }
 
@@ -701,7 +735,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     if (
-      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่?`)
+      !window.confirm(`ยืนยันการแจกลูกค้าจำนวน ${actualCount.toLocaleString()} รายการหรือไม่ ? `)
     ) {
       return;
     }
@@ -715,6 +749,10 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         agentIds: selectedAgentIds,
         targetStatus,
         ownershipDays: 30,
+        filters: {
+          mode: poolSource,
+          grade: activeTab === "gradeA" ? "A" : undefined,
+        },
       });
 
       if (response?.ok) {
@@ -886,7 +924,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                             <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 pl-2">
                               {customers.map((c) => (
                                 <li key={c.id} className="py-1">
-                                  {`${c.firstName} ${c.lastName}`} ({c.phone})
+                                  {`${c.firstName} ${c.lastName} `} ({c.phone})
                                 </li>
                               ))}
                             </ul>
@@ -1004,7 +1042,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <p className="font-medium text-gray-800">
-                        {`${customer.firstName} ${customer.lastName}`}
+                        {`${customer.firstName} ${customer.lastName} `}
                       </p>
                       <p className="text-sm text-gray-600">{customer.phone}</p>
                       {customer.email && (
@@ -1039,6 +1077,221 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     );
   };
 
+  // Blocked Customers Modal Component
+  const BlockedCustomersModal: React.FC = () => {
+    if (!showBlockedModal) return null;
+
+    const [blockedCustomers, setBlockedCustomers] = useState<any[]>([]);
+    const [loadingBlocked, setLoadingBlocked] = useState(false);
+    const [unblockingIds, setUnblockingIds] = useState<Set<number>>(new Set());
+
+    const refreshCustomerStats = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const statsResponse = await getCustomerStats(currentUser.companyId);
+        if (statsResponse?.ok && statsResponse?.stats) {
+          setCustomerStats(statsResponse.stats);
+        }
+      } catch (err) {
+        console.error("Failed to refresh customer stats after unblock:", err);
+      }
+    };
+
+    const fetchBlockedCustomers = async () => {
+      setLoadingBlocked(true);
+      try {
+        const apiBase = resolveApiBasePath();
+        const params = new URLSearchParams();
+        if (currentUser?.companyId) {
+          params.set("company_id", String(currentUser.companyId));
+        }
+        const url = `${apiBase}/get_blocked_customers.php${params.toString() ? `?${params.toString()}` : ""}`;
+        const response = await fetch(url);
+        const text = await response.text();
+        let data: any = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error(
+            `Invalid JSON from blocked customers API: ${typeof text === "string" ? text.slice(0, 120) : ""} `,
+          );
+        }
+        if (data?.success) {
+          setBlockedCustomers(Array.isArray(data.data) ? data.data : []);
+        } else {
+          console.error("Blocked customers API error:", data?.error || data);
+          setBlockedCustomers([]);
+        }
+      } catch (error) {
+        console.error("Error fetching blocked customers:", error);
+        setBlockedCustomers([]);
+      } finally {
+        setLoadingBlocked(false);
+      }
+    };
+
+    const handleUnblock = async (blockId?: number) => {
+      if (!blockId && blockId !== 0) return;
+      if (!currentUser?.id) {
+        alert("Missing user info for unblocking");
+        return;
+      }
+
+      setUnblockingIds((prev) => {
+        const next = new Set(prev);
+        next.add(blockId);
+        return next;
+      });
+
+      try {
+        await unblockCustomerBlock(blockId, currentUser.id);
+        await fetchBlockedCustomers();
+        await refreshCustomerStats();
+      } catch (error) {
+        console.error("Failed to unblock customer:", error);
+        alert("Unblock failed, please try again.");
+      } finally {
+        setUnblockingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(blockId);
+          return next;
+        });
+      }
+    };
+
+    useEffect(() => {
+      if (showBlockedModal) {
+        fetchBlockedCustomers();
+      }
+    }, [showBlockedModal, currentUser?.companyId]);
+
+    if (!showBlockedModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[80vh] overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-gray-800 flex items-center">
+                <AlertTriangle className="mr-2 text-red-600" size={24} />
+                รายชื่อลูกค้าที่ถูกบล็อค ({blockedCustomers.length} รายการ)
+              </h3>
+              <button
+                onClick={() => setShowBlockedModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)]">
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-4">
+                รายชื่อลูกค้าที่ถูกระงับการแจกจ่ายชั่วคราว
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {loadingBlocked ? (
+                <div className="flex justify-center py-8">
+                  <Spinner size="lg" />
+                </div>
+              ) : blockedCustomers.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                    <span>แสดง {blockedCustomers.length.toLocaleString()} รายการ</span>
+                  </div>
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-700">ลูกค้า</th>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-700">เบอร์โทร</th>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-700">สาเหตุ</th>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-700">วันที่บล็อค</th>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-700">ผู้บล็อค</th>
+                        <th className="px-4 py-2 text-right font-semibold text-gray-700">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {blockedCustomers.map((customer) => {
+                        const rawBlockId = customer.block_id ?? customer.id;
+                        const blockId =
+                          typeof rawBlockId === "string" ? Number(rawBlockId) : rawBlockId;
+                        const hasBlockId =
+                          blockId !== null &&
+                          typeof blockId !== "undefined" &&
+                          !Number.isNaN(Number(blockId));
+                        const name = `${customer.fname || customer.first_name || ""} ${customer.lname || customer.last_name || ""} `.trim() || "ไม่ระบุชื่อ";
+                        const blockedAt = customer.block_at
+                          ? new Date(customer.block_at).toLocaleString("th-TH")
+                          : "-";
+                        const blocker = customer.blocker_nickname || customer.blocker_name || "-";
+                        const reason = customer.reason || "ไม่ระบุสาเหตุ";
+
+                        return (
+                          <tr
+                            key={
+                              hasBlockId
+                                ? `block - ${blockId} `
+                                : `customer - ${customer.id ?? customer.customer_ref_id ?? customer.phone ?? Math.random()} `
+                            }
+                            className="hover:bg-red-50"
+                          >
+                            <td className="px-4 py-2 text-gray-900 font-medium">{name}</td>
+                            <td className="px-4 py-2 text-gray-700">{customer.phone || "-"}</td>
+                            <td className="px-4 py-2 text-gray-700">{reason}</td>
+                            <td className="px-4 py-2 text-gray-700">{blockedAt}</td>
+                            <td className="px-4 py-2 text-gray-700">{blocker}</td>
+                            <td className="px-4 py-2 text-right">
+                              <button
+                                onClick={() => hasBlockId && handleUnblock(blockId)}
+                                disabled={!hasBlockId || unblockingIds.has(blockId)}
+                                className="bg-white border border-red-300 text-red-700 text-xs font-medium rounded-md px-3 py-1 hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {unblockingIds.has(blockId) ? "กำลังปลด..." : "ปลดบล็อค"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  ไม่มีลูกค้าที่ถูกบล็อคในขณะนี้
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-gray-200 bg-gray-50">
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowBlockedModal(false)}
+                className="bg-gray-100 text-gray-700 font-medium text-sm rounded-md py-2 px-6 hover:bg-gray-200 transition-colors"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const renderTabContent = () => {
     return (
       <div className="space-y-6">
@@ -1061,20 +1314,20 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     {customerStats.totalCustomers.toLocaleString()}
                   </p>
                 </div>
-                {Object.entries(customerStats.grades).map(([grade, count]) => (
+                {["A", "B", "C", "D"].map((grade) => (
                   <div
                     key={grade}
                     className="bg-gray-50 border border-gray-200 rounded-lg p-4"
                   >
                     <p className="text-sm text-gray-600 font-medium">เกรด {grade}</p>
                     <p className="text-2xl font-bold text-gray-700 mt-1">
-                      {count.toLocaleString()}
+                      {(customerStats.grades[grade] ?? 0).toLocaleString()}
                     </p>
                   </div>
                 ))}
               </div>
               {/* Basket Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <p className="text-sm text-green-600 font-medium">ตะกร้ารอแจก</p>
                   {loadingStats ? (
@@ -1099,8 +1352,26 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     </p>
                   )}
                 </div>
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-sm text-red-600 font-medium">ตะกร้าบล็อค</p>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-purple-600 font-medium">มีผู้ดูแล</p>
+                  {loadingStats ? (
+                    <div className="flex justify-center items-center h-10">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-purple-700 mt-1">
+                      {assignedCount.toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <div
+                  onClick={() => setShowBlockedModal(true)}
+                  className="bg-red-50 border border-red-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-all hover:bg-red-100 relative group"
+                >
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm text-red-600 font-medium">ตะกร้าบล็อค</p>
+                    <Search size={16} className="text-red-400 group-hover:text-red-600 transition-colors" />
+                  </div>
                   {loadingStats ? (
                     <div className="flex justify-center items-center h-10">
                       <Spinner size="sm" />
@@ -1155,7 +1426,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     setShowPreview(false);
                     setShowPreviewModal(false);
                   }}
-                  className="h-4 w-4 rounded text-green-600 focus:ring-green-500"
+                  className="h-4 w-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
                 />
                 <label
                   htmlFor="grade-a-mode"
@@ -1167,51 +1438,35 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
             </div>
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setPoolSource("all");
-                  setShowPreview(false);
-                  setShowPreviewModal(false);
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
-              >
-                ทั้งหมด
-              </button>
-              <button
-                onClick={() => {
-                  setPoolSource("new_sale");
-                  setShowPreview(false);
-                  setShowPreviewModal(false);
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "new_sale" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
-              >
-                เพิ่งขาย (Admin)
-              </button>
-              <button
-                onClick={() => {
-                  setPoolSource("waiting_return");
-                  setShowPreview(false);
-                  setShowPreviewModal(false);
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "waiting_return" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
-              >
-                คืนจากตะกร้า
-              </button>
-              <button
-                onClick={() => {
-                  setPoolSource("stock");
-                  setShowPreview(false);
-                  setShowPreviewModal(false);
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "stock" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
-              >
-                สต็อกรอแจก
-              </button>
-              {loadingPool && poolSource !== "all" && (
-                <span className="text-xs text-gray-500 ml-2">กำลังโหลด...</span>
-              )}
+          <div className="mt-6">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block ml-1">
+              แหล่งที่มาลูกค้า (Source)
+            </label>
+            <div className="bg-gray-100/80 p-1 rounded-xl inline-flex flex-wrap gap-1 border border-gray-200">
+              {[
+                { id: "stock", label: "สต็อกรอแจก", icon: <BarChart size={14} /> },
+                { id: "new_sale", label: "เพิ่งขาย (Admin)", icon: <Award size={14} /> },
+                { id: "waiting_return", label: "คืนจากตะกร้า", icon: <History size={14} /> },
+                { id: "all", label: "ทั้งหมด", icon: <ListChecks size={14} /> },
+              ].map((pool) => (
+                <button
+                  key={pool.id}
+                  onClick={() => {
+                    setPoolSource(pool.id as any);
+                    setShowPreview(false);
+                    setShowPreviewModal(false);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 ${poolSource === pool.id
+                    ? "bg-white text-blue-600 shadow-sm border border-gray-200"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                >
+                  <span className={poolSource === pool.id ? "text-blue-500" : "text-gray-400"}>
+                    {pool.icon}
+                  </span>
+                  <span className="whitespace-nowrap">{pool.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1272,17 +1527,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                 2. เลือกพนักงานเป้าหมาย
               </h3>
               <div className="mt-1 space-y-1">
-                <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2">
-                  มีรายชื่อพร้อมแจก:{" "}
-                  {loadingStats ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <>
-                      <span className="text-3xl font-extrabold text-green-700">
-                        {(customerStats?.baskets?.waitingDistribute ?? availableCustomers.length).toLocaleString()}
-                      </span>{" "}
-                      รายการ
-                    </>
+                <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2 min-h-[56px] min-w-[200px] relative overflow-hidden">
+                  <span>มีรายชื่อพร้อมแจก:</span>{" "}
+                  <div className={`flex items-center gap-2 transition-all duration-150 ${loadingStats || loadingPool ? 'opacity-30 blur-[1px]' : 'opacity-100 blur-0'}`}>
+                    <span className="text-3xl font-extrabold text-green-700">
+                      {displayCount.toLocaleString()}
+                    </span>{" "}
+                    <span>รายการ</span>
+                  </div>
+                  {(loadingStats || loadingPool) && (
+                    <div className="absolute inset-0 bg-green-50/10 animate-pulse pointer-events-none"></div>
                   )}
                 </div>
                 <div className="text-xs text-gray-400">
@@ -1352,7 +1606,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                   <th className="px-6 py-3">พนักงาน</th>
                   <th className="px-6 py-3 text-center">ลูกค้าทั้งหมด</th>
                   {gradeOrder.map((grade, index) => (
-                    <th key={`grade-header-${grade}-${index}`} className="px-2 py-3 text-center">
+                    <th key={`grade - header - ${grade} -${index} `} className="px-2 py-3 text-center">
                       {grade}
                     </th>
                   ))}
@@ -1379,7 +1633,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     return (
                       <tr
                         key={agent.id}
-                        className={`border-b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"}`}
+                        className={`border - b ${selectedAgentIds.includes(agent.id) ? "bg-green-50" : "hover:bg-gray-50"} `}
                       >
                         <td className="px-4 py-2">
                           <input
@@ -1389,12 +1643,12 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                             className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300"
                           />
                         </td>
-                        <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName}`}</td>
+                        <td className="px-6 py-2 font-medium text-gray-800">{`${agent.firstName} ${agent.lastName} `}</td>
                         <td className="px-6 py-2 text-center font-bold">
                           {agent.totalCustomers}
                         </td>
                         {gradeOrder.map((grade, index) => (
-                          <td key={`grade-${agent.id}-${grade}-${index}`} className="px-2 py-2 text-center">
+                          <td key={`grade - ${agent.id} -${grade} -${index} `} className="px-2 py-2 text-center">
                             {gradeDistribution[grade] ?? 0}
                           </td>
                         ))}
@@ -1405,7 +1659,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
               </tbody>
             </table>
           </div>
-        </div>
+        </div >
       </div >
     );
   };
@@ -1418,25 +1672,25 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => setPoolSource("all")}
-            className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
+            className={`px - 3 py - 1.5 text - xs rounded - md border ${poolSource === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"} `}
           >
             ทั้งหมด
           </button>
           <button
             onClick={() => setPoolSource("new_sale")}
-            className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "new_sale" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
+            className={`px - 3 py - 1.5 text - xs rounded - md border ${poolSource === "new_sale" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"} `}
           >
             เพิ่งขาย (Admin)
           </button>
           <button
             onClick={() => setPoolSource("waiting_return")}
-            className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "waiting_return" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
+            className={`px - 3 py - 1.5 text - xs rounded - md border ${poolSource === "waiting_return" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"} `}
           >
             คืนจากตะกร้า
           </button>
           <button
             onClick={() => setPoolSource("stock")}
-            className={`px-3 py-1.5 text-xs rounded-md border ${poolSource === "stock" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}
+            className={`px - 3 py - 1.5 text - xs rounded - md border ${poolSource === "stock" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"} `}
           >
             สต็อกรอแจก
           </button>
@@ -1461,40 +1715,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">ตะกร้ารอแจก</p>
-          {loadingStats ? (
-            <div className="flex justify-center items-center h-7">
-              <Spinner size="sm" />
-            </div>
-          ) : (
-            <p className="text-xl font-bold text-blue-600">{toDistributeCount.toLocaleString()}</p>
-          )}
-        </div>
-        <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">ตะกร้าพักรายชื่อ</p>
-          {loadingStats ? (
-            <div className="flex justify-center items-center h-7">
-              <Spinner size="sm" />
-            </div>
-          ) : (
-            <p className="text-xl font-bold text-amber-600">
-              {waitingBasketCount.toLocaleString()}
-            </p>
-          )}
-        </div>
-        <div className="p-3 rounded-md border bg-white">
-          <p className="text-xs text-gray-500 mb-1">ตะกร้าบล็อค</p>
-          {loadingStats ? (
-            <div className="flex justify-center items-center h-7">
-              <Spinner size="sm" />
-            </div>
-          ) : (
-            <p className="text-xl font-bold text-red-600">{blockedCount.toLocaleString()}</p>
-          )}
-        </div>
-      </div>
+
 
       {renderTabContent()}
 
@@ -1503,6 +1724,9 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
       {/* Skipped Customers Modal */}
       <SkippedCustomersModal />
+
+      {/* Blocked Customers Modal */}
+      <BlockedCustomersModal />
     </div>
   );
 };
