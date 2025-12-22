@@ -67,7 +67,6 @@ import {
   createUser as apiCreateUser,
   updateUser as apiUpdateUser,
   deleteUser as apiDeleteUser,
-  getRolePermissions,
 } from "./services/api";
 import {
   recordFollowUp,
@@ -370,6 +369,9 @@ const App: React.FC = () => {
       // Map DB fields (snake_case) to Frontend types (camelCase)
       if (parsed.company_id && !parsed.companyId) {
         parsed.companyId = parsed.company_id;
+      }
+      if (parsed.user_id && !parsed.id) {
+        parsed.id = parsed.user_id;
       }
       return parsed;
     } catch {
@@ -752,7 +754,6 @@ const App: React.FC = () => {
           act,
           tags,
           comps,
-          perms,
           whs,
         ] = await Promise.all([
           listUsers(sessionUser?.company_id),
@@ -769,7 +770,6 @@ const App: React.FC = () => {
           listActivities(),
           listTags({ type: "SYSTEM" }),
           apiFetch("companies"),
-          getRolePermissions((sessionUser?.role ?? users[0]?.role) as any),
           listWarehouses(sessionUser?.company_id),
         ]);
 
@@ -1278,9 +1278,6 @@ const App: React.FC = () => {
             }))
             : [],
         );
-        if (perms && (perms as any).data) {
-          setRolePermissions((perms as any).data);
-        }
       } catch (e) {
         // API failed - show error to user
         console.error("Failed to load data from database:", e);
@@ -1785,19 +1782,49 @@ const App: React.FC = () => {
 
   // Fetch effective permissions
   useEffect(() => {
+    let cancelled = false;
+
     async function loadPermissions() {
       if (!currentUser?.id) {
-        setRolePermissions(null);
+        setRolePermissions({});
         setMenuOrder(undefined);
         return;
       }
+
+      const cacheKey = `effective_permissions:${currentUser.id}`;
+      // Load cached permissions first for instant UI (if available)
+      try {
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (!cancelled) {
+            setRolePermissions(cached.permissions || {});
+            setMenuOrder(cached.menu_order);
+          }
+        }
+      } catch {
+        /* ignore cache errors */
+      }
+
       try {
         const { getUserEffectivePermissions } = await import("./services/roleApi");
         const data = await getUserEffectivePermissions(currentUser.id);
+        if (cancelled) return;
         setRolePermissions(data.permissions || {});
         setMenuOrder(data.menu_order);
+        try {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              permissions: data.permissions || {},
+              menu_order: data.menu_order,
+            }),
+          );
+        } catch {
+          /* ignore storage errors */
+        }
       } catch (err) {
-        console.error("Failed to load permissions:", err);
+        if (!cancelled) console.error("Failed to load permissions:", err);
       }
     }
 
@@ -1809,6 +1836,7 @@ const App: React.FC = () => {
 
     window.addEventListener('role-permissions-updated', handlePermissionsUpdated);
     return () => {
+      cancelled = true;
       window.removeEventListener('role-permissions-updated', handlePermissionsUpdated);
     };
   }, [currentUser?.id]);
@@ -1960,55 +1988,6 @@ const App: React.FC = () => {
     () => currentUser?.role === UserRole.SuperAdmin,
     [currentUser],
   );
-
-  // Load role permissions (from localStorage first for instant UI, then API)
-  useEffect(() => {
-    if (!currentUser?.role) {
-      setRolePermissions({});
-      return;
-    }
-
-    const role = currentUser.role as string;
-    const key = `role_permissions:${role}`;
-    try {
-      const cached = localStorage.getItem(key);
-      if (cached) {
-        setRolePermissions(JSON.parse(cached));
-      } else if (role === UserRole.Backoffice) {
-        setRolePermissions({
-          "home.sales_overview": { view: false },
-          "home.calls_overview": { view: false },
-        });
-      } else {
-        setRolePermissions({});
-      }
-    } catch {
-      setRolePermissions({});
-    }
-
-    getRolePermissions(role)
-      .then((res) => {
-        const data = (res && (res as any).data) || null;
-        if (data) {
-          setRolePermissions(data);
-          try {
-            localStorage.setItem(key, JSON.stringify(data));
-          } catch { }
-        }
-      })
-      .catch(() => { });
-
-    const onUpdated = (e: any) => {
-      if (!e?.detail || e.detail.role !== role) return;
-      try {
-        const cached2 = localStorage.getItem(key);
-        if (cached2) setRolePermissions(JSON.parse(cached2));
-      } catch { }
-    };
-    window.addEventListener("role-permissions-updated", onUpdated as any);
-    return () =>
-      window.removeEventListener("role-permissions-updated", onUpdated as any);
-  }, [currentUser?.role]);
 
   const companyCustomers = useMemo(
     () =>

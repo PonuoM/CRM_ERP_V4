@@ -258,7 +258,7 @@ function handleRetrieve(PDO $pdo, string $customerId): void {
         return;
     }
     if (!empty($customer['has_sold_before'])) {
-        $upd = $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, lifecycle_status = 'FollowUp' WHERE customer_id = ?");
+        $upd = $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ? WHERE customer_id = ?");
         $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
         json_response(['success' => true, 'message' => 'Customer moved to waiting basket for 30 days']);
     } else {
@@ -288,12 +288,12 @@ function checkAndUpdateCustomerStatus(PDO $pdo, array $customer): array {
     if ($expiry <= $now && empty($customer['is_in_waiting_basket'])) {
         $updateId = $customer['customer_id'];
         if ($updateId) {
-            $upd = $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, lifecycle_status = 'FollowUp' WHERE customer_id = ?");
+            $upd = $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ? WHERE customer_id = ?");
             $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
         }
         $customer['is_in_waiting_basket'] = 1;
         $customer['waiting_basket_start_date'] = $now->format('Y-m-d H:i:s');
-        $customer['lifecycle_status'] = 'FollowUp';
+        // $customer['lifecycle_status'] = 'FollowUp'; // Do NOT override status
     }
 
     if (!empty($customer['is_in_waiting_basket']) && !empty($customer['waiting_basket_start_date'])) {

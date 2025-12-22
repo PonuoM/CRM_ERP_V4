@@ -8,6 +8,9 @@ $DB_NAME = getenv("DB_NAME") ?: "mini_erp";
 $DB_USER = getenv("DB_USER") ?: "root";
 $DB_PASS = getenv("DB_PASS") ?: "12345678";
 
+// Gemini AI Configuration
+$GEMINI_API_KEY = getenv("GEMINI_API_KEY") ?: "AIzaSyAgdxQrU4UfBsljbSNY3kk0I_06aN7cRtQ";
+
 function db_connect(): PDO
 {
   global $DB_HOST, $DB_PORT, $DB_NAME, $DB_USER, $DB_PASS;

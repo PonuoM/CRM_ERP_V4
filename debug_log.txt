@@ -11,3 +11,25 @@ Data: Array
 OrderId: 251121-00005telesale1yx, Status: BadDebt
 Preparing update...
 Execute success. RowCount: 1
+Entered handle_update_order_status
+Data: Array
+(
+    [orderId] => ORD-028-1
+    [status] => BadDebt
+    [note] => Marked as BadDebt from Dashboard
+)
+
+OrderId: ORD-028-1, Status: BadDebt
+Preparing update...
+Execute success. RowCount: 1
+Entered handle_update_order_status
+Data: Array
+(
+    [orderId] => ORD-027-1
+    [status] => BadDebt
+    [note] => Marked as BadDebt from Dashboard
+)
+
+OrderId: ORD-027-1, Status: BadDebt
+Preparing update...
+Execute success. RowCount: 1

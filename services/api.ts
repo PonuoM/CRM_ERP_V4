@@ -234,6 +234,10 @@ export async function bulkDistributeCustomers(payload: {
   agentIds: number[];
   targetStatus: string;
   ownershipDays: number;
+  filters?: {
+    mode?: string;
+    grade?: string;
+  };
 }) {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
   const headers: any = { "Content-Type": "application/json" };
@@ -1516,4 +1520,11 @@ export async function updateOrderSlip(
     throw new Error(message);
   }
   return data;
+}
+
+export async function listAIPriority(userId: number, companyId?: number) {
+  const qs = new URLSearchParams();
+  qs.set("userId", String(userId));
+  if (companyId) qs.set("companyId", String(companyId));
+  return apiFetch(`ai_priority?${qs}`);
 }

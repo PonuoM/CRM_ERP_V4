@@ -59,6 +59,9 @@ if ($resource === '' || $resource === 'health') {
 }
 
 if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
+    if ($resource === 'customers') {
+        file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " CUSTOMERS GET: " . json_encode($_GET) . "\n", FILE_APPEND);
+    }
     validate_auth($pdo);
 }
 
@@ -229,6 +232,9 @@ try {
     case 'ownership':
         require_once __DIR__ . '/ownership_handler.php';
         handle_ownership($pdo, $id);
+        break;
+    case 'ai_priority':
+        require_once __DIR__ . '/ai_priority.php';
         break;
     case 'update_customer_order_tracking.php':
         // Bridge to legacy script without changing frontend path
@@ -589,9 +595,13 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 } else {
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
-                    $bucket = $_GET['bucket'] ?? null;
-                    $userId = $_GET['userId'] ?? null;
-                    $source = isset($_GET['source']) ? strtolower(trim((string)$_GET['source'])) : null; // new_sale | waiting_return | stock
+                    $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
+                    $userId = $_REQUEST['userId'] ?? $_GET['userId'] ?? null;
+                    $sourceReq = $_REQUEST['source'] ?? $_GET['source'] ?? null;
+                    $source = isset($sourceReq) ? strtolower(trim((string)$sourceReq)) : null;
+
+                    // DEBUG: Log the received source
+                    file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " Source: " . ($source ?? 'NULL') . "\n", FILE_APPEND);
                     $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7; // for new_sale freshness window
 
                     if ($bucket === 'NewForMe') {
@@ -633,6 +643,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                  . "JOIN orders o ON o.customer_id = c.customer_id\n"
                                  . "LEFT JOIN users u ON u.id = o.creator_id\n"
                                  . "WHERE COALESCE(c.is_blocked,0) = 0\n"
+                                 . "  AND c.assigned_to IS NULL\n"
                                  . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
                                  . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
                                  . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
@@ -688,6 +699,9 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $tagsStmt->execute([$customer['customer_id']]);
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
+
+                        // DEBUG: Log result count
+                        file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " Result Count for $source: " . count($customers) . "\n", FILE_APPEND);
 
                         json_response($customers);
                     } else {
@@ -4700,7 +4714,6 @@ function handle_calls(PDO $pdo, ?string $id): void {
                     $customer = $findStmt->fetch();
                     if ($customer && $customer['customer_id']) {
                         $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1 WHERE customer_id=?')->execute([$customer['customer_id']]);
-                        $pdo->prepare('UPDATE customers SET lifecycle_status=\'Old\' WHERE customer_id=? AND COALESCE(total_calls,0) <= 1')->execute([$customer['customer_id']]);
                     }
                 } catch (Throwable $e) { /* ignore */ }
             }
@@ -5483,7 +5496,7 @@ function handle_do_dashboard(PDO $pdo): void {
             $counts['expiring']++;
         }
         // Check for daily distribution customers with no activity
-        else if ($customer['lifecycle_status'] === 'ลูกค้าแจกรายวัน' && $customer['activity_count'] == 0) {
+        else if ($customer['lifecycle_status'] === 'DailyDistribution' && $customer['activity_count'] == 0) {
             $assignedDate = new DateTime($customer['date_assigned']);
             $assignedDate->setTime(0, 0, 0);
             $todayDate = new DateTime($today);
@@ -5493,7 +5506,7 @@ function handle_do_dashboard(PDO $pdo): void {
             }
         }
         // Check for new customers with no activity
-        else if ($customer['lifecycle_status'] === 'ลูกค้าใหม่' && $customer['activity_count'] == 0) {
+        else if ($customer['lifecycle_status'] === 'New' && $customer['activity_count'] == 0) {
             $includeCustomer = true;
             $counts['new']++;
         }

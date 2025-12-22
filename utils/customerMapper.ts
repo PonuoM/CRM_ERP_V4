@@ -1,7 +1,28 @@
-import { Customer, Tag, TagType, CustomerBehavioralStatus, CustomerLifecycleStatus } from "@/types";
+import { Customer, CustomerLifecycleStatus, CustomerBehavioralStatus, Tag } from "../types";
 import { calculateCustomerGrade } from "./customerGrade";
 
-export const mapCustomerFromApi = (r: any): Customer => {
+// Helper to normalize lifecycle status (copy from App.tsx or import if available)
+export function normalizeLifecycleStatusValue(
+    val: any
+): CustomerLifecycleStatus | null {
+    if (!val) return null;
+    // If it's already a valid enum value, return it
+    if (Object.values(CustomerLifecycleStatus).includes(val as any)) {
+        return val as CustomerLifecycleStatus;
+    }
+    // Map legacy thai strings if needed
+    if (val === "ลูกค้าใหม่") return CustomerLifecycleStatus.New;
+    if (val === "ลูกค้าติดตาม") return CustomerLifecycleStatus.FollowUp;
+    if (val === "ลูกค้าสนใจ") return CustomerLifecycleStatus.New;
+    if (val === "ลูกค้าสั่งซื้อ") return CustomerLifecycleStatus.Old;
+    if (val === "ลูกค้าสิ้นหวัง") return CustomerLifecycleStatus.Old;
+    if (val === "ลูกค้าเก่า") return CustomerLifecycleStatus.Old;
+    if (val === "ลูกค้าแจกรายวัน") return CustomerLifecycleStatus.DailyDistribution;
+
+    return CustomerLifecycleStatus.New;
+}
+
+export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]> = {}): Customer {
     const totalPurchases = Number(r.total_purchases || 0);
     const pk = r.customer_id ?? r.id ?? r.pk ?? null;
     const refId =
@@ -43,31 +64,12 @@ export const mapCustomerFromApi = (r: any): Customer => {
         followUpDate: r.follow_up_date ?? undefined,
         ownershipExpires: r.ownership_expires ?? "",
         lifecycleStatus:
-            r.lifecycle_status === "New"
-                ? CustomerLifecycleStatus.New
-                : r.lifecycle_status === "Old"
-                    ? CustomerLifecycleStatus.Old
-                    : r.lifecycle_status === "FollowUp"
-                        ? CustomerLifecycleStatus.FollowUp
-                        : r.lifecycle_status === "Old3Months"
-                            ? CustomerLifecycleStatus.Old3Months
-                            : r.lifecycle_status === "DailyDistribution"
-                                ? CustomerLifecycleStatus.DailyDistribution
-                                : (r.lifecycle_status ?? CustomerLifecycleStatus.New),
-        behavioralStatus: (r.behavioral_status ??
-            "Cold") as CustomerBehavioralStatus,
+            normalizeLifecycleStatusValue(r.lifecycle_status) ??
+            CustomerLifecycleStatus.New,
+        behavioralStatus:
+            (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
         grade: calculateCustomerGrade(totalPurchases),
-        tags: Array.isArray(r.tags)
-            ? r.tags.map((t: any) => ({
-                id: Number(t.id),
-                name: t.name,
-                type:
-                    (t.type as "SYSTEM" | "USER") === "SYSTEM"
-                        ? TagType.System
-                        : TagType.User,
-                color: t.color ?? undefined,
-            }))
-            : [],
+        tags: tagsByCustomer[resolvedId] || [],
         assignmentHistory: [],
         totalPurchases,
         totalCalls: Number(r.total_calls || 0),
@@ -76,6 +78,8 @@ export const mapCustomerFromApi = (r: any): Customer => {
         isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
         waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
         isBlocked: Boolean(r.is_blocked ?? false),
-        isUpsellEligible: Boolean(Number(r.is_upsell_eligible ?? 0)),
-    };
-};
+        // AI Specific Fields (pass through if present)
+        ai_priority_score: r.ai_priority_score,
+        ai_insight: r.ai_insight
+    } as any; // Cast as any to allow extra fields like aiScore
+}
