@@ -330,22 +330,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
 
   // Compute order total from items (more accurate than order.totalAmount)
   const computeOrderTotal = (order: Order): number => {
-    // Filter out freebie items and child items before calculating total
-    const nonFreebieItems = (order.items || []).filter((item: any) => {
-      const isFreebie = item.isFreebie || item.is_freebie;
-      const isChild = item.parentItemId || item.parent_item_id;
-      return !isFreebie && !isChild;
-    });
-
-    const itemsTotal = nonFreebieItems.reduce((sum, item) => {
-      const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
-      return sum + (Number.isFinite(net) ? net : 0);
-    }, 0);
-    const shipping = Number(order.shippingCost || 0);
-    const billDiscount = Number(order.billDiscount || 0);
-    const computed = Math.max(0, itemsTotal - billDiscount + shipping);
-    // Use computed total if items exist, otherwise fallback to order.totalAmount
-    return (order.items && order.items.length > 0) ? computed : (order.totalAmount || 0);
+    // User requested to use order.totalAmount directly
+    return order.totalAmount || 0;
   };
 
   // Calculate combined total amount including upsell orders
@@ -364,15 +350,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
     // This means there might be related orders that share the payment
     const relatedOrders = findRelatedUpsellOrders(order);
     const relatedTotal = relatedOrders.reduce((sum, o) => {
-      // Also compute total from items for upsell orders
-      const oItemsTotal = (o.items || []).reduce((s, item) => {
-        const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
-        return s + (Number.isFinite(net) ? net : 0);
-      }, 0);
-      const oShipping = Number(o.shippingCost || 0);
-      const oBillDiscount = Number(o.billDiscount || 0);
-      const oComputed = Math.max(0, oItemsTotal - oBillDiscount + oShipping);
-      return sum + ((o.items && o.items.length > 0) ? oComputed : (o.totalAmount || 0));
+      // Use totalAmount for related orders as well
+      return sum + (o.totalAmount || 0);
     }, 0);
 
     return actualTotal + relatedTotal;
@@ -438,7 +417,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
                 }
                 return String(u.id) === String(order.creatorId);
               });
-              const paid = (order.amountPaid ?? 0) as number;
+              // User requested to use totalAmount for Payment Amount display as well
+              const paid = (order.totalAmount ?? 0);
               const actualTotal = computeOrderTotal(order);
               const combinedTotal = getCombinedTotalAmount(order);
               const diff = combinedTotal - paid;
