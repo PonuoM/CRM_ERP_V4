@@ -640,10 +640,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           postalCode: '',
         };
 
-      // Group items by orderId (หมายเลขออเดอร์ออนไลน์)
+      // Group items by boxId (referencing order.boxes)
       const itemsByOrderId = new Map<string, typeof order.items>();
+
       order.items.forEach(item => {
-        const onlineOrderId = (item as any).orderId ?? (item as any).order_id ?? order.id;
+        const boxNum = item.boxNumber || (item as any).box_number || 1;
+        const match = (order.boxes || []).find(b => ((b as any).boxNumber ?? (b as any).box_number) === boxNum);
+
+        // Use subOrderId from box if found, otherwise fall back to item.orderId or order.id
+        let onlineOrderId = (match as any)?.subOrderId ?? (match as any)?.sub_order_id ?? (item as any).orderId ?? (item as any).order_id ?? order.id;
+
+        // Ensure Box 1 has -1 suffix if it matches the main order ID and doesn't have any suffix
+        if (boxNum === 1 && onlineOrderId === order.id && !onlineOrderId.includes(`${order.id}-`)) {
+          onlineOrderId = `${order.id}-1`;
+        }
+
         if (!itemsByOrderId.has(onlineOrderId)) {
           itemsByOrderId.set(onlineOrderId, []);
         }

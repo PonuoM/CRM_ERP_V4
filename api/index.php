@@ -2380,7 +2380,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         // Generate sub_order_id if missing (pattern: orderId-boxNumber, but box 1 might be just orderId or orderId-1)
                         $subOrderId = $box['sub_order_id'] ?? $box['subOrderId'] ?? null;
                         if (!$subOrderId) {
-                            $subOrderId = ($boxNumber === 1) ? $id : "$id-$boxNumber";
+                            $subOrderId = "$id-$boxNumber";
                         }
                         
                         try {
