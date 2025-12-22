@@ -2364,6 +2364,45 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         $pdo->prepare($deleteSql)->execute($deleteParams);
                     }
                 }
+                
+                // 4. Handle Boxes (Optional: If provided)
+                if (isset($data['boxes']) && is_array($data['boxes'])) {
+                    error_log("Updating boxes for order: $id. Count: " . count($data['boxes']));
+                    // Delete existing boxes for this order
+                    $pdo->prepare("DELETE FROM order_boxes WHERE order_id = ?")->execute([$id]);
+                    
+                    // Insert new boxes
+                    $insertBoxSql = "INSERT INTO order_boxes (order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, sub_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $boxStmt = $pdo->prepare($insertBoxSql);
+                    
+                    foreach ($data['boxes'] as $box) {
+                        $boxNumber = $box['box_number'] ?? $box['boxNumber'] ?? 1;
+                        // Generate sub_order_id if missing (pattern: orderId-boxNumber, but box 1 might be just orderId or orderId-1)
+                        $subOrderId = $box['sub_order_id'] ?? $box['subOrderId'] ?? null;
+                        if (!$subOrderId) {
+                            $subOrderId = ($boxNumber === 1) ? $id : "$id-$boxNumber";
+                        }
+                        
+                        try {
+                            $success = $boxStmt->execute([
+                                $id,
+                                $boxNumber,
+                                $box['cod_amount'] ?? $box['codAmount'] ?? 0,
+                                $box['collection_amount'] ?? $box['collectionAmount'] ?? $box['cod_amount'] ?? $box['codAmount'] ?? 0,
+                                $box['collected_amount'] ?? $box['collectedAmount'] ?? 0,
+                                $box['waived_amount'] ?? $box['waivedAmount'] ?? 0,
+                                $box['payment_method'] ?? $box['paymentMethod'] ?? null,
+                                $box['status'] ?? 'PENDING',
+                                $subOrderId
+                            ]);
+                            if (!$success) {
+                                error_log("Failed to insert box $boxNumber: " . json_encode($boxStmt->errorInfo()));
+                            }
+                        } catch (Exception $be) {
+                            error_log("Exception inserting box $boxNumber: " . $be->getMessage());
+                        }
+                    }
+                }
 
                 $pdo->commit();
                 

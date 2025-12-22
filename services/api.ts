@@ -660,7 +660,58 @@ export async function createCustomer(payload: any) {
   });
 }
 
+// Helper to generate boxes based on items and payment method
+function enrichOrderWithBoxes(payload: any) {
+  if (payload.items && Array.isArray(payload.items)) {
+    // Calculate max box number from items
+    const maxBoxNumber = Math.max(
+      ...payload.items.map((item: any) => item.boxNumber || item.box_number || 1),
+      1
+    );
+
+    // Generate boxes array
+    const boxes = [];
+    for (let boxNum = 1; boxNum <= maxBoxNumber; boxNum++) {
+      // Get items for this box
+      const boxItems = payload.items.filter(
+        (item: any) => (item.boxNumber || item.box_number || 1) === boxNum
+      );
+
+      // Calculate box amount
+      let boxAmount = 0;
+
+      if (payload.paymentMethod === 'Transfer' || payload.payment_method === 'Transfer') {
+        // Transfer: Box 1 gets total, others get 0
+        boxAmount = boxNum === 1 ? (payload.totalAmount || payload.total_amount || 0) : 0;
+      } else {
+        // Other methods: Calculate from items in this box
+        boxAmount = boxItems.reduce((sum: number, item: any) => {
+          const quantity = item.quantity || 0;
+          const pricePerUnit = item.pricePerUnit || item.price_per_unit || 0;
+          const discount = item.discount || 0;
+          const isFreebie = item.isFreebie || item.is_freebie || false;
+
+          const itemTotal = (pricePerUnit * quantity) - discount;
+          return sum + (isFreebie ? 0 : itemTotal);
+        }, 0);
+      }
+
+      boxes.push({
+        box_number: boxNum,
+        cod_amount: boxAmount,
+        collection_amount: boxAmount,
+        payment_method: payload.paymentMethod || payload.payment_method || null,
+        status: 'PENDING'
+      });
+    }
+
+    // Add boxes to payload
+    payload.boxes = boxes;
+  }
+}
+
 export async function updateOrder(id: string | number, data: any) {
+  enrichOrderWithBoxes(data);
   return apiFetch(`orders/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -671,12 +722,7 @@ export async function createOrder(payload: any) {
   return apiFetch("orders", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export async function patchOrder(id: string, payload: any) {
-  return apiFetch(`orders/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
-}
+
 
 export async function updateCustomer(id: string, payload: any) {
   return apiFetch(`customers/${encodeURIComponent(id)}`, {
@@ -684,6 +730,33 @@ export async function updateCustomer(id: string, payload: any) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function patchOrder(id: string, payload: any) {
+  enrichOrderWithBoxes(payload);
+
+  // DEBUG: Log generated boxes
+  console.log('Generated boxes:', {
+    orderId: id,
+    maxBoxNumber: payload.boxes?.length ? Math.max(...payload.boxes.map((b: any) => b.box_number)) : 0,
+    boxesCount: payload.boxes?.length,
+    boxes: payload.boxes,
+    paymentMethod: payload.paymentMethod || payload.payment_method
+  });
+
+  // DEBUG: Log final payload
+  console.log('patchOrder payload:', {
+    orderId: id,
+    hasBoxes: !!payload.boxes,
+    boxesCount: payload.boxes?.length,
+    payload: payload
+  });
+
+  return apiFetch(`orders/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 
 export async function createAppointment(payload: any) {
   return apiFetch("appointments", {

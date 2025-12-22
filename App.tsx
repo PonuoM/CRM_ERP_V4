@@ -2358,6 +2358,8 @@ const App: React.FC = () => {
         }),
         sales_channel: updatedOrder.salesChannel,
         sales_channel_page_id: updatedOrder.salesChannelPageId,
+        paymentMethod: updatedOrder.paymentMethod,
+        payment_method: updatedOrder.paymentMethod,
       };
 
       // Map Status/Payment Enums if needed (Assuming API accepts string values or needs conversion)
