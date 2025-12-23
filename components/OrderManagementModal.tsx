@@ -339,6 +339,21 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     loadProvinces();
   }, []);
 
+  // Fetch all promotions on mount to ensure we can look up SKUs
+  useEffect(() => {
+    const loadPromotions = async () => {
+      try {
+        const result = await listPromotions();
+        if (result && Array.isArray(result)) {
+          setPromotions(result);
+        }
+      } catch (error) {
+        console.error("Error loading promotions:", error);
+      }
+    };
+    loadPromotions();
+  }, []);
+
   // Load districts when province selected
   useEffect(() => {
     if (selectedProvince) {
@@ -674,9 +689,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
           boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
           creatorId: Number(it.creator_id ?? it.creatorId),
-          sku: it.sku,
+          sku: it.sku ?? it.promotion_sku ?? it.promotionSku ?? it.product_sku ?? it.productSku,
           parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
           isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+          promotionId: it.promotion_id ?? it.promotionId,
           creatorName: it.creatorName ?? (it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined),
         }))
         : [],
@@ -740,6 +756,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const sorted: typeof itemsWithIndex = [];
     const processedChildren = new Set<number>();
+
+    // Iterate through items to build sorted list
 
     // Iterate through items to build sorted list
     itemsWithIndex.forEach((entry) => {
@@ -2892,8 +2910,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           <td className="px-3 py-2 text-xs text-gray-600 font-mono">
                             {(item as any).isPromotionParent
                               ? // Show promotion SKU for parent
-                              promotions.find(
-                                (p) => p.id === item.promotionId,
+                              item.sku || promotions.find(
+                                (p) => p.id === (item as any).promotionId,
                               )?.sku || "-"
                               : // Show product SKU for both child and regular items
                               item.productId

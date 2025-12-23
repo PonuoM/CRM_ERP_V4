@@ -105,6 +105,9 @@ try {
     case 'promotions':
         handle_promotions($pdo, $id);
         break;
+    case 'finance_approval_counts':
+        handle_finance_approval_counts($pdo);
+        break;
     case 'validate_cod_tracking':
         if (method() === 'POST') {
             $input = json_decode(file_get_contents('php://input'), true);
@@ -1882,6 +1885,46 @@ function calculate_order_item_net_total(array $item): float {
     return $net > 0 ? $net : 0.0;
 }
 
+function handle_finance_approval_counts(PDO $pdo): void {
+    if (method() !== 'GET') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+    $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : 0;
+    
+    // Base WHERE conditions
+    // 1. Filter out sub-orders
+    // 2. Filter by companyId if provided
+    $baseWhere = "id NOT REGEXP '^.+-[0-9]+$'";
+    $params = [];
+    
+    if ($companyId > 0) {
+        $baseWhere .= " AND company_id = ?";
+        $params[] = $companyId;
+    }
+    
+    // Transfers Count: payment_method = 'Transfer' AND payment_status = 'PreApproved'
+    // Note: Use simple strings for ENUMs or VARCHARs
+    $sqlTransfers = "SELECT COUNT(*) FROM orders WHERE $baseWhere AND payment_method = 'Transfer' AND payment_status = 'PreApproved'";
+    
+    // PayAfter Count: payment_method = 'PayAfter' AND (payment_status = 'PreApproved' OR order_status = 'Delivered')
+    $sqlPayAfter = "SELECT COUNT(*) FROM orders WHERE $baseWhere AND payment_method = 'PayAfter' AND (payment_status = 'PreApproved' OR order_status = 'Delivered')";
+    
+    // Execute Transfers Query
+    $stmtT = $pdo->prepare($sqlTransfers);
+    $stmtT->execute($params);
+    $transfersCount = (int)$stmtT->fetchColumn();
+    
+    // Execute PayAfter Query
+    $stmtP = $pdo->prepare($sqlPayAfter);
+    $stmtP->execute($params);
+    $payafterCount = (int)$stmtP->fetchColumn();
+    
+    json_response([
+        'transfers' => $transfersCount,
+        'payafter' => $payafterCount
+    ]);
+}
+
 function handle_orders(PDO $pdo, ?string $id): void {
     // Handle sequence endpoint for order ID generation
     if ($id === 'sequence') {
@@ -2196,9 +2239,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                            oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                            oi.creator_id, oi.parent_order_id,
-                                           p.sku as product_sku
+                                           p.sku as product_sku,
+                                           pr.sku as promotion_sku
                                     FROM order_items oi
                                     LEFT JOIN products p ON oi.product_id = p.id
+                                    LEFT JOIN promotions pr ON oi.promotion_id = pr.id
                                     WHERE oi.parent_order_id IN ($parentPlaceholders) OR oi.order_id IN ($parentPlaceholders)
                                     ORDER BY oi.order_id, oi.id";
                         
@@ -2220,6 +2265,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     foreach ($items as $item) {
                         if (!isset($item['net_total']) || $item['net_total'] === null) {
                             $item['net_total'] = calculate_order_item_net_total($item);
+                        }
+                        // Force SKU from promotion for promotion parents
+                        if (!empty($item['promotion_sku']) && !empty($item['is_promotion_parent'])) {
+                            $item['sku'] = $item['promotion_sku'];
                         }
                         $itemOrderId = $item['order_id'];
                         // Check if this is a sub order (ends with -number)
@@ -4954,9 +5003,13 @@ function get_order(PDO $pdo, string $id): ?array {
     // Fetch items from main order and all sub orders
     // Use parent_order_id to find all items for this order group
     $items = $pdo->prepare("
-        SELECT oi.*, u.first_name as creator_first_name, u.last_name as creator_last_name 
+        SELECT oi.*, u.first_name as creator_first_name, u.last_name as creator_last_name,
+               p.sku as product_sku,
+               pr.sku as promotion_sku
         FROM order_items oi 
         LEFT JOIN users u ON u.id = oi.creator_id
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN promotions pr ON oi.promotion_id = pr.id
         WHERE oi.parent_order_id = ? OR oi.order_id = ? 
         ORDER BY oi.order_id, oi.id
     ");
@@ -4965,6 +5018,10 @@ function get_order(PDO $pdo, string $id): ?array {
     foreach ($allItems as &$itemRow) {
         if (!isset($itemRow['net_total']) || $itemRow['net_total'] === null) {
             $itemRow['net_total'] = calculate_order_item_net_total($itemRow);
+        }
+        // Force SKU from promotion for promotion parents
+        if (!empty($itemRow['promotion_sku']) && !empty($itemRow['is_promotion_parent'])) {
+            $itemRow['sku'] = $itemRow['promotion_sku'];
         }
     }
     unset($itemRow);
