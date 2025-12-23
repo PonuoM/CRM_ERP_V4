@@ -2069,54 +2069,137 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
                       <th className="px-3 py-2 text-left">เพจ</th>
-                      <th className="px-3 py-2 text-left">ค่า Ads</th>
-                      <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                      <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                      <th className="px-3 py-2 text-left">ทัก/คลิก</th>
-                      <th className="px-3 py-2 text-left">ยอดขาย</th>
-                      <th className="px-3 py-2 text-left">จำนวน Order</th>
-                      <th className="px-3 py-2 text-left">ลูกค้าใหม่</th>
-                      <th className="px-3 py-2 text-left">รีออเดอร์</th>
+                      <th className="px-3 py-2 text-left">ประเภทเพจ</th>
+                      <th className="px-3 py-2 text-left">พนักงาน</th>
+                      <th className="px-3 py-2 text-right">ค่าแอด</th>
+                      <th className="px-3 py-2 text-right">ยอดขาย</th>
+                      <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
+                      <th className="px-3 py-2 text-right">รีออเดอร์</th>
+                      <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
+                      <th className="px-3 py-2 text-right">ทัก/คลิก</th>
+                      <th className="px-3 py-2 text-right">ROAS</th>
+                      <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
+                      <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
+                      <th className="px-3 py-2 text-right">%Ads</th>
+                      <th className="px-3 py-2 text-right">%ปิดการขาย</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dashboardData.length > 0 ? (
-                      dashboardData.map((row, index) => (
-                        <tr key={index} className="border-b hover:bg-gray-50">
+                      <>
+                        {dashboardData.map((row, index) => {
+                          const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
+                          const costPerInbox = row.clicks > 0 ? row.ads_cost / row.clicks : 0;
+                          const pctAdsNewSales = row.new_customer_sales > 0 ? (row.ads_cost / row.new_customer_sales) * 100 : 0;
+                          const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
+                          const closeRate = row.clicks > 0 ? (row.total_orders / row.clicks) * 100 : 0;
 
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <span>{row.page_name}</span>
-                              {(() => {
-                                const page = pages.find(
-                                  (p) => p.name === row.page_name,
-                                );
-                                return isPageInactive(page) ? (
-                                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                    Inactive
-                                  </span>
-                                ) : null;
-                              })()}
-                            </div>
+                          return (
+                            <tr key={index} className="border-b hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span>{row.page_name}</span>
+                                  {(() => {
+                                    const page = pages.find(
+                                      (p) => p.name === row.page_name,
+                                    );
+                                    return isPageInactive(page) ? (
+                                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                        Inactive
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-gray-600">{row.page_type || "-"}</td>
+                              <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.staff_names}>{row.staff_names || "-"}</td>
+                              <td className="px-3 py-2 text-right">
+                                {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {Number(row.new_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
+                              <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-right">{costPerInbox.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-right relative">
+                                {pctAdsNewSales.toFixed(2)}%
+                                {/* Show warning if > 100% or high? keeping simple for now */}
+                              </td>
+                              <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
+                              <td className="px-3 py-2 text-right">{closeRate.toFixed(2)}%</td>
+                            </tr>
+                          );
+                        })}
+                        {/* Summary Row */}
+                        <tr className="bg-gray-100 font-bold border-t-2 border-gray-200">
+                          <td className="px-3 py-3" colSpan={3}>รวมทั้งหมด</td>
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="px-3 py-2">
-                            ฿{Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="px-3 py-2">{Number(row.impressions || 0).toLocaleString('th-TH')}</td>
-                          <td className="px-3 py-2">{Number(row.reach || 0).toLocaleString('th-TH')}</td>
-                          <td className="px-3 py-2">{Number(row.clicks || 0).toLocaleString('th-TH')}</td>
-                          <td className="px-3 py-2">
-                            ฿{Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="px-3 py-2">{Number(row.total_orders || 0).toLocaleString('th-TH')}</td>
-                          <td className="px-3 py-2">{Number(row.new_customer_orders || 0).toLocaleString('th-TH')}</td>
-                          <td className="px-3 py-2">{Number(row.reorder_customer_orders || 0).toLocaleString('th-TH')}</td>
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.total_customers || 0), 0).toLocaleString('th-TH')}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                          <td className="px-3 py-3 text-right text-blue-700">
+                            {(() => {
+                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                              const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                              return totalAds > 0 ? (totalSales / totalAds).toFixed(2) : "0.00";
+                            })()}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {(() => {
+                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                              const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                              return totalClicks > 0 ? (totalAds / totalClicks).toFixed(2) : "0.00";
+                            })()}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {(() => {
+                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                              const totalNewSales = dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0);
+                              return totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%";
+                            })()}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {(() => {
+                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                              const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                              return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
+                            })()}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {(() => {
+                              const totalOrders = dashboardData.reduce((acc, row) => acc + Number(row.total_orders || 0), 0);
+                              const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                              return totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%";
+                            })()}
+                          </td>
                         </tr>
-                      ))
+                      </>
                     ) : (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={14}
                           className="text-center py-8 text-gray-500"
                         >
                           ไม่มีข้อมูลในช่วงวันที่ที่เลือก
@@ -2125,15 +2208,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     )}
                   </tbody>
                 </table>
-
-                {/* Total count display */}
-                {dashboardData.length > 0 && (
-                  <div className="flex justify-between items-center mt-3">
-                    <div className="text-sm text-gray-600">
-                      แสดงทั้งหมด {dashboardData.length} รายการ
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </section>

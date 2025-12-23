@@ -99,7 +99,6 @@ try {
     // Query to get all pages for the company with aggregated ads log and order data
     // Aggregate by page only (not by date)
     $query = "
-        SELECT
             p.id as page_id,
             p.name as page_name,
             p.platform,
@@ -112,7 +111,11 @@ try {
             COALESCE(SUM(o.total_amount), 0) as total_sales,
             COALESCE(COUNT(DISTINCT o.id), 0) as total_orders,
             COALESCE(SUM(CASE WHEN o.customer_type = 'New Customer' THEN 1 ELSE 0 END), 0) as new_customer_orders,
-            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN 1 ELSE 0 END), 0) as reorder_customer_orders
+            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN 1 ELSE 0 END), 0) as reorder_customer_orders,
+            COALESCE(SUM(CASE WHEN o.customer_type = 'New Customer' THEN o.total_amount ELSE 0 END), 0) as new_customer_sales,
+            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN o.total_amount ELSE 0 END), 0) as reorder_customer_sales,
+            COALESCE(COUNT(DISTINCT o.customer_id), 0) as total_customers,
+            staff.staff_names
         FROM pages p
         LEFT JOIN (
             SELECT * FROM marketing_ads_log
@@ -122,8 +125,14 @@ try {
             SELECT * FROM orders
             WHERE $orderWhereClause
         ) o ON p.id = o.sales_channel_page_id
+        LEFT JOIN (
+            SELECT mup.page_id, GROUP_CONCAT(u.first_name SEPARATOR ', ') as staff_names
+            FROM marketing_user_page mup
+            JOIN users u ON mup.user_id = u.id
+            GROUP BY mup.page_id
+        ) staff ON p.id = staff.page_id
         WHERE $pageWhereClause
-        GROUP BY p.id, p.name, p.platform, p.page_type, p.page_id
+        GROUP BY p.id, p.name, p.platform, p.page_type, p.page_id, staff.staff_names
         ORDER BY p.name ASC
     ";
 
