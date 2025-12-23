@@ -6782,7 +6782,7 @@ const App: React.FC = () => {
         return (
           <CODManagementPage
             user={currentUser}
-            orders={companyOrders}
+            // orders={companyOrders} // Removed dependency
             customers={companyCustomers}
             users={companyUsers}
           />

@@ -105,6 +105,168 @@ try {
     case 'promotions':
         handle_promotions($pdo, $id);
         break;
+    case 'validate_cod_tracking':
+        if (method() === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $items = $input['items'] ?? [];
+            if (empty($items)) {
+                json_response(['results' => []]);
+            }
+            
+            // Extract Unique Normalized Tracking Numbers
+            $trackingMap = []; // normalized -> original
+            foreach ($items as $item) {
+                $raw = $item['trackingNumber'] ?? '';
+                $clean = preg_replace('/\s+/', '', strtolower($raw));
+                if ($clean) {
+                    $trackingMap[$clean] = $raw;
+                }
+            }
+            
+            if (empty($trackingMap)) {
+                json_response(['results' => []]);
+                return;
+            }
+            
+            $trackingsToCheck = array_keys($trackingMap);
+            $placeholders = str_repeat('?,', count($trackingsToCheck) - 1) . '?';
+            
+            // 1. Find Tracking Records
+            // We join with orders to get main order info immediately
+            // We also select order_tracking_numbers info to help find boxes
+            $sql = "SELECT 
+                        t.tracking_number, 
+                        t.parent_order_id, 
+                        t.order_id as track_order_id, 
+                        t.box_number as track_box_number,
+                        o.cod_amount as order_cod_amount,
+                        o.total_amount as order_total_amount,
+                        o.amount_paid,
+                        o.payment_status
+                    FROM order_tracking_numbers t
+                    JOIN orders o ON t.parent_order_id = o.id
+                    WHERE t.tracking_number IN ($placeholders)";
+            
+            // Note: Normalized matching in SQL might need REPLACE/LOWER if DB isn't CI/AS or data is messy
+            // Usually DB is CI. For strict safety, we could use REPLACE(LOWER(...)) but index usage might drop.
+            // Let's assume the DB tracking_number is clean enough or matches case-insensitively.
+            // If the user pasted spaces, our $trackingsToCheck has no spaces. 
+            // So we might need WHERE REPLACE(t.tracking_number, ' ', '') IN ...
+            
+            // Let's try direct match first (assuming DB has clean data) 
+            // OR use multiple ORs if efficiency allows. 
+            // Optimally: Fetch by simple IN first. If empty, maybe try fuzzy.
+            // Given the requirement, let's assume standard match. 
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($trackingsToCheck); 
+            $trackingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // 2. Resolve sub-order / box details
+            // We need to query order_boxes for the found parent_order_ids to find specific cod amounts
+            $parentIds = array_unique(array_column($trackingRows, 'parent_order_id'));
+            $boxesByParent = [];
+            
+            if (!empty($parentIds)) {
+                $pPlaceholders = str_repeat('?,', count($parentIds) - 1) . '?';
+                $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount 
+                           FROM order_boxes 
+                           WHERE order_id IN ($pPlaceholders)";
+                $bStmt = $pdo->prepare($boxSql);
+                $bStmt->execute($parentIds);
+                $boxes = $bStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($boxes as $b) {
+                    $pid = $b['order_id'];
+                    $boxesByParent[$pid][] = $b;
+                }
+            }
+            
+            $results = [];
+            
+            // Map back to inputs
+            // We iterate strict normalized inputs ensuring we cover all requested
+            foreach ($trackingMap as $normalized => $original) {
+                // Find matching DB row (Case insensitive)
+                $match = null;
+                foreach ($trackingRows as $tr) {
+                    if (preg_replace('/\s+/', '', strtolower($tr['tracking_number'])) === $normalized) {
+                        $match = $tr;
+                        break;
+                    }
+                }
+                
+                if (!$match) {
+                    $results[] = [
+                        'trackingNumber' => $original,
+                        'status' => 'pending',
+                        'message' => 'ไม่พบ Tracking',
+                        'orderId' => null,
+                        'expectedAmount' => 0,
+                        'difference' => 0
+                    ];
+                    continue;
+                }
+                
+                // Logic to find expected amount
+                $parentId = $match['parent_order_id'];
+                $trackOrderId = $match['track_order_id']; // might be sub_order_id
+                $trackBoxNum = $match['track_box_number'];
+                
+                $orderFallbackAmount = ($match['order_cod_amount'] > 0) ? $match['order_cod_amount'] : $match['order_total_amount'];
+                $expectedAmount = (float)$orderFallbackAmount;
+                $resolvedOrderId = $trackOrderId ?: $parentId; // Prefer sub, else parent
+                
+                // Try finding specific box
+                $boxes = $boxesByParent[$parentId] ?? [];
+                $foundBox = null;
+                
+                // Priority 1: Match by box_number (User Request: Link via box_number)
+                if ($trackBoxNum !== null) {
+                    foreach ($boxes as $bx) {
+                        if ((int)$bx['box_number'] === (int)$trackBoxNum) {
+                            $foundBox = $bx;
+                            break; 
+                        }
+                    }
+                }
+
+                // Priority 2: Match by sub_order_id (Fallback)
+                if (!$foundBox && $trackOrderId) {
+                    foreach ($boxes as $bx) {
+                        if (strcasecmp($bx['sub_order_id'] ?? '', $trackOrderId) === 0) {
+                            $foundBox = $bx;
+                            break;
+                        }
+                    }
+                }
+                
+                if ($foundBox) {
+                    $boxAmt = (float)($foundBox['collection_amount'] > 0 ? $foundBox['collection_amount'] : $foundBox['cod_amount']);
+                    // Always use box amount if found, even if 0? Or fallback? 
+                    // Usually if a box exists, its amount is authoritative.
+                    $expectedAmount = $boxAmt;
+                    
+                    if (!empty($foundBox['sub_order_id'])) {
+                        $resolvedOrderId = $foundBox['sub_order_id'];
+                    }
+                }
+                
+                $results[] = [
+                    'trackingNumber' => $original, // Use correctly formatted from DB? No, keep user input or normalized? Input is better for mapping.
+                    'status' => 'found', // Helper status, frontend will determine matched/unmatched
+                    'orderId' => $resolvedOrderId,
+                    'parentOrderId' => $parentId,
+                    'expectedAmount' => $expectedAmount,
+                    'amountPaid' => (float)$match['amount_paid'],
+                    'message' => 'ตรวจสอบแล้ว'
+                ];
+            }
+            
+            json_response(['results' => $results]);
+        }
+        break;
+
     case 'orders':
         handle_orders($pdo, $id);
         break;
@@ -1947,13 +2109,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             break;
                             
                         case 'completed':
-                            // Reconcile Confirmed OR (Claim/FreeGift AND Delivered)
-                            // AND Not Cancelled
-                            $whereConditions[] = 'o.order_status != "Cancelled"';
-                            $whereConditions[] = '(
-                                srl.confirmed_action = "Confirmed" OR
-                                (o.payment_method IN ("Claim", "FreeGift") AND o.order_status = "Delivered")
-                            )';
+                            // User Request: payment_status = Approved (ignore order_status)
+                            $whereConditions[] = 'o.payment_status = "Approved"';
                             break;
                     }
                 }
