@@ -445,52 +445,94 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const autoMatchRows = useCallback(
     (statements: StatementLog[], ordersForMatch: ReconcileOrder[]) => {
+      const usedSlipKeys = new Set<string>(); // "orderId-slipIndex"
+      // We don't track usedMainKeys for now because main order matching is usually for single-slip cases or failovers,
+      // and checking 'used' on main might prevent legitimate multiple partial payments if logic matched main.
+      // But typically exact match on total amount implies full payment. 
+      // Let's at least prevent exact total amount reuse if we want strict 1-1. 
+      // checks "slip_total" or "amount_paid" or "total_amount". 
+      // Safe to trace usedOrders? If an order expects 1000, and we have 2 statements of 1000. 
+      // If we map both, it's 2000. Overpaid. So yes, strict 1-1 is better for Exact Auto Match.
+      const usedOrderIds = new Set<string>();
+
       return statements.map((s) => {
-        const exactCandidate = ordersForMatch.find((o) => {
-          const bankId = o.bank_account_id ?? o.slip_bank_account_id ?? null;
-          // Prefer slip-level exact match
+        let matchedOrder: ReconcileOrder | undefined;
+        let matchedSlipIndex: number | undefined;
+
+        // Find EXACT match
+        for (const o of ordersForMatch) {
+          // 1. Check Slips
           if (o.slips && o.slips.length > 0) {
-            const slipMatch = o.slips.find((slip) => {
-              if (slip.amount === null || slip.transfer_date === null) {
-                return false;
-              }
+            const slipIndex = o.slips.findIndex((slip, idx) => {
+              const key = `${o.id}-${idx}`;
+              if (usedSlipKeys.has(key)) return false;
+
+              if (slip.amount === null || slip.transfer_date === null) return false;
+
               const bankMatch =
                 s.bank_account_id !== null &&
                 slip.bank_account_id !== null &&
                 s.bank_account_id === slip.bank_account_id;
-              const timeMatch =
-                secondsDiff(s.transfer_at, slip.transfer_date) === 0;
+              // Strict second-level diff check
+              const timeMatch = secondsDiff(s.transfer_at, slip.transfer_date) <= 60;
               const amountMatch = Math.abs(slip.amount - s.amount) === 0;
+
               return bankMatch && timeMatch && amountMatch;
             });
-            if (slipMatch) {
-              return true;
+
+            if (slipIndex !== -1) {
+              matchedOrder = o;
+              matchedSlipIndex = slipIndex;
+              break; // Stop searching orders
             }
           }
-          const matchAmount =
-            o.slip_total && o.slip_total > 0
-              ? o.slip_total
-              : o.amount_paid && o.amount_paid > 0
-                ? o.amount_paid
-                : o.total_amount;
-          const matchTransferDate =
-            o.slip_transfer_date && o.slip_transfer_date !== "null"
-              ? o.slip_transfer_date
-              : o.transfer_date;
-          const bankMatch =
-            s.bank_account_id !== null &&
-            bankId !== null &&
-            s.bank_account_id === bankId;
-          const timeMatch =
-            !!matchTransferDate &&
-            secondsDiff(s.transfer_at, matchTransferDate) === 0;
-          const amountMatch = Math.abs(matchAmount - s.amount) === 0;
-          return bankMatch && timeMatch && amountMatch;
-        });
+
+          // 2. Check Main Order (Fallback if no slip match or no slips)
+          // Only check main if we haven't matched this order yet (for main matching)
+          if (!usedOrderIds.has(o.id)) {
+            const bankId = o.bank_account_id ?? o.slip_bank_account_id ?? null;
+            const matchAmount =
+              o.slip_total && o.slip_total > 0
+                ? o.slip_total
+                : o.amount_paid && o.amount_paid > 0
+                  ? o.amount_paid
+                  : o.total_amount;
+
+            const matchTransferDate =
+              o.slip_transfer_date && o.slip_transfer_date !== "null"
+                ? o.slip_transfer_date
+                : o.transfer_date;
+
+            const bankMatch =
+              s.bank_account_id !== null &&
+              bankId !== null &&
+              s.bank_account_id === bankId;
+            const timeMatch =
+              !!matchTransferDate &&
+              secondsDiff(s.transfer_at, matchTransferDate) <= 60;
+            const amountMatch = Math.abs(matchAmount - s.amount) === 0;
+
+            if (bankMatch && timeMatch && amountMatch) {
+              matchedOrder = o;
+              // No slip index
+              break;
+            }
+          }
+        }
+
+        // Commit match
+        if (matchedOrder) {
+          if (matchedSlipIndex !== undefined) {
+            usedSlipKeys.add(`${matchedOrder.id}-${matchedSlipIndex}`);
+          } else {
+            usedOrderIds.add(matchedOrder.id);
+          }
+        }
 
         const best = buildCandidates(s, ordersForMatch, new Set())[0];
-        const selectedOrderId = exactCandidate?.id ?? "";
+        const selectedOrderId = matchedOrder?.id ?? "";
         const autoMatched = !!selectedOrderId;
+
         return {
           statement: s,
           confirmedAmount: s.amount,
