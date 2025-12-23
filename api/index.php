@@ -7715,7 +7715,7 @@ function handle_sync_tracking($pdo) {
     $pdo->beginTransaction();
     try {
         $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
-        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = ?, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN 'Shipping' ELSE order_status END WHERE id = ?");
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = ?, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
         
         // Prepare box lookup
         $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
