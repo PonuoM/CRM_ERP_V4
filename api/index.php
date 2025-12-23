@@ -7715,7 +7715,9 @@ function handle_sync_tracking($pdo) {
     $pdo->beginTransaction();
     try {
         $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
-        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = ?, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
+        // Update shipping_provider (only if not empty), and always update statuses
+        // IMPORTANT: payment_status must be updated BEFORE order_status because MySQL uses the updated value for subsequent fields in the same SET clause.
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
         
         // Prepare box lookup
         $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
@@ -7755,10 +7757,8 @@ function handle_sync_tracking($pdo) {
             $resolvedSubOrderId = "$parentOrderId-$boxNumber";
             $trackStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
 
-            // 2. Update shipping_provider on parent order
-            if (!empty($shippingProvider)) {
-                $updateOrderStmt->execute([$shippingProvider, $parentOrderId]);
-            }
+            // 2. Update statuses (and shipping_provider if present)
+            $updateOrderStmt->execute([$shippingProvider, $shippingProvider, $parentOrderId]);
             
             $results[] = [
                 'sub_order_id' => $resolvedSubOrderId,

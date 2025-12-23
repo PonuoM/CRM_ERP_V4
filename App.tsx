@@ -2677,17 +2677,17 @@ const App: React.FC = () => {
                 ...distinctNewTrackingNumbers.map(u => u.trackingNumber),
               ],
               orderStatus:
-                (orderToUpdate as Order).paymentStatus ===
-                  PaymentStatus.Verified &&
-                  ((orderToUpdate as Order).paymentMethod ===
-                    PaymentMethod.Transfer ||
-                    (orderToUpdate as Order).paymentMethod ===
-                    PaymentMethod.PayAfter)
+                ((orderToUpdate as Order).paymentMethod === PaymentMethod.Transfer &&
+                  ((orderToUpdate as Order).orderStatus === OrderStatus.Preparing || (orderToUpdate as Order).orderStatus === OrderStatus.Picking))
                   ? OrderStatus.PreApproved
-                  : (orderToUpdate as Order).orderStatus === OrderStatus.Picking ||
-                    (orderToUpdate as Order).orderStatus === OrderStatus.Preparing
+                  : ((orderToUpdate as Order).orderStatus === OrderStatus.Preparing || (orderToUpdate as Order).orderStatus === OrderStatus.Picking)
                     ? OrderStatus.Shipping
                     : (orderToUpdate as Order).orderStatus,
+              paymentStatus:
+                ((orderToUpdate as Order).paymentMethod === PaymentMethod.Transfer &&
+                  ((orderToUpdate as Order).orderStatus === OrderStatus.Preparing || (orderToUpdate as Order).orderStatus === OrderStatus.Picking))
+                  ? PaymentStatus.PreApproved
+                  : (orderToUpdate as Order).paymentStatus,
             };
 
             if (
@@ -2725,7 +2725,7 @@ const App: React.FC = () => {
 
     // Prepare bulk sync payload
     const syncPayload = updates.map(u => ({
-      sub_order_id: u.orderId,
+      sub_order_id: (u.boxNumber && u.boxNumber > 1 && !u.orderId.match(/-\d+$/)) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
       tracking_number: u.trackingNumber,
       shipping_provider: detectShippingProvider(u.trackingNumber)
     }));
