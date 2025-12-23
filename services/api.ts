@@ -1608,3 +1608,14 @@ export async function listAIPriority(userId: number, companyId?: number) {
   if (companyId) qs.set("companyId", String(companyId));
   return apiFetch(`ai_priority?${qs}`);
 }
+
+export async function apiSyncTrackingNumbers(updates: {
+  sub_order_id: string;
+  tracking_number: string;
+  shipping_provider: string;
+}[]) {
+  return apiFetch('sync_tracking', {
+    method: 'POST',
+    body: JSON.stringify({ updates })
+  });
+}

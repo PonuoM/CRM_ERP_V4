@@ -68,6 +68,7 @@ import {
   updateUser as apiUpdateUser,
   deleteUser as apiDeleteUser,
   updateOrder,
+  apiSyncTrackingNumbers,
 } from "./services/api";
 import {
   recordFollowUp,
@@ -529,7 +530,7 @@ const App: React.FC = () => {
     if (value === "cod" || value === "c.o.d" || value === "cash_on_delivery") {
       return PaymentMethod.COD as any;
     }
-    if (value === "transfer" || value === "bank_transfer" || value === "โอน" || value === "�1,�,-�,t") {
+    if (value === "transfer" || value === "bank_transfer" || value === "โอน" || value === "โอนเงิน") {
       return PaymentMethod.Transfer as any;
     }
     if (value === "payafter" || value === "pay_after" || value === "pay-after" || value === "เก็บเงินปลายทางแบบผ่อน") {
@@ -2596,18 +2597,49 @@ const App: React.FC = () => {
     }
   };
 
+  // Function to detect shipping provider for each tracking number
+  const detectShippingProvider = (trackingNumber: string): string => {
+    const trimmed = trackingNumber.trim().toUpperCase();
+    if (!trimmed) return '-';
+
+    // Flash Express: Starts with TH, followed by at least 10 alphanumerics (Usually 13-16 chars)
+    if (/^TH[0-9A-Z]{10,}$/.test(trimmed)) {
+      return 'Flash Express';
+    }
+
+    // J&T Express: Exactly 12 digits (Common starts: 8, 6, 5)
+    if (/^\d{12}$/.test(trimmed)) {
+      return 'J&T Express';
+    }
+
+    // Kerry Express: Starts with prefix, followed by numbers/alphanumerics
+    // Common prefixes: KER, KEA, KEX, JST (from original code), KBK
+    if (/^(KER|KEA|KEX|KBK|JST)[0-9A-Z]+$/.test(trimmed)) {
+      return 'Kerry Express';
+    }
+
+    // Thailand Post: Standard format XX123456789TH
+    if (/^[A-Z]{2}\d{9}TH$/.test(trimmed)) {
+      return 'Thailand Post';
+    }
+
+    return 'Airport';
+  };
+
   const handleBulkUpdateTracking = async (
-    updates: { orderId: string; trackingNumber: string }[],
+    updates: { orderId: string; trackingNumber: string; boxNumber: number }[],
   ) => {
     const activitiesToAdd: Activity[] = [];
     const patchPromises: Promise<any>[] = [];
 
     // Group updates by orderId to prevent race conditions
-    const updatesByOrder = new Map<string, string[]>();
+    const updatesByOrder = new Map<string, { trackingNumber: string; boxNumber: number }[]>();
     updates.forEach(update => {
-      const current = updatesByOrder.get(update.orderId) || [];
-      current.push(update.trackingNumber);
-      updatesByOrder.set(update.orderId, current);
+      // Resolve main order ID (remove -1, -2 suffix if present)
+      const mainOrderId = update.orderId.replace(/-\d+$/, '');
+      const current = updatesByOrder.get(mainOrderId) || [];
+      current.push({ trackingNumber: update.trackingNumber, boxNumber: update.boxNumber });
+      updatesByOrder.set(mainOrderId, current);
     });
 
     setOrders((prevOrders) => {
@@ -2620,19 +2652,19 @@ const App: React.FC = () => {
 
           // Filter out duplicates that already exist on the order
           const distinctNewTrackingNumbers = newTrackingNumbers.filter(
-            tn => !existingTrackingNumbers.includes(tn)
+            u => !existingTrackingNumbers.includes(u.trackingNumber)
           );
 
           if (distinctNewTrackingNumbers.length > 0) {
             const customerIdForActivity = getCustomerIdForActivity((orderToUpdate as Order).customerId);
             if (customerIdForActivity) {
-              distinctNewTrackingNumbers.forEach(tn => {
+              distinctNewTrackingNumbers.forEach(update => {
                 activitiesToAdd.push({
                   id: Date.now() + Math.random(),
                   customerId: String(customerIdForActivity),
                   timestamp: new Date().toISOString(),
                   type: ActivityType.TrackingAdded,
-                  description: `เพิ่ม Tracking ${tn} สำหรับคำสั่งซื้อ ${orderId}`,
+                  description: `เพิ่ม Tracking ${update.trackingNumber} (กล่อง ${update.boxNumber}) สำหรับคำสั่งซื้อ ${orderId}`,
                   actorName: `${currentUser.firstName} ${currentUser.lastName}`,
                 });
               });
@@ -2642,7 +2674,7 @@ const App: React.FC = () => {
               ...(orderToUpdate as Order),
               trackingNumbers: [
                 ...existingTrackingNumbers,
-                ...distinctNewTrackingNumbers,
+                ...distinctNewTrackingNumbers.map(u => u.trackingNumber),
               ],
               orderStatus:
                 (orderToUpdate as Order).paymentStatus ===
@@ -2676,18 +2708,31 @@ const App: React.FC = () => {
             updatedOrdersMap.set(orderId, newOrderState);
 
             if (true) {
-              const deduped = Array.from(
+              const dedupedNumbers = Array.from(
                 new Set(newOrderState.trackingNumbers.filter(Boolean)),
               );
-              patchPromises.push(
-                apiPatchOrder(orderId, { trackingNumbers: deduped }),
-              );
+
+              // Instead of patching order, we'll collect for bulk sync
+              // But for the global state update, we've already done setOrders above
+              // So we just need to hit the new sync API with the new records
             }
           }
         }
       });
+
       return Array.from(updatedOrdersMap.values());
     });
+
+    // Prepare bulk sync payload
+    const syncPayload = updates.map(u => ({
+      sub_order_id: u.orderId,
+      tracking_number: u.trackingNumber,
+      shipping_provider: detectShippingProvider(u.trackingNumber)
+    }));
+
+    if (syncPayload.length > 0) {
+      patchPromises.push(apiSyncTrackingNumbers(syncPayload));
+    }
 
     if (activitiesToAdd.length > 0) {
       if (true) {
@@ -6193,7 +6238,7 @@ const App: React.FC = () => {
     if (activePage === "Bulk Tracking") {
       return (
         <BulkTrackingPage
-          orders={companyOrders}
+          currentUser={currentUser}
           onBulkUpdateTracking={handleBulkUpdateTracking}
         />
       );
@@ -6798,7 +6843,7 @@ const App: React.FC = () => {
       case "เพิ่ม Tracking":
         return (
           <BulkTrackingPage
-            orders={companyOrders}
+            currentUser={currentUser}
             onBulkUpdateTracking={handleBulkUpdateTracking}
           />
         );

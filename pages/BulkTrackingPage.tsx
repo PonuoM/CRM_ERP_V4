@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
-import { Order, OrderStatus } from '../types';
-import { patchOrder } from '../services/api';
-import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { Order, OrderStatus, User } from '../types';
+import { patchOrder, listOrders } from '../services/api';
+import { UploadCloud, CheckCircle, XCircle, AlertTriangle, Plus, Trash2, Loader2 } from 'lucide-react';
 
 type ValidationStatus = 'valid' | 'duplicate' | 'error' | 'unchecked';
 interface RowData {
@@ -16,8 +16,9 @@ interface RowData {
 }
 
 interface BulkTrackingPageProps {
-  orders: Order[];
+  currentUser: User | null;
   onBulkUpdateTracking: (updates: { orderId: string; trackingNumber: string; boxNumber: number }[]) => Promise<void>;
+  orders?: Order[]; // Optional for backward compatibility
 }
 
 const createEmptyRow = (id: number): RowData => ({
@@ -70,9 +71,51 @@ const detectShippingProvider = (trackingNumber: string): string => {
   return 'Aiport';
 };
 
-const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdateTracking }) => {
+const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders: propsOrders, onBulkUpdateTracking, currentUser }) => {
   const [rows, setRows] = useState<RowData[]>(Array.from({ length: 15 }, (_, i) => createEmptyRow(i + 1)));
   const [isVerified, setIsVerified] = useState(false);
+  const [localOrders, setLocalOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // Combine props orders and local orders
+  const orders = useMemo(() => {
+    return propsOrders && propsOrders.length > 0 ? propsOrders : localOrders;
+  }, [propsOrders, localOrders]);
+
+  // Fetch orders for validation on mount
+  React.useEffect(() => {
+    const fetchOrdersForValidation = async () => {
+      if (!currentUser?.companyId) return;
+
+      setLoadingOrders(true);
+      try {
+        // Fetch orders in statuses that typically need tracking updates
+        const response = await listOrders({
+          companyId: currentUser.companyId,
+          pageSize: 1000, // Fetch a reasonably large batch for validation
+          // You can filter by status if needed, e.g., Preparing, Picking, Shipping
+        });
+
+        if (response.ok) {
+          const mappedOrders = (response.orders || []).map((r: any) => ({
+            id: r.id,
+            orderStatus: r.order_status,
+            trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
+            boxes: r.boxes || [],
+            trackingEntries: r.tracking_details || r.trackingDetails || [], // Map for validation logic
+            companyId: r.company_id
+          }));
+          setLocalOrders(mappedOrders as Order[]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch orders for bulk tracking validation:', error);
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+
+    fetchOrdersForValidation();
+  }, [currentUser?.companyId]);
 
   const handleInputChange = (index: number, field: 'orderId' | 'trackingNumber', value: string) => {
     const newRows = [...rows];
@@ -529,7 +572,13 @@ const BulkTrackingPage: React.FC<BulkTrackingPageProps> = ({ orders, onBulkUpdat
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-20rem)]">
+      <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-20rem)] relative">
+        {loadingOrders && (
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 transition-opacity">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-2" />
+            <p className="text-sm font-medium text-gray-600">กำลังดึงข้อมูลออเดอร์เพื่อตรวจสอบ...</p>
+          </div>
+        )}
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
             <tr>

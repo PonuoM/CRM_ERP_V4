@@ -178,6 +178,9 @@ try {
     case 'stock_movements':
         handle_stock_movements($pdo, $id);
         break;
+    case 'sync_tracking':
+        handle_sync_tracking($pdo);
+        break;
     case 'allocations':
         handle_allocations($pdo, $id, $action);
         break;
@@ -2213,6 +2216,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
             try {
                 $pdo->beginTransaction();
                 
+                // Resolve main order ID (remove -1, -2 suffix if present)
+                $isSubOrder = preg_match('/^(.+)-(\d+)$/', $id, $matches);
+                $mainOrderId = $isSubOrder ? $matches[1] : $id;
+                
+                if ($isSubOrder) {
+                    error_log("PUT /orders: Detected sub-order ID $id. Redirecting update to main order $mainOrderId");
+                }
+                
+                // Use mainOrderId for the rest of the operation
+                $id = $mainOrderId;
                 // 1. Update main order fields
                 $updateFields = [];
                 $params = [];
@@ -2285,16 +2298,33 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
                 
                 // 2. Insert/Update Tracking Numbers
-                // For simplicity, we can wipe and recreate tracking numbers for this order
-                if (isset($data['trackingNumbers']) && is_array($data['trackingNumbers'])) {
+                // Check if new format trackingObjects is provided, otherwise fall back to trackingNumbers
+                $hasDetailedTracking = isset($data['trackingObjects']) && is_array($data['trackingObjects']);
+                $hasLegacyTracking = isset($data['trackingNumbers']) && is_array($data['trackingNumbers']);
+                
+                if ($hasDetailedTracking || $hasLegacyTracking) {
                     // Delete existing
                     $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$id]);
                     
-                    // Insert new
-                    $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number) VALUES (?, ?, ?)");
-                    foreach ($data['trackingNumbers'] as $trackNum) {
-                        if (trim($trackNum)) {
-                            $trackStmt->execute([$id, $id, trim($trackNum)]);
+                    if ($hasDetailedTracking) {
+                        // New format: [{ trackingNumber: '...', boxNumber: 1 }, ...]
+                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+                        foreach ($data['trackingObjects'] as $obj) {
+                            $tn = trim($obj['trackingNumber'] ?? '');
+                            $bn = (int)($obj['boxNumber'] ?? 1);
+                            if ($tn) {
+                                // Correctly map order_id to sub_order_id (pattern: parentId-boxNumber)
+                                $subOrderId = "$id-$bn"; 
+                                $trackStmt->execute([$id, $subOrderId, $bn, $tn]);
+                            }
+                        }
+                    } else if ($hasLegacyTracking) {
+                        // Old format: ['tn1', 'tn2', ...]
+                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, 1)");
+                        foreach ($data['trackingNumbers'] as $trackNum) {
+                            if (trim($trackNum)) {
+                                $trackStmt->execute([$id, "$id-1", trim($trackNum)]);
+                            }
                         }
                     }
                 }
@@ -7570,5 +7600,81 @@ function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): vo
 }
 
 
+
+
+function handle_sync_tracking($pdo) {
+    if (method() !== 'POST') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+
+    $in = json_input();
+    if (!isset($in['updates']) || !is_array($in['updates'])) {
+        json_response(['error' => 'INVALID_PAYLOAD', 'message' => 'updates must be an array'], 400);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = ?, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN 'Shipping' ELSE order_status END WHERE id = ?");
+        
+        // Prepare box lookup
+        $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
+
+        $results = [];
+        $processedOrders = [];
+
+        foreach ($in['updates'] as $update) {
+            $subOrderId = $update['sub_order_id'] ?? $update['order_id'] ?? null;
+            $trackingNumber = trim($update['tracking_number'] ?? '');
+            $shippingProvider = trim($update['shipping_provider'] ?? '');
+
+            if (!$subOrderId || !$trackingNumber) continue;
+
+            // Resolve parent order ID and box number
+            // First Priority: Lookup from order_boxes
+            $boxLookupStmt->execute([$subOrderId]);
+            $boxInfo = $boxLookupStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($boxInfo) {
+                $parentOrderId = $boxInfo['order_id'];
+                $boxNumber = (int)$boxInfo['box_number'];
+            } else {
+                // Second Priority: Parse from sub_order_id suffix (fallback)
+                $isSub = preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
+                $parentOrderId = $isSub ? $matches[1] : $subOrderId;
+                $boxNumber = $isSub ? (int)$matches[2] : 1;
+            }
+
+            // 1. Wipe and Insert into order_tracking_numbers
+            if (!isset($processedOrders[$parentOrderId])) {
+                $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$parentOrderId]);
+                $processedOrders[$parentOrderId] = true;
+            }
+
+            // Always use parentOrderId-boxNumber for consistency with order_boxes sub_order_id
+            $resolvedSubOrderId = "$parentOrderId-$boxNumber";
+            $trackStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
+
+            // 2. Update shipping_provider on parent order
+            if (!empty($shippingProvider)) {
+                $updateOrderStmt->execute([$shippingProvider, $parentOrderId]);
+            }
+            
+            $results[] = [
+                'sub_order_id' => $resolvedSubOrderId,
+                'parent_order_id' => $parentOrderId,
+                'box_number' => $boxNumber,
+                'status' => 'success'
+            ];
+        }
+
+        $pdo->commit();
+        json_response(['ok' => true, 'results' => $results]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
 
 ?>
