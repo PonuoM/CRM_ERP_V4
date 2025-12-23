@@ -178,6 +178,9 @@ try {
     case 'stock_movements':
         handle_stock_movements($pdo, $id);
         break;
+    case 'validate_tracking_bulk':
+        handle_validate_tracking_bulk($pdo);
+        break;
     case 'sync_tracking':
         handle_sync_tracking($pdo);
         break;
@@ -7601,6 +7604,103 @@ function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): vo
 
 
 
+
+
+function handle_validate_tracking_bulk($pdo) {
+    if (method() !== 'POST') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+
+    $in = json_input();
+    if (!isset($in['items']) || !is_array($in['items'])) {
+        json_response(['error' => 'INVALID_PAYLOAD', 'message' => 'items must be an array'], 400);
+    }
+
+    $results = [];
+
+    // Prepare statements
+    $orderLookupInfo = $pdo->prepare("SELECT id FROM orders WHERE id = ?");
+    $boxLookupInfo = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ?");
+    $dupCheck = $pdo->prepare("SELECT order_id FROM order_tracking_numbers WHERE tracking_number = ? LIMIT 1");
+
+    foreach ($in['items'] as $item) {
+        $orderId = trim($item['orderId'] ?? '');
+        $trackingNumber = trim($item['trackingNumber'] ?? '');
+        
+        $res = [
+            'orderId' => $orderId,
+            'trackingNumber' => $trackingNumber,
+            'isValid' => true,
+            'status' => 'valid',
+            'message' => '',
+            'foundOrderId' => null,
+            'boxNumber' => null
+        ];
+
+        if (!$orderId) {
+            $res['isValid'] = false;
+            $res['status'] = 'error';
+            $res['message'] = 'Missing Order ID';
+            $results[] = $res;
+            continue;
+        }
+
+        // 1. Check Order Existence
+        // Try exact match on orders table (Parent ID)
+        $orderLookupInfo->execute([$orderId]);
+        $parentOrder = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
+
+        if ($parentOrder) {
+            $res['foundOrderId'] = $parentOrder['id'];
+            $res['boxNumber'] = 1;
+        } else {
+            // Try sub-order lookup (order_boxes)
+            $boxLookupInfo->execute([$orderId]);
+            $boxInfo = $boxLookupInfo->fetch(PDO::FETCH_ASSOC);
+            
+            if ($boxInfo) {
+                $res['foundOrderId'] = $boxInfo['order_id'];
+                $res['boxNumber'] = $boxInfo['box_number'];
+            } else {
+                // FALLBACK: Try parsing ORD-xxx-1 format
+                if (preg_match('/^(.+)-(\d+)$/', $orderId, $matches)) {
+                    $potentialParentId = $matches[1];
+                    $potentialBox = (int)$matches[2];
+                    
+                    $orderLookupInfo->execute([$potentialParentId]);
+                    $parentFromParse = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($parentFromParse) {
+                        $res['foundOrderId'] = $parentFromParse['id'];
+                        $res['boxNumber'] = $potentialBox;
+                    }
+                }
+            }
+        }
+
+        if (!$res['foundOrderId']) {
+            $res['isValid'] = false;
+            $res['status'] = 'error';
+            $res['message'] = 'Order not found';
+        }
+
+        // 2. Check Tracking Number Duplication
+        if ($res['isValid'] && $trackingNumber) {
+            $dupCheck->execute([$trackingNumber]);
+            $existing = $dupCheck->fetch(PDO::FETCH_ASSOC);
+            
+            if ($existing) {
+                $res['isValid'] = false;
+                $res['status'] = 'duplicate';
+                $res['message'] = 'Tracking number used by order ' . $existing['order_id'];
+            }
+        }
+
+        $results[] = $res;
+    }
+
+    json_response(['ok' => true, 'results' => $results]);
+}
 
 function handle_sync_tracking($pdo) {
     if (method() !== 'POST') {

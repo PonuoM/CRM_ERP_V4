@@ -1619,3 +1619,10 @@ export async function apiSyncTrackingNumbers(updates: {
     body: JSON.stringify({ updates })
   });
 }
+
+export async function validateTrackingBulk(items: { orderId: string; trackingNumber: string }[]) {
+  return apiFetch('validate_tracking_bulk', {
+    method: 'POST',
+    body: JSON.stringify({ items })
+  });
+}
