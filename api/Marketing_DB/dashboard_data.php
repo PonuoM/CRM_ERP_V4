@@ -99,6 +99,7 @@ try {
     // Query to get all pages for the company with aggregated ads log and order data
     // Aggregate by page only (not by date)
     $query = "
+        SELECT
             p.id as page_id,
             p.name as page_name,
             p.platform,

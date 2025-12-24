@@ -394,6 +394,7 @@ model google_sheet_shipping {
   id                  Int       @id @default(autoincrement())
   system_created_time DateTime  @db.DateTime(0)
   order_number        String    @db.VarChar(128)
+  order_status        String?   @db.VarChar(50)
   delivery_date       DateTime? @db.Date
   delivery_status     String?   @db.VarChar(100)
   imported_at         DateTime  @default(now()) @db.DateTime(0)
@@ -402,6 +403,7 @@ model google_sheet_shipping {
   @@index([delivery_date], map: "idx_delivery_date")
   @@index([delivery_status], map: "idx_delivery_status")
   @@index([order_number], map: "idx_order_number")
+  @@index([order_status], map: "idx_order_status")
   @@index([order_number, system_created_time], map: "idx_order_time")
 }
 
@@ -424,6 +426,26 @@ model marketing_ads_log {
   @@index([user_id], map: "idx_user_id")
 }
 
+model marketing_product_ads_log {
+  id          Int       @id @default(autoincrement())
+  user_id     Int
+  product_id  Int
+  date        DateTime  @db.Date
+  ads_cost    Decimal?  @db.Decimal(10, 2)
+  impressions Int?
+  reach       Int?
+  clicks      Int?
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+  products    products  @relation(fields: [product_id], references: [id], onDelete: Cascade, map: "fk_marketing_pad_product_id")
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_pad_user_id")
+
+  @@unique([user_id, product_id, date], map: "unique_user_product_date")
+  @@index([date], map: "idx_date")
+  @@index([product_id], map: "idx_product_id")
+  @@index([user_id], map: "idx_user_id")
+}
+
 model marketing_user_page {
   id         Int       @id @default(autoincrement())
   page_id    Int
@@ -433,6 +455,20 @@ model marketing_user_page {
 
   @@unique([page_id, user_id], map: "unique_page_user")
   @@index([page_id], map: "idx_page_id")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model marketing_user_product {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  product_id Int
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  products   products  @relation(fields: [product_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_product_product_id")
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_product_user_id")
+
+  @@unique([user_id, product_id], map: "unique_user_product")
+  @@index([product_id], map: "idx_product_id")
   @@index([user_id], map: "idx_user_id")
 }
 
@@ -900,18 +936,20 @@ model product_lots {
 }
 
 model products {
-  id          Int             @id @default(autoincrement())
-  sku         String          @unique(map: "sku") @db.VarChar(64)
-  name        String          @db.VarChar(255)
-  description String?         @db.Text
-  category    String          @db.VarChar(128)
-  unit        String          @db.VarChar(32)
-  cost        Decimal         @default(0.00) @db.Decimal(12, 2)
-  price       Decimal         @default(0.00) @db.Decimal(12, 2)
-  stock       Int             @default(0)
-  company_id  Int
-  shop        String?         @db.VarChar(128)
-  status      products_status @default(Active)
+  id                        Int                         @id @default(autoincrement())
+  sku                       String                      @unique(map: "sku") @db.VarChar(64)
+  name                      String                      @db.VarChar(255)
+  description               String?                     @db.Text
+  category                  String                      @db.VarChar(128)
+  unit                      String                      @db.VarChar(32)
+  cost                      Decimal                     @default(0.00) @db.Decimal(12, 2)
+  price                     Decimal                     @default(0.00) @db.Decimal(12, 2)
+  stock                     Int                         @default(0)
+  company_id                Int
+  shop                      String?                     @db.VarChar(128)
+  status                    products_status             @default(Active)
+  marketing_product_ads_log marketing_product_ads_log[]
+  marketing_user_product    marketing_user_product[]
 
   @@index([company_id], map: "idx_products_company")
 }
@@ -1186,6 +1224,8 @@ model users {
   login_count                                                           Int                         @default(0)
   cod_documents                                                         cod_documents[]
   commission_records                                                    commission_records[]
+  marketing_product_ads_log                                             marketing_product_ads_log[]
+  marketing_user_product                                                marketing_user_product[]
   user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
   user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
   user_tokens                                                           user_tokens[]

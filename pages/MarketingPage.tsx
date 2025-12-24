@@ -29,13 +29,16 @@ import MarketingDatePicker, {
 } from "@/components/Dashboard/MarketingDatePicker";
 import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
 import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
+import resolveApiBasePath from "@/utils/apiBasePath";
+
+const API_BASE = resolveApiBasePath();
 
 // Function to fetch active pages where still_in_list = 1
 async function listActivePages(companyId?: number) {
   const qs = new URLSearchParams();
   if (companyId) qs.set("company_id", String(companyId));
   const res = await fetch(
-    `api/Marketing_DB/get_active_pages.php${companyId ? `?${qs}` : ""}`,
+    `${API_BASE}/Marketing_DB/get_active_pages.php${companyId ? `?${qs}` : ""}`,
     {
       headers: { "Content-Type": "application/json" },
     },
@@ -145,6 +148,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // States for dashboard
   const [dashboardData, setDashboardData] = useState<any[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  // Product Ads Tracking States
+  const [adsInputMode, setAdsInputMode] = useState<"page" | "product">("page");
+  const [products, setProducts] = useState<any[]>([]);
+  const [productAdsInputData, setProductAdsInputData] = useState<any[]>([]);
+  const [selectedProductPageId, setSelectedProductPageId] = useState<number | "">("");
+  const [productDashboardData, setProductDashboardData] = useState<any[]>([]);
 
   const [dateRange, setDateRange] = useState<DateRange>({
     start: "",
@@ -366,7 +376,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const loadPagesWithUserAccess = async () => {
     try {
       const res = await fetch(
-        "api/Marketing_DB/get_pages_with_user_access.php",
+        `${API_BASE}/Marketing_DB/get_pages_with_user_access.php`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -491,10 +501,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     };
   }, [filterPageId]);
 
-  const totalSpend = useMemo(
-    () => adSpend.reduce((s, r) => s + (r.amount || 0), 0),
-    [adSpend],
-  );
+
+  // Product Ads State
+
+
+  // Calculate totals for ads input
+  const totalSpend = useMemo(() => {
+    return adSpend.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+  }, [adSpend]);
 
   const handleAddPage = async () => {
     if (!newPage.name.trim()) return alert("กรุณากรอกชื่อเพจ");
@@ -584,7 +598,65 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   useEffect(() => {
     loadMarketingPageUsers();
     loadMarketingUsers();
+    loadMarketingUserProducts();
   }, []);
+
+  const [marketingUserProducts, setMarketingUserProducts] = useState<any[]>([]);
+
+  const loadMarketingUserProducts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_all_marketing_user_products.php`);
+      const data = await res.json();
+      if (data.success) {
+        setMarketingUserProducts(data.data || []);
+      }
+    } catch (e) {
+      console.error("Failed to load marketing user products:", e);
+    }
+  };
+
+  // Actually, I'll implement fetch logic inside the component using Promise.all if I have users list.
+  // But wait, I need to display "Managed Products".
+  // Let's update the useEffect to include products fetching.
+
+  useEffect(() => {
+    if (activeTab === "userManagement") {
+      const fetchProducts = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/index.php?table=products&action=list&companyId=` + currentUser.companyId);
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setProducts(data);
+          }
+        } catch (err) {
+          console.error("Failed to load products", err);
+        }
+      };
+      fetchProducts();
+
+      fetchProducts();
+      // Reload mappings when entering tab
+      loadMarketingUserProducts();
+    }
+  }, [activeTab, currentUser.companyId]);
+
+  // Handle add user to product
+  const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
+
+  const toggleProductExpand = (productId: number) => {
+    const newExpanded = new Set(expandedProducts);
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId);
+    } else {
+      newExpanded.add(productId);
+    }
+    setExpandedProducts(newExpanded);
+  };
+
+  const handleAddUserToProduct = (productId: number) => {
+    setSelectedProductForUser(products.find(p => p.id === productId));
+  };
+
 
 
 
@@ -704,7 +776,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Load marketing page users from marketing_user_page table
   const loadMarketingPageUsers = async () => {
     try {
-      const res = await fetch("api/Marketing_DB/get_marketing_page_users.php");
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_marketing_page_users.php`);
       const data = await res.json();
       if (data.success) {
         setMarketingPageUsers(data.data);
@@ -742,7 +814,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (!confirm("คุณต้องการลบผู้ใช้นี้จากเพจใช่หรือไม่?")) return;
 
     try {
-      const res = await fetch("api/Marketing_DB/remove_user_from_page.php", {
+      const res = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_page.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, pageId }),
@@ -765,7 +837,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (!selectedPageForUser) return;
 
     try {
-      const res = await fetch("api/Marketing_DB/add_user_to_page.php", {
+      const res = await fetch(`${API_BASE}/Marketing_DB/add_user_to_page.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -790,7 +862,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Load user pages from marketing_user_page table
   const loadUserPages = async () => {
     try {
-      const res = await fetch("api/Marketing_DB/get_user_pages.php", {
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_user_pages.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.id }),
@@ -892,7 +964,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         let res;
         if (existingLog) {
           // ถ้ามีข้อมูลอยู่แล้ว ให้อัปเดต
-          res = await fetch("api/Marketing_DB/ads_log_update.php", {
+          res = await fetch(`${API_BASE}/Marketing_DB/ads_log_update.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -903,7 +975,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           });
         } else {
           // ถ้าไม่มีข้อมูล ให้สร้างใหม่
-          res = await fetch("api/Marketing_DB/ads_log_insert.php", {
+          res = await fetch(`${API_BASE}/Marketing_DB/ads_log_insert.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -979,7 +1051,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }
 
       const res = await fetch(
-        `api/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
+        `${API_BASE}/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
         {
           headers,
         },
@@ -1025,7 +1097,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const res = await fetch("api/Marketing_DB/ads_log_update.php", {
+      const res = await fetch(`${API_BASE}/Marketing_DB/ads_log_update.php`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -1088,7 +1160,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (!confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return false;
 
     try {
-      const res = await fetch("api/Marketing_DB/ads_log_delete.php", {
+      const res = await fetch(`${API_BASE}/Marketing_DB/ads_log_delete.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1185,6 +1257,70 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   };
 
   // Connect page user to internal user
+  const [selectedProductForUser, setSelectedProductForUser] = useState<any | null>(null);
+
+  const fetchUserProducts = async (userId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_user_products.php?user_id=${userId}`);
+      const data = await res.json();
+      if (data.success) {
+        return data.data || [];
+      } else {
+        console.error("Failed to load user products:", data.error);
+        return [];
+      }
+    } catch (error) {
+      console.error("Error loading user products:", error);
+      return [];
+    }
+  };
+
+  const handleRemoveUserFromProduct = async (userId: number, productId: number) => {
+    if (!confirm("คุณต้องการลบสิทธิ์การเข้าถึงสินค้านี้ของผู้ใช้ใช่หรือไม่?")) return;
+
+    try {
+      const response = await fetch(`${API_BASE}/Marketing_DB/remove_user_from_product.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, product_id: productId }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert("ลบสิทธิ์สำเร็จ");
+        loadMarketingUserProducts();
+      } else {
+        alert("เกิดข้อผิดพลาด: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error removing user from product:", error);
+      alert("เกิดข้อผิดพลาดในการลบสิทธิ์");
+    }
+  };
+
+  const handleSubmitUserToProduct = async (userId: number) => {
+    if (!selectedProductForUser) return;
+    try {
+      const response = await fetch(`${API_BASE}/Marketing_DB/add_user_to_product.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          product_id: selectedProductForUser.id
+        })
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert("เพิ่มผู้ใช้ไปยังสินค้าเรียบร้อยแล้ว");
+        setSelectedProductForUser(null);
+        loadMarketingUserProducts();
+      } else {
+        alert("เกิดข้อผิดพลาด: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error adding user to product:", error);
+      alert("เกิดข้อผิดพลาดในการเพิ่มผู้ใช้");
+    }
+  };
 
   // Function to load dashboard data
   const loadDashboardData = async () => {
@@ -1201,7 +1337,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       params.set("company_id", String(currentUser.companyId));
 
       const res = await fetch(
-        `api/Marketing_DB/dashboard_data.php?${params.toString()}`,
+        `${API_BASE}/Marketing_DB/dashboard_data.php?${params.toString()}`,
         {
           headers: { "Content-Type": "application/json" },
         },
@@ -1279,6 +1415,268 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       default:
         return "Marketing";
     }
+  };
+  // Product Ads Functions
+
+  // Load Products
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/index.php?table=products&action=list&companyId=` + currentUser.companyId);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.error("Failed to load products", err);
+      }
+    };
+    if ((activeTab === "adsInput" || activeTab === "dashboard") && adsInputMode === "product") {
+      fetchProducts();
+    }
+  }, [activeTab, adsInputMode, currentUser.companyId]);
+
+  const loadExistingProductAdsData = async () => {
+    if (!selectedDate) return;
+    setIsLoadingData(true);
+    try {
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get.php?date=${selectedDate}&user_id=${currentUser.id}`);
+      const result = await response.json();
+
+      if (result.success && Array.isArray(result.data)) {
+        // Map existing data to products
+        const mergedData = products.map(product => {
+          const existingLog = result.data.find((log: any) => log.product_id === product.id);
+          return {
+            productId: product.id,
+            sku: product.sku,
+            productName: product.name,
+            adsCost: existingLog ? existingLog.ads_cost : "",
+            impressions: existingLog ? existingLog.impressions : "",
+            reach: existingLog ? existingLog.reach : "",
+            clicks: existingLog ? existingLog.clicks : ""
+          };
+        });
+        setProductAdsInputData(mergedData);
+      } else {
+        // Initialize with empty values if no data exists
+        const initialData = products.map(product => ({
+          productId: product.id,
+          sku: product.sku,
+          productName: product.name,
+          adsCost: "",
+          impressions: "",
+          reach: "",
+          clicks: ""
+        }));
+        setProductAdsInputData(initialData);
+      }
+    } catch (error) {
+      console.error("Error loading product ads data:", error);
+      alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  // Trigger load when page or date changes in product mode
+  useEffect(() => {
+    if (adsInputMode === 'product' && selectedDate && products.length > 0) {
+      loadExistingProductAdsData();
+    }
+  }, [adsInputMode, selectedDate, products]);
+
+  const handleProductAdsInputChange = (productId: number, field: string, value: string) => {
+    setProductAdsInputData(prevData =>
+      prevData.map(item =>
+        item.productId === productId ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const handleSaveProductAdsData = async () => {
+    if (!selectedDate) {
+      alert("กรุณาเลือกวันที่");
+      return;
+    }
+
+    const dataToSave = productAdsInputData.filter(item =>
+      item.adsCost || item.impressions || item.reach || item.clicks
+    ).map(item => ({
+      user_id: currentUser.id,
+      product_id: item.productId,
+      date: selectedDate,
+      ads_cost: item.adsCost || 0,
+      impressions: item.impressions || 0,
+      reach: item.reach || 0,
+      clicks: item.clicks || 0
+    }));
+
+    if (dataToSave.length === 0) {
+      alert("ไม่พบข้อมูลที่ต้องบันทึก");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_insert.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data: dataToSave }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert("บันทึกข้อมูลเรียบร้อยแล้ว");
+      } else {
+        alert("เกิดข้อผิดพลาด: " + result.message);
+      }
+    } catch (error) {
+      console.error("Error saving product ads data:", error);
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadProductDashboardData = async () => {
+    setDashboardLoading(true);
+    try {
+      const pageIds = selectedPages.join(',');
+      const queryParams = new URLSearchParams({
+        start_date: dateRange.start,
+        end_date: dateRange.end,
+        page_ids: pageIds,
+        company_id: currentUser.companyId.toString()
+      });
+
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_dashboard_data.php?${queryParams.toString()}`);
+      const result = await response.json();
+
+      if (result.success) {
+        setProductDashboardData(result.data);
+      } else {
+        console.error("Failed to load product dashboard data:", result.message);
+      }
+    } catch (error) {
+      console.error("Error loading product dashboard data:", error);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  // Trigger dashboard load
+  useEffect(() => {
+    if (activeTab === 'dashboard' && adsInputMode === 'product') {
+      loadProductDashboardData();
+    }
+  }, [activeTab, adsInputMode, dateRange, selectedPages]);
+
+  // Product Ads History Logic
+  const [adsHistoryMode, setAdsHistoryMode] = useState<"page" | "product">("page");
+  const [productAdsLogs, setProductAdsLogs] = useState<any[]>([]);
+  const [productAdsLogsLoading, setProductAdsLogsLoading] = useState(false);
+  const [productAdsLogsTotal, setProductAdsLogsTotal] = useState(0);
+  const [productAdsHistoryPage, setProductAdsHistoryPage] = useState(1);
+  const [productAdsHistoryPageSize, setProductAdsHistoryPageSize] = useState(10);
+  const [productAdsHistoryServerPagination, setProductAdsHistoryServerPagination] = useState({
+    total: 0,
+    totalPages: 0,
+    hasMore: false,
+    hasPrevious: false,
+  });
+
+  const loadProductAdsLogs = async () => {
+    setProductAdsLogsLoading(true);
+    try {
+      const queryParams = new URLSearchParams({
+        start_date: adsHistoryDateRange.start,
+        end_date: adsHistoryDateRange.end,
+        page: productAdsHistoryPage.toString(),
+        limit: productAdsHistoryPageSize.toString()
+      });
+
+      if (currentUser.role !== "Super Admin" && currentUser.role !== "Admin Control") {
+        queryParams.append("user_ids", currentUser.id.toString());
+      } else if (adsHistorySelectedUsers.length > 0) {
+        queryParams.append("user_ids", adsHistorySelectedUsers.map(u => u.id).join(','));
+      }
+
+      /*
+      if (adsHistorySelectedPages.length > 0) {
+        queryParams.append("page_ids", adsHistorySelectedPages.join(','));
+      }
+      */
+
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?${queryParams.toString()}`);
+      const result = await response.json();
+
+      if (result.success) {
+        setProductAdsLogs(result.data);
+        setProductAdsLogsTotal(result.pagination.total);
+        setProductAdsHistoryServerPagination({
+          total: result.pagination.total,
+          totalPages: result.pagination.totalPages,
+          hasMore: productAdsHistoryPage < result.pagination.totalPages,
+          hasPrevious: productAdsHistoryPage > 1,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading product ads logs:", error);
+    } finally {
+      setProductAdsLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'adsHistory' && adsHistoryMode === 'product') {
+      loadProductAdsLogs();
+    }
+  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize]);
+
+  const exportDashboard = () => {
+    let dataToExport: any[] = [];
+    let headers: string[] = [];
+
+    if (adsInputMode === 'product') {
+      headers = ["SKU", "Product Name", "Ads Cost", "Sales", "Qty", "Orders", "ROAS", "%Ads"];
+      dataToExport = productDashboardData.map(row => ({
+        SKU: row.sku,
+        "Product Name": row.product_name,
+        "Ads Cost": row.ads_cost,
+        "Sales": row.total_sales,
+        "Qty": row.total_qty,
+        "Orders": row.total_orders,
+        "ROAS": Number(row.ads_cost) > 0 ? (Number(row.total_sales) / Number(row.ads_cost)).toFixed(2) : "0.00",
+        "%Ads": Number(row.total_sales) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) + "%" : "0.00%"
+      }));
+    } else {
+      headers = ["Page", "Ads Cost", "Sales", "New Cust Sales", "Reorder Sales", "Total Cust", "Clicks", "ROAS", "%Ads"];
+      dataToExport = dashboardData.map(row => ({
+        Page: row.page_name,
+        "Ads Cost": row.ads_cost,
+        "Sales": row.total_sales,
+        "New Cust Sales": row.new_customer_sales,
+        "Reorder Sales": row.reorder_customer_sales,
+        "Total Cust": row.total_customers,
+        "Clicks": row.clicks,
+        "ROAS": Number(row.ads_cost) > 0 ? (Number(row.total_sales) / Number(row.ads_cost)).toFixed(2) : "0.00",
+        "%Ads": Number(row.total_sales) > 0 ? ((Number(row.ads_cost) / Number(row.total_sales)) * 100).toFixed(2) + "%" : "0.00%"
+      }));
+    }
+
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + headers.join(",") + "\n"
+      + dataToExport.map(e => Object.values(e).map(v => `"${v}"`).join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `marketing_dashboard_${adsInputMode}_${dateRange.start}_${dateRange.end}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -1673,6 +2071,89 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
               )}
             </section>
+
+            {/* Managed Products List */}
+            <section className="bg-white rounded-lg shadow p-5 mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                รายการสินค้า (Managed Products)
+              </h3>
+              {loading ? (
+                <div className="text-center py-4">กำลังโหลด...</div>
+              ) : products.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  ไม่มีสินค้า
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left">SKU</th>
+                        <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
+                        <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
+                        <th className="px-3 py-2 text-left">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((product) => (
+                        <React.Fragment key={product.id}>
+                          <tr
+                            className="border-b cursor-pointer hover:bg-gray-50"
+                            onClick={() => toggleProductExpand(product.id)}
+                          >
+                            <td className="px-3 py-2">{product.sku}</td>
+                            <td className="px-3 py-2 font-medium">{product.name}</td>
+                            <td className="px-3 py-2">
+                              {marketingUserProducts.filter(m => m.product_id === product.id).length}
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddUserToProduct(product.id);
+                                }}
+                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                              >
+                                +เพิ่มผู้ใช้
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedProducts.has(product.id) && (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-4 bg-gray-50">
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลสินค้านี้:</h4>
+                                  {marketingUserProducts
+                                    .filter(m => m.product_id === product.id)
+                                    .map(m => (
+                                      <div key={m.user_id} className="flex items-center justify-between bg-white p-3 rounded border">
+                                        <div>
+                                          <span className="font-medium">{m.first_name} {m.last_name}</span>
+                                          <span className="text-sm text-gray-600 ml-2">({m.username})</span>
+                                        </div>
+                                        <button
+                                          onClick={() => handleRemoveUserFromProduct(m.user_id, product.id)}
+                                          className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                        >
+                                          ลบ
+                                        </button>
+                                      </div>
+                                    ))
+                                  }
+                                  {marketingUserProducts.filter(m => m.product_id === product.id).length === 0 && (
+                                    <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลสินค้านี้</div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </>
         )
       }
@@ -1683,9 +2164,26 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           <>
             <section className="bg-white rounded-lg shadow p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  กรอกค่า Ads
-                </h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    กรอกค่า Ads
+                  </h3>
+                  <div className="flex bg-gray-100 rounded p-1">
+                    <button
+                      className={`px-3 py-1 text-sm rounded ${adsInputMode === 'page' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
+                      onClick={() => setAdsInputMode('page')}
+                    >
+                      รายเพจ
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-sm rounded ${adsInputMode === 'product' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
+                      onClick={() => setAdsInputMode('product')}
+                    >
+                      รายสินค้า
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-2">
                   <input
                     type="date"
@@ -1694,16 +2192,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     onChange={(e) => setSelectedDate(e.target.value)}
                   />
                   <button
-                    onClick={() => loadExistingAdsData()}
-                    disabled={isLoadingData}
+                    onClick={() => adsInputMode === 'page' ? loadExistingAdsData() : loadExistingProductAdsData()}
+                    disabled={isLoadingData || (adsInputMode === 'product' && !selectedDate)}
                     className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                     title="โหลดข้อมูลที่มีอยู่แล้ว"
                   >
                     {isLoadingData ? "กำลังโหลด..." : "โหลดข้อมูล"}
                   </button>
                   <button
-                    onClick={handleSaveAllAdsData}
-                    disabled={isSaving}
+                    onClick={adsInputMode === 'page' ? handleSaveAllAdsData : handleSaveProductAdsData}
+                    disabled={isSaving || (adsInputMode === 'product' && !selectedDate)}
                     className="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     {isSaving ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
@@ -1717,111 +2215,181 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">เพจ</th>
-                        <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                        <th className="px-3 py-2 text-left">ค่า Ads</th>
-                        <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
-                        <th className="px-3 py-2 text-left">การเข้าถึง</th>
-                        <th className="px-3 py-2 text-left">ทัก/คลิก</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Display all user pages */}
-                      {userPages.length > 0 &&
-                        userPages.map((page, index) => (
-                          <tr key={page.id} className="border-b">
-                            <td className="px-3 py-2 font-medium">
-                              <div className="flex items-center gap-2">
-                                <span>{page.name}</span>
-                                {isPageInactive(page) && (
-                                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                    Inactive
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">{page.platform}</td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                                placeholder="0"
-                                value={getInputValue(page.id, "adsCost")}
-                                disabled={!!getInputValue(page.id, "id")}
-                                onChange={(e) =>
-                                  handleUserPageInputChange(
-                                    page.id,
-                                    "adsCost",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                                placeholder="0"
-                                value={getInputValue(page.id, "impressions")}
-                                disabled={!!getInputValue(page.id, "id")}
-                                onChange={(e) =>
-                                  handleUserPageInputChange(
-                                    page.id,
-                                    "impressions",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                                placeholder="0"
-                                value={getInputValue(page.id, "reach")}
-                                disabled={!!getInputValue(page.id, "id")}
-                                onChange={(e) =>
-                                  handleUserPageInputChange(
-                                    page.id,
-                                    "reach",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
-                                placeholder="0"
-                                value={getInputValue(page.id, "clicks")}
-                                disabled={!!getInputValue(page.id, "id")}
-                                onChange={(e) =>
-                                  handleUserPageInputChange(
-                                    page.id,
-                                    "clicks",
-                                    e.target.value,
-                                  )
-                                }
-                              />
+                  {adsInputMode === 'page' ? (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-700">
+                        <tr>
+                          <th className="px-3 py-2 text-left">เพจ</th>
+                          <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                          <th className="px-3 py-2 text-left">ค่า Ads</th>
+                          <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                          <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                          <th className="px-3 py-2 text-left">ทัก/คลิก</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Display all user pages */}
+                        {userPages.length > 0 &&
+                          userPages.map((page, index) => (
+                            <tr key={page.id} className="border-b">
+                              <td className="px-3 py-2 font-medium">
+                                <div className="flex items-center gap-2">
+                                  <span>{page.name}</span>
+                                  {isPageInactive(page) && (
+                                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                      Inactive
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">{page.platform}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  placeholder="0"
+                                  value={getInputValue(page.id, "adsCost")}
+                                  disabled={!!getInputValue(page.id, "id")}
+                                  onChange={(e) =>
+                                    handleUserPageInputChange(
+                                      page.id,
+                                      "adsCost",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  placeholder="0"
+                                  value={getInputValue(page.id, "impressions")}
+                                  disabled={!!getInputValue(page.id, "id")}
+                                  onChange={(e) =>
+                                    handleUserPageInputChange(
+                                      page.id,
+                                      "impressions",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  placeholder="0"
+                                  value={getInputValue(page.id, "reach")}
+                                  disabled={!!getInputValue(page.id, "id")}
+                                  onChange={(e) =>
+                                    handleUserPageInputChange(
+                                      page.id,
+                                      "reach",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  placeholder="0"
+                                  value={getInputValue(page.id, "clicks")}
+                                  disabled={!!getInputValue(page.id, "id")}
+                                  onChange={(e) =>
+                                    handleUserPageInputChange(
+                                      page.id,
+                                      "clicks",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        {userPages.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="text-center py-8 text-gray-500"
+                            >
+                              ไม่มีเพจที่คุณมีสิทธิ์จัดการ
                             </td>
                           </tr>
-                        ))}
-                      {userPages.length === 0 && (
+                        )}
+                      </tbody>
+                    </table>
+                  ) : (
+                    /* Product Ads Input Table */
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-700">
                         <tr>
-                          <td
-                            colSpan={6}
-                            className="text-center py-8 text-gray-500"
-                          >
-                            ไม่มีเพจที่คุณมีสิทธิ์จัดการ
-                          </td>
+                          <th className="px-3 py-2 text-left">รหัสสินค้า (SKU)</th>
+                          <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
+                          <th className="px-3 py-2 text-left">ค่า Ads</th>
+                          <th className="px-3 py-2 text-left">อิมเพรสชั่น</th>
+                          <th className="px-3 py-2 text-left">การเข้าถึง</th>
+                          <th className="px-3 py-2 text-left">ทัก/คลิก</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {!selectedProductPageId ? (
+                          <tr>
+                            <td colSpan={6} className="text-center py-8 text-gray-500">กรุณาเลือกเพจเพื่อกรอกข้อมูล</td>
+                          </tr>
+                        ) : productAdsInputData.length > 0 ? (
+                          productAdsInputData.map((item) => (
+                            <tr key={item.productId} className="border-b">
+                              <td className="px-3 py-2">{item.sku}</td>
+                              <td className="px-3 py-2 font-medium">{item.productName}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className="w-full p-2 border border-gray-300 rounded"
+                                  placeholder="0"
+                                  value={item.adsCost}
+                                  onChange={(e) => handleProductAdsInputChange(item.productId, 'adsCost', e.target.value)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className="w-full p-2 border border-gray-300 rounded"
+                                  placeholder="0"
+                                  value={item.impressions}
+                                  onChange={(e) => handleProductAdsInputChange(item.productId, 'impressions', e.target.value)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className="w-full p-2 border border-gray-300 rounded"
+                                  placeholder="0"
+                                  value={item.reach}
+                                  onChange={(e) => handleProductAdsInputChange(item.productId, 'reach', e.target.value)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  className="w-full p-2 border border-gray-300 rounded"
+                                  placeholder="0"
+                                  value={item.clicks}
+                                  onChange={(e) => handleProductAdsInputChange(item.productId, 'clicks', e.target.value)}
+                                />
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center py-8 text-gray-500">ไม่พบรายการสินค้า</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               )}
             </section>
@@ -2055,6 +2623,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               )}
             </div>
 
+            {/* Dashboard Header with Toggle and Export */}
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <div className="flex bg-gray-100 rounded p-1">
+                  <button
+                    className={`px-3 py-1 text-sm rounded ${adsInputMode === 'page' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
+                    onClick={() => setAdsInputMode('page')}
+                  >
+                    รายเพจ
+                  </button>
+                  <button
+                    className={`px-3 py-1 text-sm rounded ${adsInputMode === 'product' ? 'bg-white shadow text-blue-600' : 'text-gray-600'}`}
+                    onClick={() => setAdsInputMode('product')}
+                  >
+                    รายสินค้า
+                  </button>
+                </div>
+                <button
+                  onClick={exportDashboard}
+                  className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center gap-2"
+                >
+                  Export CSV
+                </button>
+              </div>
+            </div>
 
 
             {/* Dashboard Table */}
@@ -2066,147 +2659,195 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left">เพจ</th>
-                      <th className="px-3 py-2 text-left">ประเภทเพจ</th>
-                      <th className="px-3 py-2 text-left">พนักงาน</th>
-                      <th className="px-3 py-2 text-right">ค่าแอด</th>
-                      <th className="px-3 py-2 text-right">ยอดขาย</th>
-                      <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
-                      <th className="px-3 py-2 text-right">รีออเดอร์</th>
-                      <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
-                      <th className="px-3 py-2 text-right">ทัก/คลิก</th>
-                      <th className="px-3 py-2 text-right">ROAS</th>
-                      <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
-                      <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
-                      <th className="px-3 py-2 text-right">%Ads</th>
-                      <th className="px-3 py-2 text-right">%ปิดการขาย</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboardData.length > 0 ? (
-                      <>
-                        {dashboardData.map((row, index) => {
-                          const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
-                          const costPerInbox = row.clicks > 0 ? row.ads_cost / row.clicks : 0;
-                          const pctAdsNewSales = row.new_customer_sales > 0 ? (row.ads_cost / row.new_customer_sales) * 100 : 0;
-                          const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
-                          const closeRate = row.clicks > 0 ? (row.total_orders / row.clicks) * 100 : 0;
-
-                          return (
-                            <tr key={index} className="border-b hover:bg-gray-50">
-                              <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <span>{row.page_name}</span>
-                                  {(() => {
-                                    const page = pages.find(
-                                      (p) => p.name === row.page_name,
-                                    );
-                                    return isPageInactive(page) ? (
-                                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                        Inactive
-                                      </span>
-                                    ) : null;
-                                  })()}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-gray-600">{row.page_type || "-"}</td>
-                              <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.staff_names}>{row.staff_names || "-"}</td>
-                              <td className="px-3 py-2 text-right">
-                                {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {Number(row.new_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
-                              <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                              <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right">{costPerInbox.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right relative">
-                                {pctAdsNewSales.toFixed(2)}%
-                                {/* Show warning if > 100% or high? keeping simple for now */}
-                              </td>
-                              <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
-                              <td className="px-3 py-2 text-right">{closeRate.toFixed(2)}%</td>
-                            </tr>
-                          );
-                        })}
-                        {/* Summary Row */}
-                        <tr className="bg-gray-100 font-bold border-t-2 border-gray-200">
-                          <td className="px-3 py-3" colSpan={3}>รวมทั้งหมด</td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.total_customers || 0), 0).toLocaleString('th-TH')}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                          </td>
-                          <td className="px-3 py-3 text-right text-blue-700">
-                            {(() => {
-                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
-                              const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
-                              return totalAds > 0 ? (totalSales / totalAds).toFixed(2) : "0.00";
-                            })()}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {(() => {
-                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
-                              const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
-                              return totalClicks > 0 ? (totalAds / totalClicks).toFixed(2) : "0.00";
-                            })()}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {(() => {
-                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
-                              const totalNewSales = dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0);
-                              return totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%";
-                            })()}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {(() => {
-                              const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
-                              const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
-                              return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
-                            })()}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {(() => {
-                              const totalOrders = dashboardData.reduce((acc, row) => acc + Number(row.total_orders || 0), 0);
-                              const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
-                              return totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%";
-                            })()}
-                          </td>
+                  {adsInputMode === 'page' ? (
+                    /* Page Dashboard Table */
+                    <>
+                      <thead className="bg-gray-50 text-gray-700">
+                        <tr>
+                          <th className="px-3 py-2 text-left">เพจ</th>
+                          <th className="px-3 py-2 text-left">ประเภทเพจ</th>
+                          <th className="px-3 py-2 text-left">พนักงาน</th>
+                          <th className="px-3 py-2 text-right">ค่าแอด</th>
+                          <th className="px-3 py-2 text-right">ยอดขาย</th>
+                          <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
+                          <th className="px-3 py-2 text-right">รีออเดอร์</th>
+                          <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
+                          <th className="px-3 py-2 text-right">ทัก/คลิก</th>
+                          <th className="px-3 py-2 text-right">ROAS</th>
+                          <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
+                          <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
+                          <th className="px-3 py-2 text-right">%Ads</th>
+                          <th className="px-3 py-2 text-right">%ปิดการขาย</th>
                         </tr>
-                      </>
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={14}
-                          className="text-center py-8 text-gray-500"
-                        >
-                          ไม่มีข้อมูลในช่วงวันที่ที่เลือก
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
+                      </thead>
+                      <tbody>
+                        {dashboardData.length > 0 ? (
+                          <>
+                            {dashboardData.map((row, index) => {
+                              const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
+                              const costPerInbox = row.clicks > 0 ? row.ads_cost / row.clicks : 0;
+                              const pctAdsNewSales = row.new_customer_sales > 0 ? (row.ads_cost / row.new_customer_sales) * 100 : 0;
+                              const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
+                              const closeRate = row.clicks > 0 ? (row.total_orders / row.clicks) * 100 : 0;
+
+                              return (
+                                <tr key={index} className="border-b hover:bg-gray-50">
+                                  <td className="px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <span>{row.page_name}</span>
+                                      {(() => {
+                                        const page = pages.find(
+                                          (p) => p.name === row.page_name,
+                                        );
+                                        return isPageInactive(page) ? (
+                                          <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                            Inactive
+                                          </span>
+                                        ) : null;
+                                      })()}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-600">{row.page_type || "-"}</td>
+                                  <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.staff_names}>{row.staff_names || "-"}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    {Number(row.total_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    {Number(row.new_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    {Number(row.reorder_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
+                                  <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-right">{costPerInbox.toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-right relative">
+                                    {pctAdsNewSales.toFixed(2)}%
+                                    {/* Show warning if > 100% or high? keeping simple for now */}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
+                                  <td className="px-3 py-2 text-right">{closeRate.toFixed(2)}%</td>
+                                </tr>
+                              );
+                            })}
+                            {/* Summary Row */}
+                            <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                              <td className="px-3 py-2" colSpan={3}>รวมทั้งสิ้น</td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.total_customers || 0), 0).toLocaleString('th-TH')}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </td>
+                              <td className="px-3 py-2 text-right text-blue-700">
+                                {(() => {
+                                  const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                                  return totalAds > 0 ? (totalSales / totalAds).toFixed(2) : "0.00";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                                  return totalClicks > 0 ? (totalAds / totalClicks).toFixed(2) : "0.00";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalNewSales = dashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0);
+                                  return totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = dashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalSales = dashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                                  return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalOrders = dashboardData.reduce((acc, row) => acc + Number(row.total_orders || 0), 0);
+                                  const totalClicks = dashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                                  return totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr>
+                            <td
+                              colSpan={14}
+                              className="text-center py-8 text-gray-500"
+                            >
+                              ไม่มีข้อมูลในช่วงวันที่ที่เลือก
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </>
+                  ) : (
+                    /* Create Product Dashboard Table */
+                    <>
+                      <thead className="bg-gray-50 text-gray-700">
+                        <tr>
+                          <th className="px-3 py-2 text-left">SKU</th>
+                          <th className="px-3 py-2 text-left">สินค้า</th>
+                          <th className="px-3 py-2 text-right">ค่าแอด</th>
+                          <th className="px-3 py-2 text-right">ยอดขาย</th>
+                          <th className="px-3 py-2 text-right">จำนวนขาย</th>
+                          <th className="px-3 py-2 text-right">ออเดอร์</th>
+                          <th className="px-3 py-2 text-right">ROAS</th>
+                          <th className="px-3 py-2 text-right">%Ads</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productDashboardData.length > 0 ? (
+                          productDashboardData.map((row, index) => {
+                            const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
+                            const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
+                            return (
+                              <tr key={index} className="border-b hover:bg-gray-50">
+                                <td className="px-3 py-2">{row.sku}</td>
+                                <td className="px-3 py-2 font-medium">{row.product_name}</td>
+                                <td className="px-3 py-2 text-right">{Number(row.ads_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-3 py-2 text-right">{Number(row.total_sales).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-3 py-2 text-right">{Number(row.total_qty).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right">{Number(row.total_orders).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={8} className="text-center py-8 text-gray-500">
+                              ไม่พบข้อมูลสินค้าในช่วงที่เลือก
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </>
+                  )}
+
                 </table>
               </div>
             )}
@@ -2442,7 +3083,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         }
 
                         const response = await fetch(
-                          `api/Marketing_DB/ads_log_export_csv.php?${params}`,
+                          `${API_BASE}/Marketing_DB/ads_log_export_csv.php?${params}`,
                         );
 
                         if (!response.ok) {
@@ -2502,11 +3143,34 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               <h3 className="text-lg font-semibold text-gray-800">
                 ประวัติการกรอก Ads
               </h3>
-              <div className="text-sm text-gray-600">
-                ผู้ใช้:{" "}
-                {currentUser.firstName && currentUser.lastName
-                  ? `${currentUser.firstName} ${currentUser.lastName}`
-                  : currentUser.username}
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-600">
+                  ผู้ใช้:{" "}
+                  {currentUser.firstName && currentUser.lastName
+                    ? `${currentUser.firstName} ${currentUser.lastName}`
+                    : currentUser.username}
+                </div>
+
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button
+                    onClick={() => setAdsHistoryMode('page')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'page'
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                      }`}
+                  >
+                    Page Ads
+                  </button>
+                  <button
+                    onClick={() => setAdsHistoryMode('product')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'product'
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                      }`}
+                  >
+                    Product Ads
+                  </button>
+                </div>
               </div>
               <div className="text-sm text-gray-500">
                 สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
@@ -2740,189 +3404,272 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               )}
             </div>
 
-            {adsLogsLoading ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left">วันที่</th>
-                      <th className="px-3 py-2 text-left">เพจ</th>
-                      <th className="px-3 py-2 text-left">ผู้บันทึก</th>
-                      <th className="px-3 py-2 text-left">ค่า Ads</th>
-                      <th className="px-3 py-2 text-left">Impressions</th>
-                      <th className="px-3 py-2 text-left">Reach</th>
-                      <th className="px-3 py-2 text-left">Clicks</th>
-                      {(currentUser.role === "Super Admin" ||
-                        currentUser.role === "Admin Control") && (
-                          <th className="px-3 py-2 text-left">จัดการ</th>
-                        )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adsLogs.length > 0 ? (
-                      adsLogs.map((log: any) => {
-                        const d = log.date || log.log_date || "";
-                        const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
-                        return (
-                          <tr
-                            key={log.id}
-                            className={`border-b ${bg} ${getHoverColor(bg)}`}
-                          >
-                            <td className="px-3 py-2">{d}</td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-2">
-                                <span>
-                                  {log.page_name ||
-                                    pages.find(
-                                      (p) => p.id === Number(log.page_id),
-                                    )?.name ||
-                                    log.page_id}
-                                </span>
-                                {(() => {
-                                  const page = pages.find(
-                                    (p) =>
-                                      p.name === log.page_name ||
-                                      p.id === Number(log.page_id),
-                                  );
-                                  return isPageInactive(page) ? (
-                                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                      Inactive
-                                    </span>
-                                  ) : null;
-                                })()}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-gray-600">
-                              {log.user_fullname || log.user_username || "-"}
-                            </td>
-                            <td className="px-3 py-2">
-                              ฿{Number(log.ads_cost || 0).toFixed(2)}
-                            </td>
-                            <td className="px-3 py-2">{log.impressions ?? 0}</td>
-                            <td className="px-3 py-2">{log.reach ?? 0}</td>
-                            <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                            {(currentUser.role === "Super Admin" ||
-                              currentUser.role === "Admin Control") && (
-                                <td className="px-3 py-2">
-                                  <button
-                                    className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                                    title="แก้ไขรายการนี้"
-                                    onClick={() => {
-                                      setEditingLog({ ...log });
-                                      setIsEditModalOpen(true);
-                                    }}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </button>
-                                </td>
-                              )}
-                          </tr>
-                        );
-                      })
-                    ) : (
+            {adsHistoryMode === 'page' ? (
+              // Page Ads History
+              adsLogsLoading ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                  <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
                       <tr>
-                        <td
-                          className="px-3 py-6 text-center text-gray-500"
-                          colSpan={
-                            currentUser.role === "Super Admin" ||
-                              currentUser.role === "Admin Control"
-                              ? 8
-                              : 7
+                        <th className="px-3 py-2 text-left">วันที่</th>
+                        <th className="px-3 py-2 text-left">เพจ</th>
+                        <th className="px-3 py-2 text-left">ผู้บันทึก</th>
+                        <th className="px-3 py-2 text-left">ค่า Ads</th>
+                        <th className="px-3 py-2 text-left">Impressions</th>
+                        <th className="px-3 py-2 text-left">Reach</th>
+                        <th className="px-3 py-2 text-left">Clicks</th>
+                        {(currentUser.role === "Super Admin" ||
+                          currentUser.role === "Admin Control") && (
+                            <th className="px-3 py-2 text-left">จัดการ</th>
+                          )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adsLogs.length > 0 ? (
+                        adsLogs.map((log: any) => {
+                          const d = log.date || log.log_date || "";
+                          const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
+                          return (
+                            <tr
+                              key={log.id}
+                              className={`border-b ${bg} ${getHoverColor(bg)}`}
+                            >
+                              <td className="px-3 py-2">{d}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span>
+                                    {log.page_name ||
+                                      pages.find(
+                                        (p) => p.id === Number(log.page_id),
+                                      )?.name ||
+                                      log.page_id}
+                                  </span>
+                                  {(() => {
+                                    const page = pages.find(
+                                      (p) =>
+                                        p.name === log.page_name ||
+                                        p.id === Number(log.page_id),
+                                    );
+                                    return isPageInactive(page) ? (
+                                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                                        Inactive
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-gray-600">
+                                {log.user_fullname || log.user_username || "-"}
+                              </td>
+                              <td className="px-3 py-2">
+                                ฿{Number(log.ads_cost || 0).toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2">{log.impressions ?? 0}</td>
+                              <td className="px-3 py-2">{log.reach ?? 0}</td>
+                              <td className="px-3 py-2">{log.clicks ?? 0}</td>
+                              {(currentUser.role === "Super Admin" ||
+                                currentUser.role === "Admin Control") && (
+                                  <td className="px-3 py-2">
+                                    <button
+                                      className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
+                                      title="แก้ไขรายการนี้"
+                                      onClick={() => {
+                                        setEditingLog({ ...log });
+                                        setIsEditModalOpen(true);
+                                      }}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                )}
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td
+                            className="px-3 py-6 text-center text-gray-500"
+                            colSpan={
+                              currentUser.role === "Super Admin" ||
+                                currentUser.role === "Admin Control"
+                                ? 8
+                                : 7
+                            }
+                          >
+                            ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {adsLogs.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                      <div className="text-sm text-gray-600">
+                        {(() => {
+                          const start =
+                            (adsHistoryPage - 1) * adsHistoryPageSize + 1;
+                          const end = Math.min(
+                            start + adsHistoryPageSize - 1,
+                            adsLogsTotal,
+                          );
+                          return adsLogsTotal > 0
+                            ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
+                            : "ไม่มีข้อมูล";
+                        })()}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-700">แถวต่อหน้า</label>
+                        <select
+                          className="border rounded px-2 py-1 text-sm bg-white"
+                          value={adsHistoryPageSize}
+                          onChange={(e) =>
+                            setAdsHistoryPageSize(Number(e.target.value))
                           }
                         >
-                          ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-                {adsLogs.length > 0 && (
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                    <div className="text-sm text-gray-600">
-                      {(() => {
-                        const start =
-                          (adsHistoryPage - 1) * adsHistoryPageSize + 1;
-                        const end = Math.min(
-                          start + adsHistoryPageSize - 1,
-                          adsLogsTotal,
-                        );
-                        return adsLogsTotal > 0
-                          ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
-                          : "ไม่มีข้อมูล";
-                      })()}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-700">แถวต่อหน้า</label>
-                      <select
-                        className="border rounded px-2 py-1 text-sm bg-white"
-                        value={adsHistoryPageSize}
-                        onChange={(e) =>
-                          setAdsHistoryPageSize(Number(e.target.value))
-                        }
-                      >
-                        {[10, 20, 50, 100].map((sz) => (
-                          <option key={sz} value={sz}>
-                            {sz}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                        onClick={() =>
-                          setAdsHistoryPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={
-                          !serverPagination.hasPrevious || adsHistoryPage === 1
-                        }
-                      >
-                        ก่อนหน้า
-                      </button>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm text-gray-700">หน้า</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max={serverPagination.totalPages}
-                          value={adsHistoryPage}
-                          onChange={(e) => {
-                            const page = Math.max(
-                              1,
-                              Math.min(
-                                serverPagination.totalPages,
-                                Number(e.target.value) || 1,
-                              ),
-                            );
-                            setAdsHistoryPage(page);
-                          }}
-                          className="w-16 px-2 py-1 border rounded text-sm text-center"
-                        />
-                        <span className="text-sm text-gray-700">
-                          / {serverPagination.totalPages}
-                        </span>
+                          {[10, 20, 50, 100].map((sz) => (
+                            <option key={sz} value={sz}>
+                              {sz}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                          onClick={() =>
+                            setAdsHistoryPage((p) => Math.max(1, p - 1))
+                          }
+                          disabled={
+                            !serverPagination.hasPrevious || adsHistoryPage === 1
+                          }
+                        >
+                          ก่อนหน้า
+                        </button>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm text-gray-700">หน้า</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={serverPagination.totalPages}
+                            value={adsHistoryPage}
+                            onChange={(e) => {
+                              const page = Math.max(
+                                1,
+                                Math.min(
+                                  serverPagination.totalPages,
+                                  Number(e.target.value) || 1,
+                                ),
+                              );
+                              setAdsHistoryPage(page);
+                            }}
+                            className="w-16 px-2 py-1 border rounded text-sm text-center"
+                          />
+                          <span className="text-sm text-gray-700">
+                            / {serverPagination.totalPages}
+                          </span>
+                        </div>
+                        <button
+                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                          onClick={() =>
+                            setAdsHistoryPage((p) =>
+                              Math.min(serverPagination.totalPages, p + 1),
+                            )
+                          }
+                          disabled={
+                            !serverPagination.hasMore ||
+                            adsHistoryPage === serverPagination.totalPages
+                          }
+                        >
+                          ถัดไป
+                        </button>
                       </div>
-                      <button
-                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                        onClick={() =>
-                          setAdsHistoryPage((p) =>
-                            Math.min(serverPagination.totalPages, p + 1),
-                          )
-                        }
-                        disabled={
-                          !serverPagination.hasMore ||
-                          adsHistoryPage === serverPagination.totalPages
-                        }
-                      >
-                        ถัดไป
-                      </button>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )
+            ) : (
+              // Product Ads History
+              productAdsLogsLoading ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                  <p className="mt-2 text-gray-600">กำลังโหลดประวัติสินค้า...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left">วันที่</th>
+                        <th className="px-3 py-2 text-left">เพจ</th>
+                        <th className="px-3 py-2 text-left">สินค้า</th>
+                        <th className="px-3 py-2 text-left">ผู้บันทึก</th>
+                        <th className="px-3 py-2 text-right">ค่า Ads</th>
+                        <th className="px-3 py-2 text-right">Imp.</th>
+                        <th className="px-3 py-2 text-right">Reach</th>
+                        <th className="px-3 py-2 text-right">Clicks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productAdsLogs.length > 0 ? (
+                        productAdsLogs.map((log: any) => (
+                          <tr key={log.id} className="border-b hover:bg-gray-50">
+                            <td className="px-3 py-2">{log.date}</td>
+                            <td className="px-3 py-2">{log.page_name}</td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-gray-800">{log.product_sku}</div>
+                              <div className="text-xs text-gray-500">{log.product_name}</div>
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">{log.user_fullname}</td>
+                            <td className="px-3 py-2 text-right">฿{Number(log.ads_cost).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">{Number(log.impressions).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">{Number(log.reach).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">{Number(log.clicks).toLocaleString()}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="text-center py-8 text-gray-500">
+                            ไม่พบข้อมูลประวัติ Ads สินค้า
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {productAdsLogs.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                      <div className="text-sm text-gray-600">
+                        {(() => {
+                          const start = (productAdsHistoryPage - 1) * productAdsHistoryPageSize + 1;
+                          const end = Math.min(start + productAdsHistoryPageSize - 1, productAdsLogsTotal);
+                          return `แสดง ${start}-${end} จาก ${productAdsLogsTotal} รายการ`;
+                        })()}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                          onClick={() => setProductAdsHistoryPage(p => Math.max(1, p - 1))}
+                          disabled={!productAdsHistoryServerPagination.hasPrevious}
+                        >
+                          ก่อนหน้า
+                        </button>
+                        <span className="text-sm text-gray-700">
+                          หน้า {productAdsHistoryPage} / {productAdsHistoryServerPagination.totalPages}
+                        </span>
+                        <button
+                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                          onClick={() => setProductAdsHistoryPage(p => Math.min(productAdsHistoryServerPagination.totalPages, p + 1))}
+                          disabled={!productAdsHistoryServerPagination.hasMore}
+                        >
+                          ถัดไป
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
             )}
           </section>
         )
@@ -2958,6 +3705,53 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
               </div>
               <button
                 onClick={() => setSelectedPageForUser(null)}
+                className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Add User to Product Modal */}
+      {
+        selectedProductForUser && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังสินค้า: {selectedProductForUser.name}</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {marketingUsersList.map((user) => {
+                  const isAlreadyAssigned = marketingUserProducts.some(
+                    m => m.user_id === user.id && m.product_id === selectedProductForUser.id
+                  );
+
+                  if (isAlreadyAssigned) return null;
+
+                  return (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleSubmitUserToProduct(user.id)}
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {user.first_name} {user.last_name}
+                        </div>
+                        <div className="text-sm text-gray-600">{user.username}</div>
+                      </div>
+                      <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                        เลือก
+                      </button>
+                    </div>
+                  );
+                })}
+                {marketingUsersList.every(user => marketingUserProducts.some(m => m.user_id === user.id && m.product_id === selectedProductForUser.id)) && (
+                  <div className="text-gray-500 text-center py-4">ผู้ใช้ทุกคนได้รับสิทธิ์แล้ว</div>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedProductForUser(null)}
                 className="mt-4 w-full px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
               >
                 ยกเลิก
@@ -3103,6 +3897,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       }
     </div >
   );
+
+
 };
 
 export default MarketingPage;
