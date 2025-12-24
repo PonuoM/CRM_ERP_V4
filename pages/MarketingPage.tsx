@@ -227,6 +227,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     null,
   );
 
+  // Page Filters
+  const [pageFilterName, setPageFilterName] = useState("");
+  const [pageFilterType, setPageFilterType] = useState("All");
+
+  const filteredPages = useMemo(() => {
+    return pages.filter((page) => {
+      const matchesName = page.name
+        .toLowerCase()
+        .includes(pageFilterName.toLowerCase());
+      const matchesType =
+        pageFilterType === "All" ||
+        (page.page_type || "").toLowerCase() === pageFilterType.toLowerCase();
+      return matchesName && matchesType;
+    });
+  }, [pages, pageFilterName, pageFilterType]);
+
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
   const [adsInputData, setAdsInputData] = useState<any[]>([]);
@@ -1972,22 +1988,51 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             {/* Active Pages List */}
             <section className="bg-white rounded-lg shadow p-5">
               <div
-                className="flex items-center justify-between mb-4 cursor-pointer"
-                onClick={() => setShowActivePages(!showActivePages)}
+                className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4"
               >
-                <h3 className="text-lg font-semibold text-gray-800">
-                  รายการเพจที่ใช้งานอยู่ (Active Pages)
-                </h3>
-                {showActivePages ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                <div
+                  className="flex items-center gap-2 cursor-pointer"
+                  onClick={() => setShowActivePages(!showActivePages)}
+                >
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    รายการเพจที่ใช้งานอยู่ (Active Pages)
+                  </h3>
+                  {showActivePages ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </div>
+
+                {showActivePages && (
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                      <input
+                        placeholder="ค้นหาชื่อเพจ..."
+                        className="pl-8 text-sm border border-gray-300 rounded-md py-2 w-48"
+                        value={pageFilterName}
+                        onChange={(e) => setPageFilterName(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <select
+                      className="text-sm border border-gray-300 rounded-md p-2"
+                      value={pageFilterType}
+                      onChange={(e) => setPageFilterType(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="All">ทุกประเภท</option>
+                      <option value="Pancake">Pancake</option>
+                      <option value="Manual">Manual</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               {showActivePages && (
                 <>
                   {loading ? (
                     <div className="text-center py-4">กำลังโหลด...</div>
-                  ) : pages.length === 0 ? (
+                  ) : filteredPages.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
-                      ไม่มีเพจที่ใช้งานอยู่
+                      ไม่พบเพจที่ค้นหา
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -1996,6 +2041,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <tr>
                             <th className="px-3 py-2 text-left w-10"></th>
                             <th className="px-3 py-2 text-left">ID</th>
+                            <th className="px-3 py-2 text-left">ประเภท</th>
                             <th className="px-3 py-2 text-left">ชื่อเพจ</th>
                             <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
                             <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
@@ -2003,7 +2049,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {pages.map((page) => (
+                          {filteredPages.map((page) => (
                             <React.Fragment key={page.id}>
                               <tr
                                 className="border-b cursor-pointer hover:bg-gray-50 bg-white"
