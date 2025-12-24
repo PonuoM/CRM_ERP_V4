@@ -1679,6 +1679,8 @@ export async function updateStockTransaction(payload: any) {
 export async function deleteStockTransaction(id: number) {
   return apiFetch(`inventory/delete_transaction.php?id=${id}`, {
     method: "DELETE"
+  });
+}
 
 export async function apiSyncTrackingNumbers(updates: {
   sub_order_id: string;
