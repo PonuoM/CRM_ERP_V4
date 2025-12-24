@@ -864,7 +864,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       isFreebie: item.isFreebie || item.is_freebie || false,
       boxNumber: 1,
       creatorId: currentUser.id,
-      promotionId: promotion.id,
       parentItemId: parentItemId, // Link to parent
     }));
 
@@ -890,40 +889,52 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         });
       }
 
-      // 2. Filter out the items - use a more robust comparison
+      // 2. Filter out the items
       const newItems = prev.items.filter((it) => {
-        const shouldRemove = itemsToRemoveIds.has(it.id) ||
+        const shouldRemove =
+          itemsToRemoveIds.has(it.id) ||
           itemsToRemoveIds.has(String(it.id)) ||
           itemsToRemoveIds.has(Number(it.id));
         return !shouldRemove;
       });
 
-      // 3. Handle box removal if necessary
-      let newBoxes = prev.boxes || [];
-      // We need to check for each removed item if its box is now empty
-      const boxesToCheck = new Set<number>();
-      prev.items.forEach((it) => {
-        const isBeingRemoved = itemsToRemoveIds.has(it.id) ||
-          itemsToRemoveIds.has(String(it.id)) ||
-          itemsToRemoveIds.has(Number(it.id));
-        if (isBeingRemoved && it.boxNumber) {
-          boxesToCheck.add(it.boxNumber);
-        }
+      // 3. Re-index box numbers
+      // Get all unique box numbers currently in use by remaining non-child items
+      const nonChildItems = newItems.filter((it: any) => !it.parentItemId);
+      const existingBoxes = Array.from(
+        new Set(nonChildItems.map((it) => Number(it.boxNumber || 1))),
+      ).sort((a: number, b: number) => a - b);
+
+      // Create a map from Old Box Number -> New Box Number (1, 2, 3...)
+      const boxMap = new Map<number, number>();
+      existingBoxes.forEach((oldBox, index) => {
+        boxMap.set(oldBox, index + 1);
       });
 
-      boxesToCheck.forEach((boxNum) => {
-        const hasItemsLeftInBox = newItems.some(
-          (i) => i.boxNumber === boxNum,
-        );
-        if (!hasItemsLeftInBox) {
-          newBoxes = newBoxes.filter((b) => b.boxNumber !== boxNum);
-        }
+      // Update box numbers for ALL remaining items
+      const reindexedItems = newItems.map((it) => {
+        const oldBox = Number(it.boxNumber || 1);
+        const newBox = boxMap.get(oldBox) || 1;
+        return {
+          ...it,
+          boxNumber: newBox,
+        };
       });
 
-      // 4. Recalculate COD total if needed
+      // 4. Update boxes array (preserve COD/Tracking info for existing boxes, move them to new index)
+      const existingBoxesConfig = prev.boxes || [];
+      const reindexedBoxes = existingBoxesConfig
+        .filter((b) => boxMap.has(b.boxNumber)) // Keep only boxes that still have items
+        .map((b) => ({
+          ...b,
+          boxNumber: boxMap.get(b.boxNumber)!,
+        }))
+        .sort((a, b) => a.boxNumber - b.boxNumber);
+
+      // 5. Recalculate COD total if needed
       let newCodAmount = prev.codAmount;
       if (prev.paymentMethod === PaymentMethod.COD) {
-        newCodAmount = newBoxes.reduce(
+        newCodAmount = reindexedBoxes.reduce(
           (sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0),
           0,
         );
@@ -931,8 +942,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
       return {
         ...prev,
-        items: newItems,
-        boxes: newBoxes,
+        items: reindexedItems,
+        boxes: reindexedBoxes,
         codAmount: newCodAmount,
       };
     });

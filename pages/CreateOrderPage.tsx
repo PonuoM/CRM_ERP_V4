@@ -1160,8 +1160,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         productId: prod.id,
 
-        promotionId: promo.id,
-
         parentItemId: parentId,
 
         isPromotionParent: false,
@@ -5169,8 +5167,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         productId: prod.id,
 
-        promotionId: promo.id,
-
         parentItemId: parentId, // Link to parent
 
         isPromotionParent: false,
@@ -5459,8 +5455,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         boxNumber: 1,
 
         productId: prod.id,
-
-        promotionId: promo.id,
 
         parentItemId: parentId, // Link to parent
 
@@ -9183,11 +9177,75 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         onClick={() => {
                                           const current = orderData.items || [];
                                           const id = item.id;
-                                          const next = current.filter(
+
+                                          // 1. Filter out deleted items
+                                          const nextItems = current.filter(
                                             (it) =>
-                                              it.id !== id && it.parentItemId !== id,
+                                              it.id !== id &&
+                                              it.parentItemId !== id,
                                           );
-                                          updateOrderData("items", next);
+
+                                          // 2. Re-index boxes
+                                          const nonChildItems = nextItems.filter(
+                                            (it) => !it.parentItemId,
+                                          );
+                                          const existingBoxes = Array.from(
+                                            new Set(
+                                              nonChildItems.map((it) =>
+                                                Number(it.boxNumber || 1),
+                                              ),
+                                            ),
+                                          ).sort(
+                                            (a: number, b: number) => a - b,
+                                          );
+
+                                          const boxMap = new Map<
+                                            number,
+                                            number
+                                          >();
+                                          existingBoxes.forEach(
+                                            (oldBox, idx) =>
+                                              boxMap.set(oldBox, idx + 1),
+                                          );
+
+                                          const reindexedItems = nextItems.map(
+                                            (it) => ({
+                                              ...it,
+                                              boxNumber:
+                                                boxMap.get(
+                                                  Number(it.boxNumber || 1),
+                                                ) || 1,
+                                            }),
+                                          );
+
+                                          // 3. Update boxes array
+                                          const currentBoxes =
+                                            orderData.boxes || [];
+                                          const reindexedBoxes = currentBoxes
+                                            .filter((b) =>
+                                              boxMap.has(b.boxNumber),
+                                            )
+                                            .map((b) => ({
+                                              ...b,
+                                              boxNumber: boxMap.get(
+                                                b.boxNumber,
+                                              )!,
+                                            }))
+                                            .sort(
+                                              (a: any, b: any) =>
+                                                (a.boxNumber || 1) -
+                                                (b.boxNumber || 1),
+                                            );
+
+                                          // 4. Update state
+                                          updateOrderData(
+                                            "items",
+                                            reindexedItems,
+                                          );
+                                          updateOrderData(
+                                            "boxes",
+                                            reindexedBoxes,
+                                          );
                                         }}
                                         className="text-red-500 hover:text-red-700"
                                       >
