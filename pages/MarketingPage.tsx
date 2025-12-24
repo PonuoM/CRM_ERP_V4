@@ -1272,7 +1272,6 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       } else {
         newData.push({ pageId: pageId.toString(), [field]: value });
       }
-
       return newData;
     });
   };
@@ -1460,44 +1459,47 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (!selectedDate) return;
     setIsLoadingData(true);
     try {
-      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get.php?date=${selectedDate}&user_id=${currentUser.id}`);
-      const result = await response.json();
+      // 1. Get user products
+      const products = await fetchUserProducts(currentUser.id);
 
-      if (result.success && Array.isArray(result.data)) {
-        // Map existing data to products
-        const mergedData = products.map(product => {
-          const existingLog = result.data.find((log: any) => log.product_id === product.id);
-          return {
-            productId: product.id,
-            sku: product.sku,
-            productName: product.name,
-            adsCost: existingLog ? existingLog.ads_cost : "",
-            impressions: existingLog ? existingLog.impressions : "",
-            reach: existingLog ? existingLog.reach : "",
-            clicks: existingLog ? existingLog.clicks : ""
-          };
-        });
-        setProductAdsInputData(mergedData);
-      } else {
-        // Initialize with empty values if no data exists
-        const initialData = products.map(product => ({
-          productId: product.id,
-          sku: product.sku,
-          productName: product.name,
-          adsCost: "",
-          impressions: "",
-          reach: "",
-          clicks: ""
-        }));
-        setProductAdsInputData(initialData);
-      }
-    } catch (error) {
-      console.error("Error loading product ads data:", error);
-      alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+      // 2. Get existing logs
+      // Try to use history first as it supports date range and user filter properly
+      const queryParams = new URLSearchParams({
+        start_date: selectedDate,
+        end_date: selectedDate,
+        page: "1",
+        limit: "1000",
+        user_ids: currentUser.id.toString()
+      });
+
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?${queryParams.toString()}`);
+      const result = await response.json();
+      const logs = result.success ? result.data : [];
+
+      // 3. Merge
+      const merged = products.map((p: any) => {
+        const log = logs.find((l: any) => l.product_id === p.id);
+        return {
+          productId: p.id,
+          sku: p.sku,
+          productName: p.name,
+          adsCost: log ? log.ads_cost : "",
+          impressions: log ? log.impressions : "",
+          reach: log ? log.reach : "",
+          clicks: log ? log.clicks : "",
+        };
+      });
+
+      setProductAdsInputData(merged);
+
+    } catch (e) {
+      console.error("Failed to load product ads data", e);
+      setProductAdsInputData([]);
     } finally {
       setIsLoadingData(false);
     }
   };
+
 
   // Trigger load when page or date changes in product mode
   useEffect(() => {
@@ -1544,7 +1546,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ data: dataToSave }),
+        body: JSON.stringify({ logs: dataToSave }),
       });
       const result = await response.json();
       if (result.success) {
@@ -2524,11 +2526,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {!selectedProductPageId ? (
-                          <tr>
-                            <td colSpan={6} className="text-center py-8 text-gray-500">กรุณาเลือกเพจเพื่อกรอกข้อมูล</td>
-                          </tr>
-                        ) : productAdsInputData.length > 0 ? (
+                        {productAdsInputData.length > 0 ? (
                           productAdsInputData.map((item) => (
                             <tr key={item.productId} className="border-b">
                               <td className="px-3 py-2">{item.sku}</td>
