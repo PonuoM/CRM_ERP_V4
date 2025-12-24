@@ -2136,6 +2136,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $params[] = 'Transfer';
                             $whereConditions[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
                             $params[] = 'Verified';
+                            // COD orders must have payment_status = Unpaid
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'COD';
+                            $params[] = 'Unpaid';
                             break;
                             
                         case 'waitingExport':
@@ -2146,6 +2150,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
                             $params[] = 'Transfer';
                             $params[] = 'Verified';
+                            // COD orders must have payment_status = Unpaid
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'COD';
+                            $params[] = 'Unpaid';
                             break;
                             
                         case 'preparing':
@@ -2155,6 +2163,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $params[] = 'Picking';
                             // And NO tracking number (handled by NOT having tracking numbers usually)
                             // But status Preparing/Picking implies internal process
+                            // COD orders must have payment_status = Unpaid
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'COD';
+                            $params[] = 'Unpaid';
                             break;
                             
                         case 'shipping':
@@ -2165,6 +2177,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             // Actually we have tracking_numbers group concat. 
                             $whereConditions[] = 'o.order_status = ?';
                             $params[] = 'Shipping';
+                            // COD orders must have payment_status = Unpaid
+                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                            $params[] = 'COD';
+                            $params[] = 'Unpaid';
                             break;
                             
                         case 'awaiting_account':
