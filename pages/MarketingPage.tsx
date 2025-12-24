@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Pencil,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { Page, Promotion, AdSpend, User, UserRole } from "@/types";
 import {
@@ -659,6 +660,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const handleAddUserToProduct = (productId: number) => {
     setSelectedProductForUser(products.find(p => p.id === productId));
   };
+
+  // User Management Section Expand/Collapse State
+  const [showActivePages, setShowActivePages] = useState(true);
+  const [showManagedProducts, setShowManagedProducts] = useState(true);
 
 
 
@@ -1591,6 +1596,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     hasPrevious: false,
   });
 
+  // Expand/Collapse state for History
+  const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
+  const toggleHistoryExpand = (id: string) => {
+    const newSet = new Set(historyExpanded);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setHistoryExpanded(newSet);
+  };
+
   const loadProductAdsLogs = async () => {
     setProductAdsLogsLoading(true);
     try {
@@ -1957,205 +1971,242 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           <>
             {/* Active Pages List */}
             <section className="bg-white rounded-lg shadow p-5">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                รายการเพจที่ใช้งานอยู่ (Active Pages)
-              </h3>
-              {loading ? (
-                <div className="text-center py-4">กำลังโหลด...</div>
-              ) : pages.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  ไม่มีเพจที่ใช้งานอยู่
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">ID</th>
-                        <th className="px-3 py-2 text-left">ประเภทเพจ</th>
-                        <th className="px-3 py-2 text-left">ชื่อเพจ</th>
-                        <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
-                        <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                        <th className="px-3 py-2 text-left">จัดการ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pages.map((page) => (
-                        <React.Fragment key={page.id}>
-                          <tr
-                            className="border-b cursor-pointer hover:bg-gray-50"
-                            onClick={() => togglePageExpand(page.id)}
-                          >
-                            <td className="px-3 py-2">{page.id}</td>
-                            <td className="px-3 py-2">
-                              {(() => {
-                                const { label, className } = getPageTypeBadgeClasses(
-                                  page.page_type ?? page.pageType ?? null,
-                                );
-                                return (
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-3 py-2 font-medium">{page.name}</td>
-                            <td className="px-3 py-2">{page.platform}</td>
-                            <td className="px-3 py-2">
-                              {
-                                marketingPageUsers.filter(
-                                  (user) => user.page_id === page.id,
-                                ).length
-                              }
-                            </td>
-                            <td className="px-3 py-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddUser(page.id);
-                                }}
-                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                              >
-                                +เพิ่มผู้ใช้
-                              </button>
-                            </td>
+              <div
+                className="flex items-center justify-between mb-4 cursor-pointer"
+                onClick={() => setShowActivePages(!showActivePages)}
+              >
+                <h3 className="text-lg font-semibold text-gray-800">
+                  รายการเพจที่ใช้งานอยู่ (Active Pages)
+                </h3>
+                {showActivePages ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+              </div>
+
+              {showActivePages && (
+                <>
+                  {loading ? (
+                    <div className="text-center py-4">กำลังโหลด...</div>
+                  ) : pages.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      ไม่มีเพจที่ใช้งานอยู่
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left w-10"></th>
+                            <th className="px-3 py-2 text-left">ID</th>
+                            <th className="px-3 py-2 text-left">ชื่อเพจ</th>
+                            <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
+                            <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
+                            <th className="px-3 py-2 text-left">จัดการ</th>
                           </tr>
-                          {expandedPages.has(page.id) && (
-                            <tr>
-                              <td colSpan={6} className="px-3 py-4 bg-gray-50">
-                                <div className="space-y-2">
-                                  <h4 className="font-medium text-gray-700">
-                                    ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
-                                  </h4>
-                                  {marketingPageUsers
-                                    .filter((user) => user.page_id === page.id)
-                                    .map((user) => (
-                                      <div
-                                        key={user.id}
-                                        className="flex items-center justify-between bg-white p-3 rounded border"
+                        </thead>
+                        <tbody>
+                          {pages.map((page) => (
+                            <React.Fragment key={page.id}>
+                              <tr
+                                className="border-b cursor-pointer hover:bg-gray-50 bg-white"
+                                onClick={() => togglePageExpand(page.id)}
+                              >
+                                <td className="px-3 py-2 text-center w-10">
+                                  {expandedPages.has(page.id) ? (
+                                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-gray-500">{page.id}</td>
+                                <td className="px-3 py-2">
+                                  {(() => {
+                                    const { label, className } = getPageTypeBadgeClasses(
+                                      page.page_type ?? page.pageType ?? null,
+                                    );
+                                    return (
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
                                       >
-                                        <div>
-                                          <span className="font-medium">
-                                            {user.first_name} {user.last_name}
-                                          </span>
-                                          <span className="text-sm text-gray-600 ml-2">
-                                            ({user.username})
-                                          </span>
-                                        </div>
-                                        <button
-                                          onClick={() =>
-                                            handleRemoveUser(
-                                              user.user_id,
-                                              page.id,
-                                            )
-                                          }
-                                          className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                                        >
-                                          ลบ
-                                        </button>
-                                      </div>
-                                    ))}
-                                  {marketingPageUsers.filter(
-                                    (user) => user.page_id === page.id,
-                                  ).length === 0 && (
-                                      <div className="text-gray-500">
-                                        ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
-                                      </div>
-                                    )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                        {label}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-3 py-2 font-medium">{page.name}</td>
+                                <td className="px-3 py-2">{page.platform}</td>
+                                <td className="px-3 py-2">
+                                  {
+                                    marketingPageUsers.filter(
+                                      (user) => user.page_id === page.id,
+                                    ).length
+                                  }
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddUser(page.id);
+                                    }}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                                  >
+                                    +เพิ่มผู้ใช้
+                                  </button>
+                                </td>
+                              </tr>
+                              {expandedPages.has(page.id) && (
+                                <tr>
+                                  <td colSpan={7} className="px-3 py-4 bg-gray-50">
+                                    <div className="space-y-2">
+                                      <h4 className="font-medium text-gray-700">
+                                        ผู้ใช้ที่เชื่อมต่อกับเพจนี้:
+                                      </h4>
+                                      {marketingPageUsers
+                                        .filter((user) => user.page_id === page.id)
+                                        .map((user) => (
+                                          <div
+                                            key={user.id}
+                                            className="flex items-center justify-between bg-white p-3 rounded border"
+                                          >
+                                            <div>
+                                              <span className="font-medium">
+                                                {user.first_name} {user.last_name}
+                                              </span>
+                                              <span className="text-sm text-gray-600 ml-2">
+                                                ({user.username})
+                                              </span>
+                                            </div>
+                                            <button
+                                              onClick={() =>
+                                                handleRemoveUser(
+                                                  user.user_id,
+                                                  page.id,
+                                                )
+                                              }
+                                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                            >
+                                              ลบ
+                                            </button>
+                                          </div>
+                                        ))}
+                                      {marketingPageUsers.filter(
+                                        (user) => user.page_id === page.id,
+                                      ).length === 0 && (
+                                          <div className="text-gray-500">
+                                            ยังไม่มีผู้ใช้ที่เชื่อมต่อกับเพจนี้
+                                          </div>
+                                        )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </section>
 
             {/* Managed Products List */}
             <section className="bg-white rounded-lg shadow p-5 mt-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                รายการสินค้า (Managed Products)
-              </h3>
-              {loading ? (
-                <div className="text-center py-4">กำลังโหลด...</div>
-              ) : products.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  ไม่มีสินค้า
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">SKU</th>
-                        <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
-                        <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
-                        <th className="px-3 py-2 text-left">จัดการ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.map((product) => (
-                        <React.Fragment key={product.id}>
-                          <tr
-                            className="border-b cursor-pointer hover:bg-gray-50"
-                            onClick={() => toggleProductExpand(product.id)}
-                          >
-                            <td className="px-3 py-2">{product.sku}</td>
-                            <td className="px-3 py-2 font-medium">{product.name}</td>
-                            <td className="px-3 py-2">
-                              {marketingUserProducts.filter(m => m.product_id === product.id).length}
-                            </td>
-                            <td className="px-3 py-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddUserToProduct(product.id);
-                                }}
-                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                              >
-                                +เพิ่มผู้ใช้
-                              </button>
-                            </td>
+              <div
+                className="flex items-center justify-between mb-4 cursor-pointer"
+                onClick={() => setShowManagedProducts(!showManagedProducts)}
+              >
+                <h3 className="text-lg font-semibold text-gray-800">
+                  รายการสินค้า (Managed Products)
+                </h3>
+                {showManagedProducts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+              </div>
+
+              {showManagedProducts && (
+                <>
+                  {loading ? (
+                    <div className="text-center py-4">กำลังโหลด...</div>
+                  ) : products.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      ไม่มีสินค้า
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left w-10"></th>
+                            <th className="px-3 py-2 text-left">SKU</th>
+                            <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
+                            <th className="px-3 py-2 text-left">จำนวนผู้ใช้</th>
+                            <th className="px-3 py-2 text-left">จัดการ</th>
                           </tr>
-                          {expandedProducts.has(product.id) && (
-                            <tr>
-                              <td colSpan={4} className="px-3 py-4 bg-gray-50">
-                                <div className="space-y-2">
-                                  <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลสินค้านี้:</h4>
-                                  {marketingUserProducts
-                                    .filter(m => m.product_id === product.id)
-                                    .map(m => (
-                                      <div key={m.user_id} className="flex items-center justify-between bg-white p-3 rounded border">
-                                        <div>
-                                          <span className="font-medium">{m.first_name} {m.last_name}</span>
-                                          <span className="text-sm text-gray-600 ml-2">({m.username})</span>
-                                        </div>
-                                        <button
-                                          onClick={() => handleRemoveUserFromProduct(m.user_id, product.id)}
-                                          className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                                        >
-                                          ลบ
-                                        </button>
-                                      </div>
-                                    ))
-                                  }
-                                  {marketingUserProducts.filter(m => m.product_id === product.id).length === 0 && (
-                                    <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลสินค้านี้</div>
+                        </thead>
+                        <tbody>
+                          {products.map((product) => (
+                            <React.Fragment key={product.id}>
+                              <tr
+                                className="border-b cursor-pointer hover:bg-gray-50"
+                                onClick={() => toggleProductExpand(product.id)}
+                              >
+                                <td className="px-3 py-2 text-center w-10">
+                                  {expandedProducts.has(product.id) ? (
+                                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-gray-500" />
                                   )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                </td>
+                                <td className="px-3 py-2">{product.sku}</td>
+                                <td className="px-3 py-2 font-medium">{product.name}</td>
+                                <td className="px-3 py-2">
+                                  {marketingUserProducts.filter(m => m.product_id === product.id).length}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddUserToProduct(product.id);
+                                    }}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                                  >
+                                    +เพิ่มผู้ใช้
+                                  </button>
+                                </td>
+                              </tr>
+                              {expandedProducts.has(product.id) && (
+                                <tr>
+                                  <td colSpan={5} className="px-3 py-4 bg-gray-50">
+                                    <div className="space-y-2">
+                                      <h4 className="font-medium text-gray-700">ผู้ใช้ที่ดูแลสินค้านี้:</h4>
+                                      {marketingUserProducts
+                                        .filter(m => m.product_id === product.id)
+                                        .map(m => (
+                                          <div key={m.user_id} className="flex items-center justify-between bg-white p-3 rounded border">
+                                            <div>
+                                              <span className="font-medium">{m.first_name} {m.last_name}</span>
+                                              <span className="text-sm text-gray-600 ml-2">({m.username})</span>
+                                            </div>
+                                            <button
+                                              onClick={() => handleRemoveUserFromProduct(m.user_id, product.id)}
+                                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                            >
+                                              ลบ
+                                            </button>
+                                          </div>
+                                        ))
+                                      }
+                                      {marketingUserProducts.filter(m => m.product_id === product.id).length === 0 && (
+                                        <div className="text-gray-500">ยังไม่มีผู้ใช้ดูแลสินค้านี้</div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </>
@@ -3507,100 +3558,123 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">วันที่</th>
-                        <th className="px-3 py-2 text-left">เพจ</th>
-                        <th className="px-3 py-2 text-left">ผู้บันทึก</th>
-                        <th className="px-3 py-2 text-left">ค่า Ads</th>
-                        <th className="px-3 py-2 text-left">Impressions</th>
-                        <th className="px-3 py-2 text-left">Reach</th>
-                        <th className="px-3 py-2 text-left">Clicks</th>
-                        {(currentUser.role === "Super Admin" ||
-                          currentUser.role === "Admin Control") && (
-                            <th className="px-3 py-2 text-left">จัดการ</th>
-                          )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adsLogs.length > 0 ? (
-                        adsLogs.map((log: any) => {
-                          const d = log.date || log.log_date || "";
-                          const bg = d ? adsLogsDateBgMap.get(d) || "" : "";
-                          return (
-                            <tr
-                              key={log.id}
-                              className={`border-b ${bg} ${getHoverColor(bg)}`}
-                            >
-                              <td className="px-3 py-2">{d}</td>
-                              <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <span>
-                                    {log.page_name ||
-                                      pages.find(
-                                        (p) => p.id === Number(log.page_id),
-                                      )?.name ||
-                                      log.page_id}
-                                  </span>
-                                  {(() => {
-                                    const page = pages.find(
-                                      (p) =>
-                                        p.name === log.page_name ||
-                                        p.id === Number(log.page_id),
-                                    );
-                                    return isPageInactive(page) ? (
-                                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                                        Inactive
-                                      </span>
-                                    ) : null;
-                                  })()}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-gray-600">
-                                {log.user_fullname || log.user_username || "-"}
-                              </td>
-                              <td className="px-3 py-2">
-                                ฿{Number(log.ads_cost || 0).toFixed(2)}
-                              </td>
-                              <td className="px-3 py-2">{log.impressions ?? 0}</td>
-                              <td className="px-3 py-2">{log.reach ?? 0}</td>
-                              <td className="px-3 py-2">{log.clicks ?? 0}</td>
-                              {(currentUser.role === "Super Admin" ||
-                                currentUser.role === "Admin Control") && (
-                                  <td className="px-3 py-2">
-                                    <button
-                                      className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-100"
-                                      title="แก้ไขรายการนี้"
-                                      onClick={() => {
-                                        setEditingLog({ ...log });
-                                        setIsEditModalOpen(true);
-                                      }}
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </button>
+                  {/* Group by Page */}
+                  {(() => {
+                    const groupedByPage: Record<string, any[]> = {};
+                    adsLogs.forEach(log => {
+                      const key = log.page_id;
+                      if (!groupedByPage[key]) groupedByPage[key] = [];
+                      groupedByPage[key].push(log);
+                    });
+
+                    const pageKeys = Object.keys(groupedByPage);
+
+                    return (
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left w-8"></th>
+                            <th className="px-3 py-2 text-left">เพจ</th>
+                            <th className="px-3 py-2 text-right">จำนวนรายการ</th>
+                            <th className="px-3 py-2 text-right">รวมค่า Ads</th>
+                            <th className="px-3 py-2 text-right">รวม Impressions</th>
+                            <th className="px-3 py-2 text-right">รวม Reach</th>
+                            <th className="px-3 py-2 text-right">รวม Clicks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pageKeys.length > 0 ? pageKeys.map(pageId => {
+                            const groupLogs = groupedByPage[pageId];
+                            const firstLog = groupLogs[0];
+                            const isExpanded = historyExpanded.has('page-' + pageId);
+                            const totalCost = groupLogs.reduce((acc, l) => acc + Number(l.ads_cost || 0), 0);
+                            const totalImp = groupLogs.reduce((acc, l) => acc + Number(l.impressions || 0), 0);
+                            const totalReach = groupLogs.reduce((acc, l) => acc + Number(l.reach || 0), 0);
+                            const totalClicks = groupLogs.reduce((acc, l) => acc + Number(l.clicks || 0), 0);
+
+                            return (
+                              <React.Fragment key={pageId}>
+                                <tr className="bg-white border-b hover:bg-gray-50 cursor-pointer" onClick={() => toggleHistoryExpand('page-' + pageId)}>
+                                  <td className="px-3 py-2 text-center">
+                                    {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                   </td>
+                                  <td className="px-3 py-2 font-medium">
+                                    {firstLog.page_name || pages.find(p => p.id === Number(pageId))?.name || pageId}
+                                    {(() => {
+                                      const page = pages.find(p => p.name === firstLog.page_name || p.id === Number(pageId));
+                                      return isPageInactive(page) ? (
+                                        <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Inactive</span>
+                                      ) : null;
+                                    })()}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-gray-500">{groupLogs.length}</td>
+                                  <td className="px-3 py-2 text-right font-medium">฿{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right">{totalImp.toLocaleString()}</td>
+                                  <td className="px-3 py-2 text-right">{totalReach.toLocaleString()}</td>
+                                  <td className="px-3 py-2 text-right">{totalClicks.toLocaleString()}</td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={7} className="p-0">
+                                      <div className="bg-gray-50 p-2 pl-8 border-b shadow-inner">
+                                        <table className="w-full text-xs">
+                                          <thead className="text-gray-500 bg-gray-100">
+                                            <tr>
+                                              <th className="px-3 py-1 text-left">วันที่</th>
+                                              <th className="px-3 py-1 text-left">ผู้บันทึก</th>
+                                              <th className="px-3 py-1 text-right">ค่า Ads</th>
+                                              <th className="px-3 py-1 text-right">Imp.</th>
+                                              <th className="px-3 py-1 text-right">Reach</th>
+                                              <th className="px-3 py-1 text-right">Clicks</th>
+                                              {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                                                <th className="px-3 py-1 text-center">จัดการ</th>
+                                              )}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {groupLogs.map(log => {
+                                              const d = log.date || log.log_date || "";
+                                              return (
+                                                <tr key={log.id} className="border-b border-gray-100 bg-white">
+                                                  <td className="px-3 py-1">{d}</td>
+                                                  <td className="px-3 py-1 text-gray-600">{log.user_fullname || log.user_username || "-"}</td>
+                                                  <td className="px-3 py-1 text-right">฿{Number(log.ads_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(log.impressions).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(log.reach).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(log.clicks).toLocaleString()}</td>
+                                                  {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                                                    <td className="px-3 py-1 text-center">
+                                                      <button
+                                                        className="p-1 hover:bg-gray-200 rounded"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setEditingLog({ ...log });
+                                                          setIsEditModalOpen(true);
+                                                        }}
+                                                      >
+                                                        <Pencil className="w-3 h-3" />
+                                                      </button>
+                                                    </td>
+                                                  )}
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
                                 )}
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td
-                            className="px-3 py-6 text-center text-gray-500"
-                            colSpan={
-                              currentUser.role === "Super Admin" ||
-                                currentUser.role === "Admin Control"
-                                ? 8
-                                : 7
-                            }
-                          >
-                            ไม่พบบันทึกประวัติการกรอก Ads ของคุณ
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                              </React.Fragment>
+                            );
+                          }) : (
+                            <tr><td colSpan={7} className="text-center py-8 text-gray-500">ไม่พบข้อมูล</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    );
+                  })()}
+
                   {adsLogs.length > 0 && (
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                       <div className="text-sm text-gray-600">
@@ -3693,45 +3767,113 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left">วันที่</th>
-                        <th className="px-3 py-2 text-left">เพจ</th>
-                        <th className="px-3 py-2 text-left">สินค้า</th>
-                        <th className="px-3 py-2 text-left">ผู้บันทึก</th>
-                        <th className="px-3 py-2 text-right">ค่า Ads</th>
-                        <th className="px-3 py-2 text-right">Imp.</th>
-                        <th className="px-3 py-2 text-right">Reach</th>
-                        <th className="px-3 py-2 text-right">Clicks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {productAdsLogs.length > 0 ? (
-                        productAdsLogs.map((log: any) => (
-                          <tr key={log.id} className="border-b hover:bg-gray-50">
-                            <td className="px-3 py-2">{log.date}</td>
-                            <td className="px-3 py-2">{log.page_name}</td>
-                            <td className="px-3 py-2">
-                              <div className="font-medium text-gray-800">{log.product_sku}</div>
-                              <div className="text-xs text-gray-500">{log.product_name}</div>
-                            </td>
-                            <td className="px-3 py-2 text-gray-600">{log.user_fullname}</td>
-                            <td className="px-3 py-2 text-right">฿{Number(log.ads_cost).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right">{Number(log.impressions).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right">{Number(log.reach).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right">{Number(log.clicks).toLocaleString()}</td>
+                  {/* Group by Product */}
+                  {(() => {
+                    const groupedByProduct: Record<string, any[]> = {};
+                    productAdsLogs.forEach(log => {
+                      const key = log.product_id;
+                      if (!groupedByProduct[key]) groupedByProduct[key] = [];
+                      groupedByProduct[key].push(log);
+                    });
+                    const prodKeys = Object.keys(groupedByProduct);
+
+                    return (
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-700">
+                          <tr>
+                            <th className="px-3 py-2 text-left w-8"></th>
+                            <th className="px-3 py-2 text-left">สินค้า (SKU)</th>
+                            <th className="px-3 py-2 text-right">จำนวนรายการ</th>
+                            <th className="px-3 py-2 text-right">รวมค่า Ads</th>
+                            <th className="px-3 py-2 text-right">รวม Imp.</th>
+                            <th className="px-3 py-2 text-right">รวม Reach</th>
+                            <th className="px-3 py-2 text-right">รวม Clicks</th>
                           </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={8} className="text-center py-8 text-gray-500">
-                            ไม่พบข้อมูลประวัติ Ads สินค้า
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody>
+                          {prodKeys.length > 0 ? (
+                            prodKeys.map((pId) => {
+                              const groupLogs = groupedByProduct[pId];
+                              const firstLog = groupLogs[0];
+                              const isExpanded = historyExpanded.has('prod-' + pId);
+                              // toggleProductExpand uses number.
+                              // I should probably separate expand states or use strings 'p-1', 'pr-1'.
+                              // For now I will assume toggleProductExpand works with numbers and I will map product IDs to unique numbers if needed, OR better, change toggleProductExpand to use strings?
+                              // Existing toggleProductExpand (I need to check definition) is for "Manage Users - Add User to Product".
+                              // I should CREATE A NEW expand state for HISTORY.
+
+                              const totalCost = groupLogs.reduce((acc, l) => acc + Number(l.ads_cost || 0), 0);
+                              const totalImp = groupLogs.reduce((acc, l) => acc + Number(l.impressions || 0), 0);
+                              const totalReach = groupLogs.reduce((acc, l) => acc + Number(l.reach || 0), 0);
+                              const totalClicks = groupLogs.reduce((acc, l) => acc + Number(l.clicks || 0), 0);
+
+                              // Use negative IDs for product history expansion to differentiating from page history?
+                              // Or just use a new function.
+
+                              return (
+                                <React.Fragment key={pId}>
+                                  <tr className="bg-white border-b hover:bg-gray-50 cursor-pointer" onClick={() => toggleHistoryExpand('prod-' + pId)}>
+                                    <td className="px-3 py-2 text-center">
+                                      {historyExpanded.has('prod-' + pId) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="font-medium">{firstLog.product_sku}</div>
+                                      <div className="text-xs text-gray-500">{firstLog.product_name}</div>
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-500">{groupLogs.length}</td>
+                                    <td className="px-3 py-2 text-right font-medium">฿{totalCost.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right">{totalImp.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right">{totalReach.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right">{totalClicks.toLocaleString()}</td>
+                                  </tr>
+                                  {historyExpanded.has('prod-' + pId) && (
+                                    <tr>
+                                      <td colSpan={7} className="p-0">
+                                        <div className="bg-gray-50 p-2 pl-8 border-b shadow-inner">
+                                          <table className="w-full text-xs">
+                                            <thead className="bg-gray-100 text-gray-500">
+                                              <tr>
+                                                <th className="px-3 py-1 text-left">วันที่</th>
+                                                <th className="px-3 py-1 text-left">เพจ</th>
+                                                <th className="px-3 py-1 text-left">ผู้บันทึก</th>
+                                                <th className="px-3 py-1 text-right">ค่า Ads</th>
+                                                <th className="px-3 py-1 text-right">Imp.</th>
+                                                <th className="px-3 py-1 text-right">Reach</th>
+                                                <th className="px-3 py-1 text-right">Clicks</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {groupLogs.map(l => (
+                                                <tr key={l.id} className="border-b border-gray-100 bg-white">
+                                                  <td className="px-3 py-1">{l.date}</td>
+                                                  <td className="px-3 py-1">{l.page_name}</td>
+                                                  <td className="px-3 py-1 text-gray-600">{l.user_fullname}</td>
+                                                  <td className="px-3 py-1 text-right">฿{Number(l.ads_cost).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(l.impressions).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(l.reach).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(l.clicks).toLocaleString()}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={7} className="text-center py-8 text-gray-500">
+                                ไม่พบข้อมูลประวัติ Ads สินค้า
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    );
+                  })()}
                   {productAdsLogs.length > 0 && (
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                       <div className="text-sm text-gray-600">
