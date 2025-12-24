@@ -2592,7 +2592,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                          if (isset($item['id']) && in_array($item['id'], $existingIds)) {
                              // UPDATE existing
                              $incomingIds[] = $item['id'];
-                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=? WHERE id=? AND order_id=?";
+                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
                              $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
                              $pdo->prepare($updateSql)->execute([
                                  $item['quantity'] ?? 0,
@@ -2602,6 +2602,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                  $item['boxNumber'] ?? $item['box_number'] ?? 0,
                                  $isFreebie ? 1 : 0,
                                  $item['id'],
+                                 $id,
                                  $id
                              ]);
                          } else {
@@ -2635,8 +2636,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $itemsToDelete = array_diff($existingIds, $incomingIds);
                     if (!empty($itemsToDelete)) {
                         $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
-                        $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND order_id = ?";
-                        $deleteParams = array_merge($itemsToDelete, [$id]);
+                        $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND (order_id = ? OR parent_order_id = ?)";
+                        $deleteParams = array_merge($itemsToDelete, [$id, $id]);
                         $pdo->prepare($deleteSql)->execute($deleteParams);
                     }
                 }

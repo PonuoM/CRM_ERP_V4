@@ -720,7 +720,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     setSlips(nextSlips);
 
     setSlipPreview(order.slipUrl || (nextSlips[0]?.url ?? null));
-  }, [order]);
+  }, [order.id]);
 
   const isModifiable = useMemo(() => {
     return [OrderStatus.Pending, OrderStatus.AwaitingVerification].includes(
@@ -877,40 +877,50 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   };
 
   const handleRemoveItem = (itemToRemove: any) => {
-    // Find the actual index in the unsorted currentOrder.items array
-    const actualIndex = currentOrder.items.findIndex((item) => {
-      // Match by unique combination of boxNumber and productId
-      const sameBox =
-        (item.boxNumber || (item as any).box_number) ===
-        (itemToRemove.boxNumber || (itemToRemove as any).box_number);
-      const sameProduct = item.productId === itemToRemove.productId;
-      return sameBox && sameProduct;
-    });
-
-    if (actualIndex === -1) {
-      console.error("Item to remove not found in currentOrder.items");
-      return;
-    }
-
     setCurrentOrder((prev) => {
-      const newItems = [...prev.items];
-      newItems.splice(actualIndex, 1);
+      // 1. Identify all items to remove (the item itself + its children if it's a parent)
+      const itemsToRemoveIds = new Set<any>();
+      itemsToRemoveIds.add(itemToRemove.id);
 
-      let newBoxes = prev.boxes || [];
-      // If the removed item had a box number, checks if any other items remain in that box
-      if (itemToRemove && itemToRemove.boxNumber) {
-        const hasItemsInBox = newItems.some(
-          (i) => i.boxNumber === itemToRemove.boxNumber,
-        );
-        if (!hasItemsInBox) {
-          // No items left in this box, remove it
-          newBoxes = newBoxes.filter(
-            (b) => b.boxNumber !== itemToRemove.boxNumber,
-          );
-        }
+      if (itemToRemove.isPromotionParent) {
+        prev.items.forEach((it: any) => {
+          if (it.parentItemId === itemToRemove.id) {
+            itemsToRemoveIds.add(it.id);
+          }
+        });
       }
 
-      // Recalculate COD total if needed
+      // 2. Filter out the items - use a more robust comparison
+      const newItems = prev.items.filter((it) => {
+        const shouldRemove = itemsToRemoveIds.has(it.id) ||
+          itemsToRemoveIds.has(String(it.id)) ||
+          itemsToRemoveIds.has(Number(it.id));
+        return !shouldRemove;
+      });
+
+      // 3. Handle box removal if necessary
+      let newBoxes = prev.boxes || [];
+      // We need to check for each removed item if its box is now empty
+      const boxesToCheck = new Set<number>();
+      prev.items.forEach((it) => {
+        const isBeingRemoved = itemsToRemoveIds.has(it.id) ||
+          itemsToRemoveIds.has(String(it.id)) ||
+          itemsToRemoveIds.has(Number(it.id));
+        if (isBeingRemoved && it.boxNumber) {
+          boxesToCheck.add(it.boxNumber);
+        }
+      });
+
+      boxesToCheck.forEach((boxNum) => {
+        const hasItemsLeftInBox = newItems.some(
+          (i) => i.boxNumber === boxNum,
+        );
+        if (!hasItemsLeftInBox) {
+          newBoxes = newBoxes.filter((b) => b.boxNumber !== boxNum);
+        }
+      });
+
+      // 4. Recalculate COD total if needed
       let newCodAmount = prev.codAmount;
       if (prev.paymentMethod === PaymentMethod.COD) {
         newCodAmount = newBoxes.reduce(
@@ -1080,7 +1090,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       try {
         const r: any = await apiFetch(`orders/${encodeURIComponent(order.id)}`);
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         const trackingDetails = Array.isArray(r.trackingDetails)
           ? r.trackingDetails
@@ -2100,12 +2112,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const nonChildItems = currentOrder.items.filter(
       (item: any) => !item.parentItemId,
     );
-    console.log("DEBUG handleSave Items:", currentOrder.items);
-    console.log("DEBUG handleSave nonChildItems:", nonChildItems);
     const boxNumbers: number[] = nonChildItems.map(
       (item) => Number(item.boxNumber || (item as any).box_number) || 1,
     );
-    console.log("DEBUG handleSave boxNumbers:", boxNumbers);
     const uniqueBoxes: number[] = [...new Set(boxNumbers)].sort(
       (a, b) => a - b,
     );
@@ -2174,7 +2183,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       boxes: boxes, // Add generated boxes array
     };
 
-    console.log("DEBUG: Calling onSave with updatedOrder", updatedOrder);
 
     setCurrentOrder(updatedOrder);
 
