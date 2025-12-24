@@ -3157,7 +3157,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
             // error_log("PATCH/PUT Received for ID: " . $id);
             $in = json_input();
             // Normalize incoming values: treat empty strings as NULL so they won't overwrite existing values
-            $orderStatus   = array_key_exists('orderStatus', $in) ? trim((string)$in['orderStatus']) : null; if ($orderStatus === '')   $orderStatus = null;
+            $orderStatus   = array_key_exists('orderStatus', $in) ? trim((string)$in['orderStatus']) : (array_key_exists('order_status', $in) ? trim((string)$in['order_status']) : null); if ($orderStatus === '')   $orderStatus = null;
             $paymentStatus = array_key_exists('paymentStatus', $in) ? trim((string)$in['paymentStatus']) : null; if ($paymentStatus === '') $paymentStatus = null;
             $amountPaid    = array_key_exists('amountPaid', $in) ? $in['amountPaid'] : null; if ($amountPaid === '') $amountPaid = null;
             $codAmount     = array_key_exists('codAmount', $in) ? $in['codAmount'] : null; if ($codAmount === '') $codAmount = null;

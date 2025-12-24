@@ -2350,43 +2350,42 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         backdropClassName={backdropClassName}
       >
         <div className="space-y-4 text-sm">
-          {isModifiable && (
-            <div className="flex justify-end mb-2">
-              {!isEditing ? (
+          <div className="flex justify-end mb-2">
+            {!isEditing ? (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Edit2 size={14} className="mr-1.5" />
+                แก้ไขออเดอร์
+              </button>
+            ) : (
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                  onClick={() => {
+                    setIsEditing(false);
+
+                    setCurrentOrder(order); // Reset changes
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
                 >
-                  <Edit2 size={14} className="mr-1.5" />
-                  แก้ไขออเดอร์
+                  <X size={14} className="mr-1.5" />
+                  ยกเลิกการแก้ไข
                 </button>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => {
-                      setIsEditing(false);
 
-                      setCurrentOrder(order); // Reset changes
-                    }}
-                    className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
-                  >
-                    <X size={14} className="mr-1.5" />
-                    ยกเลิกการแก้ไข
-                  </button>
+                <button
+                  onClick={() => {
+                    handleSave();
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                >
+                  <Save size={14} className="mr-1.5" />
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            )}
+          </div>
 
-                  <button
-                    onClick={() => {
-                      handleSave();
-                    }}
-                    className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
-                  >
-                    <Save size={14} className="mr-1.5" />
-                    บันทึกการแก้ไข
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
           <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

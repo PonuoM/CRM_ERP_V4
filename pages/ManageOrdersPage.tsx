@@ -725,7 +725,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       // Group items by boxId (referencing order.boxes)
       const itemsByOrderId = new Map<string, typeof order.items>();
 
-      order.items.forEach(item => {
+      // Deduplicate items by id to prevent duplicate rows in CSV
+      const uniqueItems = Array.from(
+        new Map(order.items.map(item => [item.id, item])).values()
+      );
+
+      uniqueItems.forEach(item => {
         const boxNum = item.boxNumber || (item as any).box_number || 1;
         const match = (order.boxes || []).find(b => ((b as any).boxNumber ?? (b as any).box_number) === boxNum);
 
@@ -1378,7 +1383,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={16} className="mr-2" />
-              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : 'ส่งออกข้อมูล'}
+              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
             </button>
           </div>
         )}
