@@ -23,11 +23,13 @@ import {
   createAdSpend,
   listUsers,
   updateUser,
+  apiFetch,
 } from "@/services/api";
 import MarketingDatePicker, {
   DateRange,
 } from "@/components/Dashboard/MarketingDatePicker";
 import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter";
+import MultiSelectProductFilter from "@/components/Dashboard/MultiSelectProductFilter";
 import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
 import resolveApiBasePath from "@/utils/apiBasePath";
 
@@ -160,7 +162,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     start: "",
     end: "",
   });
+  // Filters
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
@@ -623,8 +627,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (activeTab === "userManagement") {
       const fetchProducts = async () => {
         try {
-          const res = await fetch(`${API_BASE}/index.php?table=products&action=list&companyId=` + currentUser.companyId);
-          const data = await res.json();
+          const data = await apiFetch(`products?companyId=` + currentUser.companyId);
           if (Array.isArray(data)) {
             setProducts(data);
           }
@@ -634,7 +637,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       };
       fetchProducts();
 
-      fetchProducts();
+
       // Reload mappings when entering tab
       loadMarketingUserProducts();
     }
@@ -1422,8 +1425,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await fetch(`${API_BASE}/index.php?table=products&action=list&companyId=` + currentUser.companyId);
-        const data = await res.json();
+        const data = await apiFetch(`products?companyId=` + currentUser.companyId);
         if (Array.isArray(data)) {
           setProducts(data);
         }
@@ -1544,10 +1546,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     setDashboardLoading(true);
     try {
       const pageIds = selectedPages.join(',');
+      const productIds = selectedProducts.join(',');
       const queryParams = new URLSearchParams({
         start_date: dateRange.start,
         end_date: dateRange.end,
         page_ids: pageIds,
+        product_ids: productIds,
         company_id: currentUser.companyId.toString()
       });
 
@@ -1571,7 +1575,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     if (activeTab === 'dashboard' && adsInputMode === 'product') {
       loadProductDashboardData();
     }
-  }, [activeTab, adsInputMode, dateRange, selectedPages]);
+  }, [activeTab, adsInputMode, dateRange, selectedPages, selectedProducts]);
 
   // Product Ads History Logic
   const [adsHistoryMode, setAdsHistoryMode] = useState<"page" | "product">("page");
@@ -2447,19 +2451,36 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
 
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกเพจ</label>
-                  <MultiSelectPageFilter
-                    pages={pages.map((page) => ({
-                      id: page.id,
-                      name: page.name,
-                      platform: page.platform,
-                      active: page.active,
-                    }))}
-                    selectedPages={selectedPages}
-                    onChange={setSelectedPages}
-                    showInactivePages={showInactivePages}
-                    onToggleInactivePages={setShowInactivePages}
-                  />
+                  {adsInputMode === 'page' ? (
+                    <>
+                      <label className={labelClass}>เลือกเพจ</label>
+                      <MultiSelectPageFilter
+                        pages={pages.map((page) => ({
+                          id: page.id,
+                          name: page.name,
+                          platform: page.platform,
+                          active: page.active,
+                        }))}
+                        selectedPages={selectedPages}
+                        onChange={setSelectedPages}
+                        showInactivePages={showInactivePages}
+                        onToggleInactivePages={setShowInactivePages}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label className={labelClass}>เลือกสินค้า</label>
+                      <MultiSelectProductFilter
+                        products={products.map((p) => ({
+                          id: p.id,
+                          sku: p.sku || "",
+                          name: p.name,
+                        }))}
+                        selectedProducts={selectedProducts}
+                        onChange={setSelectedProducts}
+                      />
+                    </>
+                  )}
                 </div>
 
                 <div className="">

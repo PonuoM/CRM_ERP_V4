@@ -19,6 +19,7 @@ try {
   $pageIds = $_GET["page_ids"] ?? null;
   $userIds = $_GET["user_ids"] ?? null;
   $companyId = $_GET["company_id"] ?? null;
+  $productIds = $_GET["product_ids"] ?? null;
   
   // 1. Where clause for Ads Log
   $logWhere = ["1=1"];
@@ -40,6 +41,15 @@ try {
   if ($userIds) {
     $logWhere[] = "user_id IN ($userIds)";
   }
+  if ($productIds) {
+    // Only process if valid IDs exist to avoid SQL error or empty IN ()
+    $pIds = array_filter(explode(',', $productIds), 'is_numeric');
+    if (!empty($pIds)) {
+        $in = str_repeat('?,', count($pIds) - 1) . '?';
+        $logWhere[] = "product_id IN ($in)";
+        $logParams = array_merge($logParams, $pIds);
+    }
+  }
 
   // 2. Where clause for Orders (Order Items)
   $orderWhere = ["1=1"];
@@ -56,6 +66,14 @@ try {
   if ($pageIds) {
     $orderWhere[] = "o.sales_channel_page_id IN ($pageIds)";
   }
+  if ($productIds) {
+    $pIds = array_filter(explode(',', $productIds), 'is_numeric');
+    if (!empty($pIds)) {
+        $in = str_repeat('?,', count($pIds) - 1) . '?';
+        $orderWhere[] = "oi.product_id IN ($in)";
+        $orderParams = array_merge($orderParams, $pIds);
+    }
+  }
   
   $logWhereSql = implode(" AND ", $logWhere);
   $orderWhereSql = implode(" AND ", $orderWhere);
@@ -66,6 +84,14 @@ try {
   if ($companyId) {
       $productWhere[] = "p.company_id = ?";
       $productParams[] = $companyId;
+  }
+  if ($productIds) {
+    $pIds = array_filter(explode(',', $productIds), 'is_numeric');
+    if (!empty($pIds)) {
+        $in = str_repeat('?,', count($pIds) - 1) . '?';
+        $productWhere[] = "p.id IN ($in)";
+        $productParams = array_merge($productParams, $pIds);
+    }
   }
   $productWhereSql = implode(" AND ", $productWhere);
 
