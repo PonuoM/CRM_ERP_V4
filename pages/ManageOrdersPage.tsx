@@ -182,6 +182,51 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       setLoading(true);
       try {
+        // Helper to interpret date presets (local within effect or outside)
+        const getDeliveryDateFilter = () => {
+          // Only apply this specific filter logic for 'waitingExport' tab
+          if (activeTab !== 'waitingExport') {
+            return { start: undefined, end: undefined };
+          }
+
+          if (activeDatePreset === 'range') {
+            return {
+              start: dateRange.start || undefined,
+              end: dateRange.end || undefined
+            };
+          }
+
+          const today = new Date();
+          const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+          switch (activeDatePreset) {
+            case 'today':
+              return { start: formatDate(today), end: formatDate(today) };
+            case 'tomorrow':
+              const tmr = new Date(today);
+              tmr.setDate(tmr.getDate() + 1);
+              return { start: formatDate(tmr), end: formatDate(tmr) };
+            case 'next7days':
+              const next7 = new Date(today);
+              next7.setDate(next7.getDate() + 7);
+              return { start: formatDate(today), end: formatDate(next7) };
+            case 'next30days':
+              const next30 = new Date(today);
+              next30.setDate(next30.getDate() + 30);
+              return { start: formatDate(today), end: formatDate(next30) };
+            case 'missed':
+              // "Missed" implies delivery date before today
+              const yesterday = new Date(today);
+              yesterday.setDate(yesterday.getDate() - 1);
+              return { start: undefined, end: formatDate(yesterday) };
+            case 'all':
+            default:
+              return { start: undefined, end: undefined };
+          }
+        };
+
+        const deliveryFilters = getDeliveryDateFilter();
+
         const params: any = {
           companyId: user.companyId,
           page: currentPage,
@@ -191,8 +236,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           trackingNumber: afTracking || undefined,
           orderDateStart: afOrderDate.start || undefined,
           orderDateEnd: afOrderDate.end || undefined,
-          deliveryDateStart: afDeliveryDate.start || undefined,
-          deliveryDateEnd: afDeliveryDate.end || undefined,
+          // Merge explicit delivery date filter (from tab) with advanced filter if needed.
+          // Note: Tab filter (specific date bar) takes precedence if set, or we can merge logic.
+          // Here we assume if 'waitingExport' tab is active, we use its specific bar.
+          // If advanced filter is ALSO used, they might conflict, but advanced filter is 'afDeliveryDate'.
+          // Let's allow the specific bar to override if it has values, or rely on advanced filter if bar is 'all'.
+          deliveryDateStart: deliveryFilters.start || afDeliveryDate.start || undefined,
+          deliveryDateEnd: deliveryFilters.end || afDeliveryDate.end || undefined,
+
           paymentMethod: afPaymentMethod || undefined,
           paymentStatus: afPaymentStatus || undefined,
           customerName: afCustomerName || undefined,
@@ -298,7 +349,27 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     return () => {
       controller.abort();
     };
-  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, refreshCounter]);
+  }, [
+    user?.companyId,
+    currentPage,
+    itemsPerPage,
+    activeTab,
+    afOrderId,
+    afTracking,
+    afOrderDate.start,
+    afOrderDate.end,
+    afDeliveryDate.start,
+    afDeliveryDate.end,
+    afPaymentMethod,
+    afPaymentStatus,
+    afCustomerName,
+    afCustomerPhone,
+    refreshCounter,
+    // Add dependencies for date filters logic
+    activeDatePreset,
+    dateRange.start,
+    dateRange.end
+  ]);
 
   useEffect(() => {
     setSelectedIds([]);
