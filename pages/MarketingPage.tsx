@@ -231,24 +231,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [pageFilterName, setPageFilterName] = useState("");
   const [pageFilterType, setPageFilterType] = useState("All");
   const [pageFilterStatus, setPageFilterStatus] = useState("Active"); // Default to Active as requested
+  const [pageFilterUser, setPageFilterUser] = useState<number | "All">("All");
 
-  const filteredPages = useMemo(() => {
-    return pages.filter((page) => {
-      const matchesName = page.name
-        .toLowerCase()
-        .includes(pageFilterName.toLowerCase());
-      const matchesType =
-        pageFilterType === "All" ||
-        (page.page_type || "").toLowerCase() === pageFilterType.toLowerCase();
-
-      const matchesStatus =
-        pageFilterStatus === "All" ? true :
-          pageFilterStatus === "Active" ? page.active :
-            !page.active;
-
-      return matchesName && matchesType && matchesStatus;
-    });
-  }, [pages, pageFilterName, pageFilterType, pageFilterStatus]);
+  // Product Filters
+  const [productFilterUser, setProductFilterUser] = useState<number | "All">("All");
 
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
@@ -1724,6 +1710,41 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     document.body.removeChild(link);
   };
 
+  const filteredPages = useMemo(() => {
+    return pages.filter((page) => {
+      const matchesName = page.name
+        .toLowerCase()
+        .includes(pageFilterName.toLowerCase());
+      const matchesType =
+        pageFilterType === "All" ||
+        (page.page_type || "").toLowerCase() === pageFilterType.toLowerCase();
+
+      const matchesStatus =
+        pageFilterStatus === "All" ? true :
+          pageFilterStatus === "Active" ? page.active :
+            !page.active;
+
+      const matchesUser =
+        pageFilterUser === "All" ||
+        marketingPageUsers.some(
+          (u) => u.page_id === page.id && u.user_id === Number(pageFilterUser)
+        );
+
+      return matchesName && matchesType && matchesStatus && matchesUser;
+    });
+  }, [pages, pageFilterName, pageFilterType, pageFilterStatus, pageFilterUser, marketingPageUsers]);
+
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesUser =
+        productFilterUser === "All" ||
+        marketingUserProducts.some(
+          (u) => u.product_id === product.id && u.user_id === Number(productFilterUser)
+        );
+      return matchesUser;
+    });
+  }, [products, productFilterUser, marketingUserProducts]);
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -2043,6 +2064,19 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       <option value="Inactive">Inactive</option>
                       <option value="All">All Status</option>
                     </select>
+                    <select
+                      className="text-sm border border-gray-300 rounded-md p-2 max-w-[150px]"
+                      value={pageFilterUser}
+                      onChange={(e) => setPageFilterUser(e.target.value === "All" ? "All" : Number(e.target.value))}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="All">ทุกผู้ใช้</option>
+                      {marketingUsersList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name} ({u.username})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
@@ -2088,8 +2122,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 <td className="px-3 py-2">
                                   <span
                                     className={`px-2 py-0.5 rounded text-xs ${page.active
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-red-100 text-red-700"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-red-100 text-red-700"
                                       }`}
                                   >
                                     {page.active ? "Active" : "Inactive"}
@@ -2189,22 +2223,44 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             {/* Managed Products List */}
             <section className="bg-white rounded-lg shadow p-5 mt-6">
               <div
-                className="flex items-center justify-between mb-4 cursor-pointer"
-                onClick={() => setShowManagedProducts(!showManagedProducts)}
+                className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4"
               >
-                <h3 className="text-lg font-semibold text-gray-800">
-                  รายการสินค้า (Managed Products)
-                </h3>
-                {showManagedProducts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                <div
+                  className="flex items-center gap-2 cursor-pointer"
+                  onClick={() => setShowManagedProducts(!showManagedProducts)}
+                >
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    รายการสินค้า (Managed Products)
+                  </h3>
+                  {showManagedProducts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </div>
+
+                {showManagedProducts && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="text-sm border border-gray-300 rounded-md p-2 max-w-[150px]"
+                      value={productFilterUser}
+                      onChange={(e) => setProductFilterUser(e.target.value === "All" ? "All" : Number(e.target.value))}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="All">ทุกผู้ใช้</option>
+                      {marketingUsersList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.first_name} ({u.username})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {showManagedProducts && (
                 <>
                   {loading ? (
                     <div className="text-center py-4">กำลังโหลด...</div>
-                  ) : products.length === 0 ? (
+                  ) : filteredProducts.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
-                      ไม่มีสินค้า
+                      ไม่พบสินค้า
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -2219,7 +2275,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {products.map((product) => (
+                          {filteredProducts.map((product) => (
                             <React.Fragment key={product.id}>
                               <tr
                                 className="border-b cursor-pointer hover:bg-gray-50"
