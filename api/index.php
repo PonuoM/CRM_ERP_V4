@@ -2034,12 +2034,13 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($hasShippingProvider) {
                     $selectCols .= ', o.shipping_provider';
                 }
+
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
                                MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,
-                               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
+                               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.phone as phone,
                                c.street as customer_street, c.subdistrict as customer_subdistrict, c.district as customer_district,
                                c.province as customer_province, c.postal_code as customer_postal_code';
 
@@ -5003,6 +5004,7 @@ function get_order(PDO $pdo, string $id): ?array {
                 $o['customer'] = $cust;
                 // Keep for backward compatibility
                 $o['customer_phone'] = $cust['phone'];
+                $o['phone'] = $cust['phone'];
                 $o['customer_backup_phone'] = $cust['backup_phone'];
             }
         } catch (Throwable $e) { /* ignore */ }

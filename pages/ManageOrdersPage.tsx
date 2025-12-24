@@ -309,17 +309,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             boxes: r.boxes || [],
             reconcileAction: r.reconcile_action,
             // Customer information from API
-            customerInfo: r.customer_first_name ? {
-              firstName: r.customer_first_name,
-              lastName: r.customer_last_name,
-              phone: r.customer_phone,
-              address: {
-                street: r.customer_street || '',
-                subdistrict: r.customer_subdistrict || '',
-                district: r.customer_district || '',
-                province: r.customer_province || '',
-                postalCode: r.customer_postal_code || '',
-              }
+            // Use customer_id or phone as trigger, as first_name might be empty for some leads
+            customerInfo: (r.customer_id || r.customer_phone || r.phone) ? {
+              firstName: r.customer_first_name || '',
+              lastName: r.customer_last_name || '',
+              phone: r.phone || r.customer_phone || '',
+              street: r.customer_street || '',
+              subdistrict: r.customer_subdistrict || '',
+              district: r.customer_district || '',
+              province: r.customer_province || '',
+              postalCode: r.customer_postal_code || '',
             } : undefined,
           }));
 
@@ -604,6 +603,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               province: r.province || '',
               postalCode: r.postal_code || '',
             },
+            customerInfo: {
+              firstName: r.customer?.first_name || r.customer_first_name || '',
+              lastName: r.customer?.last_name || r.customer_last_name || '',
+              phone: r.phone || r.customer_phone || r.customer?.phone || '',
+              street: r.customer?.street || r.customer_street || '',
+              subdistrict: r.customer?.subdistrict || r.customer_subdistrict || '',
+              district: r.customer?.district || r.customer_district || '',
+              province: r.customer?.province || r.customer_province || '',
+              postalCode: r.customer?.postal_code || r.customer_postal_code || '',
+            },
             items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
               id: Number(it.id ?? i + 1),
               productName: String(it.product_name ?? ''),
@@ -675,7 +684,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     ];
 
     const escapeCsvCell = (cellData: any): string => {
-      const str = String(cellData ?? '');
+      // Prepend tab to force Excel to treat as text
+      const str = `\t${String(cellData ?? '')}`;
       // Use standard CSV escaping: wrap in quotes if contains comma, quote, or newline
       if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
         return `"${str.replace(/"/g, '""')}"`;
@@ -684,14 +694,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     };
 
     const rows = selectedOrders.flatMap(order => {
-      // Match customer by pk (customer_id) or id (string)
-      const customer = customers.find(c => {
+      // Prioritize customer info embedded in the order (from API join), then fallback to customers list
+      const customer = order.customerInfo || customers.find(c => {
         if (c.pk && typeof order.customerId === 'number') {
           return c.pk === order.customerId;
         }
         return String(c.id) === String(order.customerId) ||
           String(c.pk) === String(order.customerId);
       });
+
       // Match seller by id (ensure type compatibility)
       const seller = users.find(u => {
         if (!order.creatorId) return false;
@@ -771,19 +782,30 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
           );
 
-          let orderIdTotalAmount: string | number = "";
+          let orderIdTotalAmount: string | number = 0;
 
           if (order.paymentMethod === PaymentMethod.COD) {
-            // สำหรับ COD ใช้ค่าจาก box
-            orderIdTotalAmount = boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
-              ? boxForThisOrder.codAmount
-              : 0;
-          } else if (order.paymentMethod === PaymentMethod.Transfer || order.paymentMethod === PaymentMethod.PayAfter) {
-            // สำหรับ Transfer และ PayAfter ใช้ totalAmount หารด้วยจำนวน orderId
-            const totalOrderIds = itemsByOrderId.size;
-            orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
+            // สำหรับ COD ใช้ค่าจาก box ถ้ามี ถ้าไม่มีใช้จาก order.codAmount (fallback)
+            if (boxForThisOrder && typeof boxForThisOrder.codAmount === "number") {
+              orderIdTotalAmount = boxForThisOrder.codAmount;
+            } else {
+              // Fallback for single box or missing box data
+              // If it's the first box (index 0) or single item set, use order.codAmount
+              // We need to be careful not to duplicate if multiple items exist for same order logic
+              // But here we are iterating items. orderIdTotalAmount is per 'orderId' (onlineOrderId)
+              // If we are at 'index === 0' of this onlineOrderId group, we decide value.
+              // Here we just calc value.
+              // If strictly box based, and box missing, use main order codAmount?
+              // Only if this onlineOrderId matches main order id
+              if (onlineOrderId === order.id || onlineOrderId === `${order.id}-1`) {
+                orderIdTotalAmount = order.codAmount ?? order.totalAmount ?? 0;
+              }
+            }
           } else {
-            // สำหรับ payment method อื่นๆ ใช้ totalAmount หารด้วยจำนวน orderId
+            // For Transfer/Other
+            // If user implies "Amount to Pay" should be shown even for Transfer (e.g. Total Amount),
+            // then we should populate it. BUT the column is conditionally hidden by 'codValue' later.
+            // Let's populate the value correctly here first.
             const totalOrderIds = itemsByOrderId.size;
             orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
           }
@@ -793,10 +815,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
 
           // สร้างชื่อผู้รับพร้อมนามสกุลและ (กล่องที่ X) ถ้ามี boxNumber
+          // Use Shipping Address Recipient Name first, then fallback to Customer Name
           let recipientName = '';
           if (index === 0) {
-            const firstName = customer?.firstName ?? '';
-            const lastName = customer?.lastName ?? '';
+            const firstName = address?.recipientFirstName || customer?.firstName || '';
+            const lastName = address?.recipientLastName || customer?.lastName || '';
             const fullName = `${firstName} ${lastName}`.trim();
 
             if (fullName && boxNumber !== null) {
@@ -824,6 +847,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           const shopName = product?.shop ?? 'N/A';
 
+          // Use phone from Customer Info (most reliable for order)
+          const displayPhone = index === 0 ? (customer?.phone ? ((customer.phone.startsWith('0') || customer.phone.startsWith('+')) ? customer.phone : `0${customer.phone}`) : '') : '';
+
           const rowData: { [key: string]: string | number | undefined } = {
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
@@ -842,8 +868,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'จำนวนเงินที่ต้องชำระ': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
             'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
-            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
-            'หมายเลขมือถือ': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
+            'หมายเลขโทรศัพท์': displayPhone,
+            'หมายเลขมือถือ': displayPhone,
             'สถานที่': index === 0 ? address.street : '',
             'ภูมิภาค': index === 0 ? address.subdistrict : '',
             'อำเภอ': index === 0 ? address.district : '',

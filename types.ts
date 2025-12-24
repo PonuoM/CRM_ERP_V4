@@ -213,6 +213,7 @@ export interface Address {
   district: string;
   province: string;
   postalCode: string;
+  phone?: string;
 }
 
 export interface Customer {
@@ -457,6 +458,16 @@ export interface Order {
     verifiedBy: number;
     verifiedByName: string;
     verifiedAt: string;
+  };
+  customerInfo?: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    street?: string;
+    subdistrict?: string;
+    district?: string;
+    province?: string;
+    postalCode?: string;
   };
 }
 
