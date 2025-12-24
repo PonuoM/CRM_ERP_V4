@@ -31,7 +31,7 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
   </button>
 );
 
-const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
 const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic"];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
@@ -1295,6 +1295,74 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
+  const renderPagination = (isTop = false) => {
+    if (totalItems === 0) return null;
+    return (
+      <div className={`flex items-center justify-between px-6 py-4 border-gray-200 ${isTop ? 'border-b' : 'border-t'}`}>
+        {/* Left side - Display range */}
+        <div className="text-sm text-gray-700">
+          แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+        </div>
+
+        {/* Right side - Pagination controls */}
+        <div className="flex items-center space-x-2">
+          {/* Items per page selector */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-700">แสดง:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+            >
+              {PAGE_SIZE_OPTIONS.map((sz) => (
+                <option key={sz} value={sz}>
+                  {sz === 9999 ? 'ทั้งหมด' : sz}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Page navigation */}
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => handlePageChange(effectivePage - 1)}
+              disabled={effectivePage === 1}
+              className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() =>
+                  typeof page === "number" ? handlePageChange(page) : undefined
+                }
+                disabled={page === "..."}
+                className={`px-3 py-1 text-sm rounded ${page === effectivePage
+                  ? "bg-blue-600 text-white"
+                  : page === "..."
+                    ? "text-gray-400 cursor-default"
+                    : "text-gray-700 hover:bg-gray-100"
+                  }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              onClick={() => handlePageChange(effectivePage + 1)}
+              disabled={effectivePage === totalPages}
+              className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -1568,6 +1636,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           </div>
         ) : (
           <>
+            {renderPagination(true)}
             <OrderTable
               orders={paginatedOrders}
               customers={customers}
@@ -1587,70 +1656,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             />
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                {/* Left side - Display range */}
-                <div className="text-sm text-gray-700">
-                  แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
-                </div>
-
-                {/* Right side - Pagination controls */}
-                <div className="flex items-center space-x-2">
-                  {/* Items per page selector */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-700">แสดง:</span>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                      className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      {PAGE_SIZE_OPTIONS.map((sz) => (
-                        <option key={sz} value={sz}>
-                          {sz}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Page navigation */}
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => handlePageChange(effectivePage - 1)}
-                      disabled={effectivePage === 1}
-                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-
-                    {getPageNumbers().map((page, index) => (
-                      <button
-                        key={index}
-                        onClick={() =>
-                          typeof page === "number" ? handlePageChange(page) : undefined
-                        }
-                        disabled={page === "..."}
-                        className={`px-3 py-1 text-sm rounded ${page === effectivePage
-                          ? "bg-blue-600 text-white"
-                          : page === "..."
-                            ? "text-gray-400 cursor-default"
-                            : "text-gray-700 hover:bg-gray-100"
-                          }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-
-                    <button
-                      onClick={() => handlePageChange(effectivePage + 1)}
-                      disabled={effectivePage === totalPages}
-                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Pagination Controls */}
+            {renderPagination(false)}
           </>
         )}
       </div>
