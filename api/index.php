@@ -2578,61 +2578,154 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 // 3. Handle Items (Optional: If provided)
                 // 3. Handle Items
                 if (isset($data['items']) && is_array($data['items'])) {
-                    // Fetch existing item IDs (check both order_id and parent_order_id to catch legacy items)
+                    // Fetch existing item IDs
                     $stmt = $pdo->prepare("SELECT id FROM order_items WHERE order_id = ? OR parent_order_id = ?");
                     $stmt->execute([$id, $id]);
                     $existingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
                     $incomingIds = [];
+                    // Resolve a fallback creator_id
+                    $fallbackCreatorId = $data['updatedBy'] ?? $data['updated_by'] ?? null;
+                    if (!$fallbackCreatorId) {
+                        // Try to get it from the order itself if not provided in the payload
+                        $stmt = $pdo->prepare("SELECT creator_id FROM orders WHERE id = ?");
+                        $stmt->execute([$id]);
+                        $fallbackCreatorId = $stmt->fetchColumn();
+                    }
 
+                    // Prepare the insert statement for reuse
+                    $insertSql = "INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie, promotion_id, creator_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $insStmt = $pdo->prepare($insertSql);
+
+                    // Pass 1: Update existing items AND collect existing parent mapping
                     foreach ($data['items'] as $item) {
-                         $netTotal = calculate_order_item_net_total($item);
-                         
-                         // Determine if item is new or existing
-                         if (isset($item['id']) && in_array($item['id'], $existingIds)) {
-                             // UPDATE existing
-                             $incomingIds[] = $item['id'];
-                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
-                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
-                             $pdo->prepare($updateSql)->execute([
-                                 $item['quantity'] ?? 0,
-                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
-                                 $item['discount'] ?? 0,
-                                 $netTotal,
-                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
-                                 $isFreebie ? 1 : 0,
-                                 $item['id'],
-                                 $id,
-                                 $id
-                             ]);
-                         } else {
-                             // INSERT new item (if id is missing or not in existingIds)
-                             // Note: Front-end might send a temp ID for new items, so we ignore it if it's not in DB
-                             $insertSql = "INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                             
-                             $parentId = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
-                             $isPromo = $item['isPromotionParent'] ?? $item['is_promotion_parent'] ?? 0;
-                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
-                             
-                             $pdo->prepare($insertSql)->execute([
-                                 $id,
-                                 $id, // parent_order_id maps to order_id here
-                                 $item['productId'] ?? $item['product_id'] ?? null,
-                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
-                                 $item['quantity'] ?? 0,
-                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
-                                 $item['discount'] ?? 0,
-                                 $netTotal,
-                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
-                                 $parentId,
-                                 $isPromo,
-                                 $isFreebie ? 1 : 0
-                             ]);
-                         }
+                        $netTotal = calculate_order_item_net_total($item);
+                        $itemId = isset($item['id']) ? $item['id'] : null;
+                        
+                        if ($itemId && in_array($itemId, $existingIds)) {
+                            $incomingIds[] = (int)$itemId;
+                            // If it's an existing parent, add to mapping
+                            if (!empty($item['isPromotionParent']) || !empty($item['is_promotion_parent'])) {
+                                $clientToDbParent[(string)$itemId] = (int)$itemId;
+                            }
+
+                            $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
+                            $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
+                            $pdo->prepare($updateSql)->execute([
+                                $item['quantity'] ?? 0,
+                                $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                $item['discount'] ?? 0,
+                                $netTotal,
+                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                $itemId,
+                                $id,
+                                $id
+                            ]);
+                        }
+                    }
+
+                    // Pass 2: Insert NEW promotion parents
+                    foreach ($data['items'] as $item) {
+                        $itemId = isset($item['id']) ? $item['id'] : null;
+                        $isParent = !empty($item['isPromotionParent']) || !empty($item['is_promotion_parent']);
+                        
+                        if ((!$itemId || !in_array($itemId, $existingIds)) && $isParent) {
+                            $netTotal = calculate_order_item_net_total($item);
+                            $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
+                            $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+                            
+                            $insStmt->execute([
+                                $id, $id,
+                                $item['productId'] ?? $item['product_id'] ?? null,
+                                $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
+                                $item['quantity'] ?? 0,
+                                $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                $item['discount'] ?? 0,
+                                $netTotal,
+                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                null, // parent_item_id
+                                1, // is_promotion_parent
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                $itemCreatorId
+                            ]);
+                            
+                            $newDbId = (int)$pdo->lastInsertId();
+                            if ($itemId) {
+                                $clientToDbParent[(string)$itemId] = $newDbId;
+                            }
+                            $incomingIds[] = $newDbId;
+                        }
+                    }
+
+                    // Pass 3: Insert NEW regular items (not parents, not children)
+                    foreach ($data['items'] as $item) {
+                        $itemId = isset($item['id']) ? $item['id'] : null;
+                        $isParent = !empty($item['isPromotionParent']) || !empty($item['is_promotion_parent']);
+                        $hasParent = !empty($item['parentItemId']) || !empty($item['parent_item_id']);
+                        
+                        if ((!$itemId || !in_array($itemId, $existingIds)) && !$isParent && !$hasParent) {
+                            $netTotal = calculate_order_item_net_total($item);
+                            $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
+                            $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+                            
+                            $insStmt->execute([
+                                $id, $id,
+                                $item['productId'] ?? $item['product_id'] ?? null,
+                                $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
+                                $item['quantity'] ?? 0,
+                                $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                $item['discount'] ?? 0,
+                                $netTotal,
+                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                null,
+                                0,
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                $itemCreatorId
+                            ]);
+                            
+                            $incomingIds[] = (int)$pdo->lastInsertId();
+                        }
+                    }
+
+                    // Pass 4: Insert NEW promotion children
+                    foreach ($data['items'] as $item) {
+                        $itemId = isset($item['id']) ? $item['id'] : null;
+                        $isParent = !empty($item['isPromotionParent']) || !empty($item['is_promotion_parent']);
+                        $clientParentId = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
+                        
+                        if ((!$itemId || !in_array($itemId, $existingIds)) && !$isParent && $clientParentId) {
+                            $netTotal = calculate_order_item_net_total($item);
+                            $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
+                            $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
+                            
+                            // Resolve parent DB ID
+                            $resolvedParentId = isset($clientToDbParent[(string)$clientParentId]) ? $clientToDbParent[(string)$clientParentId] : null;
+                            
+                            $insStmt->execute([
+                                $id, $id,
+                                $item['productId'] ?? $item['product_id'] ?? null,
+                                $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
+                                $item['quantity'] ?? 0,
+                                $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                $item['discount'] ?? 0,
+                                $netTotal,
+                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                $resolvedParentId,
+                                0,
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                $itemCreatorId
+                            ]);
+                            
+                            $incomingIds[] = (int)$pdo->lastInsertId();
+                        }
                     }
 
                     // DELETE removed items
-                    // Any existing ID that is NOT in incomingIds should be deleted
                     $itemsToDelete = array_diff($existingIds, $incomingIds);
                     if (!empty($itemsToDelete)) {
                         $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
