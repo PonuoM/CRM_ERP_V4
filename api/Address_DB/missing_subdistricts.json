@@ -1,0 +1,450 @@
+[
+    {
+        "id": 100910,
+        "zip_code": 10260,
+        "name_th": "แขวงพระโขนงใต้",
+        "name_en": "Phra Khanong Tai",
+        "district_id": 1009
+    },
+    {
+        "id": 101406,
+        "zip_code": 10400,
+        "name_th": "แขวงพญาไท",
+        "name_en": "Phaya Thai",
+        "district_id": 1014
+    },
+    {
+        "id": 102602,
+        "zip_code": 10400,
+        "name_th": "แขวงรัชดาภิเษก",
+        "name_en": "Ratchadaphisek",
+        "district_id": 1026
+    },
+    {
+        "id": 102704,
+        "zip_code": 10240,
+        "name_th": "แขวงนวมินทร์",
+        "name_en": "Nawamin",
+        "district_id": 1027
+    },
+    {
+        "id": 102705,
+        "zip_code": 10230,
+        "name_th": "แขวงนวลจันทร์",
+        "name_en": "Nuanchan",
+        "district_id": 1027
+    },
+    {
+        "id": 102902,
+        "zip_code": 10800,
+        "name_th": "แขวงวงศ์สว่าง",
+        "name_en": "Wong Sawang",
+        "district_id": 1029
+    },
+    {
+        "id": 103402,
+        "zip_code": 10250,
+        "name_th": "แขวงอ่อนนุช",
+        "name_en": "On Nut",
+        "district_id": 1034
+    },
+    {
+        "id": 103403,
+        "zip_code": 10250,
+        "name_th": "แขวงพัฒนาการ",
+        "name_en": "Phatthanakan",
+        "district_id": 1034
+    },
+    {
+        "id": 103604,
+        "zip_code": 10210,
+        "name_th": "แขวงดอนเมือง",
+        "name_en": "Don Mueang",
+        "district_id": 1036
+    },
+    {
+        "id": 103605,
+        "zip_code": 10210,
+        "name_th": "แขวงสนามบิน",
+        "name_en": "Sanambin",
+        "district_id": 1036
+    },
+    {
+        "id": 104302,
+        "zip_code": 10230,
+        "name_th": "แขวงรามอินทรา",
+        "name_en": "Ram Inthra",
+        "district_id": 1043
+    },
+    {
+        "id": 104402,
+        "zip_code": 10240,
+        "name_th": "แขวงราษฎร์พัฒนา",
+        "name_en": "Rat Phatthana",
+        "district_id": 1044
+    },
+    {
+        "id": 104403,
+        "zip_code": 10250,
+        "name_th": "แขวงทับช้าง",
+        "name_en": "Thap Chang",
+        "district_id": 1044
+    },
+    {
+        "id": 104502,
+        "zip_code": 10310,
+        "name_th": "แขวงสะพานสอง",
+        "name_en": "Saphan Song",
+        "district_id": 1045
+    },
+    {
+        "id": 104503,
+        "zip_code": 10310,
+        "name_th": "แขวงคลองเจ้าคุณสิงห์",
+        "name_en": "Khlong Chaokhun Sing",
+        "district_id": 1045
+    },
+    {
+        "id": 104504,
+        "zip_code": 10310,
+        "name_th": "แขวงพลับพลา",
+        "name_en": "Phlabphla",
+        "district_id": 1045
+    },
+    {
+        "id": 104702,
+        "zip_code": 10260,
+        "name_th": "แขวงบางนาเหนือ",
+        "name_en": "Bang Na Nuea",
+        "district_id": 1047
+    },
+    {
+        "id": 104703,
+        "zip_code": 10260,
+        "name_th": "แขวงบางนาใต้",
+        "name_en": "Bang Na Tai",
+        "district_id": 1047
+    },
+    {
+        "id": 105002,
+        "zip_code": 10150,
+        "name_th": "แขวงบางบอนเหนือ",
+        "name_en": "Bang Bon Nuea",
+        "district_id": 1050
+    },
+    {
+        "id": 105003,
+        "zip_code": 10150,
+        "name_th": "แขวงบางบอนใต้",
+        "name_en": "Bang Bon Tai",
+        "district_id": 1050
+    },
+    {
+        "id": 105004,
+        "zip_code": 10150,
+        "name_th": "แขวงคลองบางพราน",
+        "name_en": "Khlong Bang Phran",
+        "district_id": 1050
+    },
+    {
+        "id": 105005,
+        "zip_code": 10150,
+        "name_th": "แขวงคลองบางบอน",
+        "name_en": "Khlong Bang Bon",
+        "district_id": 1050
+    },
+    {
+        "id": 150601,
+        "zip_code": 14140,
+        "name_th": "ไผ่จำศีล",
+        "name_en": "Phai Cham Sin",
+        "district_id": 1506
+    },
+    {
+        "id": 341524,
+        "zip_code": 34190,
+        "name_th": "ห้วยขะยุง",
+        "name_en": "Huai Khayung",
+        "district_id": 3415
+    },
+    {
+        "id": 380103,
+        "zip_code": 38000,
+        "name_th": "โนนสว่าง",
+        "name_en": "Non Sawang",
+        "district_id": 3801
+    },
+    {
+        "id": 380106,
+        "zip_code": 38000,
+        "name_th": "โคกก่อง",
+        "name_en": "Khok Kong",
+        "district_id": 3801
+    },
+    {
+        "id": 380112,
+        "zip_code": 38000,
+        "name_th": "โป่งเปือย",
+        "name_en": "Pong Pueai",
+        "district_id": 3801
+    },
+    {
+        "id": 380201,
+        "zip_code": 38180,
+        "name_th": "ศรีชมภู",
+        "name_en": "Si Chomphu",
+        "district_id": 3802
+    },
+    {
+        "id": 380202,
+        "zip_code": 38180,
+        "name_th": "ดอนหญ้านาง",
+        "name_en": "Don Ya Nang",
+        "district_id": 3802
+    },
+    {
+        "id": 380203,
+        "zip_code": 38180,
+        "name_th": "พรเจริญ",
+        "name_en": "Phon Charoen",
+        "district_id": 3802
+    },
+    {
+        "id": 380204,
+        "zip_code": 38180,
+        "name_th": "หนองหัวช้าง",
+        "name_en": "Nong Hua Chang",
+        "district_id": 3802
+    },
+    {
+        "id": 380205,
+        "zip_code": 38180,
+        "name_th": "วังชมภู",
+        "name_en": "Wang Chomphu",
+        "district_id": 3802
+    },
+    {
+        "id": 380206,
+        "zip_code": 38180,
+        "name_th": "ป่าแฝก",
+        "name_en": "Pa Faek",
+        "district_id": 3802
+    },
+    {
+        "id": 380207,
+        "zip_code": 38180,
+        "name_th": "ศรีสำราญ",
+        "name_en": "Si Samran",
+        "district_id": 3802
+    },
+    {
+        "id": 380401,
+        "zip_code": 38150,
+        "name_th": "เซกา",
+        "name_en": "Seka",
+        "district_id": 3804
+    },
+    {
+        "id": 380402,
+        "zip_code": 38150,
+        "name_th": "ซาง",
+        "name_en": "Sang",
+        "district_id": 3804
+    },
+    {
+        "id": 380403,
+        "zip_code": 38150,
+        "name_th": "ท่ากกแดง",
+        "name_en": "Tha Kok Daeng",
+        "district_id": 3804
+    },
+    {
+        "id": 380404,
+        "zip_code": 38150,
+        "name_th": "บ้านต้อง",
+        "name_en": "Ban Tong",
+        "district_id": 3804
+    },
+    {
+        "id": 380405,
+        "zip_code": 38150,
+        "name_th": "ป่งไฮ",
+        "name_en": "Pong Hai",
+        "district_id": 3804
+    },
+    {
+        "id": 380406,
+        "zip_code": 38150,
+        "name_th": "น้ำจั้น",
+        "name_en": "Nam Chan",
+        "district_id": 3804
+    },
+    {
+        "id": 380407,
+        "zip_code": 38150,
+        "name_th": "ท่าสะอาด",
+        "name_en": "Tha Sa-at",
+        "district_id": 3804
+    },
+    {
+        "id": 380408,
+        "zip_code": 38150,
+        "name_th": "หนองทุ่ม",
+        "name_en": "Nong Thum",
+        "district_id": 3804
+    },
+    {
+        "id": 380409,
+        "zip_code": 38150,
+        "name_th": "โสกก่าม",
+        "name_en": "Sok Kam",
+        "district_id": 3804
+    },
+    {
+        "id": 380501,
+        "zip_code": 38190,
+        "name_th": "ปากคาด",
+        "name_en": "Pak Khat",
+        "district_id": 3805
+    },
+    {
+        "id": 380502,
+        "zip_code": 38190,
+        "name_th": "หนองยอง",
+        "name_en": "Nong Yong",
+        "district_id": 3805
+    },
+    {
+        "id": 380503,
+        "zip_code": 38190,
+        "name_th": "นากั้ง",
+        "name_en": "Na Kang",
+        "district_id": 3805
+    },
+    {
+        "id": 380504,
+        "zip_code": 38190,
+        "name_th": "โนนศิลา",
+        "name_en": "Non Sila",
+        "district_id": 3805
+    },
+    {
+        "id": 380505,
+        "zip_code": 38190,
+        "name_th": "สมสนุก",
+        "name_en": "Som Sanuk",
+        "district_id": 3805
+    },
+    {
+        "id": 380506,
+        "zip_code": 38190,
+        "name_th": "นาดง",
+        "name_en": "Na Dong",
+        "district_id": 3805
+    },
+    {
+        "id": 380702,
+        "zip_code": 38210,
+        "name_th": "ชุมภูพร",
+        "name_en": "Chumphu Phon",
+        "district_id": 3807
+    },
+    {
+        "id": 380703,
+        "zip_code": 38210,
+        "name_th": "นาแสง",
+        "name_en": "Na Saeng",
+        "district_id": 3807
+    },
+    {
+        "id": 380704,
+        "zip_code": 38210,
+        "name_th": "นาสะแบง",
+        "name_en": "Na Sabaeng",
+        "district_id": 3807
+    },
+    {
+        "id": 380705,
+        "zip_code": 38210,
+        "name_th": "นาสิงห์",
+        "name_en": "Na Sing",
+        "district_id": 3807
+    },
+    {
+        "id": 380802,
+        "zip_code": 38220,
+        "name_th": "หนองเดิ่น",
+        "name_en": "Nong Doen",
+        "district_id": 3808
+    },
+    {
+        "id": 430111,
+        "zip_code": 43000,
+        "name_th": "โพนสว่าง",
+        "name_en": "Phon Sawang",
+        "district_id": 4301
+    },
+    {
+        "id": 441106,
+        "zip_code": 44120,
+        "name_th": "สร้างแซ่ง",
+        "name_en": "Sang Saeng",
+        "district_id": 4411
+    },
+    {
+        "id": 450109,
+        "zip_code": 45000,
+        "name_th": "ปอภาร",
+        "name_en": "Po Phan",
+        "district_id": 4501
+    },
+    {
+        "id": 502202,
+        "zip_code": 50160,
+        "name_th": "ทุ่งปี๊",
+        "name_en": "Thung Pi",
+        "district_id": 5022
+    },
+    {
+        "id": 502501,
+        "zip_code": 50270,
+        "name_th": "บ้านจันทร์",
+        "name_en": "Ban Chan",
+        "district_id": 5025
+    },
+    {
+        "id": 502502,
+        "zip_code": 50270,
+        "name_th": "แม่แดด",
+        "name_en": "Mae Daet",
+        "district_id": 5025
+    },
+    {
+        "id": 502503,
+        "zip_code": 50270,
+        "name_th": "แจ่มหลวง",
+        "name_en": "Chaem Luang",
+        "district_id": 5025
+    },
+    {
+        "id": 530407,
+        "zip_code": 53110,
+        "name_th": "ท่าแฝก",
+        "name_en": "Tha Faek",
+        "district_id": 5304
+    },
+    {
+        "id": 550116,
+        "zip_code": 55000,
+        "name_th": "บ่อสวก",
+        "name_en": "Bo Suak",
+        "district_id": 5501
+    },
+    {
+        "id": 840902,
+        "zip_code": 84230,
+        "name_th": "พะแสง",
+        "name_en": "Pha Saeng",
+        "district_id": 8409
+    }
+]
