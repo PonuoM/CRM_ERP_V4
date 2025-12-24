@@ -230,6 +230,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Page Filters
   const [pageFilterName, setPageFilterName] = useState("");
   const [pageFilterType, setPageFilterType] = useState("All");
+  const [pageFilterStatus, setPageFilterStatus] = useState("Active"); // Default to Active as requested
 
   const filteredPages = useMemo(() => {
     return pages.filter((page) => {
@@ -239,9 +240,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const matchesType =
         pageFilterType === "All" ||
         (page.page_type || "").toLowerCase() === pageFilterType.toLowerCase();
-      return matchesName && matchesType;
+
+      const matchesStatus =
+        pageFilterStatus === "All" ? true :
+          pageFilterStatus === "Active" ? page.active :
+            !page.active;
+
+      return matchesName && matchesType && matchesStatus;
     });
-  }, [pages, pageFilterName, pageFilterType]);
+  }, [pages, pageFilterName, pageFilterType, pageFilterStatus]);
 
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
@@ -685,9 +692,28 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
 
   // Load user pages from marketing_user_page table
+  const loadUserPages = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_user_pages.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUserPages(data.data);
+      }
+    } catch (e) {
+      console.error("Failed to load user pages:", e);
+    }
+  };
+
+  // Load user pages from marketing_user_page table
   useEffect(() => {
-    loadUserPages();
-  }, [currentUser.id]);
+    if (activeTab === "adsInput" || currentUser.id) {
+      loadUserPages();
+    }
+  }, [currentUser.id, activeTab]);
 
   useEffect(() => {
     setTempStart(dateRange.start);
@@ -883,22 +909,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
   };
 
-  // Load user pages from marketing_user_page table
-  const loadUserPages = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/Marketing_DB/get_user_pages.php`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser.id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUserPages(data.data);
-      }
-    } catch (e) {
-      console.error("Failed to load user pages:", e);
-    }
-  };
+
 
   // Handle ads input change
   const handleAdsInputChange = (
@@ -2022,6 +2033,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       <option value="Pancake">Pancake</option>
                       <option value="Manual">Manual</option>
                     </select>
+                    <select
+                      className="text-sm border border-gray-300 rounded-md p-2"
+                      value={pageFilterStatus}
+                      onChange={(e) => setPageFilterStatus(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                      <option value="All">All Status</option>
+                    </select>
                   </div>
                 )}
               </div>
@@ -2041,6 +2062,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <tr>
                             <th className="px-3 py-2 text-left w-10"></th>
                             <th className="px-3 py-2 text-left">ID</th>
+                            <th className="px-3 py-2 text-left">สถานะ</th>
                             <th className="px-3 py-2 text-left">ประเภท</th>
                             <th className="px-3 py-2 text-left">ชื่อเพจ</th>
                             <th className="px-3 py-2 text-left">แพลตฟอร์ม</th>
@@ -2063,6 +2085,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                   )}
                                 </td>
                                 <td className="px-3 py-2 text-gray-500">{page.id}</td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-xs ${page.active
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-red-100 text-red-700"
+                                      }`}
+                                  >
+                                    {page.active ? "Active" : "Inactive"}
+                                  </span>
+                                </td>
                                 <td className="px-3 py-2">
                                   {(() => {
                                     const { label, className } = getPageTypeBadgeClasses(
