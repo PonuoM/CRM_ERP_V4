@@ -4043,8 +4043,8 @@ function handle_platforms(PDO $pdo, ?string $id): void {
                     if ($activeOnly) {
                         $conditions[] = 'active = 1';
                     }
-                    // If not Super Admin, restrict to platforms where role_show JSON contains this role
-                    if ($userRole && $userRole !== 'Super Admin') {
+                    // If not Super Admin or Admin Control, restrict to platforms where role_show JSON contains this role
+                    if ($userRole && $userRole !== 'Super Admin' && $userRole !== 'Admin Control') {
                         $conditions[] = '(JSON_VALID(role_show) AND JSON_CONTAINS(role_show, JSON_QUOTE(?), \'$\'))';
                         $params[] = $userRole;
                     }
