@@ -2813,33 +2813,106 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <th className="px-3 py-2 text-left">สินค้า</th>
                           <th className="px-3 py-2 text-right">ค่าแอด</th>
                           <th className="px-3 py-2 text-right">ยอดขาย</th>
-                          <th className="px-3 py-2 text-right">จำนวนขาย</th>
-                          <th className="px-3 py-2 text-right">ออเดอร์</th>
+                          <th className="px-3 py-2 text-right">ยอดขาย ลค.ใหม่</th>
+                          <th className="px-3 py-2 text-right">รีออเดอร์</th>
+                          <th className="px-3 py-2 text-right">จำนวนลูกค้า</th>
+                          <th className="px-3 py-2 text-right">ทัก/คลิก</th>
                           <th className="px-3 py-2 text-right">ROAS</th>
+                          <th className="px-3 py-2 text-right">ราคาต่อทัก</th>
+                          <th className="px-3 py-2 text-right">%Ads/ยอด ลค.ใหม่</th>
                           <th className="px-3 py-2 text-right">%Ads</th>
+                          <th className="px-3 py-2 text-right">%ปิดการขาย</th>
                         </tr>
                       </thead>
                       <tbody>
                         {productDashboardData.length > 0 ? (
-                          productDashboardData.map((row, index) => {
-                            const roas = row.ads_cost > 0 ? row.total_sales / row.ads_cost : 0;
-                            const pctAds = row.total_sales > 0 ? (row.ads_cost / row.total_sales) * 100 : 0;
-                            return (
-                              <tr key={index} className="border-b hover:bg-gray-50">
-                                <td className="px-3 py-2">{row.sku}</td>
-                                <td className="px-3 py-2 font-medium">{row.product_name}</td>
-                                <td className="px-3 py-2 text-right">{Number(row.ads_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-3 py-2 text-right">{Number(row.total_sales).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-3 py-2 text-right">{Number(row.total_qty).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right">{Number(row.total_orders).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
-                                <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
-                              </tr>
-                            );
-                          })
+                          <>
+                            {productDashboardData.map((row, index) => {
+                              const roas = Number(row.ads_cost) > 0 ? Number(row.total_sales) / Number(row.ads_cost) : 0;
+                              const costPerInbox = Number(row.clicks) > 0 ? Number(row.ads_cost) / Number(row.clicks) : 0;
+                              const pctAdsNewSales = Number(row.new_customer_sales) > 0 ? (Number(row.ads_cost) / Number(row.new_customer_sales)) * 100 : 0;
+                              const pctAds = Number(row.total_sales) > 0 ? (Number(row.ads_cost) / Number(row.total_sales)) * 100 : 0;
+                              const closeRate = Number(row.clicks) > 0 ? (Number(row.total_orders) / Number(row.clicks)) * 100 : 0;
+
+                              return (
+                                <tr key={index} className="border-b hover:bg-gray-50">
+                                  <td className="px-3 py-2">{row.sku}</td>
+                                  <td className="px-3 py-2 font-medium">{row.product_name}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.ads_cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.total_sales).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.new_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.reorder_customer_sales || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right">{Number(row.total_customers || 0).toLocaleString('th-TH')}</td>
+                                  <td className="px-3 py-2 text-right font-medium">{Number(row.clicks || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                                  <td className="px-3 py-2 text-right text-blue-600 font-medium">{roas.toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-right">{costPerInbox.toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-right">{pctAdsNewSales.toFixed(2)}%</td>
+                                  <td className="px-3 py-2 text-right">{pctAds.toFixed(2)}%</td>
+                                  <td className="px-3 py-2 text-right">{closeRate.toFixed(2)}%</td>
+                                </tr>
+                              );
+                            })}
+                            {/* Summary Row for Products */}
+                            <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                              <td className="px-3 py-2" colSpan={2}>รวมทั้งสิ้น</td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.reorder_customer_sales || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.total_customers || 0), 0).toLocaleString('th-TH')}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {productDashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </td>
+                              <td className="px-3 py-2 text-right text-blue-700">
+                                {(() => {
+                                  const totalAds = productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalSales = productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                                  return totalAds > 0 ? (totalSales / totalAds).toFixed(2) : "0.00";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalClicks = productDashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                                  return totalClicks > 0 ? (totalAds / totalClicks).toFixed(2) : "0.00";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalNewSales = productDashboardData.reduce((acc, row) => acc + Number(row.new_customer_sales || 0), 0);
+                                  return totalNewSales > 0 ? ((totalAds / totalNewSales) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalAds = productDashboardData.reduce((acc, row) => acc + Number(row.ads_cost || 0), 0);
+                                  const totalSales = productDashboardData.reduce((acc, row) => acc + Number(row.total_sales || 0), 0);
+                                  return totalSales > 0 ? ((totalAds / totalSales) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {(() => {
+                                  const totalOrders = productDashboardData.reduce((acc, row) => acc + Number(row.total_orders || 0), 0);
+                                  const totalClicks = productDashboardData.reduce((acc, row) => acc + Number(row.clicks || 0), 0);
+                                  return totalClicks > 0 ? ((totalOrders / totalClicks) * 100).toFixed(2) + "%" : "0.00%";
+                                })()}
+                              </td>
+                            </tr>
+                          </>
                         ) : (
                           <tr>
-                            <td colSpan={8} className="text-center py-8 text-gray-500">
+                            <td colSpan={13} className="text-center py-8 text-gray-500">
                               ไม่พบข้อมูลสินค้าในช่วงที่เลือก
                             </td>
                           </tr>

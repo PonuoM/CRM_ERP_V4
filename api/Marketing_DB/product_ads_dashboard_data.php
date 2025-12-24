@@ -87,7 +87,10 @@ try {
         COALESCE(ads.total_clicks, 0) as clicks,
         COALESCE(sales.total_sales, 0) as total_sales,
         COALESCE(sales.total_qty, 0) as total_qty,
-        COALESCE(sales.total_orders, 0) as total_orders
+        COALESCE(sales.total_orders, 0) as total_orders,
+        COALESCE(sales.new_customer_sales, 0) as new_customer_sales,
+        COALESCE(sales.reorder_customer_sales, 0) as reorder_customer_sales,
+        COALESCE(sales.total_customers, 0) as total_customers
     FROM products p
     LEFT JOIN (
         SELECT 
@@ -104,7 +107,10 @@ try {
             oi.product_id,
             SUM(oi.net_total) as total_sales,
             SUM(oi.quantity) as total_qty,
-            COUNT(DISTINCT oi.order_id) as total_orders -- Approximate order count per product
+            COUNT(DISTINCT oi.order_id) as total_orders,
+            SUM(CASE WHEN o.customer_type = 'New Customer' THEN oi.net_total ELSE 0 END) as new_customer_sales,
+            SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN oi.net_total ELSE 0 END) as reorder_customer_sales,
+            COUNT(DISTINCT o.customer_id) as total_customers
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         WHERE $orderWhereSql
