@@ -3284,41 +3284,41 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       {
         hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
           <section className="bg-white rounded-lg shadow p-5">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-semibold text-gray-800">
                 ประวัติการกรอก Ads
               </h3>
-              <div className="flex items-center gap-4">
-                <div className="text-sm text-gray-600">
-                  ผู้ใช้:{" "}
-                  {currentUser.firstName && currentUser.lastName
-                    ? `${currentUser.firstName} ${currentUser.lastName}`
-                    : currentUser.username}
-                </div>
-
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                  <button
-                    onClick={() => setAdsHistoryMode('page')}
-                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'page'
-                      ? "bg-white text-indigo-600 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                      }`}
-                  >
-                    Page Ads
-                  </button>
-                  <button
-                    onClick={() => setAdsHistoryMode('product')}
-                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'product'
-                      ? "bg-white text-indigo-600 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                      }`}
-                  >
-                    Product Ads
-                  </button>
-                </div>
+              <div className="text-sm text-gray-600">
+                ผู้ใช้:{" "}
+                {currentUser.firstName && currentUser.lastName
+                  ? `${currentUser.firstName} ${currentUser.lastName}`
+                  : currentUser.username}
               </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-4">
               <div className="text-sm text-gray-500">
                 สิทธิ์เข้าถึง {userAccessiblePages.length} เพจ
+              </div>
+              <div className="flex bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setAdsHistoryMode('page')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'page'
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  Page Ads
+                </button>
+                <button
+                  onClick={() => setAdsHistoryMode('product')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${adsHistoryMode === 'product'
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
+                >
+                  Product Ads
+                </button>
               </div>
             </div>
 
