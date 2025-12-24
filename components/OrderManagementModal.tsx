@@ -1196,9 +1196,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
               boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
               creatorId: Number(it.creator_id ?? it.creatorId),
-              sku: it.sku,
+              sku: it.sku ?? it.promotion_sku ?? it.promotionSku ?? it.product_sku ?? it.productSku,
               parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
               isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+              promotionId: it.promotion_id ?? it.promotionId,
               // Augmented data
               creatorName: it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined,
             }))
