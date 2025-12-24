@@ -827,12 +827,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const promotion = promotions.find((p) => p.id === Number(promotionId));
     if (!promotion || !promotion.items || promotion.items.length === 0) return;
 
-    // Calculate total price from non-freebie items
+    // Calculate total price from summing all items' price_override or product_price
     const totalPrice = promotion.items.reduce((sum: number, item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
       if (isFreebie) return sum;
+
+      const qty = Number(item.quantity || 1);
       const priceOverride = item.priceOverride ?? item.price_override;
-      return sum + (priceOverride ? Number(priceOverride) : 0);
+
+      if (priceOverride !== null && priceOverride !== undefined) {
+        // User requested NOT to multiply by quantity for overrides
+        return sum + Number(priceOverride);
+      }
+
+      // Fallback to product price if no override
+      const productPrice = item.productPrice ?? item.product_price;
+      return sum + ((Number(productPrice) || 0) * qty);
     }, 0);
 
     // Create parent promotion item

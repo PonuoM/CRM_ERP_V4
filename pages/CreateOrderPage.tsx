@@ -4966,7 +4966,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const calcPromotionSetPrice = (promo: Promotion) => {
     const items = Array.isArray(promo?.items) ? promo.items : [];
-
     let sum = 0;
 
     for (const part of items as any[]) {
@@ -4980,52 +4979,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         );
 
       const qty = toNumber(part.quantity, 1);
-
       const isFree =
         toBool((part as any).isFreebie) || toBool((part as any).is_freebie);
 
       if (isFree) {
-        // ของแถม ไม่นับราคาในราคารวมของชุด
-
         continue;
       }
 
       const override = toNumber(
         (part as any).price_override ?? (part as any).priceOverride,
-
         NaN,
       );
 
       const joinedPrice = toNumber((part as any).product_price, NaN);
-
       const basePrice = toNumber(prod?.price, 0);
 
-      // ตรวจสอบ price_override:
-
-      // - ถ้า override >= basePrice (หรือไม่มี basePriceชัดเจน) และมีจำนวน > 1
-
-      //   ให้ตรวจสอบว่าเป็น "ราคารวมของกลุ่มนี้" (ไม่คูณ qty)
-
-      // - มิฉะนั้น ใช้เป็น "ราคาต่อชิ้น" แล้วคูณด้วย qty
-
       if (Number.isFinite(override)) {
-        const comparator =
-          basePrice > 0
-            ? basePrice
-            : Number.isFinite(joinedPrice)
-              ? joinedPrice
-              : 0;
-
-        if (qty > 1 && comparator > 0 && override >= comparator) {
-          sum += override; // ราคาทั้งกลุ่ม
-        } else {
-          sum += override * qty; // ราคาต่อชิ้น
-        }
+        // User requested to sum all price overrides directly
+        // Assuming price_override is TOTAL PRICE for that line
+        sum += override;
       } else {
-        // ไม่มี override -> ใช้ราคาสินค้า (joinedPrice หรือ basePrice) x qty
-
+        // Fallback to product price
         const unit = Number.isFinite(joinedPrice) ? joinedPrice : basePrice;
-
         sum += unit * qty;
       }
     }
@@ -5181,7 +5156,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       newLockedIds.push(newId);
 
       if (!isFreeFlag) {
-        totalSetPrice += itemPrice * qty;
+        // Updated logic: if price override exists, it's the total price for the line (do not multiply by qty)
+        if (part.price_override !== null && part.price_override !== undefined) {
+          totalSetPrice += Number(part.price_override);
+        } else {
+          totalSetPrice += itemPrice * qty;
+        }
       }
 
       // Totals are taken from child items; parent stays 0
@@ -5426,14 +5406,27 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
 
       // IMPORTANT: Always use price_override for promotion items if available
-
       // If price_override is null or 0 and item is not a freebie, use the regular product price
 
+      const priceOverride = part.price_override;
+      const productPrice = prod.price;
+
+      // Calculate item price for summation
       const itemPrice = isFreeFlag
         ? 0
-        : part.price_override !== null && part.price_override !== undefined
-          ? Number(part.price_override)
-          : prod.price;
+        : priceOverride !== null && priceOverride !== undefined
+          ? Number(priceOverride)
+          : productPrice;
+
+      // Add to total promotion price (quantity * unit price)
+      if (!isFreeFlag) {
+        if (priceOverride !== null && priceOverride !== undefined) {
+          // User requested NOT to multiply by quantity for overrides
+          totalPromotionPrice += Number(priceOverride);
+        } else {
+          totalPromotionPrice += (itemPrice * qty);
+        }
+      }
 
       // Create a separate line item for each product in the promotion
 
