@@ -62,7 +62,12 @@ if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
     if ($resource === 'customers') {
         file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " CUSTOMERS GET: " . json_encode($_GET) . "\n", FILE_APPEND);
     }
-    validate_auth($pdo);
+    try {
+        validate_auth($pdo);
+    } catch (Throwable $e) {
+        file_put_contents(__DIR__ . '/auth_error.log', date('Y-m-d H:i:s') . " AUTH EXCEPTION: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n", FILE_APPEND);
+        json_response(['ok' => false, 'error' => 'AUTH_INTERNAL_ERROR', 'message' => $e->getMessage()], 500);
+    }
 }
 
 try {
@@ -1505,6 +1510,13 @@ function release_single_allocation(PDO $pdo, array $allocationRow, string $statu
         return null;
     }
 
+
+    // Log Stock Movement (IN - Reversal)
+    if ($releasedQty > 0) {
+         $pdo->prepare("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, lot_number, document_number, reference_type, reference_id, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+             ->execute([$warehouseId ?? 0, (int)$allocationRow['product_id'], 'IN', $releasedQty, $lotNumber, $allocationRow['order_id'] ?? 'N/A', 'order_item_allocations', (int)$allocationRow['id'], 'Allocation Released', 1]);
+    }
+
     return [
         'allocationId' => (int)$allocationRow['id'],
         'releasedQuantity' => $releasedQty,
@@ -1593,6 +1605,10 @@ function allocate_allocation_fifo_allow_negative(PDO $pdo, array $allocationRow,
         $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
             ->execute([$warehouseId, (string)$lot['lot_number'], $required, 'ALLOCATED', (int)$allocationRow['id']]);
 
+        // Log Stock Movement (OUT)
+        $pdo->prepare("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, lot_number, document_number, reference_type, reference_id, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([$warehouseId, (int)$allocationRow['product_id'], 'OUT', -$required, (string)$lot['lot_number'], $allocationRow['order_id'] ?? 'N/A', 'order_item_allocations', (int)$allocationRow['id'], 'Order Allocation', 1]);
+
         return [
             'allocationId' => (int)$allocationRow['id'],
             'lotNumber' => (string)$lot['lot_number'],
@@ -1628,6 +1644,10 @@ function allocate_allocation_fifo_allow_negative(PDO $pdo, array $allocationRow,
 
     $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
         ->execute([$warehouseId, $lotNumberToUse !== '__VIRTUAL__' ? $lotNumberToUse : null, $required, 'ALLOCATED', (int)$allocationRow['id']]);
+
+    // Log Stock Movement (OUT)
+    $pdo->prepare("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, lot_number, document_number, reference_type, reference_id, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        ->execute([$warehouseId, (int)$allocationRow['product_id'], 'OUT', -$required, $lotNumberToUse !== '__VIRTUAL__' ? $lotNumberToUse : null, $allocationRow['order_id'] ?? 'N/A', 'order_item_allocations', (int)$allocationRow['id'], 'Order Allocation (Negative)', 1]);
 
     return [
         'allocationId' => (int)$allocationRow['id'],

@@ -199,7 +199,7 @@ import BankAccountsManagementPage from "./pages/BankAccountsManagementPage";
 import TagsManagementPage from "./pages/TagsManagementPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import CallDetailsPage from "./pages/CallDetailsPage";
-import ReceiveStockPage from "./pages/ReceiveStockPage";
+import StockDocumentsPage from "./pages/StockDocumentsPage";
 import WarehouseStockViewPage from "./pages/WarehouseStockViewPage";
 import LotTrackingPage from "./pages/LotTrackingPage";
 import ManageCustomersPage from "./pages/ManageCustomersPage";
@@ -212,6 +212,7 @@ import SlipAll from "./pages/SlipAll";
 import FinanceApprovalPage from "./pages/FinanceApprovalPage";
 import CODManagementPage from "./pages/CODManagementPage";
 import GoogleSheetImportPage from "./pages/GoogleSheetImportPage";
+import InventoryReportsPage from "./pages/InventoryReportsPage";
 import StatementManagementPage from "./pages/StatementManagementPage";
 import usePersistentState from "./utils/usePersistentState";
 import { generateMainOrderId } from "./utils/orderIdGenerator";
@@ -6642,9 +6643,21 @@ const App: React.FC = () => {
       case "Warehouse Stock":
       case "สต็อกคลัง":
         return <WarehouseStockViewPage currentUser={currentUser} />;
+      case "Stock Documents":
+      case "Stock Documents (เอกสารสต็อก)":
+        return <StockDocumentsPage currentUser={currentUser} />;
       case "Lot Tracking":
       case "ติดตามล๊อต":
         return <LotTrackingPage currentUser={currentUser} />;
+
+      case "Inventory Reports":
+      case "inventory.reports":
+        return (
+          <InventoryReportsPage
+            currentUser={currentUser}
+            companyId={currentUser.companyId!}
+          />
+        );
 
       // PROCESSED: Finance
       case "nav.finance_approval":

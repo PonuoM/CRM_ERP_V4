@@ -29,7 +29,15 @@ export async function apiFetch(path: string, init?: RequestInit) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${base}${path}`, {
+  let url = `${base}${path}`;
+
+  // Direct file access for inventory and product modules (bypassing index.php router)
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/')) {
+    const directBase = apiBasePath.replace(/\/$/, "");
+    url = `${directBase}/${path}`;
+  }
+
+  const res = await fetch(url, {
     ...init,
     headers,
   });
@@ -543,6 +551,7 @@ export async function updatePage(
   });
 }
 
+// Fix: make params optional
 export async function listOrders(params: {
   companyId?: number;
   page?: number;
@@ -562,7 +571,7 @@ export async function listOrders(params: {
   orderStatus?: string | string[];
   tab?: string;
   signal?: AbortSignal;
-}): Promise<{
+} = {}): Promise<{
   ok: boolean;
   orders: any[];
   pagination: {
@@ -574,22 +583,21 @@ export async function listOrders(params: {
   tabCounts?: Record<string, number>;
 }> {
   const qs = new URLSearchParams();
-  if (params.companyId) qs.set("companyId", String(params.companyId));
-  if (params.page) qs.set("page", String(params.page));
-  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
-  if (params.page) qs.set("page", String(params.page));
-  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  const safeParams = params || {};
+  if (safeParams.companyId) qs.set("companyId", String(safeParams.companyId));
+  if (safeParams.page) qs.set("page", String(safeParams.page));
+  if (safeParams.pageSize) qs.set("pageSize", String(safeParams.pageSize));
 
   // Add filter parameters
-  if (params.orderId) qs.set("orderId", params.orderId);
-  if (params.trackingNumber) qs.set("trackingNumber", params.trackingNumber);
-  if (params.orderDateStart) qs.set("orderDateStart", params.orderDateStart);
-  if (params.orderDateEnd) qs.set("orderDateEnd", params.orderDateEnd);
-  if (params.deliveryDateStart) qs.set("deliveryDateStart", params.deliveryDateStart);
-  if (params.deliveryDateEnd) qs.set("deliveryDateEnd", params.deliveryDateEnd);
-  if (params.paymentMethod) qs.set("paymentMethod", params.paymentMethod);
-  if (params.paymentStatus) {
-    if (Array.isArray(params.paymentStatus)) {
+  if (safeParams.orderId) qs.set("orderId", safeParams.orderId);
+  if (safeParams.trackingNumber) qs.set("trackingNumber", safeParams.trackingNumber);
+  if (safeParams.orderDateStart) qs.set("orderDateStart", safeParams.orderDateStart);
+  if (safeParams.orderDateEnd) qs.set("orderDateEnd", safeParams.orderDateEnd);
+  if (safeParams.deliveryDateStart) qs.set("deliveryDateStart", safeParams.deliveryDateStart);
+  if (safeParams.deliveryDateEnd) qs.set("deliveryDateEnd", safeParams.deliveryDateEnd);
+  if (safeParams.paymentMethod) qs.set("paymentMethod", safeParams.paymentMethod);
+  if (safeParams.paymentStatus) {
+    if (Array.isArray(safeParams.paymentStatus)) {
       params.paymentStatus.forEach(s => qs.append("paymentStatus[]", s));
     } else {
       qs.set("paymentStatus", params.paymentStatus);
@@ -1527,4 +1535,69 @@ export async function listAIPriority(userId: number, companyId?: number) {
   qs.set("userId", String(userId));
   if (companyId) qs.set("companyId", String(companyId));
   return apiFetch(`ai_priority?${qs}`);
+}
+// ... existing code ...
+export async function createStockTransaction(payload: {
+  type: 'receive' | 'adjustment';
+  transaction_date: string;
+  notes?: string;
+  items: Array<{
+    product_id: number;
+    warehouse_id: number;
+    quantity: number;
+    lot_id?: number | null;
+    new_lot_number?: string;
+    mfg_date?: string;
+    exp_date?: string;
+    cost_price?: number;
+    adjustment_type: 'add' | 'reduce' | 'receive';
+    remarks?: string;
+  }>;
+  user_id?: number;
+  document_number_manual?: string;
+}) {
+  return apiFetch("inventory/create_transaction.php", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listStockTransactions(params: {
+  page?: number;
+  pageSize?: number;
+  type?: string;
+  search?: string;
+  month?: number;
+  year?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params.type) qs.set("type", params.type);
+  if (params.search) qs.set("search", params.search);
+  if (params.month) qs.set("month", String(params.month));
+  if (params.year) qs.set("year", String(params.year));
+
+  return apiFetch(`inventory/list_transactions.php?${qs.toString()}`);
+}
+
+export async function getProductStockLocations(productId: number) {
+  return apiFetch(`inventory/get_product_stock_locations.php?productId=${productId}`);
+}
+
+export async function getStockTransaction(id: number) {
+  return apiFetch(`inventory/get_transaction.php?id=${id}`);
+}
+
+export async function updateStockTransaction(payload: any) {
+  return apiFetch("inventory/update_transaction.php", {
+    method: "POST", // or PUT
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteStockTransaction(id: number) {
+  return apiFetch(`inventory/delete_transaction.php?id=${id}`, {
+    method: "DELETE"
+  });
 }

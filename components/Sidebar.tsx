@@ -25,6 +25,8 @@ import {
   Pencil,
   Calendar,
   DollarSign,
+  PackagePlus,
+  ClipboardList,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -212,9 +214,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Warehouses", icon: Database, key: "inventory.warehouses" },
         { label: "Warehouse Stock", icon: Database, key: "inventory.stock" },
+        { label: "Stock Documents", icon: ClipboardList, key: "inventory.receive" }, // Reusing key or new one? Let's use inventory.receive as permission proxy or add new one. Using new one is safer.
         { label: "Lot Tracking", icon: FileText, key: "inventory.lot" },
         { label: "Warehouse Allocation", icon: FileText, key: "inventory.allocations" },
-        { label: "Active Promotions", icon: BarChart2, key: "inventory.promotions" }, // Reused label but distinct key
+        { label: "Inventory Reports", icon: BarChart2, key: "inventory.reports" },
+        { label: "Active Promotions", icon: BarChart2, key: "inventory.promotions" },
       ]
     },
     {

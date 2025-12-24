@@ -1,5 +1,6 @@
 <?php
 date_default_timezone_set("Asia/Bangkok");
+ini_set('memory_limit', '256M');
 // Database configuration
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "127.0.0.1";
@@ -97,6 +98,7 @@ function cors(): void
 
 function validate_auth(PDO $pdo): void
 {
+  file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH CHECK: " . ($_SERVER['REQUEST_URI'] ?? 'unknown') . " Mem: " . memory_get_usage() . "\n", FILE_APPEND);
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
   
   if (!$auth && function_exists('getallheaders')) {
