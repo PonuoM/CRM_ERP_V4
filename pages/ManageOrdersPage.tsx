@@ -38,11 +38,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = useState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('waitingVerifySlip');
+  const [activeTab, setActiveTab] = usePersistentState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('manageOrders:activeTab', 'waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [refreshCounter, setRefreshCounter] = useState(0); // For triggering refresh on modal close
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
@@ -171,7 +172,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }
     };
     fetchCounts();
-  }, [user?.companyId]);
+  }, [user?.companyId, refreshCounter]);
 
   // Fetch orders from API
   useEffect(() => {
@@ -235,7 +236,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             paymentStatus: r.payment_status,
             orderStatus: r.order_status,
             trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
-            amountPaid: r.amount_paid ? Number(r.amount_paid) : undefined,
+            amountPaid: r.amount_paid !== undefined && r.amount_paid !== null ? Number(r.amount_paid) : undefined,
             codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
             slipUrl: r.slip_url,
             salesChannel: r.sales_channel,
@@ -243,7 +244,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             warehouseId: r.warehouse_id,
             bankAccountId: r.bank_account_id,
             transferDate: r.transfer_date,
-            items: r.items || [],
+            items: (r.items || []).map((it: any) => ({
+              ...it,
+              pricePerUnit: Number(it.price_per_unit ?? it.price ?? 0),
+              quantity: Number(it.quantity ?? 0),
+              discount: Number(it.discount ?? 0),
+              netTotal: Number(it.net_total ?? it.netTotal ?? 0),
+              isPromotionParent: !!(it.is_promotion_parent ?? 0),
+              parentItemId: it.parent_item_id ?? it.parentItemId,
+            })),
             slips: r.slips || [],
             trackingDetails: r.tracking_details || r.trackingDetails || [],
             boxes: r.boxes || [],
@@ -289,10 +298,23 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     return () => {
       controller.abort();
     };
-  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, refreshCounter]);
 
   useEffect(() => {
     setSelectedIds([]);
+  }, [activeTab]);
+
+  // Listen for modal close event to refresh data
+  useEffect(() => {
+    const handleModalClose = () => {
+      setRefreshCounter(prev => prev + 1);
+    };
+
+    window.addEventListener('orderModalClosed', handleModalClose);
+
+    return () => {
+      window.removeEventListener('orderModalClosed', handleModalClose);
+    };
   }, [activeTab]);
 
   const hasTrackingNumbers = (order: Order) =>
@@ -618,10 +640,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           postalCode: '',
         };
 
-      // Group items by orderId (หมายเลขออเดอร์ออนไลน์)
+      // Group items by boxId (referencing order.boxes)
       const itemsByOrderId = new Map<string, typeof order.items>();
+
       order.items.forEach(item => {
-        const onlineOrderId = (item as any).orderId ?? (item as any).order_id ?? order.id;
+        const boxNum = item.boxNumber || (item as any).box_number || 1;
+        const match = (order.boxes || []).find(b => ((b as any).boxNumber ?? (b as any).box_number) === boxNum);
+
+        // Use subOrderId from box if found, otherwise fall back to item.orderId or order.id
+        let onlineOrderId = (match as any)?.subOrderId ?? (match as any)?.sub_order_id ?? (item as any).orderId ?? (item as any).order_id ?? order.id;
+
+        // Ensure Box 1 has -1 suffix if it matches the main order ID and doesn't have any suffix
+        if (boxNum === 1 && onlineOrderId === order.id && !onlineOrderId.includes(`${order.id}-`)) {
+          onlineOrderId = `${order.id}-1`;
+        }
+
         if (!itemsByOrderId.has(onlineOrderId)) {
           itemsByOrderId.set(onlineOrderId, []);
         }
@@ -956,6 +989,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setTimeout(() => {
           onProcessOrders(selectedIds);
           setSelectedIds([]);
+          // Trigger refresh to update the grid and tab counts
+          setRefreshCounter(prev => prev + 1);
         }, 0);
 
       } catch (error) {
@@ -1451,6 +1486,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               onShippingChange={handleShippingProviderChange}
               highlightedOrderId={highlightedOrderId}
               allOrders={orders}
+              isWaitingVerifySlipTab={activeTab === 'waitingVerifySlip'}
             />
 
             {/* Pagination Controls */}

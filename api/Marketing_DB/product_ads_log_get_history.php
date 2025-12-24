@@ -1,0 +1,114 @@
+<?php
+header("Content-Type: application/json");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
+  exit(0);
+}
+
+try {
+  require_once "../config.php";
+  
+  $startDate = $_GET['start_date'] ?? null;
+  $endDate = $_GET['end_date'] ?? null;
+  $pageIds = $_GET['page_ids'] ?? null; // Comma separated
+  $productIds = $_GET['product_ids'] ?? null; // Comma separated
+  $userIds = $_GET['user_ids'] ?? null; // Comma separated
+  
+  $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+  $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+  $offset = ($page - 1) * $limit;
+
+  $conn = db_connect();
+  
+  $whereClauses = [];
+  $params = [];
+  
+  // Date filter
+  if ($startDate && $endDate) {
+    if ($startDate === $endDate) {
+        $whereClauses[] = "l.date = ?";
+        $params[] = $startDate;
+    } else {
+        $whereClauses[] = "l.date BETWEEN ? AND ?";
+        $params[] = $startDate;
+        $params[] = $endDate;
+    }
+  }
+
+  // Page filter - REMOVED since page_id is column is dropped
+  /*
+  if ($pageIds) {
+      $pageIdArray = explode(',', $pageIds);
+      $placeholders = implode(',', array_fill(0, count($pageIdArray), '?'));
+      $whereClauses[] = "l.page_id IN ($placeholders)";
+      $params = array_merge($params, $pageIdArray);
+  }
+  */
+
+  // User filter
+  if ($userIds) {
+      $userIdArray = explode(',', $userIds);
+      $placeholders = implode(',', array_fill(0, count($userIdArray), '?'));
+      $whereClauses[] = "l.user_id IN ($placeholders)";
+      $params = array_merge($params, $userIdArray);
+  }
+  
+    // Product filter
+  if ($productIds) {
+    $productIdArray = explode(',', $productIds);
+    $placeholders = implode(',', array_fill(0, count($productIdArray), '?'));
+    $whereClauses[] = "l.product_id IN ($placeholders)";
+    $params = array_merge($params, $productIdArray);
+  }
+
+  $whereSql = "";
+  if (count($whereClauses) > 0) {
+      $whereSql = "WHERE " . implode(" AND ", $whereClauses);
+  }
+
+  // Count total for pagination
+  $countSql = "SELECT COUNT(*) as total FROM marketing_product_ads_log l $whereSql";
+  $stmt = $conn->prepare($countSql);
+  $stmt->execute($params);
+  $total = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+  $totalPages = ceil($total / $limit);
+
+  // Main query
+  $sql = "SELECT 
+            l.*,
+            -- p.name as page_name, -- Removed
+            pr.name as product_name,
+            pr.sku as product_sku,
+            CONCAT(u.first_name, ' ', u.last_name) as user_fullname,
+            u.username as user_username
+          FROM marketing_product_ads_log l
+          -- LEFT JOIN pages p ON l.page_id = p.id -- Removed
+          LEFT JOIN products pr ON l.product_id = pr.id
+          LEFT JOIN users u ON l.user_id = u.id
+          $whereSql
+          ORDER BY l.date DESC, l.created_at DESC
+          LIMIT $limit OFFSET $offset";
+
+  $stmt = $conn->prepare($sql);
+  $stmt->execute($params);
+  $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  
+  echo json_encode([
+      "success" => true, 
+      "data" => $data,
+      "pagination" => [
+          "total" => $total,
+          "totalPages" => $totalPages,
+          "currentPage" => $page,
+          "limit" => $limit
+      ]
+  ]);
+
+} catch (Exception $e) {
+  http_response_code(500);
+  echo json_encode(["success" => false, "error" => $e->getMessage()]);
+}
+?>

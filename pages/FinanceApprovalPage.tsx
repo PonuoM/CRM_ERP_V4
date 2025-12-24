@@ -128,6 +128,11 @@ interface StatementCandidate {
   score: number;
 }
 
+interface FinanceApprovalCounts {
+  transfers: number;
+  payafter: number;
+}
+
 const formatCurrency = (value: number) =>
   `THB ${value.toLocaleString("th-TH", {
     minimumFractionDigits: 2,
@@ -202,6 +207,32 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     startDate: defaultDate,
     endDate: defaultDate,
   });
+
+  const [tabCounts, setTabCounts] = useState<FinanceApprovalCounts>({
+    transfers: 0,
+    payafter: 0,
+  });
+
+  const fetchTabCounts = useCallback(async () => {
+    try {
+      const res = (await apiFetch(`finance_approval_counts?companyId=${user.companyId}`, {
+        method: "GET",
+      })) as FinanceApprovalCounts;
+      if (res) {
+        setTabCounts(res);
+      }
+    } catch (err) {
+      console.error("Failed to fetch tab counts", err);
+    }
+  }, [user.companyId]);
+
+  useEffect(() => {
+    fetchTabCounts();
+  }, [fetchTabCounts]);
+
+  // If we approve something, likely counts change.
+  // We can trigger refresh when saving or approving.
+  // We'll add this to handleApprovePayAfter and others later if needed.
   const [statementRows, setStatementRows] = useState<StatementRowState[]>([]);
   const [availableOrders, setAvailableOrders] = useState<ReconcileOrder[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
@@ -445,52 +476,94 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const autoMatchRows = useCallback(
     (statements: StatementLog[], ordersForMatch: ReconcileOrder[]) => {
+      const usedSlipKeys = new Set<string>(); // "orderId-slipIndex"
+      // We don't track usedMainKeys for now because main order matching is usually for single-slip cases or failovers,
+      // and checking 'used' on main might prevent legitimate multiple partial payments if logic matched main.
+      // But typically exact match on total amount implies full payment. 
+      // Let's at least prevent exact total amount reuse if we want strict 1-1. 
+      // checks "slip_total" or "amount_paid" or "total_amount". 
+      // Safe to trace usedOrders? If an order expects 1000, and we have 2 statements of 1000. 
+      // If we map both, it's 2000. Overpaid. So yes, strict 1-1 is better for Exact Auto Match.
+      const usedOrderIds = new Set<string>();
+
       return statements.map((s) => {
-        const exactCandidate = ordersForMatch.find((o) => {
-          const bankId = o.bank_account_id ?? o.slip_bank_account_id ?? null;
-          // Prefer slip-level exact match
+        let matchedOrder: ReconcileOrder | undefined;
+        let matchedSlipIndex: number | undefined;
+
+        // Find EXACT match
+        for (const o of ordersForMatch) {
+          // 1. Check Slips
           if (o.slips && o.slips.length > 0) {
-            const slipMatch = o.slips.find((slip) => {
-              if (slip.amount === null || slip.transfer_date === null) {
-                return false;
-              }
+            const slipIndex = o.slips.findIndex((slip, idx) => {
+              const key = `${o.id}-${idx}`;
+              if (usedSlipKeys.has(key)) return false;
+
+              if (slip.amount === null || slip.transfer_date === null) return false;
+
               const bankMatch =
                 s.bank_account_id !== null &&
                 slip.bank_account_id !== null &&
                 s.bank_account_id === slip.bank_account_id;
-              const timeMatch =
-                secondsDiff(s.transfer_at, slip.transfer_date) === 0;
+              // Strict second-level diff check
+              const timeMatch = secondsDiff(s.transfer_at, slip.transfer_date) <= 60;
               const amountMatch = Math.abs(slip.amount - s.amount) === 0;
+
               return bankMatch && timeMatch && amountMatch;
             });
-            if (slipMatch) {
-              return true;
+
+            if (slipIndex !== -1) {
+              matchedOrder = o;
+              matchedSlipIndex = slipIndex;
+              break; // Stop searching orders
             }
           }
-          const matchAmount =
-            o.slip_total && o.slip_total > 0
-              ? o.slip_total
-              : o.amount_paid && o.amount_paid > 0
-                ? o.amount_paid
-                : o.total_amount;
-          const matchTransferDate =
-            o.slip_transfer_date && o.slip_transfer_date !== "null"
-              ? o.slip_transfer_date
-              : o.transfer_date;
-          const bankMatch =
-            s.bank_account_id !== null &&
-            bankId !== null &&
-            s.bank_account_id === bankId;
-          const timeMatch =
-            !!matchTransferDate &&
-            secondsDiff(s.transfer_at, matchTransferDate) === 0;
-          const amountMatch = Math.abs(matchAmount - s.amount) === 0;
-          return bankMatch && timeMatch && amountMatch;
-        });
+
+          // 2. Check Main Order (Fallback if no slip match or no slips)
+          // Only check main if we haven't matched this order yet (for main matching)
+          if (!usedOrderIds.has(o.id)) {
+            const bankId = o.bank_account_id ?? o.slip_bank_account_id ?? null;
+            const matchAmount =
+              o.slip_total && o.slip_total > 0
+                ? o.slip_total
+                : o.amount_paid && o.amount_paid > 0
+                  ? o.amount_paid
+                  : o.total_amount;
+
+            const matchTransferDate =
+              o.slip_transfer_date && o.slip_transfer_date !== "null"
+                ? o.slip_transfer_date
+                : o.transfer_date;
+
+            const bankMatch =
+              s.bank_account_id !== null &&
+              bankId !== null &&
+              s.bank_account_id === bankId;
+            const timeMatch =
+              !!matchTransferDate &&
+              secondsDiff(s.transfer_at, matchTransferDate) <= 60;
+            const amountMatch = Math.abs(matchAmount - s.amount) === 0;
+
+            if (bankMatch && timeMatch && amountMatch) {
+              matchedOrder = o;
+              // No slip index
+              break;
+            }
+          }
+        }
+
+        // Commit match
+        if (matchedOrder) {
+          if (matchedSlipIndex !== undefined) {
+            usedSlipKeys.add(`${matchedOrder.id}-${matchedSlipIndex}`);
+          } else {
+            usedOrderIds.add(matchedOrder.id);
+          }
+        }
 
         const best = buildCandidates(s, ordersForMatch, new Set())[0];
-        const selectedOrderId = exactCandidate?.id ?? "";
+        const selectedOrderId = matchedOrder?.id ?? "";
         const autoMatched = !!selectedOrderId;
+
         return {
           statement: s,
           confirmedAmount: s.amount,
@@ -1909,13 +1982,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                 : "bg-gray-100 text-gray-600"
                 }`}
             >
-              {
-                orders.filter(
-                  (o) =>
-                    o.paymentMethod === PaymentMethod.Transfer &&
-                    o.paymentStatus === PaymentStatus.PreApproved,
-                ).length
-              }
+              {tabCounts.transfers}
             </span>
           </button>
           <button
@@ -1936,17 +2003,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
                 : "bg-gray-100 text-gray-600"
                 }`}
             >
-              {
-                orders.filter(
-                  (o) =>
-                    o.paymentMethod === PaymentMethod.PayAfter &&
-                    (o.paymentStatus === PaymentStatus.PreApproved ||
-                      o.orderStatus === OrderStatus.Delivered),
-                ).length
-              }
+              {tabCounts.payafter}
             </span>
           </button>
-        </div>
+        </div >
 
         {activeTab === "slips" ? (
           renderSlipTab()
@@ -2050,175 +2110,178 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
               )}
             </div>
           </>
-        )}
+        )
+        }
 
-        {detailContext && detailOrder && (
-          <Modal
-            title={`Order details ${detailContext.orderId}`}
-            onClose={() => setDetailContext(null)}
-            size="xl"
-          >
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Seller</p>
-                  <p className="font-medium text-gray-900">
-                    {detailSeller
-                      ? `${detailSeller.firstName} ${detailSeller.lastName}`
-                      : (detailOrder as any).seller_name || "-"}
-                  </p>
+        {
+          detailContext && detailOrder && (
+            <Modal
+              title={`Order details ${detailContext.orderId}`}
+              onClose={() => setDetailContext(null)}
+              size="xl"
+            >
+              <div className="space-y-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Seller</p>
+                    <p className="font-medium text-gray-900">
+                      {detailSeller
+                        ? `${detailSeller.firstName} ${detailSeller.lastName}`
+                        : (detailOrder as any).seller_name || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Sale date</p>
+                    <p className="font-medium text-gray-900">
+                      {formatDate(
+                        (detailOrder as any).orderDate ||
+                        (detailOrder as any).order_date,
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Delivery date</p>
+                    <p className="font-medium text-gray-900">
+                      {formatDate(
+                        (detailOrder as any).deliveryDate ||
+                        (detailOrder as any).delivery_date,
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Tracking No</p>
+                    <p className="font-medium text-gray-900">
+                      {(detailOrder as Order).trackingNumbers
+                        ? (detailOrder as Order).trackingNumbers.join(", ")
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Customer type</p>
+                    <p className="font-medium text-gray-900">
+                      {detailCustomer?.lifecycleStatus || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Channel</p>
+                    <p className="font-medium text-gray-900">
+                      {(detailOrder as any).salesChannel ||
+                        (detailOrder as any).sales_channel ||
+                        "-"}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Customer name</p>
+                    <p className="font-medium text-gray-900">
+                      {detailCustomer
+                        ? `${detailCustomer.firstName} ${detailCustomer.lastName}`
+                        : (detailOrder as any).customer_name || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Phone</p>
+                    <p className="font-medium text-gray-900">
+                      {detailCustomer?.phone ||
+                        (detailOrder as any).customer_phone ||
+                        "-"}
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Sale date</p>
-                  <p className="font-medium text-gray-900">
-                    {formatDate(
-                      (detailOrder as any).orderDate ||
-                      (detailOrder as any).order_date,
-                    )}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Delivery date</p>
-                  <p className="font-medium text-gray-900">
-                    {formatDate(
-                      (detailOrder as any).deliveryDate ||
-                      (detailOrder as any).delivery_date,
-                    )}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Tracking No</p>
-                  <p className="font-medium text-gray-900">
-                    {(detailOrder as Order).trackingNumbers
-                      ? (detailOrder as Order).trackingNumbers.join(", ")
-                      : "-"}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Customer type</p>
-                  <p className="font-medium text-gray-900">
-                    {detailCustomer?.lifecycleStatus || "-"}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Channel</p>
-                  <p className="font-medium text-gray-900">
-                    {(detailOrder as any).salesChannel ||
-                      (detailOrder as any).sales_channel ||
-                      "-"}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Customer name</p>
-                  <p className="font-medium text-gray-900">
-                    {detailCustomer
-                      ? `${detailCustomer.firstName} ${detailCustomer.lastName}`
-                      : (detailOrder as any).customer_name || "-"}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Phone</p>
-                  <p className="font-medium text-gray-900">
-                    {detailCustomer?.phone ||
-                      (detailOrder as any).customer_phone ||
-                      "-"}
-                  </p>
-                </div>
-              </div>
 
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-gray-500 text-xs mb-1">Notes</p>
-                <p className="text-gray-900">
-                  {(detailOrder as any).notes || "-"}
-                </p>
-              </div>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-gray-500 text-xs mb-1">Notes</p>
+                  <p className="text-gray-900">
+                    {(detailOrder as any).notes || "-"}
+                  </p>
+                </div>
 
-              <div>
-                <p className="text-gray-700 font-medium mb-2">Items</p>
-                <div className="border rounded-md overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-100 text-gray-600">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Item</th>
-                        <th className="px-3 py-2 text-center">Qty</th>
-                        <th className="px-3 py-2 text-right">Net</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(detailOrder as Order).items?.map((item, idx) => (
-                        <tr key={idx} className="border-t">
-                          <td className="px-3 py-2">{item.productName}</td>
-                          <td className="px-3 py-2 text-center">
-                            {item.quantity}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatCurrency(
-                              item.pricePerUnit * item.quantity -
-                              (item.discount || 0),
-                            )}
-                          </td>
+                <div>
+                  <p className="text-gray-700 font-medium mb-2">Items</p>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-100 text-gray-600">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Item</th>
+                          <th className="px-3 py-2 text-center">Qty</th>
+                          <th className="px-3 py-2 text-right">Net</th>
                         </tr>
-                      )) || (
-                          <tr>
-                            <td
-                              colSpan={3}
-                              className="px-3 py-2 text-center text-gray-500"
-                            >
-                              No items found
+                      </thead>
+                      <tbody>
+                        {(detailOrder as Order).items?.map((item, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="px-3 py-2">{item.productName}</td>
+                            <td className="px-3 py-2 text-center">
+                              {item.quantity}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatCurrency(
+                                item.pricePerUnit * item.quantity -
+                                (item.discount || 0),
+                              )}
                             </td>
                           </tr>
-                        )}
-                    </tbody>
-                  </table>
+                        )) || (
+                            <tr>
+                              <td
+                                colSpan={3}
+                                className="px-3 py-2 text-center text-gray-500"
+                              >
+                                No items found
+                              </td>
+                            </tr>
+                          )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Amount received</p>
-                  <p className="font-medium text-gray-900">
-                    {formatCurrency(
-                      detailStatement?.confirmedAmount ||
-                      (detailOrder as any).amount_paid ||
-                      0,
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Amount received</p>
+                    <p className="font-medium text-gray-900">
+                      {formatCurrency(
+                        detailStatement?.confirmedAmount ||
+                        (detailOrder as any).amount_paid ||
+                        0,
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-gray-500 text-xs">Proof of transfer</p>
+                    {(detailOrder as Order).slips &&
+                      (detailOrder as Order).slips!.length > 0 ? (
+                      <div className="flex gap-2 flex-wrap mt-2">
+                        {(detailOrder as Order).slips!.map((slip) => (
+                          <a
+                            key={slip.id}
+                            href={slip.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 underline text-xs"
+                          >
+                            Slip #{slip.id}
+                          </a>
+                        ))}
+                      </div>
+                    ) : (detailOrder as any).slipUrl ? (
+                      <a
+                        href={(detailOrder as any).slipUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 underline text-xs"
+                      >
+                        Open slip
+                      </a>
+                    ) : (
+                      <p className="text-gray-700">-</p>
                     )}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-gray-500 text-xs">Proof of transfer</p>
-                  {(detailOrder as Order).slips &&
-                    (detailOrder as Order).slips!.length > 0 ? (
-                    <div className="flex gap-2 flex-wrap mt-2">
-                      {(detailOrder as Order).slips!.map((slip) => (
-                        <a
-                          key={slip.id}
-                          href={slip.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 underline text-xs"
-                        >
-                          Slip #{slip.id}
-                        </a>
-                      ))}
-                    </div>
-                  ) : (detailOrder as any).slipUrl ? (
-                    <a
-                      href={(detailOrder as any).slipUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 underline text-xs"
-                    >
-                      Open slip
-                    </a>
-                  ) : (
-                    <p className="text-gray-700">-</p>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Modal>
-        )}
-      </div>
+            </Modal>
+          )
+        }
+      </div >
     </>
   );
 };

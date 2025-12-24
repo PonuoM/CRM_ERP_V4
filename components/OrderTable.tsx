@@ -59,6 +59,7 @@ export interface OrderTableProps {
   onShippingChange?: (orderId: string, provider: string) => void;
   highlightedOrderId?: string | null;
   allOrders?: Order[]; // All orders for finding related upsell orders
+  isWaitingVerifySlipTab?: boolean; // Flag to indicate if in waitingVerifySlip tab
 }
 
 // Exported helpers (used by other components)
@@ -112,11 +113,11 @@ export const getPaymentMethodChip = (method: PaymentMethod | undefined | null) =
   return <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap">-</span>;
 };
 
-export const getPaymentStatusChip = (status: PaymentStatus, _method: PaymentMethod, amountPaid?: number, totalAmount?: number) => {
+export const getPaymentStatusChip = (status: PaymentStatus, _method: PaymentMethod, amountPaid?: number, totalAmount?: number, skipOverpaidCheck?: boolean) => {
   if (!status) return <span className={`bg-gray-100 text-gray-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>-</span>;
 
-  // Check for Overpaid
-  if (amountPaid !== undefined && totalAmount !== undefined && amountPaid > totalAmount) {
+  // Check for Overpaid (skip in waitingVerifySlip tab)
+  if (!skipOverpaidCheck && amountPaid !== undefined && totalAmount !== undefined && amountPaid > totalAmount) {
     return <span className={`bg-purple-100 text-purple-800 ${STATUS_CHIP_BASE} whitespace-nowrap`}>ชำระเกิน</span>;
   }
 
@@ -197,6 +198,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
   onShippingChange,
   highlightedOrderId,
   allOrders,
+  isWaitingVerifySlipTab = false,
 }) => {
   const handleSelectAll = () => {
     if (!onSelectionChange) return;
@@ -330,22 +332,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
 
   // Compute order total from items (more accurate than order.totalAmount)
   const computeOrderTotal = (order: Order): number => {
-    // Filter out freebie items and child items before calculating total
-    const nonFreebieItems = (order.items || []).filter((item: any) => {
-      const isFreebie = item.isFreebie || item.is_freebie;
-      const isChild = item.parentItemId || item.parent_item_id;
-      return !isFreebie && !isChild;
-    });
-
-    const itemsTotal = nonFreebieItems.reduce((sum, item) => {
-      const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
-      return sum + (Number.isFinite(net) ? net : 0);
-    }, 0);
-    const shipping = Number(order.shippingCost || 0);
-    const billDiscount = Number(order.billDiscount || 0);
-    const computed = Math.max(0, itemsTotal - billDiscount + shipping);
-    // Use computed total if items exist, otherwise fallback to order.totalAmount
-    return (order.items && order.items.length > 0) ? computed : (order.totalAmount || 0);
+    // User requested to use order.totalAmount directly
+    return order.totalAmount || 0;
   };
 
   // Calculate combined total amount including upsell orders
@@ -364,15 +352,8 @@ const OrderTable: React.FC<OrderTableProps> = ({
     // This means there might be related orders that share the payment
     const relatedOrders = findRelatedUpsellOrders(order);
     const relatedTotal = relatedOrders.reduce((sum, o) => {
-      // Also compute total from items for upsell orders
-      const oItemsTotal = (o.items || []).reduce((s, item) => {
-        const net = (item as any).netTotal ?? (item.pricePerUnit * item.quantity - (item.discount || 0));
-        return s + (Number.isFinite(net) ? net : 0);
-      }, 0);
-      const oShipping = Number(o.shippingCost || 0);
-      const oBillDiscount = Number(o.billDiscount || 0);
-      const oComputed = Math.max(0, oItemsTotal - oBillDiscount + oShipping);
-      return sum + ((o.items && o.items.length > 0) ? oComputed : (o.totalAmount || 0));
+      // Use totalAmount for related orders as well
+      return sum + (o.totalAmount || 0);
     }, 0);
 
     return actualTotal + relatedTotal;
@@ -438,7 +419,10 @@ const OrderTable: React.FC<OrderTableProps> = ({
                 }
                 return String(u.id) === String(order.creatorId);
               });
-              const paid = (order.amountPaid ?? 0) as number;
+              // Use amountPaid for payment display
+              const paid = (order.amountPaid ?? 0);
+              // Calculate total from slips
+              const slipTotal = order.slips?.reduce((sum, slip) => sum + (slip.amount || 0), 0) || 0;
               const actualTotal = computeOrderTotal(order);
               const combinedTotal = getCombinedTotalAmount(order);
               const diff = combinedTotal - paid;
@@ -481,16 +465,38 @@ const OrderTable: React.FC<OrderTableProps> = ({
                   <td className="px-6 py-4">{new Date(order.deliveryDate).toLocaleDateString('th-TH')}</td>
                   <td className="px-6 py-4 font-semibold">฿{actualTotal.toLocaleString()}</td>
                   <td className="px-6 py-4">{getPaymentMethodChip(order.paymentMethod)}</td>
-                  <td className="px-6 py-4">{getPaymentStatusChip(order.paymentStatus, order.paymentMethod, order.amountPaid, combinedTotal)}</td>
+                  <td className="px-6 py-4">
+                    {isWaitingVerifySlipTab
+                      ? getPaymentStatusChip(PaymentStatus.PreApproved, order.paymentMethod, order.amountPaid, combinedTotal, true)
+                      : getPaymentStatusChip(order.paymentStatus, order.paymentMethod, order.amountPaid, combinedTotal)
+                    }
+                  </td>
                   <td className="px-6 py-4 font-medium min-w-[170px] paid-break text-center">
                     {paid === 0 ? (
                       <span className="text-gray-500">{paidText}</span>
-                    ) : diff > 0 ? (
-                      <span>{paidText} <span className="text-red-600">(ขาด ฿{diff.toLocaleString()})</span></span>
-                    ) : diff < 0 ? (
-                      <span>{paidText} <span className="text-purple-600">(เกิน ฿{Math.abs(diff).toLocaleString()})</span></span>
                     ) : (
-                      <span>{paidText} <span className="text-green-600">(ครบ)</span></span>
+                      <div>
+                        <div>{paidText}</div>
+                        {slipTotal > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            สลิป: ฿{slipTotal.toLocaleString()}
+                            {Math.abs(paid - slipTotal) > 1 && (
+                              <span className={paid > slipTotal ? "text-green-600" : "text-red-600"}>
+                                {" "}({paid > slipTotal ? "+" : ""}{(paid - slipTotal).toLocaleString()})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {!isWaitingVerifySlipTab && (
+                          diff > 0 ? (
+                            <span className="text-xs text-red-600">(ขาด ฿{diff.toLocaleString()})</span>
+                          ) : diff < 0 ? (
+                            <span className="text-xs text-purple-600">(เกิน ฿{Math.abs(diff).toLocaleString()})</span>
+                          ) : (
+                            <span className="text-xs text-green-600">(ครบ)</span>
+                          )
+                        )}
+                      </div>
                     )}
                   </td>
                   {showShippingColumn && (

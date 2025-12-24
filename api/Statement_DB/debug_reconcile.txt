@@ -158,3 +158,35 @@ Payload: Array
 )
 
 Process Item: StmtId=71, Type=Suspense, Amount=1195
+Start 2025-12-23 16:16:33
+Payload: Array
+(
+    [company_id] => 1
+    [user_id] => 1
+    [bank_account_id] => 1
+    [start_date] => 2025-12-01
+    [end_date] => 2025-12-23
+    [items] => Array
+        (
+            [0] => Array
+                (
+                    [statement_id] => 108
+                    [order_id] => 251219-00020admin26
+                    [confirmed_amount] => 800
+                    [auto_matched] => 1
+                )
+
+            [1] => Array
+                (
+                    [statement_id] => 109
+                    [order_id] => 251219-00020admin26
+                    [confirmed_amount] => 600
+                    [auto_matched] => 1
+                )
+
+        )
+
+)
+
+Process Item: StmtId=108, Type=Order, Amount=800
+Process Item: StmtId=109, Type=Order, Amount=600

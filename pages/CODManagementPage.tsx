@@ -20,7 +20,7 @@ import { patchOrder, apiFetch } from "../services/api";
 
 interface CODManagementPageProps {
   user: User;
-  orders: Order[];
+  // orders: Order[]; // Removed dependency
   customers: any[];
   users: User[];
   onOrdersPaidUpdate?: (
@@ -58,6 +58,7 @@ interface RowData {
   orderId?: string;
   orderAmount?: number;
   difference?: number;
+  amountPaid?: number;
   returnCondition?: "ชำรุด" | "ปกติ";
   manualStatus?: "ศูนย์หาย" | "ไม่สำเร็จ" | "หายศูนย์" | "";
 }
@@ -209,262 +210,114 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
   };
 
 
-  const trackingLookup = useMemo(() => {
-    const map = new Map<string, { orderId: string; parentOrderId: string; boxNumber?: number; expectedAmount: number }>();
-    // New: Store all sub-orders grouped by parent order
-    const parentOrderSubOrders = new Map<string, Array<{ orderId: string; expectedAmount: number; trackingNumber: string }>>();
+  // Removed client-side trackingLookup to use Server-Side API
 
-    // Debug: Log first order to see structure
-    if (orders.length > 0) {
-      console.log('🔍 COD Debug - First order structure:', {
-        id: orders[0].id,
-        trackingNumbers: (orders[0] as any).trackingNumbers,
-        trackingDetails: (orders[0] as any).trackingDetails,
-        tracking_details: (orders[0] as any).tracking_details,
-        boxes: (orders[0] as any).boxes,
-      });
+  const handleValidate = async () => {
+    // 1. Collect all tracking numbers to validate
+    const rowsToValidate = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.trackingNumber.trim());
+
+    if (rowsToValidate.length === 0) {
+      alert("กรุณากรอก Tracking Number");
+      return;
     }
 
-    orders.forEach((order) => {
-      const details = (order as any).trackingDetails ?? (order as any).tracking_details ?? [];
-      const boxes = (order as any).boxes ?? [];
+    setIsSubmitting(true);
+    try {
+      // 2. Prepare payload
+      const items = rowsToValidate.map(({ row }) => ({
+        trackingNumber: row.trackingNumber.trim()
+      }));
 
-      // Create map of sub_order_id -> cod_amount from order_boxes
-      // This ensures we get the correct COD amount per box
-      const subOrderIdToAmountMap = new Map<string, number>();
-      const boxNumberToAmountMap = new Map<number, number>();
-      const boxNumberToSubOrderIdMap = new Map<number, string>();
-      boxes.forEach((b: any) => {
-        const subOrderId = b.sub_order_id ?? b.subOrderId;
-        const boxNumRaw = b.boxNumber ?? b.box_number;
-        const boxNum = boxNumRaw !== undefined && boxNumRaw !== null ? Number(boxNumRaw) : NaN;
-        const amt = parseFloat(String(b.codAmount ?? b.cod_amount ?? b.collectionAmount ?? b.collection_amount ?? 0));
-        const codAmount = Number.isFinite(amt) ? amt : 0;
-
-        if (subOrderId && subOrderId !== '') {
-          subOrderIdToAmountMap.set(String(subOrderId), codAmount);
-        }
-        if (!Number.isNaN(boxNum)) {
-          boxNumberToAmountMap.set(boxNum, codAmount);
-          if (subOrderId && subOrderId !== '') {
-            boxNumberToSubOrderIdMap.set(boxNum, String(subOrderId));
-          }
-        }
+      // 3. Call API
+      const response = await apiFetch('validate_cod_tracking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
       });
 
-      const fallbackAmount =
-        typeof order.codAmount === 'number'
-          ? order.codAmount
-          : typeof order.totalAmount === 'number'
-            ? order.totalAmount
-            : 0;
+      const results: any[] = response.results || [];
+      const resultMap = new Map<string, any>(); // normalized -> result
 
-      details.forEach((detail: any) => {
-        const tn = detail.tracking_number ?? detail.trackingNumber ?? '';
-        const normalized = normalizeTrackingNumber(String(tn));
-        if (!normalized) return;
-        if (map.has(normalized)) return;
-
-        const boxNumber = detail.box_number ?? detail.boxNumber;
-        const boxNum = boxNumber !== undefined && boxNumber !== null ? Number(boxNumber) : undefined;
-        const detailOrderId = detail.order_id ?? detail.orderId;
-        const parentOrderId = detail.parent_order_id ?? detail.parentOrderId ?? order.id;
-        const resolvedSubOrderId =
-          (detailOrderId && subOrderIdToAmountMap.has(detailOrderId) ? detailOrderId : undefined) ??
-          (boxNum !== undefined ? boxNumberToSubOrderIdMap.get(boxNum) : undefined) ??
-          (detailOrderId ?? undefined);
-
-        // Priority: Use sub_order_id from order_boxes, then box_number, then fallback
-        let expectedAmount = fallbackAmount;
-
-        // First try: Use sub_order_id to find COD amount from order_boxes
-        if (resolvedSubOrderId && subOrderIdToAmountMap.has(resolvedSubOrderId)) {
-          expectedAmount = subOrderIdToAmountMap.get(resolvedSubOrderId) || 0;
-        }
-        // Second try: Use box_number to find COD amount from order_boxes
-        else if (boxNum !== undefined && boxNumberToAmountMap.has(boxNum)) {
-          expectedAmount = boxNumberToAmountMap.get(boxNum) || 0;
-        }
-
-        map.set(normalized, {
-          orderId: resolvedSubOrderId ?? parentOrderId ?? order.id, // Prefer sub order id from order_boxes
-          parentOrderId,
-          boxNumber: boxNum,
-          expectedAmount,
-        });
-
-        // Group sub-orders by parent order
-        if (!parentOrderSubOrders.has(parentOrderId)) {
-          parentOrderSubOrders.set(parentOrderId, []);
-        }
-        parentOrderSubOrders.get(parentOrderId)!.push({
-          orderId: resolvedSubOrderId ?? parentOrderId ?? order.id,
-          expectedAmount,
-          trackingNumber: normalized,
-        });
+      results.forEach(res => {
+        const normalized = normalizeTrackingNumber(res.trackingNumber);
+        if (normalized) resultMap.set(normalized, res);
       });
 
+      // 4. Update rows
+      const validatedRows = [...rows];
 
-      // Also include tracking numbers from order_tracking_numbers table
-      // (not just when details.length === 0)
-      if (Array.isArray(order.trackingNumbers)) {
-        order.trackingNumbers.forEach((tn) => {
-          const normalized = normalizeTrackingNumber(String(tn));
-          if (!normalized || map.has(normalized)) return;
-          map.set(normalized, {
-            orderId: order.id,
-            parentOrderId: order.id,
-            boxNumber: undefined,
-            expectedAmount: fallbackAmount || 0,
-          });
-
-          if (!parentOrderSubOrders.has(order.id)) {
-            parentOrderSubOrders.set(order.id, []);
-          }
-          parentOrderSubOrders.get(order.id)!.push({
-            orderId: order.id,
-            expectedAmount: fallbackAmount || 0,
-            trackingNumber: normalized,
-          });
-        });
-      }
-    });
-    return { map, parentOrderSubOrders };
-  }, [orders]);
-
-  const handleValidate = () => {
-    // First pass: identify all rows and group by parent order
-    const rowsByParentOrder = new Map<string, Array<{ row: RowData; index: number; codAmount: number; normalized: string }>>();
-    const unmatchedRows: Array<{ row: RowData; index: number }> = [];
-
-    rows.forEach((row, index) => {
-      const trimmedTracking = row.trackingNumber.trim();
-      if (!trimmedTracking && !row.codAmount.trim()) {
-        return; // Skip empty rows
-      }
-      if (!trimmedTracking || !row.codAmount.trim()) {
-        unmatchedRows.push({ row, index });
-        return;
-      }
-
-
-      const codAmountValue = parseAmount(row.codAmount);
-      if (!Number.isFinite(codAmountValue) || codAmountValue < 0) {
-        unmatchedRows.push({ row, index });
-        return;
-      }
-
-
-
-      const normalized = normalizeTrackingNumber(trimmedTracking);
-      const matched = normalized ? trackingLookup.map.get(normalized) : undefined;
-
-      // Debug: Log lookup attempt
-      console.log('🔍 COD Validate Debug:', {
-        input: trimmedTracking,
-        normalized,
-        matched,
-        mapSize: trackingLookup.map.size,
-        mapKeys: Array.from(trackingLookup.map.keys()).slice(0, 5), // Show first 5 keys
-      });
-
-      if (matched && matched.parentOrderId) {
-        if (!rowsByParentOrder.has(matched.parentOrderId)) {
-          rowsByParentOrder.set(matched.parentOrderId, []);
+      // Clear previous statuses for processed rows (or all?)
+      // We iterate ORIGINAL rows to preserve order
+      rows.forEach((row, index) => {
+        const trimmedTracking = row.trackingNumber.trim();
+        if (!trimmedTracking) {
+          // Skip empty
+          return;
         }
-        rowsByParentOrder.get(matched.parentOrderId)!.push({
-          row,
-          index,
-          codAmount: codAmountValue,
-          normalized,
-        });
-      } else {
-        unmatchedRows.push({ row, index });
-      }
-    });
 
-    // Second pass: For each parent order, find optimal matching
-    const validatedRows = [...rows];
+        const normalized = normalizeTrackingNumber(trimmedTracking);
+        const apiResult = resultMap.get(normalized);
 
-    // Handle unmatched rows first
-    unmatchedRows.forEach(({ row, index }) => {
-      const trimmedTracking = row.trackingNumber.trim();
-      const codAmountValue = parseAmount(row.codAmount);
+        const codAmountValue = parseAmount(row.codAmount);
+        // If amount is invalid in input
+        const isAmountValid = Number.isFinite(codAmountValue) && codAmountValue >= 0;
 
-      if (!trimmedTracking && !row.codAmount.trim()) {
-        validatedRows[index] = { ...row, status: 'unchecked' as ValidationStatus, message: '' };
-      } else if (!trimmedTracking || !row.codAmount.trim()) {
-        validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'กรอกข้อมูลไม่ครบ' };
-      } else if (!Number.isFinite(codAmountValue) || codAmountValue < 0) {
-        validatedRows[index] = { ...row, status: 'pending' as ValidationStatus, message: 'จำนวนเงินไม่ถูกต้อง' };
-      } else {
-        validatedRows[index] = { ...row, trackingNumber: trimmedTracking, codAmount: row.codAmount, status: 'pending' as ValidationStatus, message: 'ไม่พบ Tracking' };
-      }
-    });
-
-    // Handle matched rows with closest matching
-    rowsByParentOrder.forEach((groupRows, parentOrderId) => {
-      const subOrders = trackingLookup.parentOrderSubOrders.get(parentOrderId) || [];
-
-      // Create a list of available sub-orders (can be matched multiple times if needed)
-      const availableSubOrders = [...subOrders];
-      const usedSubOrders = new Set<string>();
-
-      // Sort rows by COD amount for greedy matching
-      const sortedRows = [...groupRows].sort((a, b) => a.codAmount - b.codAmount);
-
-      // For each row, find the closest matching sub-order
-      sortedRows.forEach(({ row, index, codAmount, normalized }) => {
-        // Find closest match among unused sub-orders first, then used ones
-        let bestMatch: typeof subOrders[0] | undefined;
-        let bestDiff = Infinity;
-
-        availableSubOrders.forEach((subOrder) => {
-          const diff = Math.abs(codAmount - subOrder.expectedAmount);
-          const isUsed = usedSubOrders.has(subOrder.trackingNumber);
-
-          // Prefer unused sub-orders, but allow reuse if necessary
-          if (diff < bestDiff || (diff === bestDiff && !isUsed)) {
-            bestMatch = subOrder;
-            bestDiff = diff;
-          }
-        });
-
-        if (bestMatch) {
-          const orderCodAmount = bestMatch.expectedAmount || 0;
-          const difference = codAmount - orderCodAmount;
-
+        if (!apiResult || apiResult.status === 'pending') {
+          // Not found in DB
           validatedRows[index] = {
             ...row,
-            trackingNumber: row.trackingNumber.trim(),
-            codAmount: row.codAmount,
-            orderId: bestMatch.orderId,
-            orderAmount: orderCodAmount,
-            difference: difference,
-            status: difference === 0 ? ('matched' as ValidationStatus) : ('unmatched' as ValidationStatus),
-            message:
-              difference === 0
-                ? 'ตรงกัน'
-                : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`,
-          };
-
-          // Mark this sub-order as used
-          usedSubOrders.add(bestMatch.trackingNumber);
-        } else {
-          // Fallback if no match found
-          validatedRows[index] = {
-            ...row,
-            trackingNumber: row.trackingNumber.trim(),
-            codAmount: row.codAmount,
             status: 'pending' as ValidationStatus,
-            message: 'ไม่พบ Sub-order ที่ตรงกัน'
+            message: 'ไม่พบ Tracking',
+            difference: undefined,
+            orderId: undefined,
+            orderAmount: undefined
+          };
+        } else {
+          // Found in DB
+          const expected = apiResult.expectedAmount;
+          const difference = isAmountValid ? codAmountValue - expected : 0;
+          const amountMatch = isAmountValid && Math.abs(difference) < 0.01; // float epsilon
+
+          // Check if already paid
+          // The API returns amountDetails? We added amountPaid.
+          const isPaid = (apiResult.amountPaid || 0) > 0;
+          let status: ValidationStatus = amountMatch ? 'matched' : 'unmatched';
+          let message = amountMatch ? 'ตรงกัน' : `ส่วนต่าง: ${difference > 0 ? '+' : ''}฿${Math.abs(difference).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+
+          if (isPaid) {
+            // Warn if paid?
+            message += ` (จ่ายแล้ว: ฿${apiResult.amountPaid})`;
+            // Maybe change status or keep matched but warn?
+            // Usually we don't block validation but handleImport checks it.
+          }
+
+          if (!isAmountValid) {
+            status = 'pending';
+            message = 'ระบุยอดเงินไม่ถูกต้อง';
+          }
+
+          validatedRows[index] = {
+            ...row,
+            status,
+            message,
+            orderId: apiResult.orderId,
+            orderAmount: expected,
+            difference: isAmountValid ? difference : undefined,
+            amountPaid: apiResult.amountPaid,
+            // Preserving other fields
           };
         }
       });
-    });
 
-    setRows(validatedRows);
-    setIsVerified(true);
+      setRows(validatedRows);
+      setIsVerified(true);
+
+    } catch (error) {
+      console.error("Validation failed", error);
+      alert("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -651,10 +504,9 @@ const CODManagementPage: React.FC<CODManagementPageProps> = ({
 
     const finalRowsToImport = rowsToImport.filter(row => {
       if (!row.orderId) return true;
-      const baseId = getBaseOrderId(row.orderId);
-      const order = orders.find(o => o.id === baseId);
-      if (order && (order.amountPaid || 0) > 0) {
-        console.warn(`Skipping order ${order.id} because it already has amountPaid: ${order.amountPaid}`);
+      // Use amountPaid from validation result
+      if ((row.amountPaid || 0) > 0) {
+        console.warn(`Skipping order ${row.orderId} because it already has amountPaid: ${row.amountPaid}`);
         return false;
       }
       return true;

@@ -110,6 +110,171 @@ try {
     case 'promotions':
         handle_promotions($pdo, $id);
         break;
+    case 'finance_approval_counts':
+        handle_finance_approval_counts($pdo);
+        break;
+    case 'validate_cod_tracking':
+        if (method() === 'POST') {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $items = $input['items'] ?? [];
+            if (empty($items)) {
+                json_response(['results' => []]);
+            }
+            
+            // Extract Unique Normalized Tracking Numbers
+            $trackingMap = []; // normalized -> original
+            foreach ($items as $item) {
+                $raw = $item['trackingNumber'] ?? '';
+                $clean = preg_replace('/\s+/', '', strtolower($raw));
+                if ($clean) {
+                    $trackingMap[$clean] = $raw;
+                }
+            }
+            
+            if (empty($trackingMap)) {
+                json_response(['results' => []]);
+                return;
+            }
+            
+            $trackingsToCheck = array_keys($trackingMap);
+            $placeholders = str_repeat('?,', count($trackingsToCheck) - 1) . '?';
+            
+            // 1. Find Tracking Records
+            // We join with orders to get main order info immediately
+            // We also select order_tracking_numbers info to help find boxes
+            $sql = "SELECT 
+                        t.tracking_number, 
+                        t.parent_order_id, 
+                        t.order_id as track_order_id, 
+                        t.box_number as track_box_number,
+                        o.cod_amount as order_cod_amount,
+                        o.total_amount as order_total_amount,
+                        o.amount_paid,
+                        o.payment_status
+                    FROM order_tracking_numbers t
+                    JOIN orders o ON t.parent_order_id = o.id
+                    WHERE t.tracking_number IN ($placeholders)";
+            
+            // Note: Normalized matching in SQL might need REPLACE/LOWER if DB isn't CI/AS or data is messy
+            // Usually DB is CI. For strict safety, we could use REPLACE(LOWER(...)) but index usage might drop.
+            // Let's assume the DB tracking_number is clean enough or matches case-insensitively.
+            // If the user pasted spaces, our $trackingsToCheck has no spaces. 
+            // So we might need WHERE REPLACE(t.tracking_number, ' ', '') IN ...
+            
+            // Let's try direct match first (assuming DB has clean data) 
+            // OR use multiple ORs if efficiency allows. 
+            // Optimally: Fetch by simple IN first. If empty, maybe try fuzzy.
+            // Given the requirement, let's assume standard match. 
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($trackingsToCheck); 
+            $trackingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // 2. Resolve sub-order / box details
+            // We need to query order_boxes for the found parent_order_ids to find specific cod amounts
+            $parentIds = array_unique(array_column($trackingRows, 'parent_order_id'));
+            $boxesByParent = [];
+            
+            if (!empty($parentIds)) {
+                $pPlaceholders = str_repeat('?,', count($parentIds) - 1) . '?';
+                $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount 
+                           FROM order_boxes 
+                           WHERE order_id IN ($pPlaceholders)";
+                $bStmt = $pdo->prepare($boxSql);
+                $bStmt->execute($parentIds);
+                $boxes = $bStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($boxes as $b) {
+                    $pid = $b['order_id'];
+                    $boxesByParent[$pid][] = $b;
+                }
+            }
+            
+            $results = [];
+            
+            // Map back to inputs
+            // We iterate strict normalized inputs ensuring we cover all requested
+            foreach ($trackingMap as $normalized => $original) {
+                // Find matching DB row (Case insensitive)
+                $match = null;
+                foreach ($trackingRows as $tr) {
+                    if (preg_replace('/\s+/', '', strtolower($tr['tracking_number'])) === $normalized) {
+                        $match = $tr;
+                        break;
+                    }
+                }
+                
+                if (!$match) {
+                    $results[] = [
+                        'trackingNumber' => $original,
+                        'status' => 'pending',
+                        'message' => 'ไม่พบ Tracking',
+                        'orderId' => null,
+                        'expectedAmount' => 0,
+                        'difference' => 0
+                    ];
+                    continue;
+                }
+                
+                // Logic to find expected amount
+                $parentId = $match['parent_order_id'];
+                $trackOrderId = $match['track_order_id']; // might be sub_order_id
+                $trackBoxNum = $match['track_box_number'];
+                
+                $orderFallbackAmount = ($match['order_cod_amount'] > 0) ? $match['order_cod_amount'] : $match['order_total_amount'];
+                $expectedAmount = (float)$orderFallbackAmount;
+                $resolvedOrderId = $trackOrderId ?: $parentId; // Prefer sub, else parent
+                
+                // Try finding specific box
+                $boxes = $boxesByParent[$parentId] ?? [];
+                $foundBox = null;
+                
+                // Priority 1: Match by box_number (User Request: Link via box_number)
+                if ($trackBoxNum !== null) {
+                    foreach ($boxes as $bx) {
+                        if ((int)$bx['box_number'] === (int)$trackBoxNum) {
+                            $foundBox = $bx;
+                            break; 
+                        }
+                    }
+                }
+
+                // Priority 2: Match by sub_order_id (Fallback)
+                if (!$foundBox && $trackOrderId) {
+                    foreach ($boxes as $bx) {
+                        if (strcasecmp($bx['sub_order_id'] ?? '', $trackOrderId) === 0) {
+                            $foundBox = $bx;
+                            break;
+                        }
+                    }
+                }
+                
+                if ($foundBox) {
+                    $boxAmt = (float)($foundBox['collection_amount'] > 0 ? $foundBox['collection_amount'] : $foundBox['cod_amount']);
+                    // Always use box amount if found, even if 0? Or fallback? 
+                    // Usually if a box exists, its amount is authoritative.
+                    $expectedAmount = $boxAmt;
+                    
+                    if (!empty($foundBox['sub_order_id'])) {
+                        $resolvedOrderId = $foundBox['sub_order_id'];
+                    }
+                }
+                
+                $results[] = [
+                    'trackingNumber' => $original, // Use correctly formatted from DB? No, keep user input or normalized? Input is better for mapping.
+                    'status' => 'found', // Helper status, frontend will determine matched/unmatched
+                    'orderId' => $resolvedOrderId,
+                    'parentOrderId' => $parentId,
+                    'expectedAmount' => $expectedAmount,
+                    'amountPaid' => (float)$match['amount_paid'],
+                    'message' => 'ตรวจสอบแล้ว'
+                ];
+            }
+            
+            json_response(['results' => $results]);
+        }
+        break;
+
     case 'orders':
         handle_orders($pdo, $id);
         break;
@@ -182,6 +347,12 @@ try {
         break;
     case 'stock_movements':
         handle_stock_movements($pdo, $id);
+        break;
+    case 'validate_tracking_bulk':
+        handle_validate_tracking_bulk($pdo);
+        break;
+    case 'sync_tracking':
+        handle_sync_tracking($pdo);
         break;
     case 'allocations':
         handle_allocations($pdo, $id, $action);
@@ -1734,6 +1905,46 @@ function calculate_order_item_net_total(array $item): float {
     return $net > 0 ? $net : 0.0;
 }
 
+function handle_finance_approval_counts(PDO $pdo): void {
+    if (method() !== 'GET') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+    $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : 0;
+    
+    // Base WHERE conditions
+    // 1. Filter out sub-orders
+    // 2. Filter by companyId if provided
+    $baseWhere = "id NOT REGEXP '^.+-[0-9]+$'";
+    $params = [];
+    
+    if ($companyId > 0) {
+        $baseWhere .= " AND company_id = ?";
+        $params[] = $companyId;
+    }
+    
+    // Transfers Count: payment_method = 'Transfer' AND payment_status = 'PreApproved'
+    // Note: Use simple strings for ENUMs or VARCHARs
+    $sqlTransfers = "SELECT COUNT(*) FROM orders WHERE $baseWhere AND payment_method = 'Transfer' AND payment_status = 'PreApproved'";
+    
+    // PayAfter Count: payment_method = 'PayAfter' AND (payment_status = 'PreApproved' OR order_status = 'Delivered')
+    $sqlPayAfter = "SELECT COUNT(*) FROM orders WHERE $baseWhere AND payment_method = 'PayAfter' AND (payment_status = 'PreApproved' OR order_status = 'Delivered')";
+    
+    // Execute Transfers Query
+    $stmtT = $pdo->prepare($sqlTransfers);
+    $stmtT->execute($params);
+    $transfersCount = (int)$stmtT->fetchColumn();
+    
+    // Execute PayAfter Query
+    $stmtP = $pdo->prepare($sqlPayAfter);
+    $stmtP->execute($params);
+    $payafterCount = (int)$stmtP->fetchColumn();
+    
+    json_response([
+        'transfers' => $transfersCount,
+        'payafter' => $payafterCount
+    ]);
+}
+
 function handle_orders(PDO $pdo, ?string $id): void {
     // Handle sequence endpoint for order ID generation
     if ($id === 'sequence') {
@@ -1961,13 +2172,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             break;
                             
                         case 'completed':
-                            // Reconcile Confirmed OR (Claim/FreeGift AND Delivered)
-                            // AND Not Cancelled
-                            $whereConditions[] = 'o.order_status != "Cancelled"';
-                            $whereConditions[] = '(
-                                srl.confirmed_action = "Confirmed" OR
-                                (o.payment_method IN ("Claim", "FreeGift") AND o.order_status = "Delivered")
-                            )';
+                            // User Request: payment_status = Approved (ignore order_status)
+                            $whereConditions[] = 'o.payment_status = "Approved"';
                             break;
                     }
                 }
@@ -2053,9 +2259,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                            oi.price_per_unit, oi.discount, oi.net_total, oi.is_freebie, oi.box_number, 
                                            oi.promotion_id, oi.parent_item_id, oi.is_promotion_parent,
                                            oi.creator_id, oi.parent_order_id,
-                                           p.sku as product_sku
+                                           p.sku as product_sku,
+                                           pr.sku as promotion_sku
                                     FROM order_items oi
                                     LEFT JOIN products p ON oi.product_id = p.id
+                                    LEFT JOIN promotions pr ON oi.promotion_id = pr.id
                                     WHERE oi.parent_order_id IN ($parentPlaceholders) OR oi.order_id IN ($parentPlaceholders)
                                     ORDER BY oi.order_id, oi.id";
                         
@@ -2077,6 +2285,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     foreach ($items as $item) {
                         if (!isset($item['net_total']) || $item['net_total'] === null) {
                             $item['net_total'] = calculate_order_item_net_total($item);
+                        }
+                        // Force SKU from promotion for promotion parents
+                        if (!empty($item['promotion_sku']) && !empty($item['is_promotion_parent'])) {
+                            $item['sku'] = $item['promotion_sku'];
                         }
                         $itemOrderId = $item['order_id'];
                         // Check if this is a sub order (ends with -number)
@@ -2217,6 +2429,250 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
 
                 json_response($responsePayload);
+            }
+            break;
+
+        case 'PUT':
+            if (!$id) {
+                json_response(['error' => 'MISSING_ID'], 400);
+            }
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!$data) {
+                json_response(['error' => 'INVALID_JSON'], 400);
+            }
+
+            try {
+                $pdo->beginTransaction();
+                
+                // Resolve main order ID (remove -1, -2 suffix if present)
+                $isSubOrder = preg_match('/^(.+)-(\d+)$/', $id, $matches);
+                $mainOrderId = $isSubOrder ? $matches[1] : $id;
+                
+                if ($isSubOrder) {
+                    error_log("PUT /orders: Detected sub-order ID $id. Redirecting update to main order $mainOrderId");
+                }
+                
+                // Use mainOrderId for the rest of the operation
+                $id = $mainOrderId;
+                // 1. Update main order fields
+                $updateFields = [];
+                $params = [];
+                
+                $allowedFields = [
+                    'order_status' => 'orderStatus',
+                    'payment_status' => 'paymentStatus', 
+                    'payment_method' => 'paymentMethod',
+                    'sales_channel' => 'salesChannel',
+                    'sales_channel_page_id' => 'salesChannelPageId', 
+                    'delivery_date' => 'deliveryDate',
+                    'transfer_date' => 'transferDate',
+                    'shipping_cost' => 'shippingCost',
+                    'bill_discount' => 'billDiscount',
+                    'total_amount' => 'totalAmount',
+                    'amount_paid' => 'amountPaid',
+                    'cod_amount' => 'codAmount',
+                    // Shipping Address
+                    'recipient_first_name' => ['shippingAddress', 'recipientFirstName'],
+                    'recipient_last_name' => ['shippingAddress', 'recipientLastName'],
+                    'street' => ['shippingAddress', 'street'],
+                    'subdistrict' => ['shippingAddress', 'subdistrict'],
+                    'district' => ['shippingAddress', 'district'],
+                    'province' => ['shippingAddress', 'province'],
+                    'postal_code' => ['shippingAddress', 'postalCode'],
+                    'shipping_provider' => 'shippingProvider',
+                    'tracking_numbers' => 'trackingNumbers', // Special handling maybe?
+                    'notes' => 'notes',
+                ];
+
+                foreach ($allowedFields as $dbCol => $jsonKey) {
+                    $val = null;
+                    if (is_array($jsonKey)) {
+                        // Nested key e.g. shippingAddress.street
+                        $parent = $data[$jsonKey[0]] ?? [];
+                        if (isset($parent[$jsonKey[1]])) {
+                            $val = $parent[$jsonKey[1]];
+                        }
+                    } else {
+                        if (array_key_exists($jsonKey, $data)) {
+                            $val = $data[$jsonKey];
+                        }
+                    }
+                    
+                    if ($val !== null) {
+                        if ($dbCol === 'tracking_numbers' && is_array($val)) {
+                            // Skip tracking_numbers column update if it's an array, 
+                            // we might need to update the tracking table separately or comma join
+                            // For now let's just not update the deprecated column if it exists
+                            // Or comma join if the table uses it
+                            continue; 
+                        }
+                        if ($dbCol === 'sales_channel_page_id' && $val === '') $val = null;
+                        
+                        $updateFields[] = "$dbCol = ?";
+                        $params[] = $val;
+                    }
+                }
+                
+                if (!empty($data['updatedBy'])) {
+                     $updateFields[] = "updated_by = ?";
+                     $params[] = $data['updatedBy'];
+                }
+                
+                if (!empty($updateFields)) {
+                    $sql = "UPDATE orders SET " . implode(', ', $updateFields) . " WHERE id = ?";
+                    $params[] = $id;
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                }
+                
+                // 2. Insert/Update Tracking Numbers
+                // Check if new format trackingObjects is provided, otherwise fall back to trackingNumbers
+                $hasDetailedTracking = isset($data['trackingObjects']) && is_array($data['trackingObjects']);
+                $hasLegacyTracking = isset($data['trackingNumbers']) && is_array($data['trackingNumbers']);
+                
+                if ($hasDetailedTracking || $hasLegacyTracking) {
+                    // Delete existing
+                    $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$id]);
+                    
+                    if ($hasDetailedTracking) {
+                        // New format: [{ trackingNumber: '...', boxNumber: 1 }, ...]
+                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+                        foreach ($data['trackingObjects'] as $obj) {
+                            $tn = trim($obj['trackingNumber'] ?? '');
+                            $bn = (int)($obj['boxNumber'] ?? 1);
+                            if ($tn) {
+                                // Correctly map order_id to sub_order_id (pattern: parentId-boxNumber)
+                                $subOrderId = "$id-$bn"; 
+                                $trackStmt->execute([$id, $subOrderId, $bn, $tn]);
+                            }
+                        }
+                    } else if ($hasLegacyTracking) {
+                        // Old format: ['tn1', 'tn2', ...]
+                        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, tracking_number, box_number) VALUES (?, ?, ?, 1)");
+                        foreach ($data['trackingNumbers'] as $trackNum) {
+                            if (trim($trackNum)) {
+                                $trackStmt->execute([$id, "$id-1", trim($trackNum)]);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Handle Items (Optional: If provided)
+                // 3. Handle Items
+                if (isset($data['items']) && is_array($data['items'])) {
+                    // Fetch existing item IDs (check both order_id and parent_order_id to catch legacy items)
+                    $stmt = $pdo->prepare("SELECT id FROM order_items WHERE order_id = ? OR parent_order_id = ?");
+                    $stmt->execute([$id, $id]);
+                    $existingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                    $incomingIds = [];
+
+                    foreach ($data['items'] as $item) {
+                         $netTotal = calculate_order_item_net_total($item);
+                         
+                         // Determine if item is new or existing
+                         if (isset($item['id']) && in_array($item['id'], $existingIds)) {
+                             // UPDATE existing
+                             $incomingIds[] = $item['id'];
+                             $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=? WHERE id=? AND order_id=?";
+                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
+                             $pdo->prepare($updateSql)->execute([
+                                 $item['quantity'] ?? 0,
+                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                 $item['discount'] ?? 0,
+                                 $netTotal,
+                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                 $isFreebie ? 1 : 0,
+                                 $item['id'],
+                                 $id
+                             ]);
+                         } else {
+                             // INSERT new item (if id is missing or not in existingIds)
+                             // Note: Front-end might send a temp ID for new items, so we ignore it if it's not in DB
+                             $insertSql = "INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, box_number, parent_item_id, is_promotion_parent, is_freebie) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                             
+                             $parentId = $item['parentItemId'] ?? $item['parent_item_id'] ?? null;
+                             $isPromo = $item['isPromotionParent'] ?? $item['is_promotion_parent'] ?? 0;
+                             $isFreebie = isset($item['isFreebie']) ? $item['isFreebie'] : (isset($item['is_freebie']) ? $item['is_freebie'] : 0);
+                             
+                             $pdo->prepare($insertSql)->execute([
+                                 $id,
+                                 $id, // parent_order_id maps to order_id here
+                                 $item['productId'] ?? $item['product_id'] ?? null,
+                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
+                                 $item['quantity'] ?? 0,
+                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
+                                 $item['discount'] ?? 0,
+                                 $netTotal,
+                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                 $parentId,
+                                 $isPromo,
+                                 $isFreebie ? 1 : 0
+                             ]);
+                         }
+                    }
+
+                    // DELETE removed items
+                    // Any existing ID that is NOT in incomingIds should be deleted
+                    $itemsToDelete = array_diff($existingIds, $incomingIds);
+                    if (!empty($itemsToDelete)) {
+                        $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
+                        $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND order_id = ?";
+                        $deleteParams = array_merge($itemsToDelete, [$id]);
+                        $pdo->prepare($deleteSql)->execute($deleteParams);
+                    }
+                }
+                
+                // 4. Handle Boxes (Optional: If provided)
+                if (isset($data['boxes']) && is_array($data['boxes'])) {
+                    error_log("Updating boxes for order: $id. Count: " . count($data['boxes']));
+                    // Delete existing boxes for this order
+                    $pdo->prepare("DELETE FROM order_boxes WHERE order_id = ?")->execute([$id]);
+                    
+                    // Insert new boxes
+                    $insertBoxSql = "INSERT INTO order_boxes (order_id, box_number, cod_amount, collection_amount, collected_amount, waived_amount, payment_method, status, sub_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $boxStmt = $pdo->prepare($insertBoxSql);
+                    
+                    foreach ($data['boxes'] as $box) {
+                        $boxNumber = $box['box_number'] ?? $box['boxNumber'] ?? 1;
+                        // Generate sub_order_id if missing (pattern: orderId-boxNumber, but box 1 might be just orderId or orderId-1)
+                        $subOrderId = $box['sub_order_id'] ?? $box['subOrderId'] ?? null;
+                        if (!$subOrderId) {
+                            $subOrderId = "$id-$boxNumber";
+                        }
+                        
+                        try {
+                            $success = $boxStmt->execute([
+                                $id,
+                                $boxNumber,
+                                $box['cod_amount'] ?? $box['codAmount'] ?? 0,
+                                $box['collection_amount'] ?? $box['collectionAmount'] ?? $box['cod_amount'] ?? $box['codAmount'] ?? 0,
+                                $box['collected_amount'] ?? $box['collectedAmount'] ?? 0,
+                                $box['waived_amount'] ?? $box['waivedAmount'] ?? 0,
+                                $box['payment_method'] ?? $box['paymentMethod'] ?? null,
+                                $box['status'] ?? 'PENDING',
+                                $subOrderId
+                            ]);
+                            if (!$success) {
+                                error_log("Failed to insert box $boxNumber: " . json_encode($boxStmt->errorInfo()));
+                            }
+                        } catch (Exception $be) {
+                            error_log("Exception inserting box $boxNumber: " . $be->getMessage());
+                        }
+                    }
+                }
+
+                $pdo->commit();
+                
+                // Return updated order
+                $o = get_order($pdo, $id);
+                json_response($o);
+
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                error_log("Update order failed: " . $e->getMessage());
+                json_response(['error' => 'UPDATE_FAILED', 'message' => $e->getMessage()], 500);
             }
             break;
         case 'POST':
@@ -4537,27 +4993,55 @@ function get_order(PDO $pdo, string $id): ?array {
     $o = $stmt->fetch();
     if (!$o) return null;
     
-    // Fetch customer phone if available
+    // Fetch full customer details
     if (!empty($o['customer_id'])) {
         try {
-            $custStmt = $pdo->prepare('SELECT phone, backup_phone FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
+            $custStmt = $pdo->prepare('SELECT * FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
             $custStmt->execute([$o['customer_id'], $o['customer_id']]);
             $cust = $custStmt->fetch();
             if ($cust) {
+                $o['customer'] = $cust;
+                // Keep for backward compatibility
                 $o['customer_phone'] = $cust['phone'];
                 $o['customer_backup_phone'] = $cust['backup_phone'];
+            }
+        } catch (Throwable $e) { /* ignore */ }
+    }
+
+    // Fetch order creator name
+    if (!empty($o['creator_id'])) {
+        try {
+            $userStmt = $pdo->prepare('SELECT first_name, last_name FROM users WHERE id = ?');
+            $userStmt->execute([$o['creator_id']]);
+            $userData = $userStmt->fetch();
+            if ($userData) {
+                $o['creator_name'] = trim(($userData['first_name'] ?? '') . ' ' . ($userData['last_name'] ?? ''));
             }
         } catch (Throwable $e) { /* ignore */ }
     }
     
     // Fetch items from main order and all sub orders
     // Use parent_order_id to find all items for this order group
-    $items = $pdo->prepare("SELECT oi.*, oi.creator_id, oi.parent_order_id FROM order_items oi WHERE oi.parent_order_id = ? OR oi.order_id = ? ORDER BY oi.order_id, oi.id");
+    $items = $pdo->prepare("
+        SELECT oi.*, u.first_name as creator_first_name, u.last_name as creator_last_name,
+               p.sku as product_sku,
+               pr.sku as promotion_sku
+        FROM order_items oi 
+        LEFT JOIN users u ON u.id = oi.creator_id
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN promotions pr ON oi.promotion_id = pr.id
+        WHERE oi.parent_order_id = ? OR oi.order_id = ? 
+        ORDER BY oi.order_id, oi.id
+    ");
     $items->execute([$mainOrderId, $mainOrderId]);
     $allItems = $items->fetchAll();
     foreach ($allItems as &$itemRow) {
         if (!isset($itemRow['net_total']) || $itemRow['net_total'] === null) {
             $itemRow['net_total'] = calculate_order_item_net_total($itemRow);
+        }
+        // Force SKU from promotion for promotion parents
+        if (!empty($itemRow['promotion_sku']) && !empty($itemRow['is_promotion_parent'])) {
+            $itemRow['sku'] = $itemRow['promotion_sku'];
         }
     }
     unset($itemRow);
@@ -4609,6 +5093,19 @@ function get_order(PDO $pdo, string $id): ?array {
         $sl->execute($allOrderIds);
         $o['slips'] = $sl->fetchAll();
     } catch (Throwable $e) { /* ignore if table not present */ }
+
+    // Fetch activities related to this order
+    try {
+        $actStmt = $pdo->prepare("
+            SELECT id, customer_id, timestamp, type, description, actor_name 
+            FROM activities 
+            WHERE description LIKE ? 
+            ORDER BY timestamp DESC
+        ");
+        $actStmt->execute(['%' . $mainOrderId . '%']);
+        $o['activities'] = $actStmt->fetchAll();
+    } catch (Throwable $e) { /* ignore */ }
+
     return $o;
 }
 
@@ -7340,5 +7837,178 @@ function handle_user_permissions(PDO $pdo, ?string $userId, ?string $action): vo
 }
 
 
+
+
+
+function handle_validate_tracking_bulk($pdo) {
+    if (method() !== 'POST') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+
+    $in = json_input();
+    if (!isset($in['items']) || !is_array($in['items'])) {
+        json_response(['error' => 'INVALID_PAYLOAD', 'message' => 'items must be an array'], 400);
+    }
+
+    $results = [];
+
+    // Prepare statements
+    $orderLookupInfo = $pdo->prepare("SELECT id FROM orders WHERE id = ?");
+    $boxLookupInfo = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ?");
+    $dupCheck = $pdo->prepare("SELECT order_id FROM order_tracking_numbers WHERE tracking_number = ? LIMIT 1");
+
+    foreach ($in['items'] as $item) {
+        $orderId = trim($item['orderId'] ?? '');
+        $trackingNumber = trim($item['trackingNumber'] ?? '');
+        
+        $res = [
+            'orderId' => $orderId,
+            'trackingNumber' => $trackingNumber,
+            'isValid' => true,
+            'status' => 'valid',
+            'message' => '',
+            'foundOrderId' => null,
+            'boxNumber' => null
+        ];
+
+        if (!$orderId) {
+            $res['isValid'] = false;
+            $res['status'] = 'error';
+            $res['message'] = 'Missing Order ID';
+            $results[] = $res;
+            continue;
+        }
+
+        // 1. Check Order Existence
+        // Try exact match on orders table (Parent ID)
+        $orderLookupInfo->execute([$orderId]);
+        $parentOrder = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
+
+        if ($parentOrder) {
+            $res['foundOrderId'] = $parentOrder['id'];
+            $res['boxNumber'] = 1;
+        } else {
+            // Try sub-order lookup (order_boxes)
+            $boxLookupInfo->execute([$orderId]);
+            $boxInfo = $boxLookupInfo->fetch(PDO::FETCH_ASSOC);
+            
+            if ($boxInfo) {
+                $res['foundOrderId'] = $boxInfo['order_id'];
+                $res['boxNumber'] = $boxInfo['box_number'];
+            } else {
+                // FALLBACK: Try parsing ORD-xxx-1 format
+                if (preg_match('/^(.+)-(\d+)$/', $orderId, $matches)) {
+                    $potentialParentId = $matches[1];
+                    $potentialBox = (int)$matches[2];
+                    
+                    $orderLookupInfo->execute([$potentialParentId]);
+                    $parentFromParse = $orderLookupInfo->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($parentFromParse) {
+                        $res['foundOrderId'] = $parentFromParse['id'];
+                        $res['boxNumber'] = $potentialBox;
+                    }
+                }
+            }
+        }
+
+        if (!$res['foundOrderId']) {
+            $res['isValid'] = false;
+            $res['status'] = 'error';
+            $res['message'] = 'Order not found';
+        }
+
+        // 2. Check Tracking Number Duplication
+        if ($res['isValid'] && $trackingNumber) {
+            $dupCheck->execute([$trackingNumber]);
+            $existing = $dupCheck->fetch(PDO::FETCH_ASSOC);
+            
+            if ($existing) {
+                $res['isValid'] = false;
+                $res['status'] = 'duplicate';
+                $res['message'] = 'Tracking number used by order ' . $existing['order_id'];
+            }
+        }
+
+        $results[] = $res;
+    }
+
+    json_response(['ok' => true, 'results' => $results]);
+}
+
+function handle_sync_tracking($pdo) {
+    if (method() !== 'POST') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    }
+
+    $in = json_input();
+    if (!isset($in['updates']) || !is_array($in['updates'])) {
+        json_response(['error' => 'INVALID_PAYLOAD', 'message' => 'updates must be an array'], 400);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $trackStmt = $pdo->prepare("INSERT INTO order_tracking_numbers (parent_order_id, order_id, box_number, tracking_number) VALUES (?, ?, ?, ?)");
+        // Update shipping_provider (only if not empty), and always update statuses
+        // IMPORTANT: payment_status must be updated BEFORE order_status because MySQL uses the updated value for subsequent fields in the same SET clause.
+        $updateOrderStmt = $pdo->prepare("UPDATE orders SET shipping_provider = CASE WHEN ? = '' THEN shipping_provider ELSE ? END, payment_status = CASE WHEN order_status IN ('Preparing', 'Picking') AND payment_method = 'Transfer' THEN 'PreApproved' ELSE payment_status END, order_status = CASE WHEN order_status IN ('Preparing', 'Picking') THEN (CASE WHEN payment_method = 'Transfer' THEN 'PreApproved' ELSE 'Shipping' END) ELSE order_status END WHERE id = ?");
+        
+        // Prepare box lookup
+        $boxLookupStmt = $pdo->prepare("SELECT order_id, box_number FROM order_boxes WHERE sub_order_id = ? LIMIT 1");
+
+        $results = [];
+        $processedOrders = [];
+
+        foreach ($in['updates'] as $update) {
+            $subOrderId = $update['sub_order_id'] ?? $update['order_id'] ?? null;
+            $trackingNumber = trim($update['tracking_number'] ?? '');
+            $shippingProvider = trim($update['shipping_provider'] ?? '');
+
+            if (!$subOrderId || !$trackingNumber) continue;
+
+            // Resolve parent order ID and box number
+            // First Priority: Lookup from order_boxes
+            $boxLookupStmt->execute([$subOrderId]);
+            $boxInfo = $boxLookupStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($boxInfo) {
+                $parentOrderId = $boxInfo['order_id'];
+                $boxNumber = (int)$boxInfo['box_number'];
+            } else {
+                // Second Priority: Parse from sub_order_id suffix (fallback)
+                $isSub = preg_match('/^(.+)-(\d+)$/', $subOrderId, $matches);
+                $parentOrderId = $isSub ? $matches[1] : $subOrderId;
+                $boxNumber = $isSub ? (int)$matches[2] : 1;
+            }
+
+            // 1. Wipe and Insert into order_tracking_numbers
+            if (!isset($processedOrders[$parentOrderId])) {
+                $pdo->prepare("DELETE FROM order_tracking_numbers WHERE parent_order_id = ?")->execute([$parentOrderId]);
+                $processedOrders[$parentOrderId] = true;
+            }
+
+            // Always use parentOrderId-boxNumber for consistency with order_boxes sub_order_id
+            $resolvedSubOrderId = "$parentOrderId-$boxNumber";
+            $trackStmt->execute([$parentOrderId, $resolvedSubOrderId, $boxNumber, $trackingNumber]);
+
+            // 2. Update statuses (and shipping_provider if present)
+            $updateOrderStmt->execute([$shippingProvider, $shippingProvider, $parentOrderId]);
+            
+            $results[] = [
+                'sub_order_id' => $resolvedSubOrderId,
+                'parent_order_id' => $parentOrderId,
+                'box_number' => $boxNumber,
+                'status' => 'success'
+            ];
+        }
+
+        $pdo->commit();
+        json_response(['ok' => true, 'results' => $results]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        json_response(['error' => 'SYNC_FAILED', 'message' => $e->getMessage()], 500);
+    }
+}
 
 ?>
