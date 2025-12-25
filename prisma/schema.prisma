@@ -60,8 +60,9 @@ model address_provinces {
   @@index([geography_id], map: "geography_id")
 }
 
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model address_sub_districts {
-  id          Int       @id
+  id          Int
   zip_code    String?   @db.VarChar(10)
   name_th     String?   @db.VarChar(255)
   name_en     String?   @db.VarChar(255)
@@ -72,8 +73,7 @@ model address_sub_districts {
   updated_at  DateTime? @db.Timestamp(0)
   deleted_at  DateTime? @db.Timestamp(0)
 
-  @@index([district_id], map: "district_id")
-  @@index([zip_code], map: "zip_code")
+  @@ignore
 }
 
 model appointments {
@@ -353,6 +353,9 @@ model customers {
   is_new_customer           Boolean?                     @default(false)
   is_repeat_customer        Boolean?                     @default(false)
   bucket_type               String?                      @db.VarChar(16)
+  ai_score                  Int?
+  ai_reason_thai            String?                      @db.Text
+  ai_last_updated           DateTime?                    @db.DateTime(0)
 
   @@index([assigned_to], map: "idx_customers_assigned_to")
   @@index([is_blocked], map: "idx_customers_blocked")
@@ -426,26 +429,6 @@ model marketing_ads_log {
   @@index([user_id], map: "idx_user_id")
 }
 
-model marketing_product_ads_log {
-  id          Int       @id @default(autoincrement())
-  user_id     Int
-  product_id  Int
-  date        DateTime  @db.Date
-  ads_cost    Decimal?  @db.Decimal(10, 2)
-  impressions Int?
-  reach       Int?
-  clicks      Int?
-  created_at  DateTime? @default(now()) @db.Timestamp(0)
-  updated_at  DateTime? @default(now()) @db.Timestamp(0)
-  products    products  @relation(fields: [product_id], references: [id], onDelete: Cascade, map: "fk_marketing_pad_product_id")
-  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_pad_user_id")
-
-  @@unique([user_id, product_id, date], map: "unique_user_product_date")
-  @@index([date], map: "idx_date")
-  @@index([product_id], map: "idx_product_id")
-  @@index([user_id], map: "idx_user_id")
-}
-
 model marketing_user_page {
   id         Int       @id @default(autoincrement())
   page_id    Int
@@ -455,20 +438,6 @@ model marketing_user_page {
 
   @@unique([page_id, user_id], map: "unique_page_user")
   @@index([page_id], map: "idx_page_id")
-  @@index([user_id], map: "idx_user_id")
-}
-
-model marketing_user_product {
-  id         Int       @id @default(autoincrement())
-  user_id    Int
-  product_id Int
-  created_at DateTime? @default(now()) @db.Timestamp(0)
-  updated_at DateTime? @default(now()) @db.Timestamp(0)
-  products   products  @relation(fields: [product_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_product_product_id")
-  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_marketing_user_product_user_id")
-
-  @@unique([user_id, product_id], map: "unique_user_product")
-  @@index([product_id], map: "idx_product_id")
   @@index([user_id], map: "idx_user_id")
 }
 
@@ -604,7 +573,7 @@ model order_boxes {
   order_id          String                      @db.VarChar(32)
   sub_order_id      String                      @unique(map: "uniq_sub_order_id") @default("") @db.VarChar(64)
   box_number        Int
-  payment_method    order_boxes_payment_method?
+  payment_method    order_boxes_payment_method? @default(COD)
   status            order_boxes_status          @default(PENDING)
   cod_amount        Decimal                     @default(0.00) @db.Decimal(12, 2)
   collection_amount Decimal                     @default(0.00) @db.Decimal(12, 2)
@@ -619,6 +588,7 @@ model order_boxes {
   @@index([status], map: "idx_order_boxes_status")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_item_allocations {
   id                 Int                           @id @default(autoincrement())
   order_id           String                        @db.VarChar(32)
@@ -645,6 +615,7 @@ model order_item_allocations {
   @@index([warehouse_id], map: "idx_allocations_warehouse")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_items {
   id                  Int     @id @default(autoincrement())
   order_id            String  @db.VarChar(32)
@@ -725,6 +696,7 @@ model order_tracking_numbers {
   @@index([parent_order_id], map: "idx_order_tracking_parent_order")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model orders {
   id                       String                     @id @db.VarChar(32)
   customer_id              Int?
@@ -803,6 +775,7 @@ model page_engagement_log {
   @@index([page_id], map: "idx_page_id")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_list_user {
   id            Int       @id @default(autoincrement())
   page_id       String    @db.VarChar(255)
@@ -821,6 +794,7 @@ model page_list_user {
   @@index([updated_at], map: "idx_updated_at")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_batch {
   id         Int       @id @default(autoincrement())
   date_range String    @db.VarChar(255)
@@ -830,6 +804,7 @@ model page_stats_batch {
   @@index([date_range], map: "idx_date_range")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_stats_log {
   id                       Int    @id @default(autoincrement())
   batch_id                 Int
@@ -854,6 +829,7 @@ model page_stats_log {
   @@index([time_column], map: "idx_time_column")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model page_user {
   id             Int       @id @default(autoincrement())
   user_id        Int?
@@ -870,6 +846,7 @@ model page_user {
   @@index([user_id], map: "idx_user_id")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model pages {
   id            Int       @id @default(autoincrement())
   page_id       String?   @db.VarChar(255)
@@ -914,7 +891,7 @@ model platforms {
 
 model product_lots {
   id                 Int                  @id @default(autoincrement())
-  lot_number         String               @unique(map: "lot_number") @db.VarChar(128)
+  lot_number         String               @db.VarChar(128)
   product_id         Int
   warehouse_id       Int
   purchase_date      DateTime             @db.Date
@@ -929,27 +906,25 @@ model product_lots {
   created_at         DateTime?            @default(now()) @db.DateTime(0)
   updated_at         DateTime?            @default(now()) @db.DateTime(0)
 
+  @@unique([product_id, lot_number], map: "idx_product_lot_unique")
   @@index([expiry_date], map: "idx_lot_expiry")
   @@index([status], map: "idx_lot_status")
-  @@index([product_id], map: "product_lots_ibfk_1")
   @@index([warehouse_id], map: "product_lots_ibfk_2")
 }
 
 model products {
-  id                        Int                         @id @default(autoincrement())
-  sku                       String                      @unique(map: "sku") @db.VarChar(64)
-  name                      String                      @db.VarChar(255)
-  description               String?                     @db.Text
-  category                  String                      @db.VarChar(128)
-  unit                      String                      @db.VarChar(32)
-  cost                      Decimal                     @default(0.00) @db.Decimal(12, 2)
-  price                     Decimal                     @default(0.00) @db.Decimal(12, 2)
-  stock                     Int                         @default(0)
-  company_id                Int
-  shop                      String?                     @db.VarChar(128)
-  status                    products_status             @default(Active)
-  marketing_product_ads_log marketing_product_ads_log[]
-  marketing_user_product    marketing_user_product[]
+  id          Int             @id @default(autoincrement())
+  sku         String          @unique(map: "sku") @db.VarChar(64)
+  name        String          @db.VarChar(255)
+  description String?         @db.Text
+  category    String          @db.VarChar(128)
+  unit        String          @db.VarChar(32)
+  cost        Decimal         @default(0.00) @db.Decimal(12, 2)
+  price       Decimal         @default(0.00) @db.Decimal(12, 2)
+  stock       Int             @default(0)
+  company_id  Int
+  shop        String?         @db.VarChar(128)
+  status      products_status @default(Active)
 
   @@index([company_id], map: "idx_products_company")
 }
@@ -981,6 +956,7 @@ model promotions {
   @@index([start_date, end_date], map: "idx_promotions_dates")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model role_permissions {
   role        String    @id @db.VarChar(64)
   data        String    @db.Text
@@ -991,6 +967,8 @@ model role_permissions {
   @@index([updated_at], map: "idx_role_permissions_updated")
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model roles {
   id          Int       @id @default(autoincrement())
   code        String    @unique(map: "code") @db.VarChar(64)
@@ -1077,19 +1055,21 @@ model statement_reconcile_logs {
   @@index([reconcile_type], map: "idx_statement_reconcile_type")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model stock_movements {
-  id             Int                           @id @default(autoincrement())
-  warehouse_id   Int
-  product_id     Int
-  movement_type  stock_movements_movement_type
-  quantity       Int
-  lot_number     String?                       @db.VarChar(128)
-  reference_type String?                       @db.VarChar(64)
-  reference_id   String?                       @db.VarChar(64)
-  reason         String?                       @db.VarChar(255)
-  notes          String?                       @db.Text
-  created_by     Int
-  created_at     DateTime                      @default(now()) @db.DateTime(0)
+  id              Int      @id @default(autoincrement())
+  warehouse_id    Int
+  product_id      Int
+  document_number String?  @db.VarChar(50)
+  movement_type   String   @db.VarChar(100)
+  quantity        Int
+  lot_number      String?  @db.VarChar(128)
+  reference_type  String?  @db.VarChar(64)
+  reference_id    String?  @db.VarChar(64)
+  reason          String?  @db.VarChar(255)
+  notes           String?  @db.Text
+  created_by      Int
+  created_at      DateTime @default(now()) @db.DateTime(0)
 
   @@index([product_id], map: "fk_stock_movements_product")
   @@index([created_by], map: "fk_stock_movements_user")
@@ -1098,6 +1078,7 @@ model stock_movements {
   @@index([movement_type], map: "idx_stock_movements_type")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model stock_reservations {
   id           Int                       @id @default(autoincrement())
   warehouse_id Int
@@ -1118,6 +1099,42 @@ model stock_reservations {
   @@index([status], map: "idx_stock_reservations_status")
 }
 
+model stock_transaction_images {
+  id                 Int                @id @default(autoincrement())
+  transaction_id     Int
+  image_path         String             @db.VarChar(255)
+  stock_transactions stock_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_transaction_images_header")
+
+  @@index([transaction_id], map: "transaction_id")
+}
+
+model stock_transaction_items {
+  id                 Int                                     @id @default(autoincrement())
+  transaction_id     Int
+  product_id         Int
+  warehouse_id       Int
+  lot_id             Int?
+  quantity           Decimal                                 @db.Decimal(10, 2)
+  adjustment_type    stock_transaction_items_adjustment_type
+  remarks            String?                                 @db.VarChar(255)
+  stock_transactions stock_transactions                      @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_transaction_items_header")
+
+  @@index([transaction_id], map: "transaction_id")
+}
+
+model stock_transactions {
+  id                       Int                        @id @default(autoincrement())
+  document_number          String                     @unique(map: "document_number") @db.VarChar(50)
+  type                     stock_transactions_type
+  transaction_date         DateTime                   @db.DateTime(0)
+  notes                    String?                    @db.Text
+  created_by               Int?
+  created_at               DateTime                   @default(now()) @db.Timestamp(0)
+  updated_at               DateTime                   @default(now()) @db.Timestamp(0)
+  stock_transaction_images stock_transaction_images[]
+  stock_transaction_items  stock_transaction_items[]
+}
+
 model tags {
   id    Int       @id @default(autoincrement())
   name  String    @db.VarChar(128)
@@ -1125,6 +1142,7 @@ model tags {
   color String?   @db.VarChar(20)
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_daily_attendance {
   id                 BigInt                                  @id @default(autoincrement())
   user_id            Int
@@ -1143,6 +1161,7 @@ model user_daily_attendance {
   @@index([work_date], map: "idx_work_date")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_login_history {
   id               BigInt    @id @default(autoincrement())
   user_id          Int
@@ -1166,6 +1185,7 @@ model user_pancake_mapping {
   @@index([id_user], map: "idx_user")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_permission_overrides {
   id                                                Int       @id @default(autoincrement())
   user_id                                           Int
@@ -1203,6 +1223,7 @@ model user_tokens {
   @@index([user_id], map: "idx_user")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model users {
   id                                                                    Int                         @id @default(autoincrement())
   username                                                              String                      @unique(map: "username") @db.VarChar(64)
@@ -1224,8 +1245,6 @@ model users {
   login_count                                                           Int                         @default(0)
   cod_documents                                                         cod_documents[]
   commission_records                                                    commission_records[]
-  marketing_product_ads_log                                             marketing_product_ads_log[]
-  marketing_user_product                                                marketing_user_product[]
   user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
   user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
   user_tokens                                                           user_tokens[]
@@ -1242,6 +1261,7 @@ model users {
   @@index([status], map: "idx_users_status")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouse_stocks {
   id                    Int       @id @default(autoincrement())
   warehouse_id          Int
@@ -1266,6 +1286,7 @@ model warehouse_stocks {
   @@index([quantity], map: "idx_warehouse_stocks_quantity")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model warehouses {
   id                    Int      @id @default(autoincrement())
   name                  String   @db.VarChar(255)
@@ -1363,6 +1384,11 @@ enum order_sequences_period {
   month
 }
 
+enum stock_transactions_type {
+  receive
+  adjustment
+}
+
 enum tags_type {
   SYSTEM
   USER
@@ -1383,17 +1409,12 @@ enum page_engagement_batch_status {
   failed
 }
 
-enum stock_movements_movement_type {
-  IN
-  OUT
-  TRANSFER
-  ADJUSTMENT
-}
-
 enum order_boxes_payment_method {
   COD
   Transfer
   PayAfter
+  Claim
+  FreeGift
 }
 
 enum customer_logs_action_type {
@@ -1418,6 +1439,12 @@ enum order_boxes_status {
   DELIVERED
   RETURNED
   CANCELLED
+}
+
+enum stock_transaction_items_adjustment_type {
+  add
+  reduce
+  receive
 }
 
 enum notifications_priority {
@@ -1521,6 +1548,8 @@ enum orders_payment_method {
   COD
   Transfer
   PayAfter
+  Claim
+  FreeGift
 }
 
 enum orders_payment_status {
