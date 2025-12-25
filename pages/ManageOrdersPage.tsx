@@ -671,6 +671,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
 
   const generateAndDownloadCsv = async (selectedOrders: Order[]) => {
+    // Generate HTML Table for XLS export to support Text formatting (mso-number-format)
+    // This is required to force "Text" type for all cells as requested, which CSV cannot natively do.
     const headers = [
       'หมายเลขออเดอร์ออนไลน์', 'ชื่อร้านค้า', 'เวลาที่สั่งซื้อ', 'บัญชีร้านค้า',
       'หมายเลขใบชำระเงิน', 'COD', 'ช่องทางชำระเงิน', 'เวลาชำระเงิน',
@@ -683,18 +685,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       'พนักงานขาย', 'หมายเหตุออฟไลน์', 'รูปแบบคำสั่งซื้อ', 'รูปแบบการชำระ'
     ];
 
-    const escapeCsvCell = (cellData: any): string => {
-      // Prepend tab to force Excel to treat as text
-      const str = `\t${String(cellData ?? '')}`;
-      // Use standard CSV escaping: wrap in quotes if contains comma, quote, or newline
-      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
     const rows = selectedOrders.flatMap(order => {
-      // Prioritize customer info embedded in the order (from API join), then fallback to customers list
+      // Prioritize customer info embedded in the order
       const customer = order.customerInfo || customers.find(c => {
         if (c.pk && typeof order.customerId === 'number') {
           return c.pk === order.customerId;
@@ -703,29 +695,20 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           String(c.pk) === String(order.customerId);
       });
 
-      // Match seller by id (ensure type compatibility)
-      const seller = users.find(u => {
-        if (!order.creatorId) return false;
-        if (typeof u.id === 'number' && typeof order.creatorId === 'number') {
-          return u.id === order.creatorId;
-        }
-        return String(u.id) === String(order.creatorId);
-      });
-      const address =
-        order.shippingAddress || {
-          recipientFirstName: '',
-          recipientLastName: '',
-          street: '',
-          subdistrict: '',
-          district: '',
-          province: '',
-          postalCode: '',
-        };
+      const address = order.shippingAddress || {
+        recipientFirstName: '',
+        recipientLastName: '',
+        street: '',
+        subdistrict: '',
+        district: '',
+        province: '',
+        postalCode: '',
+      };
 
       // Group items by boxId (referencing order.boxes)
       const itemsByOrderId = new Map<string, typeof order.items>();
 
-      // Deduplicate items by id to prevent duplicate rows in CSV
+      // Deduplicate items by id
       const uniqueItems = Array.from(
         new Map(order.items.map(item => [item.id, item])).values()
       );
@@ -733,11 +716,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       uniqueItems.forEach(item => {
         const boxNum = item.boxNumber || (item as any).box_number || 1;
         const match = (order.boxes || []).find(b => ((b as any).boxNumber ?? (b as any).box_number) === boxNum);
-
-        // Use subOrderId from box if found, otherwise fall back to item.orderId or order.id
         let onlineOrderId = (match as any)?.subOrderId ?? (match as any)?.sub_order_id ?? (item as any).orderId ?? (item as any).order_id ?? order.id;
 
-        // Ensure Box 1 has -1 suffix if it matches the main order ID and doesn't have any suffix
         if (boxNum === 1 && onlineOrderId === order.id && !onlineOrderId.includes(`${order.id}-`)) {
           onlineOrderId = `${order.id}-1`;
         }
@@ -748,85 +728,50 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         itemsByOrderId.get(onlineOrderId)!.push(item);
       });
 
-      // สร้างแถวสำหรับแต่ละ orderId
       const orderRows: any[] = [];
-
-      // Sort keys (orderIds) by suffix (box number)
       const sortedOnlineOrderIds = Array.from(itemsByOrderId.keys()).sort((a, b) => {
         const matchA = a.match(/-(\d+)$/);
         const matchB = b.match(/-(\d+)$/);
         const suffixA = matchA ? parseInt(matchA[1], 10) : 0;
         const suffixB = matchB ? parseInt(matchB[1], 10) : 0;
 
-        if (suffixA > 0 && suffixB > 0) {
-          return suffixA - suffixB;
-        }
-        if (suffixA !== suffixB) {
-          return suffixA - suffixB;
-        }
+        if (suffixA > 0 && suffixB > 0) return suffixA - suffixB;
+        if (suffixA !== suffixB) return suffixA - suffixB;
         return a.localeCompare(b);
       });
 
       sortedOnlineOrderIds.forEach((onlineOrderId) => {
         const items = itemsByOrderId.get(onlineOrderId)!;
-        // Exclude promotion parent items (is_promotion_parent = 1 in DB)
         const exportItems = items.filter((it: any) => !it.isPromotionParent);
-        if (exportItems.length === 0) {
-          return;
-        }
+        if (exportItems.length === 0) return;
 
         exportItems.forEach((item, index) => {
-          const codAmount = order.paymentMethod === PaymentMethod.COD
-            ? (order.boxes?.reduce((sum, box) => sum + (box.codAmount ?? 0), 0) || 0)
-            : 0;
-
-          // คำนวณ totalAmount สำหรับ orderId นี้
-          // จำนวนเงินที่ต้องชำระ: ใช้จาก order_boxes.cod_amount ของกล่องที่ sub_order_id ตรงกับ order_items.order_id
           const boxForThisOrder = (order.boxes || []).find(
-            (b: any) =>
-              String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
+            (b: any) => String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
           );
 
           let orderIdTotalAmount: string | number = 0;
-
           if (order.paymentMethod === PaymentMethod.COD) {
-            // สำหรับ COD ใช้ค่าจาก box ถ้ามี ถ้าไม่มีใช้จาก order.codAmount (fallback)
             if (boxForThisOrder && typeof boxForThisOrder.codAmount === "number") {
               orderIdTotalAmount = boxForThisOrder.codAmount;
             } else {
-              // Fallback for single box or missing box data
-              // If it's the first box (index 0) or single item set, use order.codAmount
-              // We need to be careful not to duplicate if multiple items exist for same order logic
-              // But here we are iterating items. orderIdTotalAmount is per 'orderId' (onlineOrderId)
-              // If we are at 'index === 0' of this onlineOrderId group, we decide value.
-              // Here we just calc value.
-              // If strictly box based, and box missing, use main order codAmount?
-              // Only if this onlineOrderId matches main order id
               if (onlineOrderId === order.id || onlineOrderId === `${order.id}-1`) {
                 orderIdTotalAmount = order.codAmount ?? order.totalAmount ?? 0;
               }
             }
           } else {
-            // For Transfer/Other
-            // If user implies "Amount to Pay" should be shown even for Transfer (e.g. Total Amount),
-            // then we should populate it. BUT the column is conditionally hidden by 'codValue' later.
-            // Let's populate the value correctly here first.
             const totalOrderIds = itemsByOrderId.size;
             orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
           }
 
-          // ตรวจสอบว่า orderId มี suffix -1, -2, -3 หรือไม่
           const boxNumberMatch = onlineOrderId.match(/-(\d+)$/);
           const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
 
-          // สร้างชื่อผู้รับพร้อมนามสกุลและ (กล่องที่ X) ถ้ามี boxNumber
-          // Use Shipping Address Recipient Name first, then fallback to Customer Name
           let recipientName = '';
           if (index === 0) {
             const firstName = address?.recipientFirstName || customer?.firstName || '';
             const lastName = address?.recipientLastName || customer?.lastName || '';
             const fullName = `${firstName} ${lastName}`.trim();
-
             if (fullName && boxNumber !== null) {
               recipientName = `${fullName} (กล่องที่ ${boxNumber})`;
             } else {
@@ -834,10 +779,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             }
           }
 
-          // กำหนดค่า COD ตามเงื่อนไข
           let codValue: string | number = '';
           if (index === 0) {
-            // แถวแรกของ orderId
             if (orderIdTotalAmount === 0 || !orderIdTotalAmount) {
               codValue = 'ไม่';
             } else if (order.paymentMethod === PaymentMethod.COD) {
@@ -846,33 +789,26 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               codValue = 'ไม่';
             }
           }
-          // ถ้าไม่ใช่แถวแรก (index > 0) ให้เป็นค่าว่าง
 
-          // ค้นหาข้อมูล shop จาก products โดยใช้ productId
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           const shopName = product?.shop ?? 'N/A';
-
-          // Use phone from Customer Info (most reliable for order)
           const displayPhone = index === 0 ? (customer?.phone ? ((customer.phone.startsWith('0') || customer.phone.startsWith('+')) ? customer.phone : `0${customer.phone}`) : '') : '';
 
           const rowData: { [key: string]: string | number | undefined } = {
-            // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
             'ชื่อร้านค้า': shopName,
             'เวลาที่สั่งซื้อ': index === 0 ? (order.orderDate?.substring(0, 10) ?? '') : '',
-            'บัญชีร้านค้า': '', // ว่างเปล่า
+            'บัญชีร้านค้า': '',
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
             'ช่องทางชำระเงิน': '',
             'เวลาชำระเงิน': '',
             'หมายเหตุใบสั่งซื้อ': order.notes ?? '',
             'ข้อความจากร้านค้า': '',
-            'ค่าขนส่ง': '', // ว่างเปล่า
-            // แสดงข้อมูลที่อยู่เฉพาะแถวแรกของแต่ละ orderId
-            // แสดงจำนวนเงินเฉพาะเมื่อ COD = "ใช่"
+            'ค่าขนส่ง': '',
             'จำนวนเงินที่ต้องชำระ': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
-            'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
+            'นามสกุลผู้รับสินค้า': '',
             'หมายเลขโทรศัพท์': displayPhone,
             'หมายเลขมือถือ': displayPhone,
             'สถานที่': index === 0 ? address.street : '',
@@ -881,14 +817,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'จังหวัด': index === 0 ? address.province : '',
             'รหัสไปรษณีย์': index === 0 ? address.postalCode : '',
             'ประเทศ': index === 0 ? 'ไทย' : '',
-            // ไม่ใส่ข้อมูลในคอลัม "รับสินค้าที่ร้านหรือไม่" ทุกกรณี
             'รับสินค้าที่ร้านหรือไม่': '',
-            'รหัสสินค้าบนแพลตฟอร์ม': '', // ว่างเปล่า
+            'รหัสสินค้าบนแพลตฟอร์ม': '',
             'รหัสสินค้าในระบบ': item.quantity > 1 ? `${product?.sku ?? ''}-${item.quantity}` : (product?.sku ?? ''),
             'ชื่อสินค้า': `${item.productName} ${item.quantity}`,
             'สีและรูปแบบ': '',
             'จำนวน': 1,
-            // แสดงราคาสินค้าต่อหน่วยเฉพาะเมื่อ COD = "ใช่"
             'ราคาสินค้าต่อหน่วย': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'บริษัทขนส่ง': order.shippingProvider || '',
             'หมายเลขขนส่ง': order.trackingNumbers.join(', '),
@@ -903,21 +837,50 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           orderRows.push(headers.map(header => rowData[header]));
         });
       });
-
       return orderRows;
     });
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(escapeCsvCell).join(','))
-    ].join('\n');
+    // Build HTML for XLS
+    // Use mso-number-format:"\@" to force text
+    const tableHeader = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    const tableBody = rows.map(row =>
+      `<tr>${row.map(cell => `<td style="mso-number-format:'\\@';">${String(cell ?? '')}</td>`).join('')}</tr>`
+    ).join('');
 
-    const fullContent = '\uFEFF' + csvContent;
-    const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
+    const htmlContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Orders</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+      </head>
+      <body>
+        <table>
+          <thead>${tableHeader}</thead>
+          <tbody>${tableBody}</tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    const filename = `orders_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    // Use .xls extension for HTML format
+    const filename = `orders_export_${new Date().toISOString().slice(0, 10)}.xls`;
     link.setAttribute("download", filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
@@ -926,7 +889,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     URL.revokeObjectURL(url);
 
     try {
-      const b64 = btoa(unescape(encodeURIComponent(fullContent)));
+      const b64 = btoa(unescape(encodeURIComponent(htmlContent)));
       await createExportLog({
         filename,
         contentBase64: b64,
