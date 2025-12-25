@@ -883,8 +883,10 @@ model pages {
   company_id    Int
   active        Boolean   @default(true)
   still_in_list Boolean   @default(true)
-  user_count    Int       @default(0)
-  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  user_count        Int       @default(0)
+  display_name      String?   @db.VarChar(255)
+  sell_product_type String?   @db.VarChar(255)
+  created_at        DateTime? @default(now()) @db.Timestamp(0)
   updated_at    DateTime? @default(now()) @db.Timestamp(0)
 
   @@index([page_id], map: "idx_page_id")

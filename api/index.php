@@ -3989,9 +3989,11 @@ function handle_pages(PDO $pdo, ?string $id): void {
             case 'PATCH':
                 if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
                 $in = json_input();
-                $stmt = $pdo->prepare('UPDATE pages SET name=COALESCE(?, name), platform=COALESCE(?, platform), url=COALESCE(?, url), company_id=COALESCE(?, company_id), active=COALESCE(?, active) WHERE id=?');
+                $stmt = $pdo->prepare('UPDATE pages SET name=COALESCE(?, name), display_name=COALESCE(?, display_name), sell_product_type=COALESCE(?, sell_product_type), platform=COALESCE(?, platform), url=COALESCE(?, url), company_id=COALESCE(?, company_id), active=COALESCE(?, active) WHERE id=?');
                 $stmt->execute([
                     $in['name'] ?? null,
+                    $in['display_name'] ?? null,
+                    $in['sell_product_type'] ?? null,
                     $in['platform'] ?? null,
                     $in['url'] ?? null,
                     $in['companyId'] ?? null,

@@ -328,6 +328,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [newPageName, setNewPageName] = useState("");
   const [newPagePlatform, setNewPagePlatform] = useState("");
   const [newPageUrl, setNewPageUrl] = useState("");
+  const [newPageSellProductType, setNewPageSellProductType] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
   const [disablePancakeLoading, setDisablePancakeLoading] = useState(false);
 
@@ -839,7 +840,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <tr key={p.id} className="border-t">
                 <td className="py-2 px-3 flex items-center gap-2">
                   <PageIconFront platform={p.platform || "unknown"} />
-                  {p.name}
+                  {p.display_name || p.name}
                 </td>
                 <td className="py-2 px-3">
                   <PageTypeDisplay pageType={p.page_type} />
@@ -1002,6 +1003,23 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   placeholder="https://facebook.com/pagename"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  ประเภทสินค้าที่ขาย (Sell Product Type)
+                </label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={newPageSellProductType}
+                  onChange={(e) => setNewPageSellProductType(e.target.value)}
+                >
+                  <option value="">(ไม่ระบุ)</option>
+                  <option value="clothes">เสื้อผ้า</option>
+                  <option value="krua">ครัว</option>
+                  <option value="kaset">เกษตร</option>
+                  <option value="phra">พระ</option>
+                  <option value="aomush">Aomush</option>
+                </select>
+              </div>
               <div className="flex justify-end space-x-2">
                 <button
                   className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
@@ -1040,6 +1058,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                             name: newPageName.trim(),
                             platform: newPagePlatform,
                             url: newPageUrl.trim() || null,
+                            sell_product_type: newPageSellProductType || null,
                             company_id: currentUser.companyId,
                           }),
                         },
@@ -1340,14 +1359,34 @@ const ManagePageButton: React.FC<{
 }> = ({ page, onSaved }) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(page.name);
+  const [displayName, setDisplayName] = useState(page.display_name || page.name);
+  const [sellProductType, setSellProductType] = useState(page.sell_product_type || "");
   const [url, setUrl] = useState(page.url || "");
   const [saving, setSaving] = useState(false);
+
+  const isManual = page.page_type === 'manual';
+
+  // For manual pages, syncing display_name to name
+  const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = e.target.value;
+    setDisplayName(newName);
+    if (isManual) {
+      setName(newName);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updatePage(page.id, { name, url: url || undefined });
-      onSaved({ ...page, name, url: url || undefined });
+      const payload: any = {
+        name,
+        display_name: displayName,
+        sell_product_type: sellProductType,
+        url: url || undefined
+      };
+
+      await updatePage(page.id, payload);
+      onSaved({ ...page, ...payload });
       setOpen(false);
     } catch (error) {
       console.error("Failed to update page:", error);
@@ -1368,14 +1407,45 @@ const ManagePageButton: React.FC<{
       {open && (
         <Modal title={`จัดการเพจ: ${page.name}`} onClose={() => setOpen(false)}>
           <div className="space-y-4">
+            {!isManual && (
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ (System Name)</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50"
+                  value={name}
+                  disabled={true}
+                  title="ชื่อเพจ Pancake ไม่สามารถแก้ไขได้"
+                />
+                <p className="text-xs text-orange-500 mt-1">* ชื่อเพจจาก Pancake ไม่สามารถแก้ไขได้</p>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+              <label className="block text-xs text-gray-500 mb-1">{isManual ? "ชื่อเพจ" : "ชื่อที่แสดง (Display Name)"}</label>
               <input
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={displayName}
+                onChange={handleDisplayNameChange}
+                placeholder="ชื่อที่ใช้แสดงในระบบ"
               />
             </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ประเภทสินค้าที่ขาย (Sell Product Type)</label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                value={sellProductType}
+                onChange={(e) => setSellProductType(e.target.value)}
+              >
+                <option value="">(ไม่ระบุ)</option>
+                <option value="clothes">เสื้อผ้า</option>
+                <option value="krua">ครัว</option>
+                <option value="kaset">เกษตร</option>
+                <option value="phra">พระ</option>
+                <option value="aomush">Aomush</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-xs text-gray-500 mb-1">URL</label>
               <input
