@@ -1134,6 +1134,31 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
   };
 
+  // Update existing product ads log
+  const updateProductAdsLog = async (id: number, updates: any) => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_update.php`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id,
+          user_id: currentUser.id,
+          ...updates,
+        }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error("Failed to update product ads log:", e);
+      return { success: false, error: "Failed to update" };
+    }
+  };
+
   // Handle edit log save
   const handleEditLogSave = async (updatedLog: any) => {
     // Only send fields that are allowed to be updated
@@ -1144,35 +1169,26 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       clicks: Number(updatedLog.clicks),
     };
 
-    const res = await updateAdsLog(updatedLog.id, updates);
-    if (res.success) {
+    let res;
+    if (adsHistoryMode === 'product' || updatedLog.product_id) {
+      res = await updateProductAdsLog(updatedLog.id, updates);
+    } else {
+      res = await updateAdsLog(updatedLog.id, updates);
+    }
+
+    if (res && res.success) {
       alert("แก้ไขข้อมูลเรียบร้อยแล้ว");
       setIsEditModalOpen(false);
       setEditingLog(null);
-      // Refresh current page
-      const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
 
-      // Use same user filter logic as main useEffect
-      let userFilter: number | number[] | undefined;
-      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
-        userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
+      // Refresh data based on mode
+      if (adsHistoryMode === 'product' || updatedLog.product_id) {
+        loadProductAdsLogs();
       } else {
-        userFilter = currentUser.id;
+        loadPageAdsLogs();
       }
-
-      const result = await loadAdsLogs(
-        adsHistorySelectedPages.length > 0
-          ? adsHistorySelectedPages
-          : undefined,
-        adsHistoryDateRange.start || undefined,
-        adsHistoryDateRange.end || undefined,
-        userFilter,
-        adsHistoryPageSize,
-        offset,
-      );
-      setAdsLogs(result.data || []);
     } else {
-      alert("เกิดข้อผิดพลาด: " + (res.error || "Failed to update"));
+      alert("เกิดข้อผิดพลาด: " + (res?.error || "Failed to update"));
     }
   };
 
@@ -3492,7 +3508,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                  Page Ads
+                  รายเพจ
                 </button>
                 <button
                   onClick={() => setAdsHistoryMode('product')}
@@ -3501,7 +3517,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                  Product Ads
+                  รายสินค้า
                 </button>
               </div>
             </div>
@@ -4024,6 +4040,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                 <th className="px-3 py-1 text-right">Imp.</th>
                                                 <th className="px-3 py-1 text-right">Reach</th>
                                                 <th className="px-3 py-1 text-right">Clicks</th>
+                                                {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin Control') && <th className="px-3 py-1 text-center">จัดการ</th>}
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -4036,6 +4053,17 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                   <td className="px-3 py-1 text-right">{Number(l.impressions).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.reach).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.clicks).toLocaleString()}</td>
+                                                  {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin Control') && (
+                                                    <td className="px-3 py-1 text-center">
+                                                      <button
+                                                        onClick={() => { setEditingLog(l); setIsEditModalOpen(true); }}
+                                                        className="text-blue-600 hover:text-blue-800"
+                                                        title="แก้ไข"
+                                                      >
+                                                        <Pencil className="w-3 h-3" />
+                                                      </button>
+                                                    </td>
+                                                  )}
                                                 </tr>
                                               ))}
                                             </tbody>
@@ -4212,16 +4240,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      เพจ
+                      {editingLog.product_id ? "สินค้า" : "เพจ"}
                     </label>
                     <input
                       type="text"
                       value={
-                        editingLog.page_name ||
-                        pages.find(
-                          (p) => p.id === Number(editingLog.page_id),
-                        )?.name ||
-                        editingLog.page_id
+                        editingLog.product_id
+                          ? `${editingLog.product_sku || ''} ${editingLog.product_name || ''}`
+                          : (editingLog.page_name ||
+                            pages.find(
+                              (p) => p.id === Number(editingLog.page_id),
+                            )?.name ||
+                            editingLog.page_id)
                       }
                       disabled
                       className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
