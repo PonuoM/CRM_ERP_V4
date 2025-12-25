@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, User, UserRole } from "@/types";
 import Modal from "@/components/Modal";
-import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
+import { createPage, updatePage, listPages, listPlatforms, getSellProductTypes } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
 import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
@@ -523,11 +523,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
       });
 
       setItems(allPagesData);
-      console.log("Fetched all pages:", allPagesData);
-      console.log(
-        "Pages with still_in_list = 0:",
-        allPagesData.filter((p) => p.still_in_list === 0),
-      );
     } catch (error) {
       console.error("Error fetching pages:", error);
       // Use initial pages if API fails
@@ -549,7 +544,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     const filtered = items.filter(
       (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
     );
-    console.log("Hidden pages:", filtered);
     return filtered;
   }, [items, currentUser?.companyId]);
 
@@ -557,12 +551,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const pagesForCurrentCompany = useMemo(() => {
     const filteredByCompany = items.filter(
       (p) => p.company_id === currentUser?.companyId,
-    );
-    console.log(
-      "All pages for company:",
-      currentUser?.companyId,
-      "count:",
-      filteredByCompany.length,
     );
     return filteredByCompany;
   }, [items, currentUser?.companyId]);
@@ -577,7 +565,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     const filtered = items.filter(
       (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
     );
-    console.log("Hidden pages:", filtered);
     return filtered;
   }, [items, currentUser?.companyId]);
 
@@ -739,7 +726,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                 setDisablePancakeLoading(true);
                 try {
                   const response = await fetch(
-                    "api/Marketing_DB/disable_pancake_pages.php",
+                    `${resolveApiBasePath()}/Marketing_DB/disable_pancake_pages.php`,
                     {
                       method: "POST",
                       headers: {
@@ -867,7 +854,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       onChange={async () => {
                         try {
                           const response = await fetch(
-                            "api/Marketing_DB/toggle_page_status.php",
+                            `${resolveApiBasePath()}/Marketing_DB/toggle_page_status.php`,
                             {
                               method: "POST",
                               headers: {
@@ -1007,18 +994,10 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                 <label className="block text-xs text-gray-500 mb-1">
                   ประเภทสินค้าที่ขาย (Sell Product Type)
                 </label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm"
+                <SellProductTypeInput
                   value={newPageSellProductType}
-                  onChange={(e) => setNewPageSellProductType(e.target.value)}
-                >
-                  <option value="">(ไม่ระบุ)</option>
-                  <option value="clothes">เสื้อผ้า</option>
-                  <option value="krua">ครัว</option>
-                  <option value="kaset">เกษตร</option>
-                  <option value="phra">พระ</option>
-                  <option value="aomush">Aomush</option>
-                </select>
+                  onChange={setNewPageSellProductType}
+                />
               </div>
               <div className="flex justify-end space-x-2">
                 <button
@@ -1406,7 +1385,7 @@ const ManagePageButton: React.FC<{
       </button>
       {open && (
         <Modal title={`จัดการเพจ: ${page.name}`} onClose={() => setOpen(false)}>
-          <div className="space-y-4">
+          <div className="space-y-4 text-left">
             {!isManual && (
               <div>
                 <label className="block text-xs text-gray-500 mb-1">ชื่อ (System Name)</label>
@@ -1432,18 +1411,10 @@ const ManagePageButton: React.FC<{
 
             <div>
               <label className="block text-xs text-gray-500 mb-1">ประเภทสินค้าที่ขาย (Sell Product Type)</label>
-              <select
-                className="w-full border rounded-md px-3 py-2 text-sm"
+              <SellProductTypeInput
                 value={sellProductType}
-                onChange={(e) => setSellProductType(e.target.value)}
-              >
-                <option value="">(ไม่ระบุ)</option>
-                <option value="clothes">เสื้อผ้า</option>
-                <option value="krua">ครัว</option>
-                <option value="kaset">เกษตร</option>
-                <option value="phra">พระ</option>
-                <option value="aomush">Aomush</option>
-              </select>
+                onChange={setSellProductType}
+              />
             </div>
 
             <div>
@@ -1475,5 +1446,57 @@ const ManagePageButton: React.FC<{
         </Modal>
       )}
     </>
+  );
+};
+
+const SellProductTypeInput: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+  const [options, setOptions] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  useEffect(() => {
+    getSellProductTypes().then((types) => {
+      if (Array.isArray(types)) {
+        setOptions(types);
+      }
+    });
+  }, []);
+
+  const filteredOptions = options.filter(
+    (opt) => opt && opt.toLowerCase().includes(value.toLowerCase())
+  );
+
+  return (
+    <div className="relative">
+      <input
+        className="w-full border rounded-md px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setShowDropdown(true);
+        }}
+        onFocus={() => setShowDropdown(true)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder="ค้นหาหรือพิมพ์ใหม่..."
+      />
+      {showDropdown && filteredOptions.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
+          {filteredOptions.map((opt) => (
+            <div
+              key={opt}
+              className="px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer"
+              onClick={() => {
+                onChange(opt);
+                setShowDropdown(false);
+              }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
