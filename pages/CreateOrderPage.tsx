@@ -1168,8 +1168,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         productId: prod.id,
 
-        promotionId: promo.id,
-
         parentItemId: parentId,
 
         isPromotionParent: false,
@@ -4896,7 +4894,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
   const calcPromotionSetPrice = (promo: Promotion) => {
     const items = Array.isArray(promo?.items) ? promo.items : [];
-
     let sum = 0;
 
     for (const part of items as any[]) {
@@ -4910,52 +4907,28 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         );
 
       const qty = toNumber(part.quantity, 1);
-
       const isFree =
         toBool((part as any).isFreebie) || toBool((part as any).is_freebie);
 
       if (isFree) {
-        // ของแถม ไม่นับราคาในราคารวมของชุด
-
         continue;
       }
 
       const override = toNumber(
         (part as any).price_override ?? (part as any).priceOverride,
-
         NaN,
       );
 
       const joinedPrice = toNumber((part as any).product_price, NaN);
-
       const basePrice = toNumber(prod?.price, 0);
 
-      // ตรวจสอบ price_override:
-
-      // - ถ้า override >= basePrice (หรือไม่มี basePriceชัดเจน) และมีจำนวน > 1
-
-      //   ให้ตรวจสอบว่าเป็น "ราคารวมของกลุ่มนี้" (ไม่คูณ qty)
-
-      // - มิฉะนั้น ใช้เป็น "ราคาต่อชิ้น" แล้วคูณด้วย qty
-
       if (Number.isFinite(override)) {
-        const comparator =
-          basePrice > 0
-            ? basePrice
-            : Number.isFinite(joinedPrice)
-              ? joinedPrice
-              : 0;
-
-        if (qty > 1 && comparator > 0 && override >= comparator) {
-          sum += override; // ราคาทั้งกลุ่ม
-        } else {
-          sum += override * qty; // ราคาต่อชิ้น
-        }
+        // User requested to sum all price overrides directly
+        // Assuming price_override is TOTAL PRICE for that line
+        sum += override;
       } else {
-        // ไม่มี override -> ใช้ราคาสินค้า (joinedPrice หรือ basePrice) x qty
-
+        // Fallback to product price
         const unit = Number.isFinite(joinedPrice) ? joinedPrice : basePrice;
-
         sum += unit * qty;
       }
     }
@@ -5097,8 +5070,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
         productId: prod.id,
 
-        promotionId: promo.id,
-
         parentItemId: parentId, // Link to parent
 
         isPromotionParent: false,
@@ -5113,7 +5084,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       newLockedIds.push(newId);
 
       if (!isFreeFlag) {
-        totalSetPrice += itemPrice * qty;
+        // Updated logic: if price override exists, it's the total price for the line (do not multiply by qty)
+        if (part.price_override !== null && part.price_override !== undefined) {
+          totalSetPrice += Number(part.price_override);
+        } else {
+          totalSetPrice += itemPrice * qty;
+        }
       }
 
       // Totals are taken from child items; parent stays 0
@@ -5358,14 +5334,27 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
       const isFreeFlag = !!part.isFreebie || !!part.is_freebie;
 
       // IMPORTANT: Always use price_override for promotion items if available
-
       // If price_override is null or 0 and item is not a freebie, use the regular product price
 
+      const priceOverride = part.price_override;
+      const productPrice = prod.price;
+
+      // Calculate item price for summation
       const itemPrice = isFreeFlag
         ? 0
-        : part.price_override !== null && part.price_override !== undefined
-          ? Number(part.price_override)
-          : prod.price;
+        : priceOverride !== null && priceOverride !== undefined
+          ? Number(priceOverride)
+          : productPrice;
+
+      // Add to total promotion price (quantity * unit price)
+      if (!isFreeFlag) {
+        if (priceOverride !== null && priceOverride !== undefined) {
+          // User requested NOT to multiply by quantity for overrides
+          totalPromotionPrice += Number(priceOverride);
+        } else {
+          totalPromotionPrice += (itemPrice * qty);
+        }
+      }
 
       // Create a separate line item for each product in the promotion
 
@@ -5387,8 +5376,6 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         boxNumber: 1,
 
         productId: prod.id,
-
-        promotionId: promo.id,
 
         parentItemId: parentId, // Link to parent
 
@@ -6639,23 +6626,48 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       ค้นหาลูกค้า (ชื่อ / เบอร์โทร)
                     </label>
 
-                    <input
-                      type="text"
-                      ref={customerSearchInputRef}
-                      value={searchTerm}
-                      onChange={(e) => {
-                        clearValidationErrorFor("customerSelector");
+                    <div className="relative">
+                      <input
+                        type="text"
+                        ref={customerSearchInputRef}
+                        value={searchTerm}
+                        onChange={(e) => {
+                          clearValidationErrorFor("customerSelector");
 
-                        setSearchTerm(e.target.value);
+                          setSearchTerm(e.target.value);
 
-                        setSelectedCustomer(null);
+                          setSelectedCustomer(null);
 
-                        setIsCreatingNewCustomer(false);
-                      }}
-                      placeholder="พิมพ์เพื่อค้นหา..."
-                      className={commonInputClass}
-                      disabled={loadingCustomerData}
-                    />
+                          setIsCreatingNewCustomer(false);
+                        }}
+                        placeholder="พิมพ์เพื่อค้นหา..."
+                        className={`${commonInputClass} ${isSearchingCustomers ? 'pr-10' : ''}`}
+                        disabled={loadingCustomerData}
+                      />
+                      {isSearchingCustomers && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <svg
+                            className="animate-spin h-5 w-5 text-blue-600"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                              fill="none"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
 
                     {loadingCustomerData && (
                       <div className="mt-2 text-sm text-blue-600 flex items-center">
@@ -9093,11 +9105,75 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         onClick={() => {
                                           const current = orderData.items || [];
                                           const id = item.id;
-                                          const next = current.filter(
+
+                                          // 1. Filter out deleted items
+                                          const nextItems = current.filter(
                                             (it) =>
-                                              it.id !== id && it.parentItemId !== id,
+                                              it.id !== id &&
+                                              it.parentItemId !== id,
                                           );
-                                          updateOrderData("items", next);
+
+                                          // 2. Re-index boxes
+                                          const nonChildItems = nextItems.filter(
+                                            (it) => !it.parentItemId,
+                                          );
+                                          const existingBoxes = Array.from(
+                                            new Set(
+                                              nonChildItems.map((it) =>
+                                                Number(it.boxNumber || 1),
+                                              ),
+                                            ),
+                                          ).sort(
+                                            (a: number, b: number) => a - b,
+                                          );
+
+                                          const boxMap = new Map<
+                                            number,
+                                            number
+                                          >();
+                                          existingBoxes.forEach(
+                                            (oldBox, idx) =>
+                                              boxMap.set(oldBox, idx + 1),
+                                          );
+
+                                          const reindexedItems = nextItems.map(
+                                            (it) => ({
+                                              ...it,
+                                              boxNumber:
+                                                boxMap.get(
+                                                  Number(it.boxNumber || 1),
+                                                ) || 1,
+                                            }),
+                                          );
+
+                                          // 3. Update boxes array
+                                          const currentBoxes =
+                                            orderData.boxes || [];
+                                          const reindexedBoxes = currentBoxes
+                                            .filter((b) =>
+                                              boxMap.has(b.boxNumber),
+                                            )
+                                            .map((b) => ({
+                                              ...b,
+                                              boxNumber: boxMap.get(
+                                                b.boxNumber,
+                                              )!,
+                                            }))
+                                            .sort(
+                                              (a: any, b: any) =>
+                                                (a.boxNumber || 1) -
+                                                (b.boxNumber || 1),
+                                            );
+
+                                          // 4. Update state
+                                          updateOrderData(
+                                            "items",
+                                            reindexedItems,
+                                          );
+                                          updateOrderData(
+                                            "boxes",
+                                            reindexedBoxes,
+                                          );
                                         }}
                                         className="text-red-500 hover:text-red-700"
                                       >

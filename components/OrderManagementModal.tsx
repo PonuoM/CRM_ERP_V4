@@ -720,7 +720,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     setSlips(nextSlips);
 
     setSlipPreview(order.slipUrl || (nextSlips[0]?.url ?? null));
-  }, [order]);
+  }, [order.id]);
 
   const isModifiable = useMemo(() => {
     return [OrderStatus.Pending, OrderStatus.AwaitingVerification].includes(
@@ -827,12 +827,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const promotion = promotions.find((p) => p.id === Number(promotionId));
     if (!promotion || !promotion.items || promotion.items.length === 0) return;
 
-    // Calculate total price from non-freebie items
+    // Calculate total price from summing all items' price_override or product_price
     const totalPrice = promotion.items.reduce((sum: number, item: any) => {
       const isFreebie = item.isFreebie || item.is_freebie;
       if (isFreebie) return sum;
+
+      const qty = Number(item.quantity || 1);
       const priceOverride = item.priceOverride ?? item.price_override;
-      return sum + (priceOverride ? Number(priceOverride) : 0);
+
+      if (priceOverride !== null && priceOverride !== undefined) {
+        // User requested NOT to multiply by quantity for overrides
+        return sum + Number(priceOverride);
+      }
+
+      // Fallback to product price if no override
+      const productPrice = item.productPrice ?? item.product_price;
+      return sum + ((Number(productPrice) || 0) * qty);
     }, 0);
 
     // Create parent promotion item
@@ -864,7 +874,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       isFreebie: item.isFreebie || item.is_freebie || false,
       boxNumber: 1,
       creatorId: currentUser.id,
-      promotionId: promotion.id,
       parentItemId: parentItemId, // Link to parent
     }));
 
@@ -877,43 +886,65 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   };
 
   const handleRemoveItem = (itemToRemove: any) => {
-    // Find the actual index in the unsorted currentOrder.items array
-    const actualIndex = currentOrder.items.findIndex((item) => {
-      // Match by unique combination of boxNumber and productId
-      const sameBox =
-        (item.boxNumber || (item as any).box_number) ===
-        (itemToRemove.boxNumber || (itemToRemove as any).box_number);
-      const sameProduct = item.productId === itemToRemove.productId;
-      return sameBox && sameProduct;
-    });
-
-    if (actualIndex === -1) {
-      console.error("Item to remove not found in currentOrder.items");
-      return;
-    }
-
     setCurrentOrder((prev) => {
-      const newItems = [...prev.items];
-      newItems.splice(actualIndex, 1);
+      // 1. Identify all items to remove (the item itself + its children if it's a parent)
+      const itemsToRemoveIds = new Set<any>();
+      itemsToRemoveIds.add(itemToRemove.id);
 
-      let newBoxes = prev.boxes || [];
-      // If the removed item had a box number, checks if any other items remain in that box
-      if (itemToRemove && itemToRemove.boxNumber) {
-        const hasItemsInBox = newItems.some(
-          (i) => i.boxNumber === itemToRemove.boxNumber,
-        );
-        if (!hasItemsInBox) {
-          // No items left in this box, remove it
-          newBoxes = newBoxes.filter(
-            (b) => b.boxNumber !== itemToRemove.boxNumber,
-          );
-        }
+      if (itemToRemove.isPromotionParent) {
+        prev.items.forEach((it: any) => {
+          if (it.parentItemId === itemToRemove.id) {
+            itemsToRemoveIds.add(it.id);
+          }
+        });
       }
 
-      // Recalculate COD total if needed
+      // 2. Filter out the items
+      const newItems = prev.items.filter((it) => {
+        const shouldRemove =
+          itemsToRemoveIds.has(it.id) ||
+          itemsToRemoveIds.has(String(it.id)) ||
+          itemsToRemoveIds.has(Number(it.id));
+        return !shouldRemove;
+      });
+
+      // 3. Re-index box numbers
+      // Get all unique box numbers currently in use by remaining non-child items
+      const nonChildItems = newItems.filter((it: any) => !it.parentItemId);
+      const existingBoxes = Array.from(
+        new Set(nonChildItems.map((it) => Number(it.boxNumber || 1))),
+      ).sort((a: number, b: number) => a - b);
+
+      // Create a map from Old Box Number -> New Box Number (1, 2, 3...)
+      const boxMap = new Map<number, number>();
+      existingBoxes.forEach((oldBox, index) => {
+        boxMap.set(oldBox, index + 1);
+      });
+
+      // Update box numbers for ALL remaining items
+      const reindexedItems = newItems.map((it) => {
+        const oldBox = Number(it.boxNumber || 1);
+        const newBox = boxMap.get(oldBox) || 1;
+        return {
+          ...it,
+          boxNumber: newBox,
+        };
+      });
+
+      // 4. Update boxes array (preserve COD/Tracking info for existing boxes, move them to new index)
+      const existingBoxesConfig = prev.boxes || [];
+      const reindexedBoxes = existingBoxesConfig
+        .filter((b) => boxMap.has(b.boxNumber)) // Keep only boxes that still have items
+        .map((b) => ({
+          ...b,
+          boxNumber: boxMap.get(b.boxNumber)!,
+        }))
+        .sort((a, b) => a.boxNumber - b.boxNumber);
+
+      // 5. Recalculate COD total if needed
       let newCodAmount = prev.codAmount;
       if (prev.paymentMethod === PaymentMethod.COD) {
-        newCodAmount = newBoxes.reduce(
+        newCodAmount = reindexedBoxes.reduce(
           (sum, b) => sum + (b.collectionAmount ?? b.codAmount ?? 0),
           0,
         );
@@ -921,8 +952,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
       return {
         ...prev,
-        items: newItems,
-        boxes: newBoxes,
+        items: reindexedItems,
+        boxes: reindexedBoxes,
         codAmount: newCodAmount,
       };
     });
@@ -1080,7 +1111,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       try {
         const r: any = await apiFetch(`orders/${encodeURIComponent(order.id)}`);
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         const trackingDetails = Array.isArray(r.trackingDetails)
           ? r.trackingDetails
@@ -1184,9 +1217,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               isFreebie: !!(it.is_freebie ?? it.isFreebie ?? 0),
               boxNumber: Number(it.box_number ?? it.boxNumber ?? 1),
               creatorId: Number(it.creator_id ?? it.creatorId),
-              sku: it.sku,
+              sku: it.sku ?? it.promotion_sku ?? it.promotionSku ?? it.product_sku ?? it.productSku,
               parentItemId: it.parent_item_id ? Number(it.parent_item_id) : (it.parentItemId ? Number(it.parentItemId) : undefined),
               isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
+              promotionId: it.promotion_id ?? it.promotionId,
               // Augmented data
               creatorName: it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined,
             }))
@@ -2100,12 +2134,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     const nonChildItems = currentOrder.items.filter(
       (item: any) => !item.parentItemId,
     );
-    console.log("DEBUG handleSave Items:", currentOrder.items);
-    console.log("DEBUG handleSave nonChildItems:", nonChildItems);
     const boxNumbers: number[] = nonChildItems.map(
       (item) => Number(item.boxNumber || (item as any).box_number) || 1,
     );
-    console.log("DEBUG handleSave boxNumbers:", boxNumbers);
     const uniqueBoxes: number[] = [...new Set(boxNumbers)].sort(
       (a, b) => a - b,
     );
@@ -2174,7 +2205,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       boxes: boxes, // Add generated boxes array
     };
 
-    console.log("DEBUG: Calling onSave with updatedOrder", updatedOrder);
 
     setCurrentOrder(updatedOrder);
 
@@ -2350,43 +2380,42 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
         backdropClassName={backdropClassName}
       >
         <div className="space-y-4 text-sm">
-          {isModifiable && (
-            <div className="flex justify-end mb-2">
-              {!isEditing ? (
+          <div className="flex justify-end mb-2">
+            {!isEditing ? (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Edit2 size={14} className="mr-1.5" />
+                แก้ไขออเดอร์
+              </button>
+            ) : (
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                  onClick={() => {
+                    setIsEditing(false);
+
+                    setCurrentOrder(order); // Reset changes
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
                 >
-                  <Edit2 size={14} className="mr-1.5" />
-                  แก้ไขออเดอร์
+                  <X size={14} className="mr-1.5" />
+                  ยกเลิกการแก้ไข
                 </button>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => {
-                      setIsEditing(false);
 
-                      setCurrentOrder(order); // Reset changes
-                    }}
-                    className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition-colors"
-                  >
-                    <X size={14} className="mr-1.5" />
-                    ยกเลิกการแก้ไข
-                  </button>
+                <button
+                  onClick={() => {
+                    handleSave();
+                  }}
+                  className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                >
+                  <Save size={14} className="mr-1.5" />
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            )}
+          </div>
 
-                  <button
-                    onClick={() => {
-                      handleSave();
-                    }}
-                    className="flex items-center px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
-                  >
-                    <Save size={14} className="mr-1.5" />
-                    บันทึกการแก้ไข
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
           <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

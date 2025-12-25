@@ -30,33 +30,32 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
 
 
 
-    // Helper function to get promotion price from first item's price_override
+    // Helper function to get promotion price from summing all items' price_override or product_price
     const calcPromotionPrice = (promotion: Promotion): number => {
         if (!promotion.items || promotion.items.length === 0) {
             return 0;
         }
 
-        // Get the first item's price_override
-        const firstItem = promotion.items[0];
+        return promotion.items.reduce((sum, item: any) => {
+            // Check for freebie status (handle both camelCase and snake_case)
+            const isFreebie = item.isFreebie || item.is_freebie;
+            if (isFreebie) return sum;
 
-        // Try both camelCase and snake_case field names
-        const priceOverride = (firstItem as any).priceOverride ?? (firstItem as any).price_override;
+            const qty = Number(item.quantity || 1);
 
-        if (priceOverride !== null && priceOverride !== undefined) {
-            return Number(priceOverride);
-        }
+            // 1. Try price_override (camelCase or snake_case)
+            const priceOverride = item.priceOverride ?? item.price_override;
+            if (priceOverride !== null && priceOverride !== undefined) {
+                // User requested NOT to multiply by quantity for overrides
+                // Treat price_override as total price for this line item
+                return sum + Number(priceOverride);
+            }
 
-        // If price_override is null, calculate from non-freebie items
-        const totalPrice = promotion.items.reduce((sum, item: any) => {
-            if (item.isFreebie || item.is_freebie) return sum;
-            const qty = item.quantity || 0;
-            // Try both camelCase and snake_case
+            // 2. Fallback to product_price (camelCase or snake_case)
             const productPrice = item.productPrice ?? item.product_price;
             const price = productPrice ? Number(productPrice) : 0;
-            return sum + (qty * price);
+            return sum + (price * qty);
         }, 0);
-
-        return totalPrice;
     };
 
     if (!isOpen) return null;

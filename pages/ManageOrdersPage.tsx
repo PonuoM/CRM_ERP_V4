@@ -31,7 +31,7 @@ const DateFilterButton: React.FC<{ label: string, value: string, activeValue: st
   </button>
 );
 
-const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500, 9999];
 const SHIPPING_PROVIDERS = ["J&T Express", "Flash Express", "Kerry Express", "Aiport Logistic"];
 
 const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, customers, users, products, openModal, onProcessOrders, onCancelOrders, onUpdateShippingProvider }) => {
@@ -182,6 +182,51 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       setLoading(true);
       try {
+        // Helper to interpret date presets (local within effect or outside)
+        const getDeliveryDateFilter = () => {
+          // Only apply this specific filter logic for 'waitingExport' tab
+          if (activeTab !== 'waitingExport') {
+            return { start: undefined, end: undefined };
+          }
+
+          if (activeDatePreset === 'range') {
+            return {
+              start: dateRange.start || undefined,
+              end: dateRange.end || undefined
+            };
+          }
+
+          const today = new Date();
+          const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+          switch (activeDatePreset) {
+            case 'today':
+              return { start: formatDate(today), end: formatDate(today) };
+            case 'tomorrow':
+              const tmr = new Date(today);
+              tmr.setDate(tmr.getDate() + 1);
+              return { start: formatDate(tmr), end: formatDate(tmr) };
+            case 'next7days':
+              const next7 = new Date(today);
+              next7.setDate(next7.getDate() + 7);
+              return { start: formatDate(today), end: formatDate(next7) };
+            case 'next30days':
+              const next30 = new Date(today);
+              next30.setDate(next30.getDate() + 30);
+              return { start: formatDate(today), end: formatDate(next30) };
+            case 'missed':
+              // "Missed" implies delivery date before today
+              const yesterday = new Date(today);
+              yesterday.setDate(yesterday.getDate() - 1);
+              return { start: undefined, end: formatDate(yesterday) };
+            case 'all':
+            default:
+              return { start: undefined, end: undefined };
+          }
+        };
+
+        const deliveryFilters = getDeliveryDateFilter();
+
         const params: any = {
           companyId: user.companyId,
           page: currentPage,
@@ -191,8 +236,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           trackingNumber: afTracking || undefined,
           orderDateStart: afOrderDate.start || undefined,
           orderDateEnd: afOrderDate.end || undefined,
-          deliveryDateStart: afDeliveryDate.start || undefined,
-          deliveryDateEnd: afDeliveryDate.end || undefined,
+          // Merge explicit delivery date filter (from tab) with advanced filter if needed.
+          // Note: Tab filter (specific date bar) takes precedence if set, or we can merge logic.
+          // Here we assume if 'waitingExport' tab is active, we use its specific bar.
+          // If advanced filter is ALSO used, they might conflict, but advanced filter is 'afDeliveryDate'.
+          // Let's allow the specific bar to override if it has values, or rely on advanced filter if bar is 'all'.
+          deliveryDateStart: deliveryFilters.start || afDeliveryDate.start || undefined,
+          deliveryDateEnd: deliveryFilters.end || afDeliveryDate.end || undefined,
+
           paymentMethod: afPaymentMethod || undefined,
           paymentStatus: afPaymentStatus || undefined,
           customerName: afCustomerName || undefined,
@@ -258,17 +309,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             boxes: r.boxes || [],
             reconcileAction: r.reconcile_action,
             // Customer information from API
-            customerInfo: r.customer_first_name ? {
-              firstName: r.customer_first_name,
-              lastName: r.customer_last_name,
-              phone: r.customer_phone,
-              address: {
-                street: r.customer_street || '',
-                subdistrict: r.customer_subdistrict || '',
-                district: r.customer_district || '',
-                province: r.customer_province || '',
-                postalCode: r.customer_postal_code || '',
-              }
+            // Use customer_id or phone as trigger, as first_name might be empty for some leads
+            customerInfo: (r.customer_id || r.customer_phone || r.phone) ? {
+              firstName: r.customer_first_name || '',
+              lastName: r.customer_last_name || '',
+              phone: r.phone || r.customer_phone || '',
+              street: r.customer_street || '',
+              subdistrict: r.customer_subdistrict || '',
+              district: r.customer_district || '',
+              province: r.customer_province || '',
+              postalCode: r.customer_postal_code || '',
             } : undefined,
           }));
 
@@ -298,7 +348,27 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     return () => {
       controller.abort();
     };
-  }, [user?.companyId, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, refreshCounter]);
+  }, [
+    user?.companyId,
+    currentPage,
+    itemsPerPage,
+    activeTab,
+    afOrderId,
+    afTracking,
+    afOrderDate.start,
+    afOrderDate.end,
+    afDeliveryDate.start,
+    afDeliveryDate.end,
+    afPaymentMethod,
+    afPaymentStatus,
+    afCustomerName,
+    afCustomerPhone,
+    refreshCounter,
+    // Add dependencies for date filters logic
+    activeDatePreset,
+    dateRange.start,
+    dateRange.end
+  ]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -533,6 +603,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               province: r.province || '',
               postalCode: r.postal_code || '',
             },
+            customerInfo: {
+              firstName: r.customer?.first_name || r.customer_first_name || '',
+              lastName: r.customer?.last_name || r.customer_last_name || '',
+              phone: r.phone || r.customer_phone || r.customer?.phone || '',
+              street: r.customer?.street || r.customer_street || '',
+              subdistrict: r.customer?.subdistrict || r.customer_subdistrict || '',
+              district: r.customer?.district || r.customer_district || '',
+              province: r.customer?.province || r.customer_province || '',
+              postalCode: r.customer?.postal_code || r.customer_postal_code || '',
+            },
             items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
               id: Number(it.id ?? i + 1),
               productName: String(it.product_name ?? ''),
@@ -604,7 +684,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     ];
 
     const escapeCsvCell = (cellData: any): string => {
-      const str = String(cellData ?? '');
+      // Prepend tab to force Excel to treat as text
+      const str = `\t${String(cellData ?? '')}`;
       // Use standard CSV escaping: wrap in quotes if contains comma, quote, or newline
       if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
         return `"${str.replace(/"/g, '""')}"`;
@@ -613,14 +694,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     };
 
     const rows = selectedOrders.flatMap(order => {
-      // Match customer by pk (customer_id) or id (string)
-      const customer = customers.find(c => {
+      // Prioritize customer info embedded in the order (from API join), then fallback to customers list
+      const customer = order.customerInfo || customers.find(c => {
         if (c.pk && typeof order.customerId === 'number') {
           return c.pk === order.customerId;
         }
         return String(c.id) === String(order.customerId) ||
           String(c.pk) === String(order.customerId);
       });
+
       // Match seller by id (ensure type compatibility)
       const seller = users.find(u => {
         if (!order.creatorId) return false;
@@ -643,7 +725,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       // Group items by boxId (referencing order.boxes)
       const itemsByOrderId = new Map<string, typeof order.items>();
 
-      order.items.forEach(item => {
+      // Deduplicate items by id to prevent duplicate rows in CSV
+      const uniqueItems = Array.from(
+        new Map(order.items.map(item => [item.id, item])).values()
+      );
+
+      uniqueItems.forEach(item => {
         const boxNum = item.boxNumber || (item as any).box_number || 1;
         const match = (order.boxes || []).find(b => ((b as any).boxNumber ?? (b as any).box_number) === boxNum);
 
@@ -700,19 +787,30 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               String(b.subOrderId ?? b.sub_order_id ?? "") === String(onlineOrderId),
           );
 
-          let orderIdTotalAmount: string | number = "";
+          let orderIdTotalAmount: string | number = 0;
 
           if (order.paymentMethod === PaymentMethod.COD) {
-            // สำหรับ COD ใช้ค่าจาก box
-            orderIdTotalAmount = boxForThisOrder && typeof boxForThisOrder.codAmount === "number"
-              ? boxForThisOrder.codAmount
-              : 0;
-          } else if (order.paymentMethod === PaymentMethod.Transfer || order.paymentMethod === PaymentMethod.PayAfter) {
-            // สำหรับ Transfer และ PayAfter ใช้ totalAmount หารด้วยจำนวน orderId
-            const totalOrderIds = itemsByOrderId.size;
-            orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
+            // สำหรับ COD ใช้ค่าจาก box ถ้ามี ถ้าไม่มีใช้จาก order.codAmount (fallback)
+            if (boxForThisOrder && typeof boxForThisOrder.codAmount === "number") {
+              orderIdTotalAmount = boxForThisOrder.codAmount;
+            } else {
+              // Fallback for single box or missing box data
+              // If it's the first box (index 0) or single item set, use order.codAmount
+              // We need to be careful not to duplicate if multiple items exist for same order logic
+              // But here we are iterating items. orderIdTotalAmount is per 'orderId' (onlineOrderId)
+              // If we are at 'index === 0' of this onlineOrderId group, we decide value.
+              // Here we just calc value.
+              // If strictly box based, and box missing, use main order codAmount?
+              // Only if this onlineOrderId matches main order id
+              if (onlineOrderId === order.id || onlineOrderId === `${order.id}-1`) {
+                orderIdTotalAmount = order.codAmount ?? order.totalAmount ?? 0;
+              }
+            }
           } else {
-            // สำหรับ payment method อื่นๆ ใช้ totalAmount หารด้วยจำนวน orderId
+            // For Transfer/Other
+            // If user implies "Amount to Pay" should be shown even for Transfer (e.g. Total Amount),
+            // then we should populate it. BUT the column is conditionally hidden by 'codValue' later.
+            // Let's populate the value correctly here first.
             const totalOrderIds = itemsByOrderId.size;
             orderIdTotalAmount = totalOrderIds > 0 ? (order.totalAmount || 0) / totalOrderIds : (order.totalAmount || 0);
           }
@@ -722,10 +820,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const boxNumber = boxNumberMatch ? parseInt(boxNumberMatch[1], 10) : null;
 
           // สร้างชื่อผู้รับพร้อมนามสกุลและ (กล่องที่ X) ถ้ามี boxNumber
+          // Use Shipping Address Recipient Name first, then fallback to Customer Name
           let recipientName = '';
           if (index === 0) {
-            const firstName = customer?.firstName ?? '';
-            const lastName = customer?.lastName ?? '';
+            const firstName = address?.recipientFirstName || customer?.firstName || '';
+            const lastName = address?.recipientLastName || customer?.lastName || '';
             const fullName = `${firstName} ${lastName}`.trim();
 
             if (fullName && boxNumber !== null) {
@@ -753,6 +852,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const product = item.productId ? products.find(p => p.id === item.productId) : null;
           const shopName = product?.shop ?? 'N/A';
 
+          // Use phone from Customer Info (most reliable for order)
+          const displayPhone = index === 0 ? (customer?.phone ? ((customer.phone.startsWith('0') || customer.phone.startsWith('+')) ? customer.phone : `0${customer.phone}`) : '') : '';
+
           const rowData: { [key: string]: string | number | undefined } = {
             // แสดงหมายเลขออเดอร์ออนไลน์เฉพาะแถวแรกของแต่ละ orderId
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
@@ -771,8 +873,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             'จำนวนเงินที่ต้องชำระ': (index === 0 && codValue === 'ใช่') ? orderIdTotalAmount : '',
             'ผู้รับสินค้า': recipientName,
             'นามสกุลผู้รับสินค้า': '', // ว่างเปล่าเสมอ
-            'หมายเลขโทรศัพท์': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
-            'หมายเลขมือถือ': index === 0 ? (customer?.phone ? (customer.phone.startsWith('0') ? customer.phone : `0${customer.phone}`) : '') : '',
+            'หมายเลขโทรศัพท์': displayPhone,
+            'หมายเลขมือถือ': displayPhone,
             'สถานที่': index === 0 ? address.street : '',
             'ภูมิภาค': index === 0 ? address.subdistrict : '',
             'อำเภอ': index === 0 ? address.district : '',
@@ -1198,6 +1300,74 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
+  const renderPagination = (isTop = false) => {
+    if (totalItems === 0) return null;
+    return (
+      <div className={`flex items-center justify-between px-6 py-4 border-gray-200 ${isTop ? 'border-b' : 'border-t'}`}>
+        {/* Left side - Display range */}
+        <div className="text-sm text-gray-700">
+          แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+        </div>
+
+        {/* Right side - Pagination controls */}
+        <div className="flex items-center space-x-2">
+          {/* Items per page selector */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-700">แสดง:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+            >
+              {PAGE_SIZE_OPTIONS.map((sz) => (
+                <option key={sz} value={sz}>
+                  {sz === 9999 ? 'ทั้งหมด' : sz}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Page navigation */}
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => handlePageChange(effectivePage - 1)}
+              disabled={effectivePage === 1}
+              className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() =>
+                  typeof page === "number" ? handlePageChange(page) : undefined
+                }
+                disabled={page === "..."}
+                className={`px-3 py-1 text-sm rounded ${page === effectivePage
+                  ? "bg-blue-600 text-white"
+                  : page === "..."
+                    ? "text-gray-400 cursor-default"
+                    : "text-gray-700 hover:bg-gray-100"
+                  }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              onClick={() => handlePageChange(effectivePage + 1)}
+              disabled={effectivePage === totalPages}
+              className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
@@ -1213,7 +1383,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={16} className="mr-2" />
-              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : 'ส่งออกข้อมูล'}
+              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
             </button>
           </div>
         )}
@@ -1471,6 +1641,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           </div>
         ) : (
           <>
+            {renderPagination(true)}
             <OrderTable
               orders={paginatedOrders}
               customers={customers}
@@ -1490,70 +1661,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             />
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                {/* Left side - Display range */}
-                <div className="text-sm text-gray-700">
-                  แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
-                </div>
-
-                {/* Right side - Pagination controls */}
-                <div className="flex items-center space-x-2">
-                  {/* Items per page selector */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-700">แสดง:</span>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                      className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      {PAGE_SIZE_OPTIONS.map((sz) => (
-                        <option key={sz} value={sz}>
-                          {sz}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Page navigation */}
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => handlePageChange(effectivePage - 1)}
-                      disabled={effectivePage === 1}
-                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-
-                    {getPageNumbers().map((page, index) => (
-                      <button
-                        key={index}
-                        onClick={() =>
-                          typeof page === "number" ? handlePageChange(page) : undefined
-                        }
-                        disabled={page === "..."}
-                        className={`px-3 py-1 text-sm rounded ${page === effectivePage
-                          ? "bg-blue-600 text-white"
-                          : page === "..."
-                            ? "text-gray-400 cursor-default"
-                            : "text-gray-700 hover:bg-gray-100"
-                          }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-
-                    <button
-                      onClick={() => handlePageChange(effectivePage + 1)}
-                      disabled={effectivePage === totalPages}
-                      className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Pagination Controls */}
+            {renderPagination(false)}
           </>
         )}
       </div>
