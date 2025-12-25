@@ -180,6 +180,18 @@
     "deleted_at": null
   },
   {
+    "id": 100203,
+    "zip_code": 10303,
+    "name_th": "แขวงสวนจิตรลดา",
+    "name_en": "Khwaeng Suan Chitlada",
+    "district_id": 1002,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 100204,
     "zip_code": 10300,
     "name_th": "สี่แยกมหานาค",
@@ -384,6 +396,18 @@
     "deleted_at": null
   },
   {
+    "id": 100508,
+    "zip_code": 10230,
+    "name_th": "แขวงท่าแร้ง",
+    "name_en": "Khwaeng Tha Raeng",
+    "district_id": 1005,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 100601,
     "zip_code": 10240,
     "name_th": "คลองจั่น",
@@ -408,6 +432,18 @@
     "deleted_at": null
   },
   {
+    "id": 100608,
+    "zip_code": 10250,
+    "name_th": "แขวงหัวหมาก",
+    "name_en": "Khwaeng Hua Mak",
+    "district_id": 1006,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 100701,
     "zip_code": 10330,
     "name_th": "รองเมือง",
@@ -424,6 +460,42 @@
     "zip_code": 10330,
     "name_th": "วังใหม่",
     "name_en": "Wang Mai",
+    "district_id": 1007,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 100702,
+    "zip_code": 10120,
+    "name_th": "แขวงวังใหม่",
+    "name_en": "Khwaeng Wang Mai",
+    "district_id": 1007,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 100702,
+    "zip_code": 10400,
+    "name_th": "แขวงวังใหม่",
+    "name_en": "Khwaeng Wang Mai",
+    "district_id": 1007,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 100702,
+    "zip_code": 10500,
+    "name_th": "แขวงวังใหม่",
+    "name_en": "Khwaeng Wang Mai",
     "district_id": 1007,
     "lat": null,
     "long": null,
@@ -520,6 +592,18 @@
     "zip_code": 10260,
     "name_th": "บางจาก",
     "name_en": "Bang Chak",
+    "district_id": 1009,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 100910,
+    "zip_code": 10260,
+    "name_th": "พระโขนงใต้",
+    "name_en": "Phra Khanong Tai",
     "district_id": 1009,
     "lat": null,
     "long": null,
@@ -688,6 +772,18 @@
     "zip_code": 10400,
     "name_th": "สามเสนใน",
     "name_en": "Samsen Nai",
+    "district_id": 1014,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 101406,
+    "zip_code": 10400,
+    "name_th": "พญาไท",
+    "name_en": "Phaya Thai",
     "district_id": 1014,
     "lat": null,
     "long": null,
@@ -1272,6 +1368,18 @@
     "deleted_at": null
   },
   {
+    "id": 102602,
+    "zip_code": 10400,
+    "name_th": "รัชดาภิเษก",
+    "name_en": "Ratchadaphisek",
+    "district_id": 1026,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 102701,
     "zip_code": 10240,
     "name_th": "คลองกุ่ม",
@@ -1300,6 +1408,30 @@
     "zip_code": 10240,
     "name_th": "คันนายาว",
     "name_en": "Khan Na Yao",
+    "district_id": 1027,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 102704,
+    "zip_code": 10240,
+    "name_th": "นวมินทร์",
+    "name_en": "Nawamin",
+    "district_id": 1027,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 102705,
+    "zip_code": 10230,
+    "name_th": "นวลจันทร์",
+    "name_en": "Nuan Chan",
     "district_id": 1027,
     "lat": null,
     "long": null,
@@ -1348,6 +1480,18 @@
     "zip_code": 10800,
     "name_th": "บางซื่อ",
     "name_en": "Bang Sue",
+    "district_id": 1029,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 102902,
+    "zip_code": 10800,
+    "name_th": "วงศ์สว่าง",
+    "name_en": "Wong Sawang",
     "district_id": 1029,
     "lat": null,
     "long": null,
@@ -1536,6 +1680,18 @@
     "deleted_at": null
   },
   {
+    "id": 103303,
+    "zip_code": 10260,
+    "name_th": "แขวงพระโขนง",
+    "name_en": "Khwaeng Phra Khanong",
+    "district_id": 1033,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 103304,
     "zip_code": 10110,
     "name_th": "คลองเตยเหนือ",
@@ -1576,6 +1732,30 @@
     "zip_code": 10250,
     "name_th": "สวนหลวง",
     "name_en": "Suan Luang",
+    "district_id": 1034,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 103402,
+    "zip_code": 10250,
+    "name_th": "อ่อนนุช",
+    "name_en": "On Nut",
+    "district_id": 1034,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 103403,
+    "zip_code": 10250,
+    "name_th": "พัฒนาการ",
+    "name_en": "Phatthanakan",
     "district_id": 1034,
     "lat": null,
     "long": null,
@@ -1636,6 +1816,30 @@
     "zip_code": 10210,
     "name_th": "สีกัน",
     "name_en": "Si Kan",
+    "district_id": 1036,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 103604,
+    "zip_code": 10210,
+    "name_th": "ดอนเมือง",
+    "name_en": "Don Mueang",
+    "district_id": 1036,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 103605,
+    "zip_code": 10210,
+    "name_th": "สนามบิน",
+    "name_en": "Sanam Bin",
     "district_id": 1036,
     "lat": null,
     "long": null,
@@ -1744,6 +1948,18 @@
     "zip_code": 10110,
     "name_th": "พระโขนงเหนือ",
     "name_en": "Phra Khanong Nuea",
+    "district_id": 1039,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 103903,
+    "zip_code": 10260,
+    "name_th": "แขวงพระโขนงเหนือ",
+    "name_en": "Khwaeng Phra Khanong Nuea",
     "district_id": 1039,
     "lat": null,
     "long": null,
@@ -1872,6 +2088,18 @@
     "deleted_at": null
   },
   {
+    "id": 104302,
+    "zip_code": 10230,
+    "name_th": "รามอินทรา",
+    "name_en": "Ram Inthra",
+    "district_id": 1043,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 104401,
     "zip_code": 10240,
     "name_th": "สะพานสูง",
@@ -1884,10 +2112,82 @@
     "deleted_at": null
   },
   {
+    "id": 104401,
+    "zip_code": 10250,
+    "name_th": "แขวงสะพานสูง",
+    "name_en": "Khwaeng Saphan Sung",
+    "district_id": 1044,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104402,
+    "zip_code": 10240,
+    "name_th": "ราษฎร์พัฒนา",
+    "name_en": "Rat Phatthana",
+    "district_id": 1044,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104403,
+    "zip_code": 10250,
+    "name_th": "ทับช้าง",
+    "name_en": "Thap Chang",
+    "district_id": 1044,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 104501,
     "zip_code": 10310,
     "name_th": "วังทองหลาง",
     "name_en": "Wang Thonglang",
+    "district_id": 1045,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104502,
+    "zip_code": 10310,
+    "name_th": "สะพานสอง",
+    "name_en": "Saphan Song",
+    "district_id": 1045,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104503,
+    "zip_code": 10310,
+    "name_th": "คลองเจ้าคุณสิงห์",
+    "name_en": "Khlong Chao Khun Sing",
+    "district_id": 1045,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104504,
+    "zip_code": 10310,
+    "name_th": "พลับพลา",
+    "name_en": "Phlapphla",
     "district_id": 1045,
     "lat": null,
     "long": null,
@@ -1968,6 +2268,30 @@
     "deleted_at": null
   },
   {
+    "id": 104702,
+    "zip_code": 10260,
+    "name_th": "บางนาเหนือ",
+    "name_en": "Bang Na Nuea",
+    "district_id": 1047,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 104703,
+    "zip_code": 10260,
+    "name_th": "บางนาใต้",
+    "name_en": "Bang Na Tai",
+    "district_id": 1047,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 104801,
     "zip_code": 10170,
     "name_th": "ทวีวัฒนา",
@@ -2020,6 +2344,54 @@
     "zip_code": 10150,
     "name_th": "บางบอน",
     "name_en": "Bang Bon",
+    "district_id": 1050,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 105002,
+    "zip_code": 10150,
+    "name_th": "บางบอนเหนือ",
+    "name_en": "Bang Bon Nuea",
+    "district_id": 1050,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 105003,
+    "zip_code": 10150,
+    "name_th": "บางบอนใต้",
+    "name_en": "Bang Bon Tai",
+    "district_id": 1050,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 105004,
+    "zip_code": 10150,
+    "name_th": "คลองบางพราน",
+    "name_en": "Khlong Bang Phran",
+    "district_id": 1050,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 105005,
+    "zip_code": 10150,
+    "name_th": "คลองบางบอน",
+    "name_en": "Khlong Bang Bon",
     "district_id": 1050,
     "lat": null,
     "long": null,
@@ -3432,6 +3804,30 @@
     "deleted_at": null
   },
   {
+    "id": 130201,
+    "zip_code": 12121,
+    "name_th": "คลองหนึ่ง",
+    "name_en": "Khlong Nueng",
+    "district_id": 1302,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 130201,
+    "zip_code": 13180,
+    "name_th": "คลองหนึ่ง",
+    "name_en": "Khlong Nueng",
+    "district_id": 1302,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 130202,
     "zip_code": 12120,
     "name_th": "คลองสอง",
@@ -4255,6 +4651,18 @@
     "district_id": 1402,
     "lat": 14.548,
     "long": 100.764,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 140203,
+    "zip_code": 18270,
+    "name_th": "ท่าหลวง",
+    "name_en": "Tha Luang",
+    "district_id": 1402,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -5604,6 +6012,18 @@
     "deleted_at": null
   },
   {
+    "id": 140903,
+    "zip_code": 18250,
+    "name_th": "ระโสม",
+    "name_en": "Rasom",
+    "district_id": 1409,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 140904,
     "zip_code": 13140,
     "name_th": "หนองน้ำใส",
@@ -5815,6 +6235,18 @@
     "district_id": 1411,
     "lat": 14.166,
     "long": 100.632,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 141106,
+    "zip_code": 13180,
+    "name_th": "พยอม",
+    "name_en": "Phayom",
+    "district_id": 1411,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -7128,6 +7560,18 @@
     "deleted_at": null
   },
   {
+    "id": 150601,
+    "zip_code": 14110,
+    "name_th": "ไผ่จำศีล",
+    "name_en": "Phai Cham Sin",
+    "district_id": 1506,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 150602,
     "zip_code": 14110,
     "name_th": "ศาลเจ้าโรงทอง",
@@ -7512,6 +7956,18 @@
     "deleted_at": null
   },
   {
+    "id": 160114,
+    "zip_code": 15160,
+    "name_th": "ท่าแค",
+    "name_en": "Tha Khae",
+    "district_id": 1601,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 160115,
     "zip_code": 15000,
     "name_th": "ท่าศาลา",
@@ -7543,6 +7999,18 @@
     "district_id": 1601,
     "lat": 14.82,
     "long": 100.583,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 160117,
+    "zip_code": 15160,
+    "name_th": "บางขันหมาก",
+    "name_en": "Bang Khan Mak",
+    "district_id": 1601,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -8340,6 +8808,18 @@
     "deleted_at": null
   },
   {
+    "id": 160608,
+    "zip_code": 15180,
+    "name_th": "บางพึ่ง",
+    "name_en": "Bang Phueng",
+    "district_id": 1606,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 160609,
     "zip_code": 15110,
     "name_th": "หนองทรายขาว",
@@ -8599,6 +9079,18 @@
     "district_id": 1608,
     "lat": 15.289,
     "long": 100.861,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 160802,
+    "zip_code": 15250,
+    "name_th": "มหาโพธิ",
+    "name_en": "Maha Phot",
+    "district_id": 1608,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -9432,6 +9924,18 @@
     "deleted_at": null
   },
   {
+    "id": 180106,
+    "zip_code": 17120,
+    "name_th": "หาดท่าเสา",
+    "name_en": "Hat Tha Sao",
+    "district_id": 1801,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 180107,
     "zip_code": 17000,
     "name_th": "ธรรมามูล",
@@ -9487,6 +9991,18 @@
     "district_id": 1802,
     "lat": 15.326,
     "long": 100.107,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 180202,
+    "zip_code": 17170,
+    "name_th": "วัดโคก",
+    "name_en": "Wat Khok",
+    "district_id": 1802,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -10716,6 +11232,18 @@
     "deleted_at": null
   },
   {
+    "id": 190602,
+    "zip_code": 18270,
+    "name_th": "บางโขมด",
+    "name_en": "Bang Khamot",
+    "district_id": 1906,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 190603,
     "zip_code": 18130,
     "name_th": "สร่างโศก",
@@ -10747,6 +11275,18 @@
     "district_id": 1906,
     "lat": 14.628,
     "long": 100.67,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 190605,
+    "zip_code": 18210,
+    "name_th": "หรเทพ",
+    "name_en": "Horathep",
+    "district_id": 1906,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -11316,6 +11856,18 @@
     "deleted_at": null
   },
   {
+    "id": 191305,
+    "zip_code": 18240,
+    "name_th": "ห้วยบง",
+    "name_en": "Huai Bong",
+    "district_id": 1913,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 191306,
     "zip_code": 18240,
     "name_th": "หน้าพระลาน",
@@ -11371,6 +11923,18 @@
     "district_id": 2001,
     "lat": 13.274,
     "long": 100.928,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 200104,
+    "zip_code": 20131,
+    "name_th": "แสนสุข",
+    "name_en": "Saen Suk",
+    "district_id": 2001,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -11503,6 +12067,18 @@
     "district_id": 2001,
     "lat": 13.304,
     "long": 100.968,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 200115,
+    "zip_code": 20130,
+    "name_th": "ห้วยกะปิ",
+    "name_en": "Huai Kapi",
+    "district_id": 2001,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -11988,6 +12564,18 @@
     "deleted_at": null
   },
   {
+    "id": 200605,
+    "zip_code": 20240,
+    "name_th": "นาเริก",
+    "name_en": "Na Roek",
+    "district_id": 2006,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 200606,
     "zip_code": 20140,
     "name_th": "หมอนนาง",
@@ -12120,6 +12708,18 @@
     "deleted_at": null
   },
   {
+    "id": 200617,
+    "zip_code": 20240,
+    "name_th": "นาวังหิน",
+    "name_en": "Na Wang Hin",
+    "district_id": 2006,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 200618,
     "zip_code": 20140,
     "name_th": "บ้านช้าง",
@@ -12228,6 +12828,18 @@
     "deleted_at": null
   },
   {
+    "id": 200705,
+    "zip_code": 20230,
+    "name_th": "หนองขาม",
+    "name_en": "Nong Kham",
+    "district_id": 2007,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 200706,
     "zip_code": 20110,
     "name_th": "เขาคันทรง",
@@ -12288,6 +12900,18 @@
     "deleted_at": null
   },
   {
+    "id": 200901,
+    "zip_code": 20182,
+    "name_th": "สัตหีบ",
+    "name_en": "Sattahip",
+    "district_id": 2009,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 200902,
     "zip_code": 20250,
     "name_th": "นาจอมเทียน",
@@ -12319,6 +12943,18 @@
     "district_id": 2009,
     "lat": 12.761,
     "long": 100.844,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 200904,
+    "zip_code": 20251,
+    "name_th": "บางเสร่",
+    "name_en": "Bang Sare",
+    "district_id": 2009,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -12535,6 +13171,18 @@
     "district_id": 2101,
     "lat": 12.681,
     "long": 101.223,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 210109,
+    "zip_code": 21150,
+    "name_th": "เนินพระ",
+    "name_en": "Noen Phra",
+    "district_id": 2101,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -16543,6 +17191,18 @@
     "district_id": 2601,
     "lat": 14.264,
     "long": 101.164,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 260113,
+    "zip_code": 26001,
+    "name_th": "พรหมณี",
+    "name_en": "Phrommani",
+    "district_id": 2601,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -29784,6 +30444,18 @@
     "deleted_at": null
   },
   {
+    "id": 341524,
+    "zip_code": 34310,
+    "name_th": "ห้วยขะยุง",
+    "name_en": "Huai Khayung",
+    "district_id": 3415,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 341526,
     "zip_code": 34190,
     "name_th": "บุ่งไหม",
@@ -33768,6 +34440,18 @@
     "deleted_at": null
   },
   {
+    "id": 380103,
+    "zip_code": 38000,
+    "name_th": "โนนสว่าง",
+    "name_en": "Non Sawang",
+    "district_id": 3801,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380104,
     "zip_code": 38000,
     "name_th": "ชัยพร",
@@ -33796,6 +34480,18 @@
     "zip_code": 38000,
     "name_th": "โนนสมบูรณ์",
     "name_en": "Non Sombun",
+    "district_id": 3801,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380106,
+    "zip_code": 38000,
+    "name_th": "โคกก่อง",
+    "name_en": "Khok Kong",
     "district_id": 3801,
     "lat": null,
     "long": null,
@@ -33876,6 +34572,18 @@
     "deleted_at": null
   },
   {
+    "id": 380112,
+    "zip_code": 38000,
+    "name_th": "โป่งเปือย",
+    "name_en": "Pong Pueai",
+    "district_id": 3801,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380201,
     "zip_code": 38150,
     "name_th": "ซาง",
@@ -33883,6 +34591,18 @@
     "district_id": 3802,
     "lat": 17.839,
     "long": 103.958,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380201,
+    "zip_code": 38180,
+    "name_th": "ศรีชมภู",
+    "name_en": "Si Chomphu",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -33900,6 +34620,18 @@
     "deleted_at": null
   },
   {
+    "id": 380202,
+    "zip_code": 38180,
+    "name_th": "ดอนหญ้านาง",
+    "name_en": "Don Ya Nang",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380203,
     "zip_code": 38150,
     "name_th": "ท่ากกแดง",
@@ -33907,6 +34639,18 @@
     "district_id": 3802,
     "lat": 17.911,
     "long": 103.816,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380203,
+    "zip_code": 38180,
+    "name_th": "พรเจริญ",
+    "name_en": "Phon Charoen",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -33924,6 +34668,18 @@
     "deleted_at": null
   },
   {
+    "id": 380204,
+    "zip_code": 38180,
+    "name_th": "หนองหัวช้าง",
+    "name_en": "Nong Hua Chang",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380205,
     "zip_code": 38150,
     "name_th": "น้ำจั้น",
@@ -33931,6 +34687,18 @@
     "district_id": 3802,
     "lat": 18.063,
     "long": 103.894,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380205,
+    "zip_code": 38180,
+    "name_th": "วังชมภู",
+    "name_en": "Wang Chomphu",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -33948,6 +34716,18 @@
     "deleted_at": null
   },
   {
+    "id": 380206,
+    "zip_code": 38180,
+    "name_th": "ป่าแฝก",
+    "name_en": "Pa Faek",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380207,
     "zip_code": 38150,
     "name_th": "ป่งไฮ",
@@ -33955,6 +34735,18 @@
     "district_id": 3802,
     "lat": 17.976,
     "long": 103.873,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380207,
+    "zip_code": 38180,
+    "name_th": "ศรีสำราญ",
+    "name_en": "Si Samran",
+    "district_id": 3802,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34080,6 +34872,18 @@
     "deleted_at": null
   },
   {
+    "id": 380401,
+    "zip_code": 38150,
+    "name_th": "เซกา",
+    "name_en": "Seka",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380402,
     "zip_code": 38180,
     "name_th": "ป่าแฝก",
@@ -34087,6 +34891,18 @@
     "district_id": 3804,
     "lat": 18.094,
     "long": 103.698,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380402,
+    "zip_code": 38150,
+    "name_th": "ซาง",
+    "name_en": "Sang",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34104,6 +34920,18 @@
     "deleted_at": null
   },
   {
+    "id": 380403,
+    "zip_code": 38150,
+    "name_th": "ท่ากกแดง",
+    "name_en": "Tha Kok Daeng",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380404,
     "zip_code": 38180,
     "name_th": "วังชมภู",
@@ -34111,6 +34939,18 @@
     "district_id": 3804,
     "lat": 17.983,
     "long": 103.683,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380404,
+    "zip_code": 38150,
+    "name_th": "บ้านต้อง",
+    "name_en": "Ban Tong",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34128,6 +34968,18 @@
     "deleted_at": null
   },
   {
+    "id": 380405,
+    "zip_code": 38150,
+    "name_th": "ป่งไฮ",
+    "name_en": "Pong Hai",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380406,
     "zip_code": 38180,
     "name_th": "ศรีสำราญ",
@@ -34135,6 +34987,18 @@
     "district_id": 3804,
     "lat": 18.121,
     "long": 103.646,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380406,
+    "zip_code": 38150,
+    "name_th": "น้ำจั้น",
+    "name_en": "Nam Chan",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34152,6 +35016,42 @@
     "deleted_at": null
   },
   {
+    "id": 380407,
+    "zip_code": 38150,
+    "name_th": "ท่าสะอาด",
+    "name_en": "Tha Sa-at",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380408,
+    "zip_code": 38150,
+    "name_th": "หนองทุ่ม",
+    "name_en": "Nong Thum",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380409,
+    "zip_code": 38150,
+    "name_th": "โสกก่าม",
+    "name_en": "Sok Kam",
+    "district_id": 3804,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380501,
     "zip_code": 38210,
     "name_th": "ชุมภูพร",
@@ -34159,6 +35059,18 @@
     "district_id": 3805,
     "lat": 18.146,
     "long": 103.714,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380501,
+    "zip_code": 38190,
+    "name_th": "ปากคาด",
+    "name_en": "Pak Khat",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34176,6 +35088,18 @@
     "deleted_at": null
   },
   {
+    "id": 380502,
+    "zip_code": 38190,
+    "name_th": "หนองยอง",
+    "name_en": "Nong Yong",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380503,
     "zip_code": 38210,
     "name_th": "นาสิงห์",
@@ -34183,6 +35107,18 @@
     "district_id": 3805,
     "lat": 18.212,
     "long": 103.789,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380503,
+    "zip_code": 38190,
+    "name_th": "นากั้ง",
+    "name_en": "Na Kang",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34200,6 +35136,18 @@
     "deleted_at": null
   },
   {
+    "id": 380504,
+    "zip_code": 38190,
+    "name_th": "โนนศิลา",
+    "name_en": "Non Sila",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380505,
     "zip_code": 38210,
     "name_th": "ศรีวิไล",
@@ -34207,6 +35155,30 @@
     "district_id": 3805,
     "lat": 18.225,
     "long": 103.732,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380505,
+    "zip_code": 38190,
+    "name_th": "สมสนุก",
+    "name_en": "Som Sanuk",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380506,
+    "zip_code": 38190,
+    "name_th": "นาดง",
+    "name_en": "Na Dong",
+    "district_id": 3805,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34284,6 +35256,18 @@
     "deleted_at": null
   },
   {
+    "id": 380702,
+    "zip_code": 38210,
+    "name_th": "ชุมภูพร",
+    "name_en": "Chumphu Phon",
+    "district_id": 3807,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380703,
     "zip_code": 38190,
     "name_th": "โนนศิลา",
@@ -34291,6 +35275,18 @@
     "district_id": 3807,
     "lat": 18.292,
     "long": 103.346,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380703,
+    "zip_code": 38210,
+    "name_th": "นาแสง",
+    "name_en": "Na Saeng",
+    "district_id": 3807,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34308,6 +35304,18 @@
     "deleted_at": null
   },
   {
+    "id": 380704,
+    "zip_code": 38210,
+    "name_th": "นาสะแบง",
+    "name_en": "Na Sabaeng",
+    "district_id": 3807,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 380705,
     "zip_code": 38190,
     "name_th": "ศรีวิไล",
@@ -34315,6 +35323,18 @@
     "district_id": 3807,
     "lat": 18.222,
     "long": 103.398,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380705,
+    "zip_code": 38210,
+    "name_th": "นาสิงห์",
+    "name_en": "Na Sing",
+    "district_id": 3807,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -34351,6 +35371,18 @@
     "district_id": 3808,
     "lat": 18.252,
     "long": 103.962,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 380802,
+    "zip_code": 38000,
+    "name_th": "หนองเดิ่น",
+    "name_en": "Nong Doen",
+    "district_id": 3808,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -35083,6 +36115,18 @@
     "district_id": 4001,
     "lat": 16.438,
     "long": 102.837,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 400101,
+    "zip_code": 40002,
+    "name_th": "ในเมือง",
+    "name_en": "Nai Mueang",
+    "district_id": 4001,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -35827,6 +36871,18 @@
     "district_id": 4007,
     "lat": 16.76,
     "long": 102.825,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 400701,
+    "zip_code": 40310,
+    "name_th": "น้ำพอง",
+    "name_en": "Nam Phong",
+    "district_id": 4007,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -40548,6 +41604,18 @@
     "deleted_at": null
   },
   {
+    "id": 430111,
+    "zip_code": 43100,
+    "name_th": "โพนสว่าง",
+    "name_en": "Phon Sawang",
+    "district_id": 4301,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 430113,
     "zip_code": 43100,
     "name_th": "พระธาตุบังพวน",
@@ -42636,6 +43704,18 @@
     "deleted_at": null
   },
   {
+    "id": 441106,
+    "zip_code": 44210,
+    "name_th": "สร้างแซ่ง",
+    "name_en": "Sang Saeng",
+    "district_id": 4411,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 441107,
     "zip_code": 44210,
     "name_th": "หนองบัวสันตุ",
@@ -42843,6 +43923,18 @@
     "id": 450109,
     "zip_code": 45000,
     "name_th": "ปอภาร  (ปอพาน)",
+    "name_en": "Po Phan",
+    "district_id": 4501,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 450109,
+    "zip_code": 45000,
+    "name_th": "ปอภาร",
     "name_en": "Po Phan",
     "district_id": 4501,
     "lat": null,
@@ -50724,6 +51816,18 @@
     "deleted_at": null
   },
   {
+    "id": 500606,
+    "zip_code": 50330,
+    "name_th": "สบเปิง",
+    "name_en": "Sop Poeng",
+    "district_id": 5006,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 500607,
     "zip_code": 50150,
     "name_th": "บ้านเป้า",
@@ -51660,6 +52764,18 @@
     "deleted_at": null
   },
   {
+    "id": 501407,
+    "zip_code": 50290,
+    "name_th": "หนองจ๊อม",
+    "name_en": "Nong Chom",
+    "district_id": 5014,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 501408,
     "zip_code": 50290,
     "name_th": "หนองหาร",
@@ -52320,6 +53436,18 @@
     "deleted_at": null
   },
   {
+    "id": 502202,
+    "zip_code": 50360,
+    "name_th": "ทุ่งปี๊",
+    "name_en": "Thung Pi",
+    "district_id": 5022,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 502203,
     "zip_code": 50360,
     "name_th": "ทุ่งรวงทอง",
@@ -52471,6 +53599,42 @@
     "district_id": 5024,
     "lat": 18.581,
     "long": 98.682,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 502501,
+    "zip_code": 58130,
+    "name_th": "บ้านจันทร์",
+    "name_en": "Ban Chan",
+    "district_id": 5025,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 502502,
+    "zip_code": 58130,
+    "name_th": "แม่แดด",
+    "name_en": "Mae Daet",
+    "district_id": 5025,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 502503,
+    "zip_code": 58130,
+    "name_th": "แจ่มหลวง",
+    "name_en": "Chaem Luang",
+    "district_id": 5025,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -53143,6 +54307,18 @@
     "district_id": 5201,
     "lat": 18.255,
     "long": 99.518,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 520105,
+    "zip_code": 52220,
+    "name_th": "พระบาท",
+    "name_en": "Phra Bat",
+    "district_id": 5201,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -53976,6 +55152,18 @@
     "deleted_at": null
   },
   {
+    "id": 520904,
+    "zip_code": 52230,
+    "name_th": "พระบาทวังตวง",
+    "name_en": "Phra Bat Wang Tuang",
+    "district_id": 5209,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 521001,
     "zip_code": 52150,
     "name_th": "แม่ทะ",
@@ -53983,6 +55171,18 @@
     "district_id": 5210,
     "lat": 18.162,
     "long": 99.563,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 521001,
+    "zip_code": 52220,
+    "name_th": "แม่ทะ",
+    "name_en": "Mae Tha",
+    "district_id": 5210,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -54324,6 +55524,18 @@
     "deleted_at": null
   },
   {
+    "id": 530103,
+    "zip_code": 53170,
+    "name_th": "บ้านเกาะ",
+    "name_en": "Ban Ko",
+    "district_id": 5301,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 530104,
     "zip_code": 53000,
     "name_th": "ป่าเซ่า",
@@ -54576,6 +55788,18 @@
     "deleted_at": null
   },
   {
+    "id": 530302,
+    "zip_code": 53190,
+    "name_th": "หาดล้า",
+    "name_en": "Hat La",
+    "district_id": 5303,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 530303,
     "zip_code": 53190,
     "name_th": "ผาเลือด",
@@ -54715,6 +55939,18 @@
     "district_id": 5304,
     "lat": 17.794,
     "long": 100.935,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 530407,
+    "zip_code": 53110,
+    "name_th": "ท่าแฝก",
+    "name_en": "Tha Faek",
+    "district_id": 5304,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -56143,6 +57379,18 @@
     "district_id": 5501,
     "lat": 18.742,
     "long": 100.624,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 550116,
+    "zip_code": 55000,
+    "name_th": "บ่อสวก",
+    "name_en": "Bo Suak",
+    "district_id": 5501,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -58387,6 +59635,18 @@
     "district_id": 5704,
     "lat": 19.697,
     "long": 100.096,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 570402,
+    "zip_code": 57230,
+    "name_th": "งิ้ว",
+    "name_en": "Ngio",
+    "district_id": 5704,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -64224,6 +65484,18 @@
     "deleted_at": null
   },
   {
+    "id": 640106,
+    "zip_code": 64210,
+    "name_th": "บ้านกล้วย",
+    "name_en": "Ban Kluai",
+    "district_id": 6401,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 640107,
     "zip_code": 64000,
     "name_th": "บ้านหลุม",
@@ -66439,6 +67711,18 @@
     "district_id": 6601,
     "lat": 16.369,
     "long": 100.373,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 660111,
+    "zip_code": 66170,
+    "name_th": "ฆะมัง",
+    "name_en": "Kha Mung",
+    "district_id": 6601,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -70656,6 +71940,18 @@
     "deleted_at": null
   },
   {
+    "id": 710603,
+    "zip_code": 71130,
+    "name_th": "วังศาลา",
+    "name_en": "Wang Sala",
+    "district_id": 7106,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 710604,
     "zip_code": 71110,
     "name_th": "ท่าล้อ",
@@ -72168,6 +73464,18 @@
     "deleted_at": null
   },
   {
+    "id": 720711,
+    "zip_code": 72190,
+    "name_th": "ศรีสำราญ",
+    "name_en": "Si Samran",
+    "district_id": 7207,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 720712,
     "zip_code": 72190,
     "name_th": "ทุ่งคอก",
@@ -72187,6 +73495,18 @@
     "district_id": 7207,
     "lat": 14.204,
     "long": 99.86,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 720713,
+    "zip_code": 72190,
+    "name_th": "หนองบ่อ",
+    "name_en": "Nong Bo",
+    "district_id": 7207,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -72895,6 +74215,18 @@
     "district_id": 7302,
     "lat": 14.065,
     "long": 100.003,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 730206,
+    "zip_code": 73180,
+    "name_th": "สระสี่มุม",
+    "name_en": "Sa Si Mum",
+    "district_id": 7302,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -74988,6 +76320,18 @@
     "deleted_at": null
   },
   {
+    "id": 760123,
+    "zip_code": 76100,
+    "name_th": "หนองขนาน",
+    "name_en": "Nong Khanan",
+    "district_id": 7601,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 760124,
     "zip_code": 76000,
     "name_th": "หนองพลับ",
@@ -75888,6 +77232,18 @@
     "deleted_at": null
   },
   {
+    "id": 770105,
+    "zip_code": 77210,
+    "name_th": "อ่าวน้อย",
+    "name_en": "Ao Noi",
+    "district_id": 7701,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 770106,
     "zip_code": 77210,
     "name_th": "บ่อนอก",
@@ -76207,6 +77563,18 @@
     "district_id": 7706,
     "lat": 12.405,
     "long": 99.898,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 770602,
+    "zip_code": 77160,
+    "name_th": "เขาน้อย",
+    "name_en": "Khao Noi",
+    "district_id": 7706,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -76728,6 +78096,18 @@
     "deleted_at": null
   },
   {
+    "id": 800401,
+    "zip_code": 80250,
+    "name_th": "ฉวาง",
+    "name_en": "Chawang",
+    "district_id": 8004,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 800403,
     "zip_code": 80250,
     "name_th": "ละอาย",
@@ -76764,6 +78144,18 @@
     "deleted_at": null
   },
   {
+    "id": 800405,
+    "zip_code": 80260,
+    "name_th": "ไม้เรียง",
+    "name_en": "Mai Riang",
+    "district_id": 8004,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 800406,
     "zip_code": 80260,
     "name_th": "กะเปียด",
@@ -76783,6 +78175,18 @@
     "district_id": 8004,
     "lat": 8.415,
     "long": 99.476,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 800407,
+    "zip_code": 80260,
+    "name_th": "นากะชะ",
+    "name_en": "Na Kacha",
+    "district_id": 8004,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -77352,6 +78756,18 @@
     "deleted_at": null
   },
   {
+    "id": 800907,
+    "zip_code": 80310,
+    "name_th": "เขาโร",
+    "name_en": "Khao Ro",
+    "district_id": 8009,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 800908,
     "zip_code": 80310,
     "name_th": "กะปาง",
@@ -77371,6 +78787,18 @@
     "district_id": 8009,
     "lat": 8.099,
     "long": 99.67,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 800909,
+    "zip_code": 80310,
+    "name_th": "ที่วัง",
+    "name_en": "Thi Wang",
+    "district_id": 8009,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -77455,6 +78883,18 @@
     "district_id": 8010,
     "lat": 8.282,
     "long": 99.528,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 801003,
+    "zip_code": 80250,
+    "name_th": "แก้วแสน",
+    "name_en": "Kaeo Saen",
+    "district_id": 8010,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -78444,6 +79884,18 @@
     "deleted_at": null
   },
   {
+    "id": 802304,
+    "zip_code": 80350,
+    "name_th": "ทางพูน",
+    "name_en": "Thang Phun",
+    "district_id": 8023,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 810101,
     "zip_code": 81000,
     "name_th": "ปากน้ำ",
@@ -79416,6 +80868,18 @@
     "deleted_at": null
   },
   {
+    "id": 820504,
+    "zip_code": 82190,
+    "name_th": "บางม่วง",
+    "name_en": "Bang Muang",
+    "district_id": 8205,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 820505,
     "zip_code": 82110,
     "name_th": "ตำตัว",
@@ -79651,6 +81115,18 @@
     "district_id": 8208,
     "lat": 8.578,
     "long": 98.258,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 820806,
+    "zip_code": 82210,
+    "name_th": "ลำแก่น",
+    "name_en": "Lam Kaen",
+    "district_id": 8208,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -80124,6 +81600,18 @@
     "deleted_at": null
   },
   {
+    "id": 840211,
+    "zip_code": 84340,
+    "name_th": "ท่าอุแท",
+    "name_en": "Tha U-thae",
+    "district_id": 8402,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 840212,
     "zip_code": 84290,
     "name_th": "ทุ่งรัง",
@@ -80203,6 +81691,18 @@
     "district_id": 8404,
     "lat": 9.708,
     "long": 99.675,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 840401,
+    "zip_code": 84220,
+    "name_th": "อ่างทอง",
+    "name_en": "Ang Thong",
+    "district_id": 8404,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -80616,6 +82116,18 @@
     "deleted_at": null
   },
   {
+    "id": 840902,
+    "zip_code": 84230,
+    "name_th": "พะแสง",
+    "name_en": "Phasaeng",
+    "district_id": 8409,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 840903,
     "zip_code": 84230,
     "name_th": "พรุไทย",
@@ -80863,6 +82375,18 @@
     "district_id": 8412,
     "lat": 8.876,
     "long": 99.367,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 841207,
+    "zip_code": 84240,
+    "name_th": "ควนสุบรรณ",
+    "name_en": "Khuan Suban",
+    "district_id": 8412,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -81828,6 +83352,18 @@
     "deleted_at": null
   },
   {
+    "id": 860103,
+    "zip_code": 86120,
+    "name_th": "ท่ายาง",
+    "name_en": "Tha Yang",
+    "district_id": 8601,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 860104,
     "zip_code": 86000,
     "name_th": "บางหมาก",
@@ -81876,6 +83412,18 @@
     "deleted_at": null
   },
   {
+    "id": 860107,
+    "zip_code": 86190,
+    "name_th": "ตากแดด",
+    "name_en": "Tak Daet",
+    "district_id": 8601,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 860108,
     "zip_code": 86000,
     "name_th": "บางลึก",
@@ -81912,6 +83460,18 @@
     "deleted_at": null
   },
   {
+    "id": 860110,
+    "zip_code": 86190,
+    "name_th": "วังไผ่",
+    "name_en": "Wang Phai",
+    "district_id": 8601,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 860111,
     "zip_code": 86190,
     "name_th": "วังใหม่",
@@ -81943,6 +83503,18 @@
     "district_id": 8601,
     "lat": 10.457,
     "long": 99.104,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 860113,
+    "zip_code": 86190,
+    "name_th": "ขุนกระทิง",
+    "name_en": "Khun Krathing",
+    "district_id": 8601,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -82279,6 +83851,18 @@
     "district_id": 8604,
     "lat": 9.918,
     "long": 99.147,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 860407,
+    "zip_code": 86150,
+    "name_th": "บางมะพร้าว",
+    "name_en": "Bang Maphrao",
+    "district_id": 8604,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -83556,6 +85140,18 @@
     "deleted_at": null
   },
   {
+    "id": 900904,
+    "zip_code": 90220,
+    "name_th": "ควนรู",
+    "name_en": "Khuan Ru",
+    "district_id": 9009,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 900909,
     "zip_code": 90180,
     "name_th": "เขาพระ",
@@ -83719,6 +85315,18 @@
     "district_id": 9011,
     "lat": 7.006,
     "long": 100.503,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 901104,
+    "zip_code": 90112,
+    "name_th": "คอหงส์",
+    "name_en": "Kho Hong",
+    "district_id": 9011,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -84223,6 +85831,18 @@
     "district_id": 9101,
     "lat": 6.672,
     "long": 99.844,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 910106,
+    "zip_code": 91110,
+    "name_th": "เกาะสาหร่าย",
+    "name_en": "Ko Sarai",
+    "district_id": 9101,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -86316,6 +87936,18 @@
     "deleted_at": null
   },
   {
+    "id": 930903,
+    "zip_code": 93160,
+    "name_th": "โคกสัก",
+    "name_en": "Khok Sak",
+    "district_id": 9309,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 931001,
     "zip_code": 93110,
     "name_th": "ป่าพะยอม",
@@ -86904,6 +88536,18 @@
     "deleted_at": null
   },
   {
+    "id": 940404,
+    "zip_code": 94190,
+    "name_th": "ดอน",
+    "name_en": "Don",
+    "district_id": 9404,
+    "lat": null,
+    "long": null,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 940405,
     "zip_code": 94190,
     "name_th": "ควน",
@@ -87019,6 +88663,18 @@
     "district_id": 9405,
     "lat": 6.759,
     "long": 101.441,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
+    "id": 940504,
+    "zip_code": 94190,
+    "name_th": "กระหวะ",
+    "name_en": "Krawa",
+    "district_id": 9405,
+    "lat": null,
+    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null
@@ -89407,774 +91063,6 @@
     "district_id": 9613,
     "lat": 6.249,
     "long": 101.875,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 100910,
-    "zip_code": 10260,
-    "name_th": "พระโขนงใต้",
-    "name_en": "Phra Khanong Tai",
-    "district_id": 1009,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 101406,
-    "zip_code": 10400,
-    "name_th": "พญาไท",
-    "name_en": "Phaya Thai",
-    "district_id": 1014,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 102602,
-    "zip_code": 10400,
-    "name_th": "รัชดาภิเษก",
-    "name_en": "Ratchadaphisek",
-    "district_id": 1026,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 102704,
-    "zip_code": 10240,
-    "name_th": "นวมินทร์",
-    "name_en": "Nawamin",
-    "district_id": 1027,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 102705,
-    "zip_code": 10230,
-    "name_th": "นวลจันทร์",
-    "name_en": "Nuan Chan",
-    "district_id": 1027,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 102902,
-    "zip_code": 10800,
-    "name_th": "วงศ์สว่าง",
-    "name_en": "Wong Sawang",
-    "district_id": 1029,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 103402,
-    "zip_code": 10250,
-    "name_th": "อ่อนนุช",
-    "name_en": "On Nut",
-    "district_id": 1034,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 103403,
-    "zip_code": 10250,
-    "name_th": "พัฒนาการ",
-    "name_en": "Phatthanakan",
-    "district_id": 1034,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 103604,
-    "zip_code": 10210,
-    "name_th": "ดอนเมือง",
-    "name_en": "Don Mueang",
-    "district_id": 1036,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 103605,
-    "zip_code": 10210,
-    "name_th": "สนามบิน",
-    "name_en": "Sanam Bin",
-    "district_id": 1036,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104302,
-    "zip_code": 10230,
-    "name_th": "รามอินทรา",
-    "name_en": "Ram Inthra",
-    "district_id": 1043,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104402,
-    "zip_code": 10240,
-    "name_th": "ราษฎร์พัฒนา",
-    "name_en": "Rat Phatthana",
-    "district_id": 1044,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104403,
-    "zip_code": 10250,
-    "name_th": "ทับช้าง",
-    "name_en": "Thap Chang",
-    "district_id": 1044,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104502,
-    "zip_code": 10310,
-    "name_th": "สะพานสอง",
-    "name_en": "Saphan Song",
-    "district_id": 1045,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104503,
-    "zip_code": 10310,
-    "name_th": "คลองเจ้าคุณสิงห์",
-    "name_en": "Khlong Chao Khun Sing",
-    "district_id": 1045,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104504,
-    "zip_code": 10310,
-    "name_th": "พลับพลา",
-    "name_en": "Phlapphla",
-    "district_id": 1045,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104702,
-    "zip_code": 10260,
-    "name_th": "บางนาเหนือ",
-    "name_en": "Bang Na Nuea",
-    "district_id": 1047,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 104703,
-    "zip_code": 10260,
-    "name_th": "บางนาใต้",
-    "name_en": "Bang Na Tai",
-    "district_id": 1047,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 105002,
-    "zip_code": 10150,
-    "name_th": "บางบอนเหนือ",
-    "name_en": "Bang Bon Nuea",
-    "district_id": 1050,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 105003,
-    "zip_code": 10150,
-    "name_th": "บางบอนใต้",
-    "name_en": "Bang Bon Tai",
-    "district_id": 1050,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 105004,
-    "zip_code": 10150,
-    "name_th": "คลองบางพราน",
-    "name_en": "Khlong Bang Phran",
-    "district_id": 1050,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 105005,
-    "zip_code": 10150,
-    "name_th": "คลองบางบอน",
-    "name_en": "Khlong Bang Bon",
-    "district_id": 1050,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 150601,
-    "zip_code": 14110,
-    "name_th": "ไผ่จำศีล",
-    "name_en": "Phai Cham Sin",
-    "district_id": 1506,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 341524,
-    "zip_code": 34310,
-    "name_th": "ห้วยขะยุง",
-    "name_en": "Huai Khayung",
-    "district_id": 3415,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380103,
-    "zip_code": 38000,
-    "name_th": "โนนสว่าง",
-    "name_en": "Non Sawang",
-    "district_id": 3801,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380106,
-    "zip_code": 38000,
-    "name_th": "โคกก่อง",
-    "name_en": "Khok Kong",
-    "district_id": 3801,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380112,
-    "zip_code": 38000,
-    "name_th": "โป่งเปือย",
-    "name_en": "Pong Pueai",
-    "district_id": 3801,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380201,
-    "zip_code": 38180,
-    "name_th": "ศรีชมภู",
-    "name_en": "Si Chomphu",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380202,
-    "zip_code": 38180,
-    "name_th": "ดอนหญ้านาง",
-    "name_en": "Don Ya Nang",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380203,
-    "zip_code": 38180,
-    "name_th": "พรเจริญ",
-    "name_en": "Phon Charoen",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380204,
-    "zip_code": 38180,
-    "name_th": "หนองหัวช้าง",
-    "name_en": "Nong Hua Chang",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380205,
-    "zip_code": 38180,
-    "name_th": "วังชมภู",
-    "name_en": "Wang Chomphu",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380206,
-    "zip_code": 38180,
-    "name_th": "ป่าแฝก",
-    "name_en": "Pa Faek",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380207,
-    "zip_code": 38180,
-    "name_th": "ศรีสำราญ",
-    "name_en": "Si Samran",
-    "district_id": 3802,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380401,
-    "zip_code": 38150,
-    "name_th": "เซกา",
-    "name_en": "Seka",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380402,
-    "zip_code": 38150,
-    "name_th": "ซาง",
-    "name_en": "Sang",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380403,
-    "zip_code": 38150,
-    "name_th": "ท่ากกแดง",
-    "name_en": "Tha Kok Daeng",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380404,
-    "zip_code": 38150,
-    "name_th": "บ้านต้อง",
-    "name_en": "Ban Tong",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380405,
-    "zip_code": 38150,
-    "name_th": "ป่งไฮ",
-    "name_en": "Pong Hai",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380406,
-    "zip_code": 38150,
-    "name_th": "น้ำจั้น",
-    "name_en": "Nam Chan",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380407,
-    "zip_code": 38150,
-    "name_th": "ท่าสะอาด",
-    "name_en": "Tha Sa-at",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380408,
-    "zip_code": 38150,
-    "name_th": "หนองทุ่ม",
-    "name_en": "Nong Thum",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380409,
-    "zip_code": 38150,
-    "name_th": "โสกก่าม",
-    "name_en": "Sok Kam",
-    "district_id": 3804,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380501,
-    "zip_code": 38190,
-    "name_th": "ปากคาด",
-    "name_en": "Pak Khat",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380502,
-    "zip_code": 38190,
-    "name_th": "หนองยอง",
-    "name_en": "Nong Yong",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380503,
-    "zip_code": 38190,
-    "name_th": "นากั้ง",
-    "name_en": "Na Kang",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380504,
-    "zip_code": 38190,
-    "name_th": "โนนศิลา",
-    "name_en": "Non Sila",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380505,
-    "zip_code": 38190,
-    "name_th": "สมสนุก",
-    "name_en": "Som Sanuk",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380506,
-    "zip_code": 38190,
-    "name_th": "นาดง",
-    "name_en": "Na Dong",
-    "district_id": 3805,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380702,
-    "zip_code": 38210,
-    "name_th": "ชุมภูพร",
-    "name_en": "Chumphu Phon",
-    "district_id": 3807,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380703,
-    "zip_code": 38210,
-    "name_th": "นาแสง",
-    "name_en": "Na Saeng",
-    "district_id": 3807,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380704,
-    "zip_code": 38210,
-    "name_th": "นาสะแบง",
-    "name_en": "Na Sabaeng",
-    "district_id": 3807,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380705,
-    "zip_code": 38210,
-    "name_th": "นาสิงห์",
-    "name_en": "Na Sing",
-    "district_id": 3807,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 380802,
-    "zip_code": 38000,
-    "name_th": "หนองเดิ่น",
-    "name_en": "Nong Doen",
-    "district_id": 3808,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 430111,
-    "zip_code": 43100,
-    "name_th": "โพนสว่าง",
-    "name_en": "Phon Sawang",
-    "district_id": 4301,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 441106,
-    "zip_code": 44210,
-    "name_th": "สร้างแซ่ง",
-    "name_en": "Sang Saeng",
-    "district_id": 4411,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 450109,
-    "zip_code": 45000,
-    "name_th": "ปอภาร",
-    "name_en": "Po Phan",
-    "district_id": 4501,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 502202,
-    "zip_code": 50360,
-    "name_th": "ทุ่งปี๊",
-    "name_en": "Thung Pi",
-    "district_id": 5022,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 502501,
-    "zip_code": 58130,
-    "name_th": "บ้านจันทร์",
-    "name_en": "Ban Chan",
-    "district_id": 5025,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 502502,
-    "zip_code": 58130,
-    "name_th": "แม่แดด",
-    "name_en": "Mae Daet",
-    "district_id": 5025,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 502503,
-    "zip_code": 58130,
-    "name_th": "แจ่มหลวง",
-    "name_en": "Chaem Luang",
-    "district_id": 5025,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 530407,
-    "zip_code": 53110,
-    "name_th": "ท่าแฝก",
-    "name_en": "Tha Faek",
-    "district_id": 5304,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 550116,
-    "zip_code": 55000,
-    "name_th": "บ่อสวก",
-    "name_en": "Bo Suak",
-    "district_id": 5501,
-    "lat": null,
-    "long": null,
-    "created_at": "2019-08-09T03:33:09.000+07:00",
-    "updated_at": "2025-09-20T06:31:26.000+07:00",
-    "deleted_at": null
-  },
-  {
-    "id": 840902,
-    "zip_code": 84230,
-    "name_th": "พะแสง",
-    "name_en": "Phasaeng",
-    "district_id": 8409,
-    "lat": null,
-    "long": null,
     "created_at": "2019-08-09T03:33:09.000+07:00",
     "updated_at": "2025-09-20T06:31:26.000+07:00",
     "deleted_at": null

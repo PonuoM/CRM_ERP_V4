@@ -13,6 +13,7 @@ type ReportType = 'movement' | 'balance' | null;
 const InventoryReportsPage: React.FC<InventoryReportsPageProps> = ({ currentUser, companyId }) => {
     const [selectedReport, setSelectedReport] = useState<ReportType>(null);
     const [warehouses, setWarehouses] = useState<any[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
 
     // Filter States
     const [selectedWarehouse, setSelectedWarehouse] = useState<string>('');
@@ -31,6 +32,9 @@ const InventoryReportsPage: React.FC<InventoryReportsPageProps> = ({ currentUser
             listWarehouses(companyId).then(res => {
                 if (Array.isArray(res)) setWarehouses(res);
             });
+            listProducts().then(res => {
+                if (Array.isArray(res)) setProducts(res);
+            });
         }
     }, [companyId]);
 
@@ -43,7 +47,7 @@ const InventoryReportsPage: React.FC<InventoryReportsPageProps> = ({ currentUser
         let url = '';
         const query = new URLSearchParams({
             warehouseId: selectedWarehouse,
-            productId: selectedProduct,
+            productId: products.find(p => `${p.sku} - ${p.name}` === selectedProduct)?.id || selectedProduct,
             companyId: String(companyId || '')
         });
 
@@ -154,11 +158,17 @@ const InventoryReportsPage: React.FC<InventoryReportsPageProps> = ({ currentUser
                                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                                         <input
                                             type="text"
+                                            list="productOptions"
                                             className="w-full pl-9 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                            placeholder="รหัสสินค้า หรือ ชื่อสินค้า... (เว้นว่างเพื่อดูทั้งหมด)"
+                                            placeholder="รหัสสินค้า หรือ ชื่อสินค้า... (พิมพ์เพื่อค้นหา)"
                                             value={selectedProduct}
                                             onChange={e => setSelectedProduct(e.target.value)}
                                         />
+                                        <datalist id="productOptions">
+                                            {products.map(p => (
+                                                <option key={p.id} value={`${p.sku} - ${p.name}`} />
+                                            ))}
+                                        </datalist>
                                     </div>
                                 </div>
                             </div>

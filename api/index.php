@@ -1729,6 +1729,18 @@ function allocate_allocation_fifo(PDO $pdo, array $allocationRow, int $warehouse
         $pdo->prepare('UPDATE order_item_allocations SET warehouse_id=?, lot_number=?, allocated_quantity=?, status=? WHERE id=?')
             ->execute([$warehouseId, (string)$lot['lot_number'], $required, 'ALLOCATED', (int)$allocationRow['id']]);
 
+        // [LOGGING] Log Stock Movement (OUT) so it appears in reports
+        $pdo->prepare("INSERT INTO stock_movements (warehouse_id, product_id, movement_type, quantity, lot_number, document_number, reference_type, reference_id, reason, created_by, created_at) VALUES (?, ?, 'OUT', ?, ?, ?, 'order_item_allocations', ?, 'Order Allocation', ?, NOW())")
+            ->execute([
+                $warehouseId,
+                (int)$allocationRow['product_id'],
+                $required,
+                (string)$lot['lot_number'],
+                $allocationRow['order_id'] ?? 'N/A',
+                (int)$allocationRow['id'],
+                $allocationRow['created_by'] ?? 1
+            ]);
+
         return [
             'allocationId' => (int)$allocationRow['id'],
             'lotNumber' => (string)$lot['lot_number'],
@@ -3233,6 +3245,17 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     error_log('Failed to update customer total_purchases/grade: ' . $e->getMessage());
                 }
                 
+                // Auto-allocate stock if warehouse is specified
+                // This ensures stock is reserved immediately upon order creation
+                if (!empty($in['warehouseId'])) {
+                    try {
+                        auto_allocate_order($pdo, $in['id'], (int)$in['warehouseId'], (int)($in['companyId'] ?? 0));
+                    } catch (Throwable $e) {
+                         // Log error but allow order creation to proceed (allocation remains PENDING)
+                         error_log("Auto-allocation failed during order creation for {$in['id']}: " . $e->getMessage());
+                    }
+                }
+
                 $pdo->commit();
                 error_log('Order created successfully: ' . $in['id']);
                 json_response(['ok' => true, 'id' => $in['id']]);
@@ -3810,11 +3833,12 @@ function handle_allocations(PDO $pdo, ?string $id, ?string $action): void {
             // GET /allocations?order_id=...&status=PENDING
             $orderId = $_GET['order_id'] ?? null;
             $status = $_GET['status'] ?? null;
-            $sql = 'SELECT a.*, p.name AS product_name, w.name AS warehouse_name
+            $sql = 'SELECT a.*, p.name AS product_name, w.name AS warehouse_name, o.order_status
                     FROM order_item_allocations a
+                    JOIN orders o ON o.id = a.order_id
                     LEFT JOIN products p ON p.id = a.product_id
                     LEFT JOIN warehouses w ON w.id = a.warehouse_id
-                    WHERE 1=1';
+                    WHERE o.order_status NOT IN ("Picking", "Packed", "Shipped", "Completed", "Cancelled")';
             $params = [];
             if ($orderId) { $sql .= ' AND a.order_id = ?'; $params[] = $orderId; }
             if ($status) { $sql .= ' AND a.status = ?'; $params[] = $status; }
