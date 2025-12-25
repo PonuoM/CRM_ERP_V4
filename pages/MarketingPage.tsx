@@ -1658,13 +1658,60 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     } catch (error) {
       console.error("Error loading product ads logs:", error);
     } finally {
+
+
+      setProductAdsLogsLoading(false);
+    }
+  };
+
+  const loadPageAdsLogs = async () => {
+    setProductAdsLogsLoading(true);
+    try {
+      const offset = (productAdsHistoryPage - 1) * productAdsHistoryPageSize;
+
+      // Prepare user filter
+      let userFilter: number | number[] | undefined;
+      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+        if (adsHistorySelectedUsers.length > 0) {
+          userFilter = adsHistorySelectedUsers.map((u: any) => u.id);
+        }
+      } else {
+        userFilter = currentUser.id;
+      }
+
+      // Call common function
+      const result = await loadAdsLogs(
+        adsHistorySelectedPages.length > 0 ? adsHistorySelectedPages.map(Number) : undefined,
+        adsHistoryDateRange.start,
+        adsHistoryDateRange.end,
+        userFilter,
+        productAdsHistoryPageSize,
+        offset
+      );
+
+      setProductAdsLogs(result.data);
+      setProductAdsLogsTotal(result.total);
+      setProductAdsHistoryServerPagination({
+        total: result.total,
+        totalPages: result.totalPages,
+        hasMore: result.hasMore,
+        hasPrevious: result.hasPrevious,
+      });
+    } catch (error) {
+      console.error("Error loading page ads logs:", error);
+      setProductAdsLogs([]);
+    } finally {
       setProductAdsLogsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'adsHistory' && adsHistoryMode === 'product') {
-      loadProductAdsLogs();
+    if (activeTab === 'adsHistory') {
+      if (adsHistoryMode === 'product') {
+        loadProductAdsLogs();
+      } else {
+        loadPageAdsLogs();
+      }
     }
   }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize]);
 
@@ -3683,7 +3730,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
             {adsHistoryMode === 'page' ? (
               // Page Ads History
-              adsLogsLoading ? (
+              productAdsLogsLoading ? (
                 <div className="text-center py-8">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
                   <p className="mt-2 text-gray-600">กำลังโหลดประวัติ...</p>
@@ -3693,7 +3740,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   {/* Group by Page */}
                   {(() => {
                     const groupedByPage: Record<string, any[]> = {};
-                    adsLogs.forEach(log => {
+                    productAdsLogs.forEach(log => {
                       const key = log.page_id;
                       if (!groupedByPage[key]) groupedByPage[key] = [];
                       groupedByPage[key].push(log);
@@ -3807,18 +3854,18 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     );
                   })()}
 
-                  {adsLogs.length > 0 && (
+                  {productAdsLogs.length > 0 && (
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                       <div className="text-sm text-gray-600">
                         {(() => {
                           const start =
-                            (adsHistoryPage - 1) * adsHistoryPageSize + 1;
+                            (productAdsHistoryPage - 1) * productAdsHistoryPageSize + 1;
                           const end = Math.min(
-                            start + adsHistoryPageSize - 1,
-                            adsLogsTotal,
+                            start + productAdsHistoryPageSize - 1,
+                            productAdsLogsTotal,
                           );
-                          return adsLogsTotal > 0
-                            ? `แสดง ${start}-${end} จาก ${adsLogsTotal} รายการ (ทั้งหมด ${serverPagination.totalPages} หน้า)`
+                          return productAdsLogsTotal > 0
+                            ? `แสดง ${start}-${end} จาก ${productAdsLogsTotal} รายการ (ทั้งหมด ${productAdsHistoryServerPagination.totalPages} หน้า)`
                             : "ไม่มีข้อมูล";
                         })()}
                       </div>
@@ -3826,9 +3873,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <label className="text-sm text-gray-700">แถวต่อหน้า</label>
                         <select
                           className="border rounded px-2 py-1 text-sm bg-white"
-                          value={adsHistoryPageSize}
+                          value={productAdsHistoryPageSize}
                           onChange={(e) =>
-                            setAdsHistoryPageSize(Number(e.target.value))
+                            setProductAdsHistoryPageSize(Number(e.target.value))
                           }
                         >
                           {[10, 20, 50, 100].map((sz) => (
@@ -3840,10 +3887,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         <button
                           className="px-3 py-1 border rounded text-sm disabled:opacity-50"
                           onClick={() =>
-                            setAdsHistoryPage((p) => Math.max(1, p - 1))
+                            setProductAdsHistoryPage((p) => Math.max(1, p - 1))
                           }
                           disabled={
-                            !serverPagination.hasPrevious || adsHistoryPage === 1
+                            !productAdsHistoryServerPagination.hasPrevious || productAdsHistoryPage === 1
                           }
                         >
                           ก่อนหน้า
@@ -3853,34 +3900,34 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                           <input
                             type="number"
                             min="1"
-                            max={serverPagination.totalPages}
-                            value={adsHistoryPage}
+                            max={productAdsHistoryServerPagination.totalPages}
+                            value={productAdsHistoryPage}
                             onChange={(e) => {
                               const page = Math.max(
                                 1,
                                 Math.min(
-                                  serverPagination.totalPages,
+                                  productAdsHistoryServerPagination.totalPages,
                                   Number(e.target.value) || 1,
                                 ),
                               );
-                              setAdsHistoryPage(page);
+                              setProductAdsHistoryPage(page);
                             }}
                             className="w-16 px-2 py-1 border rounded text-sm text-center"
                           />
                           <span className="text-sm text-gray-700">
-                            / {serverPagination.totalPages}
+                            / {productAdsHistoryServerPagination.totalPages}
                           </span>
                         </div>
                         <button
                           className="px-3 py-1 border rounded text-sm disabled:opacity-50"
                           onClick={() =>
-                            setAdsHistoryPage((p) =>
-                              Math.min(serverPagination.totalPages, p + 1),
+                            setProductAdsHistoryPage((p) =>
+                              Math.min(productAdsHistoryServerPagination.totalPages, p + 1),
                             )
                           }
                           disabled={
-                            !serverPagination.hasMore ||
-                            adsHistoryPage === serverPagination.totalPages
+                            !productAdsHistoryServerPagination.hasMore ||
+                            productAdsHistoryPage === productAdsHistoryServerPagination.totalPages
                           }
                         >
                           ถัดไป
