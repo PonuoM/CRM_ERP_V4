@@ -1,0 +1,18 @@
+=== Debug Report for Order: 251223-00023adminwa ===
+
+Order Status: Picking
+Warehouse ID: 7
+Company ID: 1
+
+--- Order Items ---
+Item ID: 367 | OrderID: 251223-00023adminwa-1 | ParentID: 251223-00023adminwa | Product ID: 5 (ทดสอบการเคลื่อนไหว) | Qty: 4
+  > Allocation ID: 256 | Status: PENDING | Required: 4 | Allocated: 0 | Lot:  | Warehouse: 
+  > Warehouse Stock Status (Target Warehouse 7):
+    - NO STOCK FOUND IN WAREHOUSE 7
+  > ALL WAREHOUSES Stock Status:
+    - Warehouse: Airport BKK (คลังบางแค) (1) | Lot: test-01 | Qty: 5000 | Reserved: 0
+
+--- Stock Movements ---
+NO STOCK MOVEMENTS FOUND for this order.
+
+==============================

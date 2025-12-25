@@ -22,34 +22,76 @@ function logMessage($message) {
 // Function to insert or update data in a table
 function insertOrUpdateData($pdo, $table, $data) {
     try {
+        if (empty($data)) return 0;
+
         // Get the columns from the first data item
         $columns = array_keys($data[0]);
-        
-        // Build the INSERT ON DUPLICATE KEY UPDATE query
-        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-        $updateClauses = [];
-        
-        foreach ($columns as $column) {
-            if ($column !== 'id') { // Don't update the primary key
-                $updateClauses[] = "`$column` = VALUES(`$column`)";
-            }
-        }
-        
-        $sql = "INSERT INTO `$table` (`" . implode('`, `', $columns) . "`) VALUES ($placeholders) 
-                ON DUPLICATE KEY UPDATE " . implode(', ', $updateClauses);
-        
-        $stmt = $pdo->prepare($sql);
-        
-        // Insert each row
         $count = 0;
+
         foreach ($data as $row) {
             $values = [];
-            foreach ($columns as $column) {
-                $values[] = isset($row[$column]) ? $row[$column] : null;
+            $checkParams = [];
+            $checkSql = "";
+
+            // Custom check checks based on table
+            if ($table === 'address_sub_districts') {
+                // For sub-districts, strictly check ID + ZipCode (and maybe DistrictID)
+                // Using ID + ZipCode as unique identifier
+                $checkSql = "SELECT COUNT(*) FROM `$table` WHERE `id` = ? AND `zip_code` = ?";
+                $checkParams = [$row['id'], $row['zip_code']];
+            } else {
+                // For other tables, assume ID is unique
+                $checkSql = "SELECT COUNT(*) FROM `$table` WHERE `id` = ?";
+                $checkParams = [$row['id']];
             }
-            
-            if ($stmt->execute($values)) {
-                $count++;
+
+            // Check existence
+            $checkStmt = $pdo->prepare($checkSql);
+            $checkStmt->execute($checkParams);
+            $exists = $checkStmt->fetchColumn() > 0;
+
+            if ($exists) {
+                // Update logic (optional, currently just skipping if exists based on user requirement to "not duplicate")
+                // Because "ON DUPLICATE KEY UPDATE" was effectively doing upsert.
+                // But now we can't rely on key. 
+                // Let's UPDATE existing record to be safe?
+                // Construct UPDATE query
+                $updateClauses = [];
+                $updateParams = [];
+                foreach ($columns as $column) {
+                    if ($column !== 'id') {
+                        $updateClauses[] = "`$column` = ?";
+                        $updateParams[] = isset($row[$column]) ? $row[$column] : null;
+                    }
+                }
+                
+                // Add WHERE clause params
+                $sql = "UPDATE `$table` SET " . implode(', ', $updateClauses) . " WHERE ";
+                if ($table === 'address_sub_districts') {
+                    $sql .= "`id` = ? AND `zip_code` = ?";
+                    $updateParams[] = $row['id'];
+                    $updateParams[] = $row['zip_code'];
+                } else {
+                    $sql .= "`id` = ?";
+                    $updateParams[] = $row['id'];
+                }
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($updateParams);
+
+            } else {
+                // Insert
+                $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+                $insertSql = "INSERT INTO `$table` (`" . implode('`, `', $columns) . "`) VALUES ($placeholders)";
+                
+                foreach ($columns as $column) {
+                    $values[] = isset($row[$column]) ? $row[$column] : null;
+                }
+                
+                $stmt = $pdo->prepare($insertSql);
+                if ($stmt->execute($values)) {
+                    $count++;
+                }
             }
         }
         

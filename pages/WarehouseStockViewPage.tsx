@@ -184,9 +184,9 @@ const WarehouseStockViewPage: React.FC<WarehouseStockViewPageProps> = ({ current
                     <tr className="bg-white border-b border-gray-100">
                       <th className="px-6 py-3 text-left w-10"></th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">สินค้า (SKU) / Lot</th>
+                      <th className="px-6 py-3 text-right font-semibold text-gray-600">รับเข้า</th>
+                      <th className="px-6 py-3 text-right font-semibold text-gray-600">ขาย</th>
                       <th className="px-6 py-3 text-right font-semibold text-gray-600">คงเหลือ</th>
-                      <th className="px-6 py-3 text-right font-semibold text-gray-600">จอง</th>
-                      <th className="px-6 py-3 text-right font-semibold text-gray-600">พร้อมขาย</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">วันหมดอายุ</th>
                       <th className="px-6 py-3 text-center font-semibold text-gray-600">จัดการ</th>
                     </tr>

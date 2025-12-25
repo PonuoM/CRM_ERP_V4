@@ -1,8 +1,8 @@
 <?php
 /**
- * Export Stock Balance Report (Snapshot)
- * Filters: date (Snapshot Date), warehouseId, productId, companyId
- * Columns: Product Code, Product Name, Inbound (Pending Receive), Reserved (Pending Order), Sold (Shipped/Picking), Balance, Available
+ * Export Stock Balance Report (Hybrid Stock-Lot Source)
+ * Fixes issue where product_lots data might be out of sync with warehouse_stocks.
+ * Uses warehouse_stocks as Truth for Total Quantity, and fits Lots into it.
  */
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename=stock_balance_report.csv');
@@ -15,7 +15,6 @@ $warehouseId = !empty($_GET['warehouseId']) ? $_GET['warehouseId'] : null;
 $productId = !empty($_GET['productId']) ? $_GET['productId'] : null;
 $companyId = !empty($_GET['companyId']) ? $_GET['companyId'] : null;
 
-// Is Snapshot Date Today?
 $isToday = ($date === date('Y-m-d'));
 
 $output = fopen('php://output', 'w');
@@ -26,150 +25,202 @@ fputcsv($output, ["Date: $date"]);
 fputcsv($output, []);
 
 fputcsv($output, [
+    'Warehouse (คลังสินค้า)',
     'Product Code (รหัสสินค้า)',
     'Product Name (ชื่อสินค้า)',
-    'On Hand (คงเหลือจริง)', 
-    'Reserved (จอง-รอส่ง)', 
-    'Sold/Picking (ขาย-กำลังจัดส่ง)', 
-    'Available (พร้อมขาย)'
+    'Lot Number (Lot)',
+    'Total (รับเข้า)',         // From Warehouse Stock (distributed)
+    'Sold (ขาย)',              // Active Allocations
+    'Remaining (คงเหลือ)'     // Total - Sold
 ]);
 
 try {
-    // 1. Fetch Products
-    $pParams = [];
-    $pWhere = ["p.status = 'active'"];
+    // 1. Fetch Stocks (Source of Truth for Totals)
+    $params = [];
+    $whereClause = "";
+    if ($warehouseId) {
+        $whereClause .= " AND ws.warehouse_id = ?";
+        $params[] = $warehouseId;
+    }
     if ($productId) {
         if (is_numeric($productId)) {
-            $pWhere[] = "p.id = ?";
-            $pParams[] = $productId;
+            $whereClause .= " AND ws.product_id = ?";
+            $params[] = $productId;
         } else {
-            $pWhere[] = "(p.sku LIKE ? OR p.name LIKE ?)";
-            $pParams[] = "%$productId%";
-            $pParams[] = "%$productId%";
+             $whereClause .= " AND (p.sku LIKE ? OR p.name LIKE ?)";
+             $params[] = "%$productId%";
+             $params[] = "%$productId%";
         }
     }
-    // Company filter needed for products? Assuming simple for now or added later.
 
-    $sqlP = "SELECT id, sku as code, name FROM products p WHERE " . implode(" AND ", $pWhere) . " ORDER BY p.sku";
-    $stmtP = $pdo->prepare($sqlP);
-    $stmtP->execute($pParams);
-    $products = $stmtP->fetchAll(PDO::FETCH_ASSOC);
+    $sqlStock = "SELECT 
+                ws.warehouse_id, 
+                w.name as warehouse_name, 
+                ws.product_id, 
+                p.sku, 
+                p.name as product_name, 
+                ws.quantity as on_hand
+            FROM warehouse_stocks ws
+            JOIN products p ON ws.product_id = p.id
+            JOIN warehouses w ON ws.warehouse_id = w.id
+            WHERE p.status = 'active' $whereClause
+            ORDER BY w.name, p.sku";
+    $stmt = $pdo->prepare($sqlStock);
+    $stmt->execute($params);
+    $stocks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. Prepare Statements for counts
+    // 2. Fetch Lots (To map to stocks)
+    // We fetch all active lots for these products/warehouses
+    $lotMap = []; // [warehouse_id][product_id] => array of lots
+    $sqlLots = "SELECT warehouse_id, product_id, lot_number, quantity_remaining 
+                FROM product_lots 
+                WHERE status = 'Active' 
+                ORDER BY purchase_date ASC, id ASC"; // FIFO like distribution
+    // Optimization: Filter by product_ids in PHP if list is huge? For now select all active or filter by join if needed.
+    // If we have filters, apply to lots too safely.
+    $lotWhere = "";
+    $lotParams = [];
+    if ($warehouseId) { $lotWhere .= " AND warehouse_id = ?"; $lotParams[] = $warehouseId; }
+    if ($productId && is_numeric($productId)) { $lotWhere .= " AND product_id = ?"; $lotParams[] = $productId; }
     
-    // A. On Hand (Warehouse Stocks)
-    // If Today: Direct Query. If Past: Calc from History? 
-    // Plan: V1 supports Today perfectly. Past Date supports "On Hand" via movement reversal. 
-    // Reserved/Sold for Past Date is hard, might show N/A or approximate.
-    
-    // Strategy: calculate OnHand for $date.
-    if ($isToday) {
-        $sqlStock = "SELECT SUM(quantity) FROM warehouse_stocks WHERE product_id = ?";
-        if ($warehouseId) $sqlStock .= " AND warehouse_id = $warehouseId";
-        $stmtStock = $pdo->prepare($sqlStock);
-    } else {
-        // Historical: Current - (Movements after Date)
-        // This is heavy per product. Better to fetch all movements and compute?
-        // Let's do per product for V1 or single query with join.
-        // Optimization: Single query for all stocks.
-        // For distinct product list, we iterate.
-        $stmtStockCurrent = $pdo->prepare("SELECT SUM(quantity) FROM warehouse_stocks WHERE product_id = ?" . ($warehouseId ? " AND warehouse_id = $warehouseId" : ""));
-        $stmtApproveMove = $pdo->prepare("SELECT SUM(quantity) FROM stock_movements WHERE product_id = ? AND created_at > ? " . ($warehouseId ? " AND warehouse_id = $warehouseId" : ""));
+    $stmtLots = $pdo->prepare($sqlLots . $lotWhere);
+    $stmtLots->execute($lotParams);
+    while ($row = $stmtLots->fetch(PDO::FETCH_ASSOC)) {
+        $lotMap[$row['warehouse_id']][$row['product_id']][] = $row;
     }
 
-    // B. Reserved (Pending Orders)
-    // Orders created <= Date, Status in (Pending, Confirmed), Not cancelled/shipped
-    // AND items.product_id match.
-    // NOTE: orders table schema check needed. Assuming `order_items` table or JSON in `orders`?
-    // Usually `order_items` table.
-    // Check schema for `order_items`? I'll assume standard `order_items` table exists.
+    // 3. Fetch Sold (Allocations)
+    $soldMap = []; // [warehouse_id][product_id][lot_number] => qty
+    // Note: Allocations might have NULL lot_number (if pending auto-allocate).
+    // We map NULL key too.
+    $allocWhere = "";
+    $allocParams = [];
+    if ($warehouseId) { $allocWhere .= " AND a.warehouse_id = ?"; $allocParams[] = $warehouseId; }
+    if ($productId && is_numeric($productId)) { $allocWhere .= " AND a.product_id = ?"; $allocParams[] = $productId; }
     
-    // If I don't confirm order_items schema, this might fail.
-    // Let's assume table `order_items` (order_id, product_id, quantity).
-    
-    $sqlReserved = "SELECT SUM(oi.quantity) 
-                    FROM orders o 
-                    JOIN order_items oi ON o.id = oi.order_id 
-                    WHERE o.order_date <= ? 
-                      AND o.order_status IN ('Pending', 'Confirmed', 'Processing') 
-                      AND oi.product_id = ?";
-    // Note: Warehouse filter on orders? Usually orders are assigned to warehouse at allocation.
-    // If $warehouseId is set, we check order allocation? Complex.
-    // User Requirement: "Select Warehouse".
-    // If order is NOT yet allocated (Pending), it doesn't belong to a warehouse yet explicitly or default?
-    // We will show Reserved globally if warehouse not selected, or ignore reserved if filtering specific warehouse?
-    // Better: Show Total Reserved regardless of warehouse, OR link if possible.
-    // Let's stick to Product-level Reserved for now to avoid missing data.
-    
-    $stmtReserved = $pdo->prepare($sqlReserved);
+    $sqlSold = "SELECT 
+                  a.warehouse_id, 
+                  a.product_id, 
+                  a.lot_number,
+                  SUM(a.allocated_quantity) as sold_qty
+                FROM order_item_allocations a
+                JOIN orders o ON a.order_id = o.id
+                WHERE o.order_status NOT IN ('Pending', 'Shipped', 'Completed', 'Cancelled', 'Return')
+                $allocWhere
+                GROUP BY a.warehouse_id, a.product_id, a.lot_number";
 
-    // C. Sold/Picking (Picking, Ready to Ship)
-    $sqlSold = "SELECT SUM(oi.quantity) 
-                FROM orders o 
-                JOIN order_items oi ON o.id = oi.order_id 
-                WHERE o.order_date <= ? 
-                  AND o.order_status IN ('Picking', 'Packed') 
-                  AND oi.product_id = ?";
     $stmtSold = $pdo->prepare($sqlSold);
+    $stmtSold->execute($allocParams);
+    while ($row = $stmtSold->fetch(PDO::FETCH_ASSOC)) {
+        $l = $row['lot_number'] !== null ? (string)$row['lot_number'] : 'NA';
+        $soldMap[$row['warehouse_id']][$row['product_id']][$l] = (float)$row['sold_qty'];
+    }
 
-    foreach ($products as $prod) {
-        $pid = $prod['id'];
-
-        // 1. On Hand
-        $onHand = 0;
-        if ($isToday) {
-            $stmtStock->execute([$pid]);
-            $onHand = (float)$stmtStock->fetchColumn();
-        } else {
-            // Calc Historical
-            // Current
-            $stmtStockCurrent->execute([$pid]);
-            $curr = (float)$stmtStockCurrent->fetchColumn();
-            
-            // Movements > Date (midnight next day)
-            $nextDay = date('Y-m-d 00:00:00', strtotime($date . ' +1 day'));
-            $stmtApproveMove->execute([$pid, $nextDay]);
-            $delta = (float)$stmtApproveMove->fetchColumn(); // Sum of signed qty
-            
-            // History = Current - Delta
-            // Example: Current 10. Mov (IN +5) occurred after date. 
-            // History = 10 - 5 = 5. Correct.
-            // Example: Current 10. Mov (OUT -2) occurred after date.
-            // History = 10 - (-2) = 12. Correct.
-            $onHand = $curr - $delta;
+    // 4. Process and Output
+    foreach ($stocks as $stock) {
+        $whId = $stock['warehouse_id'];
+        $pId = $stock['product_id'];
+        $totalStock = (float)$stock['on_hand']; // This is the Physical Total we must respect
+        
+        // Historical Adjustment for Total
+        if (!$isToday) {
+             $nextDay = date('Y-m-d 00:00:00', strtotime($date . ' +1 day'));
+             $stmtMov = $pdo->prepare("SELECT SUM(quantity) FROM stock_movements WHERE warehouse_id=? AND product_id=? AND created_at >= ?");
+             $stmtMov->execute([$whId, $pId, $nextDay]);
+             $delta = (float)$stmtMov->fetchColumn();
+             $totalStock = $totalStock - $delta;
         }
 
-        // 2. Reserved
-        $stmtReserved->execute(["$date 23:59:59", $pid]);
-        $reserved = (float)$stmtReserved->fetchColumn();
-
-        // 3. Sold/Picking
-        $stmtSold->execute(["$date 23:59:59", $pid]);
-        $sold = (float)$stmtSold->fetchColumn();
-
-        // 4. Available
-        // Available = On Hand - Reserved - Sold?
-        // Defined by User: "Available" is what remains to sell.
-        // Usually Reserved + Sold are deducted from On Hand?
-        // User asked for "Balance after Sold" and "Balance after Sold + Reserved".
-        // Let's output columns: 
-        // On Hand (Physical)
-        // Reserved
-        // Sold
-        // Balance (On Hand - Sold) -> "คงเหลือหลังหักขาย"
-        // Available (On Hand - Sold - Reserved) -> "คงเหลือหลังหักขาย + จอง" (User phrasing "Balance after Sold + Reserved" might mean remaining available).
+        $lots = $lotMap[$whId][$pId] ?? [];
         
-        $balanceAfterSold = $onHand - $sold;
-        $available = $onHand - $sold - $reserved;
-
-        fputcsv($output, [
-            $prod['code'],
-            $prod['name'],
-            $onHand,
-            $reserved,
-            $sold,
-            $available
-        ]);
+        if (empty($lots)) {
+            // Case A: No Lots found for this Stock
+            // Show 1 row with 'N/A' lot, full stock qty
+            $sold = $soldMap[$whId][$pId]['NA'] ?? 0;
+            // Also add Sold from specific lots if any (ghost allocations?)
+            // Just sum all sold for this Wh/Prod?
+            // If lots are empty, likely soldmap keys are 'NA' or ghost keys.
+            // Let's sum all sold keys for this wh/pId to be safe?
+            // Actually, if we have active allocations with lot numbers but no lot in product_lots... distinct row? 
+            // For simplicity, if no lots, aggregate all sold.
+            $allSold = 0;
+            if (isset($soldMap[$whId][$pId])) {
+                foreach ($soldMap[$whId][$pId] as $q) $allSold += $q;
+            }
+            
+            fputcsv($output, [
+                $stock['warehouse_name'],
+                $stock['sku'],
+                $stock['product_name'],
+                '-', // Lot
+                $totalStock,
+                $allSold,
+                $totalStock - $allSold
+            ]);
+        } else {
+            // Case B: Lots exist. Distribute Stock across them.
+            // Logic: Iterate lots. Display them. 
+            // If Stock < Sum(Lots), we cap the display?
+            // If Stock > Sum(Lots), we add an "Unknown" lot row at end.
+            
+            $remainingStockConfig = $totalStock;
+            
+            foreach ($lots as $lot) {
+                // Determine how much of the Total Stock belongs to this Lot.
+                // We use lot['quantity_remaining'] (Available) + lot['sold'] ?? No.
+                // product_lots.quantity = logical available.
+                // We assume product_lots structure roughly mirrors reality, just might be scaled wrong.
+                // Or we just show the lot as is?
+                // User problem: "10000 combined". 
+                // Using warehouse_stocks, we process Wh A (5000 units).
+                // Wh A has Lot 1 (10000 units logic).
+                // We should display Lot 1, but cap it at 5000?
+                // Visual fix: Yes, cap at 5000.
+                
+                $lotNum = (string)$lot['lot_number'];
+                $lotSold = $soldMap[$whId][$pId][$lotNum] ?? 0;
+                
+                // Logical Total for this Lot according to DB = Available + Sold(Active)
+                // Note: quantity_remaining ALREADY excludes Sold(Active).
+                // So Lot Total = quantity_remaining + sold.
+                $lotLogicalTotal = (float)$lot['quantity_remaining'] + $lotSold;
+                
+                // Cap by remaining warehouse stock
+                $displayTotal = min($lotLogicalTotal, $remainingStockConfig);
+                
+                if ($displayTotal > 0 || $lotSold > 0) {
+                     $displayRemaining = $displayTotal - $lotSold;
+                     
+                     fputcsv($output, [
+                        $stock['warehouse_name'],
+                        $stock['sku'],
+                        $stock['product_name'],
+                        $lotNum,
+                        $displayTotal,
+                        $lotSold,
+                        $displayRemaining
+                    ]);
+                    
+                    $remainingStockConfig -= $displayTotal;
+                }
+                
+                if ($remainingStockConfig <= 0) break; // Filled the warehouse stock quota
+            }
+            
+            // If still stock remaining (Stock > Lots), add "Unassigned" row
+            if ($remainingStockConfig > 0.001) {
+                 $naSold = $soldMap[$whId][$pId]['NA'] ?? 0;
+                 fputcsv($output, [
+                    $stock['warehouse_name'],
+                    $stock['sku'],
+                    $stock['product_name'],
+                    'Unassigned',
+                    $remainingStockConfig,
+                    $naSold,
+                    $remainingStockConfig - $naSold
+                ]);
+            }
+        }
     }
 
 } catch (Exception $e) {
