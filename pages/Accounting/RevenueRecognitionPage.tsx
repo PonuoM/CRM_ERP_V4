@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api'; // Adjust path based on location
-import { Search, Loader2, ExternalLink, Filter, CheckSquare, TrendingUp, AlertCircle, Calendar, CheckCircle, X, Copy, Check } from 'lucide-react';
+import { Search, Loader2, ExternalLink, Filter, CheckSquare, TrendingUp, AlertCircle, Calendar, CheckCircle, X, Copy, Check, Download } from 'lucide-react';
 import { Order, ModalType } from '../../types';
 import StatCard from '../../components/StatCard';
 import OrderDetailModal from '../../components/OrderDetailModal';
@@ -75,6 +75,51 @@ const RevenueRecognitionPage: React.FC = () => {
         fetchData();
     }, [month, year]);
 
+    const handleExportCSV = () => {
+        if (data.length === 0) {
+            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            return;
+        }
+
+        const headers = [
+            "Order ID",
+            "Customer",
+            "Order Date",
+            "Goods Issue Date",
+            "Shipping Provider",
+            "Tracking No",
+            "Amount",
+            "Status",
+            "Revenue Month",
+            "Is Cross Period"
+        ];
+
+        const csvContent = [
+            headers.join(","),
+            ...data.map(item => [
+                `"${item.id}"`,
+                `"${(item.customer_name || '').replace(/"/g, '""')}"`,
+                `"${new Date(item.order_date).toLocaleDateString('th-TH')}"`,
+                `"${item.goods_issue_date ? new Date(item.goods_issue_date).toLocaleString('th-TH') : 'ยังไม่ส่งออก'}"`,
+                `"${(item.shipping_provider || '').replace(/"/g, '""')}"`,
+                `"${(item.tracking_no || '').replace(/"/g, '""')}"`,
+                item.total_amount,
+                `"${item.is_recognized ? 'Recognized' : 'Pending'}"`,
+                `"${item.revenue_month || ''}"`,
+                item.cross_period ? 'Yes' : 'No'
+            ].join(","))
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `revenue_recognition_${year}_${month}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     // Calculate Summary Stats
     const totalRevenue = data
         .filter(item => item.revenue_month === `${year}-${String(month).padStart(2, '0')}`)
@@ -122,8 +167,17 @@ const RevenueRecognitionPage: React.FC = () => {
                     <button
                         onClick={fetchData}
                         className="ml-2 p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+                        title="Reload Data"
                     >
                         <Search className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={handleExportCSV}
+                        disabled={data.length === 0 || loading}
+                        className="ml-2 p-2 bg-green-50 text-green-600 rounded-full hover:bg-green-100 transition-colors disabled:opacity-50"
+                        title="Export CSV"
+                    >
+                        <Download className="w-4 h-4" />
                     </button>
                 </div>
             </div>

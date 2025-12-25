@@ -47,7 +47,8 @@ try {
       srl.id as reconcile_id,
       srl.confirmed_at,
       srl.confirmed_action,
-      srl.reconcile_type, 
+      srl.reconcile_type,
+      srl.note,
       -- Use row_number to disambiguate multiple matches for the same order (box-level)
       ROW_NUMBER() OVER (PARTITION BY srl.order_id ORDER BY sl.transfer_at, sl.id) AS order_match_no
     FROM statement_logs sl
@@ -57,7 +58,7 @@ try {
     WHERE sb.company_id = :companyId
       AND sl.bank_account_id = :bankAccountId
       AND sl.transfer_at BETWEEN :startDate AND :endDate
-    ORDER BY sl.transfer_at DESC
+    ORDER BY sl.transfer_at ASC
   ";
   
   $stmt = $pdo->prepare($sql);
@@ -81,6 +82,8 @@ try {
 
     if ($reconcileType === 'Suspense') {
         $status = 'Suspense';
+    } elseif ($reconcileType === 'Deposit') {
+        $status = 'Deposit';
     } elseif ($row['order_id']) {
         $stmtAmt = (float)$row['statement_amount'];
         // Prefer per-row confirmed amount to avoid using full order total
@@ -114,6 +117,7 @@ try {
         'confirmed_at' => $row['confirmed_at'],
         'confirmed_action' => $row['confirmed_action'],
         'reconcile_type' => $reconcileType,
+        'note' => $row['note'],
         'transfer_at' => $row['transfer_at'],
         'statement_amount' => $row['statement_amount'],
         'channel' => $row['channel'],

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { listSentOrders, listBankAccounts, getOrder } from '../../services/api';
 import usePersistentState from '../../utils/usePersistentState';
-import { Search, ChevronLeft, ChevronRight, Filter, DollarSign, Package, Calendar, X, ShoppingBag, CreditCard, Box, User, MapPin } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Filter, DollarSign, Package, Calendar, X, ShoppingBag, CreditCard, Box, User, MapPin, Download } from 'lucide-react';
 // If headlessui is not available in dependencies, we'll use a custom Modal build similar to OutstandingOrdersModal
 
 interface SentOrder {
@@ -184,6 +184,53 @@ const AllOrdersSentPage: React.FC = () => {
         return map[status] || status;
     }
 
+    const handleExportCSV = () => {
+        if (orders.length === 0) {
+            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            return;
+        }
+
+        const headers = [
+            "Order ID",
+            "Order Date",
+            "Delivery Date",
+            "Customer Name",
+            "Recipient",
+            "Payment Method",
+            "Bank Info",
+            "Total Amount",
+            "Slip Amount",
+            "Status",
+            "Tracking Numbers"
+        ];
+
+        const csvContent = [
+            headers.join(","),
+            ...orders.map(order => [
+                `"${order.id}"`,
+                `"${formatDate(order.order_date)}"`,
+                `"${formatDate(order.delivery_date)}"`,
+                `"${(order.customer_first_name + ' ' + order.customer_last_name).replace(/"/g, '""')}"`,
+                `"${(order.recipient_first_name ? order.recipient_first_name + ' ' + order.recipient_last_name : '').replace(/"/g, '""')}"`,
+                `"${order.payment_method}"`,
+                `"${(order.bank_info || '').replace(/"/g, '""')}"`,
+                order.total_amount,
+                order.total_slip_amount || 0,
+                `"${mapOrderStatus(order.order_status)}"`,
+                `"${(order.tracking_numbers || '').replace(/"/g, '""')}"`
+            ].join(","))
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `sent_orders_${startDate}_${endDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="p-6 bg-slate-50 min-h-screen">
             <div className="flex justify-between items-center mb-6">
@@ -285,6 +332,15 @@ const AllOrdersSentPage: React.FC = () => {
                             >
                                 <Search size={18} />
                                 ค้นหา
+                            </button>
+
+                            <button
+                                onClick={handleExportCSV}
+                                disabled={orders.length === 0 || loading}
+                                className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-all flex items-center gap-2 font-medium disabled:opacity-50"
+                            >
+                                <Download size={18} />
+                                CSV
                             </button>
                         </div>
                     </div>

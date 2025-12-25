@@ -224,9 +224,9 @@ try {
 
   $insertLogStmt = $pdo->prepare("
     INSERT INTO statement_reconcile_logs
-      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched)
+      (batch_id, statement_log_id, order_id, statement_amount, confirmed_amount, reconcile_type, auto_matched, note)
     VALUES
-      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched)
+      (:batchId, :statementId, :orderId, :statementAmount, :confirmedAmount, :reconcileType, :autoMatched, :note)
   ");
 
   $orderUpdateStmt = $pdo->prepare("
@@ -269,8 +269,10 @@ try {
     $statementAmount = (float) $stmtInfo['amount'];
     file_put_contents(__DIR__ . "/debug_reconcile.txt", "Process Item: StmtId=$statementId, Type=$reconcileType, Amount=$statementAmount\n", FILE_APPEND);
 
-    if ($reconcileType === "Suspense") {
-      // For Suspense, orderId can be empty/null
+    $note = isset($item["note"]) ? trim($item["note"]) : null;
+
+    if ($reconcileType === "Suspense" || $reconcileType === "Deposit") {
+      // For Suspense/Deposit, orderId can be empty/null
       $orderId = null; 
       $order = null;
     } else {
@@ -332,11 +334,12 @@ try {
       $insertLogStmt->execute([
         ":batchId" => $batchId,
         ":statementId" => $statementId,
-        ":orderId" => $orderId, // Can be null for Suspense
+        ":orderId" => $orderId, // Can be null for Suspense/Deposit
         ":statementAmount" => $statementAmount,
         ":confirmedAmount" => $confirmedAmount,
         ":reconcileType" => $reconcileType,
         ":autoMatched" => $autoMatched,
+        ":note" => $note,
       ]);
       $saved += 1;
     } catch (PDOException $insertError) {

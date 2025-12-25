@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
-import { BankAccount, User, Customer, Activity, LineItem, Order } from '../../types';
-import { Search, Loader2, ExternalLink, Filter, CheckSquare } from 'lucide-react';
+import { User, Customer, Activity, LineItem, Order } from '../../types';
+import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
 
 interface AuditLog {
@@ -19,6 +19,14 @@ interface AuditLog {
     diff: number;
     confirmed_at?: string | null;
     confirmed_action?: string | null;
+    note?: string | null;
+}
+
+interface BankAccount {
+    id: number;
+    bank: string;
+    bank_number: string;
+    account_name: string;
 }
 
 interface BankAccountAuditPageProps {
@@ -122,15 +130,20 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             case 'Exact': return 'text-green-600 bg-green-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Over': return 'text-blue-600 bg-blue-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Short': return 'text-red-600 bg-red-100 px-2 py-1 rounded-full text-xs font-bold';
+            case 'Short': return 'text-red-600 bg-red-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Suspense': return 'text-orange-600 bg-orange-100 px-2 py-1 rounded-full text-xs font-bold';
+            case 'Deposit': return 'text-purple-600 bg-purple-100 px-2 py-1 rounded-full text-xs font-bold';
             default: return 'text-gray-500 bg-gray-100 px-2 py-1 rounded-full text-xs';
         }
     };
 
-    const handleMarkAsSuspense = async (log: AuditLog) => {
-        if (!window.confirm('ยืนยันตั้งรายการนี้เป็น พักรับ (Suspense/Held Funds)?')) {
-            return;
-        }
+    const handleActionChange = async (log: AuditLog, action: string) => {
+        if (!action) return;
+
+        const label = action === 'Suspense' ? 'พักรับ (Suspense)' : 'มัดจำรับ (Deposit)';
+        // Prompt for note
+        const note = window.prompt(`ระบุหมายเหตุสำหรับการ${label}:`);
+        if (note === null) return; // Cancelled
 
         try {
             const res = await apiFetch('Statement_DB/reconcile_save.php', {
@@ -143,8 +156,9 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     end_date: endDate,
                     items: [{
                         statement_id: log.id,
-                        reconcile_type: "Suspense",
-                        confirmed_amount: log.statement_amount // Full amount to Suspense
+                        reconcile_type: action, // Suspense or Deposit
+                        confirmed_amount: log.statement_amount,
+                        note: note
                     }]
                 })
             });
@@ -260,6 +274,65 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         }
     };
 
+    const handleExportCSV = () => {
+        if (logs.length === 0) {
+            alert("ไม่พบข้อมูลสำหรับส่งออก");
+            return;
+        }
+
+        const selectedBank = banks.find(b => String(b.id) === selectedBankId);
+        const bankName = selectedBank ? `${selectedBank.bank} ${selectedBank.bank_number} (${selectedBank.account_name})` : '';
+
+        const headers = [
+            "ID",
+            "Bank Account",
+            "Statement Date/Time",
+            "Statement Amount",
+            "Channel",
+            "Description",
+            "Order ID",
+            "Order Amount",
+            "Payment Method",
+            "Status",
+            "Confirmed At",
+            "Note"
+        ];
+
+        const csvContent = [
+            headers.join(","),
+            ...logs.map(log => [
+                log.id,
+                `"${(bankName || '').replace(/"/g, '""')}"`,
+                `"${formatDate(log.transfer_at)}"`,
+                log.statement_amount,
+                `"${log.channel || ''}"`,
+                `"${(log.description || '').replace(/"/g, '""')}"`,
+                `"${log.order_id || ''}"`,
+                log.order_amount || '',
+                `"${log.payment_method || ''}"`,
+                `"${log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
+                    log.status === 'Exact' ? 'พอดี' :
+                        log.status === 'Over' ? 'เกิน' :
+                            log.status === 'Short' ? 'ขาด' :
+                                log.status === 'Suspense' ? 'พักรับ' :
+                                    log.status === 'Deposit' ? 'มัดจำรับ' :
+                                        log.status
+                }"`,
+                `"${log.confirmed_at ? formatDate(log.confirmed_at) : ''}"`,
+                `"${(log.note || '').replace(/"/g, '""')}"`
+            ].join(","))
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `bank_audit_${startDate}_${endDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <>
             <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -317,6 +390,15 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
                                     ค้นหา
+                                </button>
+
+                                <button
+                                    onClick={handleExportCSV}
+                                    disabled={logs.length === 0 || loading}
+                                    className="mb-[1px] px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                                >
+                                    <Download className="w-4 h-4 mr-2" />
+                                    Export CSV
                                 </button>
                             </div>
 
@@ -395,31 +477,41 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
                                                 {/* Status */}
                                                 <td className="px-4 py-3 text-center">
-                                                    <div className="flex flex-row gap-2 justify-center items-center">
-                                                        <span className={`${getStatusColor(log.status)} shadow-sm`}>
-                                                            {log.status === 'Unmatched' ? 'ยังไม่จับคู่' :
-                                                                log.status === 'Exact' ? 'พอดี' :
+                                                    <div className="flex flex-col gap-1 items-center" title={log.note || ''}>
+                                                        {log.status !== 'Unmatched' && (
+                                                            <span className={`${getStatusColor(log.status)} shadow-sm cursor-help`}>
+                                                                {log.status === 'Exact' ? 'พอดี' :
                                                                     log.status === 'Over' ? `เกิน (+${log.diff.toLocaleString()})` :
                                                                         log.status === 'Short' ? `ขาด (${log.diff.toLocaleString()})` :
                                                                             log.status === 'Suspense' ? 'พักรับ' :
-                                                                                'รอจับคู่'}
-                                                        </span>
-                                                        {log.status === 'Unmatched' && (
-                                                            <button
-                                                                onClick={() => handleMarkAsSuspense(log)}
-                                                                className="text-xs text-orange-600 hover:text-white hover:bg-orange-500 bg-white border border-orange-200 px-3 py-1 rounded-full transition-all shadow-sm font-medium"
-                                                                title="Mark as Suspense"
-                                                            >
-                                                                พักรับ
-                                                            </button>
+                                                                                log.status === 'Deposit' ? 'มัดจำรับ' :
+                                                                                    'รอจับคู่'}
+                                                            </span>
                                                         )}
-                                                        {log.status === 'Suspense' && (
+
+                                                        {log.status === 'Unmatched' && (
+                                                            <div className="relative">
+                                                                <select
+                                                                    className="text-xs border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none pr-8 cursor-pointer hover:bg-gray-50 transition-colors"
+                                                                    style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.2rem center`, backgroundSize: `1.2em 1.2em`, backgroundRepeat: 'no-repeat' }}
+                                                                    onChange={(e) => {
+                                                                        handleActionChange(log, e.target.value);
+                                                                        e.target.value = ""; // Reset
+                                                                    }}
+                                                                    defaultValue=""
+                                                                >
+                                                                    <option value="" disabled>เลือกสถานะ...</option>
+                                                                    <option value="Suspense">พักรับ</option>
+                                                                    <option value="Deposit">มัดจำรับ</option>
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                        {(log.status === 'Suspense' || log.status === 'Deposit') && (
                                                             <button
                                                                 onClick={() => handleUnpause(log)}
-                                                                className="text-xs text-red-600 hover:text-white hover:bg-red-500 bg-white border border-red-200 px-3 py-1 rounded-full transition-all shadow-sm font-medium"
-                                                                title="Unpause"
+                                                                className="text-xs text-red-600 hover:text-white hover:bg-red-500 bg-white border border-red-200 px-2 py-0.5 rounded-full transition-all shadow-sm font-medium mt-1"
                                                             >
-                                                                ยกเลิกพักรับ
+                                                                ยกเลิก
                                                             </button>
                                                         )}
                                                     </div>
