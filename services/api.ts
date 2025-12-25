@@ -525,8 +525,14 @@ export async function listPages(companyId?: number, pageType?: string, active?: 
   return apiFetch(`pages${qs.toString() ? `?${qs}` : ""}`);
 }
 
+export async function getSellProductTypes() {
+  return apiFetch("pages?mode=distinct_sell_product_types");
+}
+
 export async function createPage(payload: {
   name: string;
+  display_name?: string;
+  sell_product_type?: string;
   platform?: string;
   url?: string;
   companyId: number;
@@ -539,6 +545,8 @@ export async function updatePage(
   id: number,
   payload: Partial<{
     name: string;
+    display_name: string;
+    sell_product_type: string;
     platform: string;
     url?: string;
     companyId: number;

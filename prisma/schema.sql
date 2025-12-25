@@ -338,130 +338,6 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-CREATE TABLE IF NOT EXISTS `address_sub_districts` (
-`id` INT NOT NULL,
-`zip_code` VARCHAR(10) NULL,
-`name_th` VARCHAR(255) NULL,
-`name_en` VARCHAR(255) NULL,
-`district_id` INT NULL,
-`lat` DECIMAL(10, 8) NULL,
-`long` DECIMAL(11, 8) NULL,
-`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-`updated_at` TIMESTAMP NULL,
-`deleted_at` TIMESTAMP NULL,
-  PRIMARY KEY (`id`)
-);
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'zip_code'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `zip_code` VARCHAR(10) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'name_th'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_th` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'name_en'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `name_en` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'district_id'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `district_id` INT NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'lat'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `lat` DECIMAL(10, 8) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'long'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `long` DECIMAL(11, 8) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'created_at'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'updated_at'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `updated_at` TIMESTAMP NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND COLUMN_NAME = 'deleted_at'
-) = 0,
-  'ALTER TABLE `address_sub_districts` ADD COLUMN `deleted_at` TIMESTAMP NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND INDEX_NAME = 'district_id'
-) = 0,
-  'CREATE INDEX `district_id` ON `address_sub_districts`(`district_id`)',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'address_sub_districts' AND INDEX_NAME = 'zip_code'
-) = 0,
-  'CREATE INDEX `zip_code` ON `address_sub_districts`(`zip_code`)',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
 CREATE TABLE IF NOT EXISTS `appointments` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `customer_id` INT NULL,
@@ -2827,6 +2703,9 @@ CREATE TABLE IF NOT EXISTS `customers` (
 `is_new_customer` BOOLEAN NULL,
 `is_repeat_customer` BOOLEAN NULL,
 `bucket_type` VARCHAR(16) NULL,
+`ai_last_updated` DATETIME NULL,
+`ai_reason_thai` TEXT NULL,
+`ai_score` INT NULL,
   PRIMARY KEY (`customer_id`)
 );
 SET @sql := IF((
@@ -3260,6 +3139,36 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'ai_last_updated'
+) = 0,
+  'ALTER TABLE `customers` ADD COLUMN `ai_last_updated` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'ai_reason_thai'
+) = 0,
+  'ALTER TABLE `customers` ADD COLUMN `ai_reason_thai` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'ai_score'
+) = 0,
+  'ALTER TABLE `customers` ADD COLUMN `ai_score` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND INDEX_NAME = 'idx_customers_assigned_to'
 ) = 0,
@@ -3536,6 +3445,7 @@ CREATE TABLE IF NOT EXISTS `google_sheet_shipping` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `system_created_time` DATETIME NULL,
 `order_number` VARCHAR(128) NULL,
+`order_status` VARCHAR(50) NULL,
 `delivery_date` DATE NULL,
 `delivery_status` VARCHAR(100) NULL,
 `imported_at` DATETIME NULL,
@@ -3557,6 +3467,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'google_sheet_shipping' AND COLUMN_NAME = 'order_number'
 ) = 0,
   'ALTER TABLE `google_sheet_shipping` ADD COLUMN `order_number` VARCHAR(128) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'google_sheet_shipping' AND COLUMN_NAME = 'order_status'
+) = 0,
+  'ALTER TABLE `google_sheet_shipping` ADD COLUMN `order_status` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3627,6 +3547,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'google_sheet_shipping' AND INDEX_NAME = 'idx_order_number'
 ) = 0,
   'CREATE INDEX `idx_order_number` ON `google_sheet_shipping`(`order_number`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'google_sheet_shipping' AND INDEX_NAME = 'idx_order_status'
+) = 0,
+  'CREATE INDEX `idx_order_status` ON `google_sheet_shipping`(`order_status`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3797,6 +3727,316 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+CREATE TABLE IF NOT EXISTS `products` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`sku` VARCHAR(64) NULL,
+`name` VARCHAR(255) NULL,
+`description` TEXT NULL,
+`category` VARCHAR(128) NULL,
+`unit` VARCHAR(32) NULL,
+`cost` DECIMAL(12, 2) NULL,
+`price` DECIMAL(12, 2) NULL,
+`stock` INT NULL,
+`company_id` INT NULL,
+`shop` VARCHAR(128) NULL,
+`status` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'sku'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `sku` VARCHAR(64) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'name'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `name` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `description` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'category'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `category` VARCHAR(128) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'unit'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `unit` VARCHAR(32) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'cost'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `cost` DECIMAL(12, 2) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'price'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `price` DECIMAL(12, 2) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'stock'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `stock` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'company_id'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `company_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'shop'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `shop` VARCHAR(128) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'status'
+) = 0,
+  'ALTER TABLE `products` ADD COLUMN `status` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'status' AND DATA_TYPE = 'text'
+) > 0,
+  'ALTER TABLE `products` MODIFY COLUMN `status` VARCHAR(255) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'idx_products_company'
+) = 0,
+  'CREATE INDEX `idx_products_company` ON `products`(`company_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `marketing_product_ads_log` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`user_id` INT NULL,
+`product_id` INT NULL,
+`date` DATE NULL,
+`ads_cost` DECIMAL(10, 2) NULL,
+`impressions` INT NULL,
+`reach` INT NULL,
+`clicks` INT NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+`updated_at` TIMESTAMP NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'user_id'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `user_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'product_id'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `product_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'date'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `date` DATE NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'ads_cost'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `ads_cost` DECIMAL(10, 2) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'impressions'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `impressions` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'reach'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `reach` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'clicks'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `clicks` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD COLUMN `updated_at` TIMESTAMP NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND INDEX_NAME = 'idx_date'
+) = 0,
+  'CREATE INDEX `idx_date` ON `marketing_product_ads_log`(`date`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND INDEX_NAME = 'idx_product_id'
+) = 0,
+  'CREATE INDEX `idx_product_id` ON `marketing_product_ads_log`(`product_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND INDEX_NAME = 'idx_user_id'
+) = 0,
+  'CREATE INDEX `idx_user_id` ON `marketing_product_ads_log`(`user_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND INDEX_NAME = 'unique_user_product_date'
+) = 0,
+  'CREATE UNIQUE INDEX `unique_user_product_date` ON `marketing_product_ads_log`(`user_id`, `product_id`, `date`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND CONSTRAINT_NAME = 'fk_marketing_pad_product_id' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD CONSTRAINT `fk_marketing_pad_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_product_ads_log' AND CONSTRAINT_NAME = 'fk_marketing_pad_user_id' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `marketing_product_ads_log` ADD CONSTRAINT `fk_marketing_pad_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS `marketing_user_page` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `page_id` INT NULL,
@@ -3870,6 +4110,105 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_page' AND INDEX_NAME = 'unique_page_user'
 ) = 0,
   'CREATE UNIQUE INDEX `unique_page_user` ON `marketing_user_page`(`page_id`, `user_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `marketing_user_product` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`user_id` INT NULL,
+`product_id` INT NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+`updated_at` TIMESTAMP NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND COLUMN_NAME = 'user_id'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD COLUMN `user_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND COLUMN_NAME = 'product_id'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD COLUMN `product_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD COLUMN `updated_at` TIMESTAMP NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND INDEX_NAME = 'idx_product_id'
+) = 0,
+  'CREATE INDEX `idx_product_id` ON `marketing_user_product`(`product_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND INDEX_NAME = 'idx_user_id'
+) = 0,
+  'CREATE INDEX `idx_user_id` ON `marketing_user_product`(`user_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND INDEX_NAME = 'unique_user_product'
+) = 0,
+  'CREATE UNIQUE INDEX `unique_user_product` ON `marketing_user_product`(`user_id`, `product_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND CONSTRAINT_NAME = 'fk_marketing_user_product_product_id' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD CONSTRAINT `fk_marketing_user_product_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'marketing_user_product' AND CONSTRAINT_NAME = 'fk_marketing_user_product_user_id' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `marketing_user_product` ADD CONSTRAINT `fk_marketing_user_product_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7792,16 +8131,6 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND INDEX_NAME = 'product_lots_ibfk_1'
-) = 0,
-  'CREATE INDEX `product_lots_ibfk_1` ON `product_lots`(`product_id`)',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND INDEX_NAME = 'product_lots_ibfk_2'
 ) = 0,
   'CREATE INDEX `product_lots_ibfk_2` ON `product_lots`(`warehouse_id`)',
@@ -7812,165 +8141,9 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND INDEX_NAME = 'uniq_product_lots_lot_number'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_lots' AND INDEX_NAME = 'idx_product_lot_unique'
 ) = 0,
-  'CREATE UNIQUE INDEX `uniq_product_lots_lot_number` ON `product_lots`(`lot_number`)',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-CREATE TABLE IF NOT EXISTS `products` (
-`id` INT AUTO_INCREMENT NOT NULL,
-`sku` VARCHAR(64) NULL,
-`name` VARCHAR(255) NULL,
-`description` TEXT NULL,
-`category` VARCHAR(128) NULL,
-`unit` VARCHAR(32) NULL,
-`cost` DECIMAL(12, 2) NULL,
-`price` DECIMAL(12, 2) NULL,
-`stock` INT NULL,
-`company_id` INT NULL,
-`shop` VARCHAR(128) NULL,
-`status` VARCHAR(255) NULL,
-  PRIMARY KEY (`id`)
-);
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'sku'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `sku` VARCHAR(64) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'name'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `name` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `description` TEXT NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'category'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `category` VARCHAR(128) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'unit'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `unit` VARCHAR(32) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'cost'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `cost` DECIMAL(12, 2) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'price'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `price` DECIMAL(12, 2) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'stock'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `stock` INT NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'company_id'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `company_id` INT NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'shop'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `shop` VARCHAR(128) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'status'
-) = 0,
-  'ALTER TABLE `products` ADD COLUMN `status` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'status' AND DATA_TYPE = 'text'
-) > 0,
-  'ALTER TABLE `products` MODIFY COLUMN `status` VARCHAR(255) NULL',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'idx_products_company'
-) = 0,
-  'CREATE INDEX `idx_products_company` ON `products`(`company_id`)',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'uniq_products_sku'
-) = 0,
-  'CREATE UNIQUE INDEX `uniq_products_sku` ON `products`(`sku`)',
+  'CREATE UNIQUE INDEX `idx_product_lot_unique` ON `product_lots`(`product_id`, `lot_number`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8675,7 +8848,7 @@ CREATE TABLE IF NOT EXISTS `stock_movements` (
 `id` INT AUTO_INCREMENT NOT NULL,
 `warehouse_id` INT NULL,
 `product_id` INT NULL,
-`movement_type` VARCHAR(255) NULL,
+`movement_type` VARCHAR(100) NULL,
 `quantity` INT NULL,
 `lot_number` VARCHAR(128) NULL,
 `reference_type` VARCHAR(64) NULL,
@@ -8684,6 +8857,7 @@ CREATE TABLE IF NOT EXISTS `stock_movements` (
 `notes` TEXT NULL,
 `created_by` INT NULL,
 `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+`document_number` VARCHAR(50) NULL,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
@@ -8710,17 +8884,7 @@ SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'movement_type'
 ) = 0,
-  'ALTER TABLE `stock_movements` ADD COLUMN `movement_type` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'movement_type' AND DATA_TYPE = 'text'
-) > 0,
-  'ALTER TABLE `stock_movements` MODIFY COLUMN `movement_type` VARCHAR(255) NULL',
+  'ALTER TABLE `stock_movements` ADD COLUMN `movement_type` VARCHAR(100) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -8801,6 +8965,16 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'created_at'
 ) = 0,
   'ALTER TABLE `stock_movements` ADD COLUMN `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements' AND COLUMN_NAME = 'document_number'
+) = 0,
+  'ALTER TABLE `stock_movements` ADD COLUMN `document_number` VARCHAR(50) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -9026,6 +9200,267 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_reservations' AND INDEX_NAME = 'idx_stock_reservations_status'
 ) = 0,
   'CREATE INDEX `idx_stock_reservations_status` ON `stock_reservations`(`status`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `stock_transactions` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`document_number` VARCHAR(50) NULL,
+`type` VARCHAR(255) NULL,
+`transaction_date` DATETIME NULL,
+`notes` TEXT NULL,
+`created_by` INT NULL,
+`created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+`updated_at` TIMESTAMP NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'document_number'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `document_number` VARCHAR(50) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'type'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `type` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'type' AND DATA_TYPE = 'text'
+) > 0,
+  'ALTER TABLE `stock_transactions` MODIFY COLUMN `type` VARCHAR(255) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'transaction_date'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `transaction_date` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'notes'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `notes` TEXT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'created_by'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `created_by` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'created_at'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND COLUMN_NAME = 'updated_at'
+) = 0,
+  'ALTER TABLE `stock_transactions` ADD COLUMN `updated_at` TIMESTAMP NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transactions' AND INDEX_NAME = 'uniq_stock_transactions_document_number'
+) = 0,
+  'CREATE UNIQUE INDEX `uniq_stock_transactions_document_number` ON `stock_transactions`(`document_number`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `stock_transaction_images` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`transaction_id` INT NULL,
+`image_path` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_images' AND COLUMN_NAME = 'transaction_id'
+) = 0,
+  'ALTER TABLE `stock_transaction_images` ADD COLUMN `transaction_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_images' AND COLUMN_NAME = 'image_path'
+) = 0,
+  'ALTER TABLE `stock_transaction_images` ADD COLUMN `image_path` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_images' AND INDEX_NAME = 'transaction_id'
+) = 0,
+  'CREATE INDEX `transaction_id` ON `stock_transaction_images`(`transaction_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_images' AND CONSTRAINT_NAME = 'fk_transaction_images_header' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `stock_transaction_images` ADD CONSTRAINT `fk_transaction_images_header` FOREIGN KEY (`transaction_id`) REFERENCES `stock_transactions`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `stock_transaction_items` (
+`id` INT AUTO_INCREMENT NOT NULL,
+`transaction_id` INT NULL,
+`product_id` INT NULL,
+`warehouse_id` INT NULL,
+`lot_id` INT NULL,
+`quantity` DECIMAL(10, 2) NULL,
+`adjustment_type` VARCHAR(255) NULL,
+`remarks` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`)
+);
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'transaction_id'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `transaction_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'product_id'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `product_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'warehouse_id'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `warehouse_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'lot_id'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `lot_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'quantity'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `quantity` DECIMAL(10, 2) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'adjustment_type'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `adjustment_type` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'adjustment_type' AND DATA_TYPE = 'text'
+) > 0,
+  'ALTER TABLE `stock_transaction_items` MODIFY COLUMN `adjustment_type` VARCHAR(255) NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND COLUMN_NAME = 'remarks'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD COLUMN `remarks` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND INDEX_NAME = 'transaction_id'
+) = 0,
+  'CREATE INDEX `transaction_id` ON `stock_transaction_items`(`transaction_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_transaction_items' AND CONSTRAINT_NAME = 'fk_transaction_items_header' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+) = 0,
+  'ALTER TABLE `stock_transaction_items` ADD CONSTRAINT `fk_transaction_items_header` FOREIGN KEY (`transaction_id`) REFERENCES `stock_transactions`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

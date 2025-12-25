@@ -54,15 +54,17 @@ try {
     // Insert the new page
     $stmt = $pdo->prepare("
         INSERT INTO pages (
-            page_id, name, platform, page_type, url, company_id, active, still_in_list
+            page_id, name, display_name, sell_product_type, platform, page_type, url, company_id, active, still_in_list
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
     ");
 
     $result = $stmt->execute([
         $pageId,
         $name,
+        $name, // display_name defaults to name for manual pages
+        $input['sell_product_type'] ?? null,
         $platform,
         $pageType,
         $url,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Page, User, UserRole } from "@/types";
 import Modal from "@/components/Modal";
-import { createPage, updatePage, listPages, listPlatforms } from "@/services/api";
+import { createPage, updatePage, listPages, listPlatforms, getSellProductTypes } from "@/services/api";
 import PageIconFront from "@/components/PageIconFront";
 import PancakeEnvOffSidebar from "@/components/PancakeEnvOffSidebar";
 import resolveApiBasePath from "@/utils/apiBasePath";
@@ -328,6 +328,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const [newPageName, setNewPageName] = useState("");
   const [newPagePlatform, setNewPagePlatform] = useState("");
   const [newPageUrl, setNewPageUrl] = useState("");
+  const [newPageSellProductType, setNewPageSellProductType] = useState("");
   const [addPageLoading, setAddPageLoading] = useState(false);
   const [disablePancakeLoading, setDisablePancakeLoading] = useState(false);
 
@@ -522,11 +523,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
       });
 
       setItems(allPagesData);
-      console.log("Fetched all pages:", allPagesData);
-      console.log(
-        "Pages with still_in_list = 0:",
-        allPagesData.filter((p) => p.still_in_list === 0),
-      );
     } catch (error) {
       console.error("Error fetching pages:", error);
       // Use initial pages if API fails
@@ -548,7 +544,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     const filtered = items.filter(
       (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
     );
-    console.log("Hidden pages:", filtered);
     return filtered;
   }, [items, currentUser?.companyId]);
 
@@ -556,12 +551,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
   const pagesForCurrentCompany = useMemo(() => {
     const filteredByCompany = items.filter(
       (p) => p.company_id === currentUser?.companyId,
-    );
-    console.log(
-      "All pages for company:",
-      currentUser?.companyId,
-      "count:",
-      filteredByCompany.length,
     );
     return filteredByCompany;
   }, [items, currentUser?.companyId]);
@@ -576,7 +565,6 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
     const filtered = items.filter(
       (p) => p.company_id === currentUser?.companyId && p.still_in_list === 0,
     );
-    console.log("Hidden pages:", filtered);
     return filtered;
   }, [items, currentUser?.companyId]);
 
@@ -738,7 +726,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                 setDisablePancakeLoading(true);
                 try {
                   const response = await fetch(
-                    "api/Marketing_DB/disable_pancake_pages.php",
+                    `${resolveApiBasePath()}/Marketing_DB/disable_pancake_pages.php`,
                     {
                       method: "POST",
                       headers: {
@@ -839,7 +827,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
               <tr key={p.id} className="border-t">
                 <td className="py-2 px-3 flex items-center gap-2">
                   <PageIconFront platform={p.platform || "unknown"} />
-                  {p.name}
+                  {p.display_name || p.name}
                 </td>
                 <td className="py-2 px-3">
                   <PageTypeDisplay pageType={p.page_type} />
@@ -866,7 +854,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                       onChange={async () => {
                         try {
                           const response = await fetch(
-                            "api/Marketing_DB/toggle_page_status.php",
+                            `${resolveApiBasePath()}/Marketing_DB/toggle_page_status.php`,
                             {
                               method: "POST",
                               headers: {
@@ -1002,6 +990,15 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                   placeholder="https://facebook.com/pagename"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  ประเภทสินค้าที่ขาย (Sell Product Type)
+                </label>
+                <SellProductTypeInput
+                  value={newPageSellProductType}
+                  onChange={setNewPageSellProductType}
+                />
+              </div>
               <div className="flex justify-end space-x-2">
                 <button
                   className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
@@ -1040,6 +1037,7 @@ const PagesManagementPage: React.FC<PagesManagementPageProps> = ({
                             name: newPageName.trim(),
                             platform: newPagePlatform,
                             url: newPageUrl.trim() || null,
+                            sell_product_type: newPageSellProductType || null,
                             company_id: currentUser.companyId,
                           }),
                         },
@@ -1340,14 +1338,34 @@ const ManagePageButton: React.FC<{
 }> = ({ page, onSaved }) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(page.name);
+  const [displayName, setDisplayName] = useState(page.display_name || page.name);
+  const [sellProductType, setSellProductType] = useState(page.sell_product_type || "");
   const [url, setUrl] = useState(page.url || "");
   const [saving, setSaving] = useState(false);
+
+  const isManual = page.page_type === 'manual';
+
+  // For manual pages, syncing display_name to name
+  const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = e.target.value;
+    setDisplayName(newName);
+    if (isManual) {
+      setName(newName);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updatePage(page.id, { name, url: url || undefined });
-      onSaved({ ...page, name, url: url || undefined });
+      const payload: any = {
+        name,
+        display_name: displayName,
+        sell_product_type: sellProductType,
+        url: url || undefined
+      };
+
+      await updatePage(page.id, payload);
+      onSaved({ ...page, ...payload });
       setOpen(false);
     } catch (error) {
       console.error("Failed to update page:", error);
@@ -1367,15 +1385,38 @@ const ManagePageButton: React.FC<{
       </button>
       {open && (
         <Modal title={`จัดการเพจ: ${page.name}`} onClose={() => setOpen(false)}>
-          <div className="space-y-4">
+          <div className="space-y-4 text-left">
+            {!isManual && (
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ชื่อ (System Name)</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50"
+                  value={name}
+                  disabled={true}
+                  title="ชื่อเพจ Pancake ไม่สามารถแก้ไขได้"
+                />
+                <p className="text-xs text-orange-500 mt-1">* ชื่อเพจจาก Pancake ไม่สามารถแก้ไขได้</p>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs text-gray-500 mb-1">ชื่อ</label>
+              <label className="block text-xs text-gray-500 mb-1">{isManual ? "ชื่อเพจ" : "ชื่อที่แสดง (Display Name)"}</label>
               <input
                 className="w-full border rounded-md px-3 py-2 text-sm"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={displayName}
+                onChange={handleDisplayNameChange}
+                placeholder="ชื่อที่ใช้แสดงในระบบ"
               />
             </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">ประเภทสินค้าที่ขาย (Sell Product Type)</label>
+              <SellProductTypeInput
+                value={sellProductType}
+                onChange={setSellProductType}
+              />
+            </div>
+
             <div>
               <label className="block text-xs text-gray-500 mb-1">URL</label>
               <input
@@ -1405,5 +1446,57 @@ const ManagePageButton: React.FC<{
         </Modal>
       )}
     </>
+  );
+};
+
+const SellProductTypeInput: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+  const [options, setOptions] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  useEffect(() => {
+    getSellProductTypes().then((types) => {
+      if (Array.isArray(types)) {
+        setOptions(types);
+      }
+    });
+  }, []);
+
+  const filteredOptions = options.filter(
+    (opt) => opt && opt.toLowerCase().includes(value.toLowerCase())
+  );
+
+  return (
+    <div className="relative">
+      <input
+        className="w-full border rounded-md px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setShowDropdown(true);
+        }}
+        onFocus={() => setShowDropdown(true)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        placeholder="ค้นหาหรือพิมพ์ใหม่..."
+      />
+      {showDropdown && filteredOptions.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
+          {filteredOptions.map((opt) => (
+            <div
+              key={opt}
+              className="px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer"
+              onClick={() => {
+                onChange(opt);
+                setShowDropdown(false);
+              }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
