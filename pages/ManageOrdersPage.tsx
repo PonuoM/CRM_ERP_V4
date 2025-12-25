@@ -1,6 +1,7 @@
 ﻿
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
@@ -840,47 +841,30 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       return orderRows;
     });
 
-    // Build HTML for XLS
-    // Use mso-number-format:"\@" to force text
-    const tableHeader = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
-    const tableBody = rows.map(row =>
-      `<tr>${row.map(cell => `<td style="mso-number-format:'\\@';">${String(cell ?? '')}</td>`).join('')}</tr>`
-    ).join('');
+    const data = [headers, ...rows.map(row => row.map(cell => String(cell ?? '')))];
+    const ws = XLSX.utils.aoa_to_sheet(data);
 
-    const htmlContent = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="UTF-8">
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Orders</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-      </head>
-      <body>
-        <table>
-          <thead>${tableHeader}</thead>
-          <tbody>${tableBody}</tbody>
-        </table>
-      </body>
-      </html>
-    `;
+    // Force every cell to be text type 's'
+    const range = XLSX.utils.decode_range(ws['!ref']!);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cell_address]) continue; // Should effectively always exist for AOA but check safely
+        ws[cell_address].t = 's'; // Force Text
+        ws[cell_address].v = String(ws[cell_address].v); // Ensure value is string
+        ws[cell_address].z = '@'; // Format as Text
+      }
+    }
 
-    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Orders");
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    // Use .xls extension for HTML format
-    const filename = `orders_export_${new Date().toISOString().slice(0, 10)}.xls`;
+    const filename = `orders_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
     link.setAttribute("download", filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
@@ -889,7 +873,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     URL.revokeObjectURL(url);
 
     try {
-      const b64 = btoa(unescape(encodeURIComponent(htmlContent)));
+      // Ideally we would upload the buffer, but here we just convert array buffer to base64
+      let binary = '';
+      const bytes = new Uint8Array(wbout);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const b64 = btoa(binary);
+
       await createExportLog({
         filename,
         contentBase64: b64,
