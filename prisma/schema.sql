@@ -7601,6 +7601,8 @@ CREATE TABLE IF NOT EXISTS `pages` (
 `active` BOOLEAN NULL,
 `still_in_list` BOOLEAN NULL,
 `user_count` INT NULL,
+`display_name` VARCHAR(255) NULL,
+`sell_product_type` VARCHAR(255) NULL,
 `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`)
@@ -7690,6 +7692,26 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'user_count'
 ) = 0,
   'ALTER TABLE `pages` ADD COLUMN `user_count` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'display_name'
+) = 0,
+  'ALTER TABLE `pages` ADD COLUMN `display_name` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'sell_product_type'
+) = 0,
+  'ALTER TABLE `pages` ADD COLUMN `sell_product_type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
