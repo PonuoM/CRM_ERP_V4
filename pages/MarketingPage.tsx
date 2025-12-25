@@ -1483,6 +1483,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           productId: p.id,
           sku: p.sku,
           productName: p.name,
+          id: log ? log.id : null,
           adsCost: log ? log.ads_cost : "",
           impressions: log ? log.impressions : "",
           reach: log ? log.reach : "",
@@ -2581,36 +2582,40 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className="w-full p-2 border border-gray-300 rounded"
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.adsCost}
+                                  disabled={!!item.id}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'adsCost', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className="w-full p-2 border border-gray-300 rounded"
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.impressions}
+                                  disabled={!!item.id}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'impressions', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className="w-full p-2 border border-gray-300 rounded"
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.reach}
+                                  disabled={!!item.id}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'reach', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className="w-full p-2 border border-gray-300 rounded"
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.clicks}
+                                  disabled={!!item.id}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'clicks', e.target.value)}
                                 />
                               </td>
