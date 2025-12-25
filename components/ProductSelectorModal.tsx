@@ -127,10 +127,11 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
                                     {products
                                         .filter(
                                             (pr) =>
-                                                !searchTerm ||
-                                                `${pr.sku} ${pr.name}`
-                                                    .toLowerCase()
-                                                    .includes(searchTerm.toLowerCase())
+                                                pr.status !== 'Inactive' &&
+                                                (!searchTerm ||
+                                                    `${pr.sku} ${pr.name}`
+                                                        .toLowerCase()
+                                                        .includes(searchTerm.toLowerCase()))
                                         )
                                         .map((p) => (
                                             <tr key={p.id} className="border-b hover:bg-gray-50">
