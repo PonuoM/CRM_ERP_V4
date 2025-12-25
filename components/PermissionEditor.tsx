@@ -50,9 +50,10 @@ const PERMISSION_GROUPS_DEF = {
         items: [
             { key: 'inventory.warehouses', label: 'Warehouses (คลังสินค้า)' },
             { key: 'inventory.stock', label: 'Warehouse Stock (สต็อกสินค้า)' },
-            { key: 'inventory.documents', label: 'Stock Documents (เอกสารสต็อก/รับ/ปรับยอด)' },
+            { key: 'inventory.documents', label: 'Stock Documents (รับเข้า/ปรับปรุง)' },
             { key: 'inventory.lot', label: 'Lot Tracking (ติดตามล๊อต)' },
             { key: 'inventory.allocations', label: 'Warehouse Allocation (จัดสรรคลังสินค้า)' },
+            { key: 'inventory.reports', label: 'Inventory Reports (ส่งออกรายงานสต๊อค)' },
             { key: 'inventory.promotions', label: 'Active Promotions (ดูโปรโมชั่นในคลัง)' },
         ]
     },
