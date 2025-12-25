@@ -6686,14 +6686,14 @@ const App: React.FC = () => {
       case "Warehouse Stock":
       case "สต็อกคลัง":
         return <WarehouseStockViewPage currentUser={currentUser} />;
-      case "Stock Documents":
-      case "Stock Documents (เอกสารสต็อก)":
+      case "รับเข้า/ปรับปรุง":
+      case "Stock Documents (รับเข้า/ปรับปรุง)":
         return <StockDocumentsPage currentUser={currentUser} />;
       case "Lot Tracking":
       case "ติดตามล๊อต":
         return <LotTrackingPage currentUser={currentUser} />;
 
-      case "Inventory Reports":
+      case "ส่งออกรายงานสต๊อค":
       case "inventory.reports":
         return (
           <InventoryReportsPage
