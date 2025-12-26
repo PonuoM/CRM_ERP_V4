@@ -9,6 +9,13 @@ function handle_outstanding_orders(PDO $pdo) {
     $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
     $year = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
     
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+    
     $startDate = sprintf('%04d-%02d-01 00:00:00', $year, $month);
 
     try {
@@ -30,13 +37,14 @@ function handle_outstanding_orders(PDO $pdo) {
             LEFT JOIN order_tracking_numbers ON orders.id = order_tracking_numbers.order_id
             WHERE COALESCE(orders.delivery_date, orders.order_date) < ?
               AND orders.order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt')
+              AND orders.company_id = ?
             GROUP BY orders.id
             ORDER BY orders.order_date ASC
             LIMIT 500
         ";
 
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$startDate]);
+        $stmt->execute([$startDate, $companyId]);
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         json_response($orders);

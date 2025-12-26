@@ -11,21 +11,20 @@ mb_http_output("UTF-8");
 require_once "../config.php";
 
 // Get company_id from query parameter
-$company_id = isset($_GET["company_id"]) ? (int) $_GET["company_id"] : 0;
-
-if ($company_id <= 0) {
-  echo json_encode([
-    "success" => false,
-    "message" => "Company ID is required",
-  ]);
-  exit();
-}
-
 try {
   // Database connection using PDO with UTF-8
   $conn = db_connect();
   $conn->exec("SET NAMES utf8mb4");
   $conn->exec("SET CHARACTER SET utf8mb4");
+
+  // Authenticate
+  $user = get_authenticated_user($conn);
+  if (!$user) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
+  }
+  
+  $company_id = $user['company_id'];
 
   // Check if bank_account table exists
   $table_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 

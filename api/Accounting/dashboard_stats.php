@@ -9,6 +9,13 @@ function handle_dashboard_stats(PDO $pdo) {
     $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
     $year = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
     
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+    
     try {
         $stats = [
             'current_month' => [
@@ -48,11 +55,12 @@ function handle_dashboard_stats(PDO $pdo) {
             FROM orders
             WHERE MONTH(COALESCE(delivery_date, order_date)) = ? 
               AND YEAR(COALESCE(delivery_date, order_date)) = ?
+              AND company_id = ?
             GROUP BY order_status, payment_status
         ";
         
         $stmtCurrent = $pdo->prepare($sqlCurrent);
-        $stmtCurrent->execute([$month, $year]);
+        $stmtCurrent->execute([$month, $year, $companyId]);
         $rowsCurrent = $stmtCurrent->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($rowsCurrent as $row) {
@@ -105,11 +113,12 @@ function handle_dashboard_stats(PDO $pdo) {
             FROM orders
             WHERE COALESCE(delivery_date, order_date) < ?
               AND order_status NOT IN ('Delivered', 'Returned', 'Cancelled', 'BadDebt')
+              AND company_id = ?
             GROUP BY order_status
         ";
 
         $stmtOutstanding = $pdo->prepare($sqlOutstanding);
-        $stmtOutstanding->execute([$comparisonDate]);
+        $stmtOutstanding->execute([$comparisonDate, $companyId]);
         $rowsOutstanding = $stmtOutstanding->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($rowsOutstanding as $row) {

@@ -1,6 +1,13 @@
 <?php
 
 function handle_revenue_recognition(PDO $pdo) {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     // Only allow GET method
     if (method() !== 'GET') {
         json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
@@ -40,27 +47,31 @@ function handle_revenue_recognition(PDO $pdo) {
             FROM orders o
             LEFT JOIN customers c ON c.customer_id = o.customer_id
             WHERE 
-                -- Filter 1: Orders created in this month
-                (MONTH(o.order_date) = :m1 AND YEAR(o.order_date) = :y1)
-                OR
-                -- Filter 2: Orders recognized (Goods Issue) in this month
-                EXISTS (
-                    SELECT 1 FROM order_status_logs LOG 
-                    WHERE LOG.order_id = o.id 
-                    AND MONTH(LOG.changed_at) = :m2 AND YEAR(LOG.changed_at) = :y2
-                    AND (
-                        LOG.new_status IN ('Shipping', 'Shipped', 'Delivered', 'Completed') 
-                        OR LOG.trigger_type = 'TrackingUpdate'
+                o.company_id = :companyId 
+                AND (
+                    -- Filter 1: Orders created in this month
+                    (MONTH(o.order_date) = :m1 AND YEAR(o.order_date) = :y1)
+                    OR
+                    -- Filter 2: Orders recognized (Goods Issue) in this month
+                    EXISTS (
+                        SELECT 1 FROM order_status_logs LOG 
+                        WHERE LOG.order_id = o.id 
+                        AND MONTH(LOG.changed_at) = :m2 AND YEAR(LOG.changed_at) = :y2
+                        AND (
+                            LOG.new_status IN ('Shipping', 'Shipped', 'Delivered', 'Completed') 
+                            OR LOG.trigger_type = 'TrackingUpdate'
+                        )
                     )
+                    OR
+                    -- Filter 3: Airport orders with delivery_date in this month
+                    (o.shipping_provider = 'Airport' AND MONTH(o.delivery_date) = :m3 AND YEAR(o.delivery_date) = :y3)
                 )
-                OR
-                -- Filter 3: Airport orders with delivery_date in this month
-                (o.shipping_provider = 'Airport' AND MONTH(o.delivery_date) = :m3 AND YEAR(o.delivery_date) = :y3)
             ORDER BY o.order_date DESC
         ";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
+            ':companyId' => $companyId,
             ':m1' => $month, ':y1' => $year,
             ':m2' => $month, ':y2' => $year,
             ':m3' => $month, ':y3' => $year
