@@ -146,7 +146,7 @@
   {
     "id": 100201,
     "zip_code": 10303,
-    "name_th": "แขวงสวนจิตรลดา",
+    "name_th": "สวนจิตรลดา",
     "name_en": "Khwaeng Suan Chitlada",
     "district_id": 1002,
     "lat": null,
@@ -374,7 +374,7 @@
   {
     "id": 100501,
     "zip_code": 10230,
-    "name_th": "แขวงท่าแร้ง",
+    "name_th": "ท่าแร้ง",
     "name_en": "Khwaeng Tha Raeng",
     "district_id": 1005,
     "lat": null,
@@ -410,7 +410,7 @@
   {
     "id": 100601,
     "zip_code": 10250,
-    "name_th": "แขวงหัวหมาก",
+    "name_th": "หัวหมาก",
     "name_en": "Khwaeng Hua Mak",
     "district_id": 1006,
     "lat": null,
@@ -446,7 +446,7 @@
   {
     "id": 100701,
     "zip_code": 10120,
-    "name_th": "แขวงวังใหม่",
+    "name_th": "วังใหม่",
     "name_en": "Khwaeng Wang Mai",
     "district_id": 1007,
     "lat": null,
@@ -458,7 +458,7 @@
   {
     "id": 100702,
     "zip_code": 10400,
-    "name_th": "แขวงวังใหม่",
+    "name_th": "วังใหม่",
     "name_en": "Khwaeng Wang Mai",
     "district_id": 1007,
     "lat": null,
@@ -470,7 +470,7 @@
   {
     "id": 100703,
     "zip_code": 10500,
-    "name_th": "แขวงวังใหม่",
+    "name_th": "วังใหม่",
     "name_en": "Khwaeng Wang Mai",
     "district_id": 1007,
     "lat": null,
@@ -1646,7 +1646,7 @@
   {
     "id": 103301,
     "zip_code": 10260,
-    "name_th": "แขวงพระโขนง",
+    "name_th": "พระโขนง",
     "name_en": "Khwaeng Phra Khanong",
     "district_id": 1033,
     "lat": null,
@@ -1922,7 +1922,7 @@
   {
     "id": 103901,
     "zip_code": 10260,
-    "name_th": "แขวงพระโขนงเหนือ",
+    "name_th": "พระโขนงเหนือ",
     "name_en": "Khwaeng Phra Khanong Nuea",
     "district_id": 1039,
     "lat": null,
@@ -2102,7 +2102,7 @@
   {
     "id": 104401,
     "zip_code": 10250,
-    "name_th": "แขวงสะพานสูง",
+    "name_th": "สะพานสูง",
     "name_en": "Khwaeng Saphan Sung",
     "district_id": 1044,
     "lat": null,

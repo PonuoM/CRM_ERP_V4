@@ -1263,7 +1263,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const renderPagination = (isTop = false) => {
-    if (totalItems === 0 && !loading) return null;
+    if (totalItems === 0 && !loading && !loadCancelled) return null;
     return (
       <div className={`flex items-center justify-between px-6 py-4 border-gray-200 ${isTop ? 'border-b' : 'border-t'}`}>
         {/* Left side - Display range with loading and cancel button */}
@@ -1274,17 +1274,14 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 <span>กำลังโหลดข้อมูล...</span>
               </div>
+            ) : loadCancelled ? (
+              <div className="text-sm text-red-600 font-medium">
+                โหลดข้อมูลไม่สำเร็จ (ยกเลิกโดยผู้ใช้)
+              </div>
             ) : (
               <>แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ</>
             )}
           </div>
-
-          {/* Cancelled message */}
-          {loadCancelled && (
-            <div className="text-sm text-red-600 font-medium">
-              โหลดข้อมูลไม่สำเร็จ (ยกเลิกโดยผู้ใช้)
-            </div>
-          )}
 
           {/* Cancel button - shows next to loading spinner */}
           {loading && (
