@@ -94,6 +94,19 @@ try {
       $orderParams[] = $dateTo;
     }
 
+    // Add user IDs filter for orders
+    if ($userIds) {
+      $userIdArray = explode(",", $userIds);
+      $userIdArray = array_map("intval", $userIdArray);
+      $userIdArray = array_filter($userIdArray);
+
+      if (!empty($userIdArray)) {
+        $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
+        $orderWhereConditions[] = "creator_id IN ($placeholders)";
+        $orderParams = array_merge($orderParams, $userIdArray);
+      }
+    }
+
     $orderWhereClause = implode(" AND ", $orderWhereConditions);
 
     // Query to get all pages for the company with aggregated ads log and order data
