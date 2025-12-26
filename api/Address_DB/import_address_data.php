@@ -130,6 +130,9 @@ try {
     $pdo = db_connect();
     
     logMessage("Database connection successful");
+
+    // Disable foreign key checks
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
     
     // Import geographies
     logMessage("Importing geographies...");
@@ -163,6 +166,9 @@ try {
         logMessage("Imported $count sub-districts");
     }
     
+    // Re-enable foreign key checks
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+
     logMessage("Import completed successfully");
     
     echo json_encode([
@@ -171,12 +177,15 @@ try {
     ]);
     
 } catch (PDOException $e) {
+    // Re-enable foreign key checks even if error
+    if (isset($pdo)) $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
     logMessage("Database error: " . $e->getMessage());
     echo json_encode([
         'success' => false,
         'message' => 'Database error: ' . $e->getMessage()
     ]);
 } catch (Exception $e) {
+    if (isset($pdo)) $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
     logMessage("General error: " . $e->getMessage());
     echo json_encode([
         'success' => false,
