@@ -2648,15 +2648,19 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
                             $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
                             
+                            // Calculate sub-order ID based on box_number
+                            $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
+                            $subOrderId = "$id-$boxNumber";
+                            
                             $insStmt->execute([
-                                $id, $id,
+                                $subOrderId, $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
                                 $netTotal,
-                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                $boxNumber,
                                 null, // parent_item_id
                                 1, // is_promotion_parent
                                 $isFreebie ? 1 : 0,
@@ -2683,15 +2687,19 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
                             $itemCreatorId = $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId;
                             
+                            // Calculate sub-order ID based on box_number
+                            $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
+                            $subOrderId = "$id-$boxNumber";
+                            
                             $insStmt->execute([
-                                $id, $id,
+                                $subOrderId, $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
                                 $netTotal,
-                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                $boxNumber,
                                 null,
                                 0,
                                 $isFreebie ? 1 : 0,
@@ -2717,15 +2725,19 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             // Resolve parent DB ID
                             $resolvedParentId = isset($clientToDbParent[(string)$clientParentId]) ? $clientToDbParent[(string)$clientParentId] : null;
                             
+                            // Calculate sub-order ID based on box_number
+                            $boxNumber = $item['boxNumber'] ?? $item['box_number'] ?? 1;
+                            $subOrderId = "$id-$boxNumber";
+                            
                             $insStmt->execute([
-                                $id, $id,
+                                $subOrderId, $id,
                                 $item['productId'] ?? $item['product_id'] ?? null,
                                 $item['productName'] ?? $item['product_name'] ?? 'Unknown Item',
                                 $item['quantity'] ?? 0,
                                 $item['pricePerUnit'] ?? $item['price_per_unit'] ?? 0,
                                 $item['discount'] ?? 0,
                                 $netTotal,
-                                $item['boxNumber'] ?? $item['box_number'] ?? 0,
+                                $boxNumber,
                                 $resolvedParentId,
                                 0,
                                 $isFreebie ? 1 : 0,
@@ -3074,6 +3086,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];
                     };
 
+                    // IMPORTANT: order_items.order_id stores the sub_order_id format (e.g., "251226-00023adminga-3")
+                    // This is NOT the parent_order_id. The parent_order_id is stored separately in order_items.parent_order_id
                     // Helper function to get order_id based on box_number (using synthesized per-box IDs)
                     $getOrderIdForBox = function($boxNumber) use ($mainOrderId, $subOrderIds) {
                         $boxNum = (int)$boxNumber;
@@ -3656,9 +3670,9 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $itemCreatorId = $in['creatorId'] ?? $existingOrder['creator_id'] ?? null;
 
                     // 1. Clear old allocations and items to prevent duplicates/conflicts
-                    // 1. Clear old allocations and items to prevent duplicates/conflicts (Check Main ID and Sub-IDs)
-                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
-                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%") COLLATE utf8mb4_unicode_ci')->execute([$id, $id]);
+                    // Delete all items with order_id matching parent_order_id or sub-order IDs (parent_order_id-*)
+                    $pdo->prepare('DELETE FROM order_item_allocations WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
+                    $pdo->prepare('DELETE FROM order_items WHERE order_id = ? OR order_id LIKE CONCAT(?, "-%")')->execute([$id, $id]);
 
                     // 2. Prepare insert statement (same as POST)
                     $ins = $pdo->prepare('INSERT INTO order_items (order_id, parent_order_id, product_id, product_name, quantity, price_per_unit, discount, net_total, is_freebie, box_number, promotion_id, parent_item_id, is_promotion_parent, creator_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -3679,10 +3693,24 @@ function handle_orders(PDO $pdo, ?string $id): void {
                         return [$quantity, $pricePerUnit, $discount, $netTotal, $isFreebie];
                     };
 
-                    $getOrderIdForBox = function($boxNumber) use ($id) {
+                    // IMPORTANT: order_items.order_id stores the sub_order_id format (e.g., "251226-00023adminga-3")
+                    // This is NOT the parent_order_id. The parent_order_id is stored separately in order_items.parent_order_id
+                    // Query order_boxes to get the actual sub_order_id for each box
+                    $getOrderIdForBox = function($boxNumber) use ($pdo, $id) {
                          $boxNum = (int)$boxNumber;
-                         if ($boxNum <= 0) return "{$id}-1";
-                         return "{$id}-{$boxNum}";
+                         if ($boxNum <= 0) $boxNum = 1;
+                         
+                         // Query order_boxes to get the sub_order_id
+                         $stmt = $pdo->prepare('SELECT sub_order_id FROM order_boxes WHERE order_id = ? AND box_number = ? LIMIT 1');
+                         $stmt->execute([$id, $boxNum]);
+                         $subOrderId = $stmt->fetchColumn();
+                         
+                         // If not found in order_boxes, generate it (fallback)
+                         if (!$subOrderId) {
+                             $subOrderId = "{$id}-{$boxNum}";
+                         }
+                         
+                         return $subOrderId;
                     };
 
                     $clientToDbParent = [];
