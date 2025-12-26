@@ -694,6 +694,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
           isPromotionParent: !!(it.is_promotion_parent ?? it.isPromotionParent),
           promotionId: it.promotion_id ?? it.promotionId,
           creatorName: it.creatorName ?? (it.creator_first_name ? `${it.creator_first_name} ${it.creator_last_name || ""}` : undefined),
+          creator_first_name: it.creator_first_name,
+          creator_last_name: it.creator_last_name,
         }))
         : [],
       customerId: (order as any).customer_id ?? order.customerId,
@@ -3198,8 +3200,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               ? ""
                               : (item as any).creatorName
                                 ? (item as any).creatorName
-                                : itemCreator
-                                  ? `${itemCreator.firstName} ${itemCreator.lastName} `
+                                : (item as any).creator_first_name
+                                  ? `${(item as any).creator_first_name} ${(item as any).creator_last_name || ""}`
                                   : "-"}
                           </td>
 
