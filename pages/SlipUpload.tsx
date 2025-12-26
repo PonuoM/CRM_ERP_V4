@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import {
   AlertCircle,
   CheckCircle,
@@ -24,6 +26,7 @@ import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
 import Modal from "../components/Modal";
 import { getPaymentStatusChip } from "../components/OrderTable";
+
 
 const InfoCard: React.FC<{
   icon: React.ElementType;
@@ -1538,22 +1541,48 @@ const SlipUpload: React.FC = () => {
                   )}
                 </div>
 
-                {/* Transfer Date */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    วันที่โอนเงิน *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={slipFormData.transfer_date}
-                    onChange={(e) =>
-                      handleSlipFormChange("transfer_date", e.target.value)
-                    }
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
-                      ? "border-red-300 bg-red-50"
-                      : "border-gray-300"
-                      }`}
-                  />
+                {/* Transfer Date and Time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      วันที่โอนเงิน *
+                    </label>
+                    <DatePicker
+                      selected={slipFormData.transfer_date ? new Date(slipFormData.transfer_date) : null}
+                      onChange={(date: Date | null) => {
+                        if (date) {
+                          const year = date.getFullYear();
+                          const month = String(date.getMonth() + 1).padStart(2, '0');
+                          const day = String(date.getDate()).padStart(2, '0');
+                          const time = slipFormData.transfer_date.split('T')[1] || '00:00';
+                          handleSlipFormChange("transfer_date", `${year}-${month}-${day}T${time}`);
+                        }
+                      }}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="วว/ดด/ปปปป"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
+                        }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      เวลา (24 ชม.) *
+                    </label>
+                    <input
+                      type="time"
+                      value={slipFormData.transfer_date.split('T')[1]?.substring(0, 5) || ''}
+                      onChange={(e) => {
+                        const date = slipFormData.transfer_date.split('T')[0] || new Date().toISOString().split('T')[0];
+                        handleSlipFormChange("transfer_date", `${date}T${e.target.value}`);
+                      }}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!slipFormData.transfer_date
+                        ? "border-red-300 bg-red-50"
+                        : "border-gray-300"
+                        }`}
+                    />
+                  </div>
                 </div>
 
                 {/* Slip Image Upload */}
@@ -1865,22 +1894,48 @@ const SlipUpload: React.FC = () => {
                 </select>
               </div>
 
-              {/* Transfer Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  วันที่โอน
-                </label>
-                <input
-                  type="datetime-local"
-                  value={editFormData.transfer_date}
-                  onChange={(e) =>
-                    setEditFormData({
-                      ...editFormData,
-                      transfer_date: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              {/* Transfer Date and Time */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    วันที่โอน
+                  </label>
+                  <DatePicker
+                    selected={editFormData.transfer_date ? new Date(editFormData.transfer_date) : null}
+                    onChange={(date: Date | null) => {
+                      if (date) {
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const time = editFormData.transfer_date.split('T')[1] || '00:00';
+                        setEditFormData({
+                          ...editFormData,
+                          transfer_date: `${year}-${month}-${day}T${time}`,
+                        });
+                      }
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    placeholderText="วว/ดด/ปปปป"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    เวลา (24 ชม.)
+                  </label>
+                  <input
+                    type="time"
+                    value={editFormData.transfer_date.split('T')[1]?.substring(0, 5) || ''}
+                    onChange={(e) => {
+                      const date = editFormData.transfer_date.split('T')[0] || new Date().toISOString().split('T')[0];
+                      setEditFormData({
+                        ...editFormData,
+                        transfer_date: `${date}T${e.target.value}`,
+                      });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
               {/* Image */}
