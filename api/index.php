@@ -2037,7 +2037,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 // Pagination parameters
                 $page = max(1, (int)($_GET['page'] ?? 1));
-                $pageSize = min(100, max(1, (int)($_GET['pageSize'] ?? 50)));
+                $pageSize = min(1000, max(1, (int)($_GET['pageSize'] ?? 50)));
                 $offset = ($page - 1) * $pageSize;
                 
                 // Filter parameters

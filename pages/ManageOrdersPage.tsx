@@ -71,6 +71,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadCancelled, setLoadCancelled] = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
   const [apiTotalPages, setApiTotalPages] = useState(1);
 
@@ -79,6 +80,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   // Ref for click-outside to collapse advanced filters
   const advRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [shippingSavingIds, setShippingSavingIds] = useState<Set<string>>(new Set());
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
 
@@ -178,10 +180,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Fetch orders from API
   useEffect(() => {
     const controller = new AbortController();
+    abortControllerRef.current = controller;
     const fetchOrders = async () => {
       if (!user?.companyId) return;
 
       setLoading(true);
+      setLoadCancelled(false); // Reset cancelled state
       try {
         // Helper to interpret date presets (local within effect or outside)
         const getDeliveryDateFilter = () => {
@@ -334,7 +338,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
         }
       } catch (error: any) {
-        if (error.name !== 'AbortError') {
+        if (error.name === 'AbortError') {
+          setLoadCancelled(true);
+        } else {
           console.error('Fetch orders failed:', error);
         }
       } finally {
@@ -348,6 +354,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     return () => {
       controller.abort();
+      abortControllerRef.current = null;
     };
   }, [
     user?.companyId,
@@ -1256,12 +1263,45 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const renderPagination = (isTop = false) => {
-    if (totalItems === 0) return null;
+    if (totalItems === 0 && !loading) return null;
     return (
       <div className={`flex items-center justify-between px-6 py-4 border-gray-200 ${isTop ? 'border-b' : 'border-t'}`}>
-        {/* Left side - Display range */}
-        <div className="text-sm text-gray-700">
-          แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ
+        {/* Left side - Display range with loading and cancel button */}
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-gray-700">
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span>กำลังโหลดข้อมูล...</span>
+              </div>
+            ) : (
+              <>แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ</>
+            )}
+          </div>
+
+          {/* Cancelled message */}
+          {loadCancelled && (
+            <div className="text-sm text-red-600 font-medium">
+              โหลดข้อมูลไม่สำเร็จ (ยกเลิกโดยผู้ใช้)
+            </div>
+          )}
+
+          {/* Cancel button - shows next to loading spinner */}
+          {loading && (
+            <button
+              onClick={() => {
+                if (abortControllerRef.current) {
+                  abortControllerRef.current.abort();
+                  abortControllerRef.current = null;
+                  setLoading(false);
+                  setLoadCancelled(true);
+                }
+              }}
+              className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+            >
+              ยกเลิก
+            </button>
+          )}
         </div>
 
         {/* Right side - Pagination controls */}
@@ -1272,7 +1312,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             <select
               value={itemsPerPage}
               onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-              className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              disabled={loading}
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {PAGE_SIZE_OPTIONS.map((sz) => (
                 <option key={sz} value={sz}>
@@ -1286,7 +1327,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <div className="flex items-center space-x-1">
             <button
               onClick={() => handlePageChange(effectivePage - 1)}
-              disabled={effectivePage === 1}
+              disabled={effectivePage === 1 || loading}
               className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft size={16} />
@@ -1298,13 +1339,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 onClick={() =>
                   typeof page === "number" ? handlePageChange(page) : undefined
                 }
-                disabled={page === "..."}
+                disabled={page === "..." || loading}
                 className={`px-3 py-1 text-sm rounded ${page === effectivePage
                   ? "bg-blue-600 text-white"
                   : page === "..."
                     ? "text-gray-400 cursor-default"
                     : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {page}
               </button>
@@ -1312,7 +1353,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
             <button
               onClick={() => handlePageChange(effectivePage + 1)}
-              disabled={effectivePage === totalPages}
+              disabled={effectivePage === totalPages || loading}
               className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight size={16} />
@@ -1590,36 +1631,35 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       )}
 
       <div className="bg-white rounded-lg shadow min-h-[400px]">
+        {/* Always show top pagination */}
+        {renderPagination(true)}
+
         {loading ? (
           <div className="flex justify-center items-center h-96">
             <Spinner />
           </div>
         ) : (
-          <>
-            {renderPagination(true)}
-            <OrderTable
-              orders={paginatedOrders}
-              customers={customers}
-              openModal={openModal}
-              users={users}
-              selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              showShippingColumn={activeTab !== 'waitingExport'}
-              shippingEditable={false}
-              shippingOptions={SHIPPING_PROVIDERS}
-              shippingSavingIds={Array.from(shippingSavingIds)}
-              onShippingChange={handleShippingProviderChange}
-              highlightedOrderId={highlightedOrderId}
-              allOrders={orders}
-              isWaitingVerifySlipTab={activeTab === 'waitingVerifySlip'}
-            />
-
-            {/* Pagination Controls */}
-            {/* Pagination Controls */}
-            {renderPagination(false)}
-          </>
+          <OrderTable
+            orders={paginatedOrders}
+            customers={customers}
+            openModal={openModal}
+            users={users}
+            selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            showShippingColumn={activeTab !== 'waitingExport'}
+            shippingEditable={false}
+            shippingOptions={SHIPPING_PROVIDERS}
+            shippingSavingIds={Array.from(shippingSavingIds)}
+            onShippingChange={handleShippingProviderChange}
+            highlightedOrderId={highlightedOrderId}
+            allOrders={orders}
+            isWaitingVerifySlipTab={activeTab === 'waitingVerifySlip'}
+          />
         )}
+
+        {/* Bottom pagination */}
+        {renderPagination(false)}
       </div>
     </div>
   );
