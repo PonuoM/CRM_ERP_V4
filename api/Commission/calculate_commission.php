@@ -97,17 +97,11 @@ try {
         LEFT JOIN commission_order_lines col
             ON col.order_id = o.id
         WHERE 
-            -- Payment status = Approved
-            o.payment_status = 'Approved'
-            
-            -- Order status = Delivered
-            AND o.order_status = 'Delivered'
+            -- Must be Confirmed Action
+            srl.confirmed_action = 'Confirmed'
             
             -- Order date BEFORE selected month
             AND o.order_date < :period_start
-            
-            -- Must have confirmed amount
-            AND srl.confirmed_amount IS NOT NULL
             
             -- NOT already used in commission calculation
             AND col.id IS NULL

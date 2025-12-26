@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User } from '../../types';
 import { Calculator, CheckCircle, DollarSign, Calendar, Users, FileText, X } from 'lucide-react';
+import resolveApiBasePath from '../../utils/apiBasePath';
 
 interface Period {
     id: number;
@@ -40,7 +41,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
     const fetchPeriods = async () => {
         try {
-            const res = await fetch(`api/Commission/get_periods.php?company_id=${currentUser.companyId || currentUser.company_id}`);
+            const res = await fetch(`${resolveApiBasePath()}/Commission/get_periods.php?company_id=${currentUser.companyId || currentUser.company_id}`);
             const data = await res.json();
             if (data.ok) {
                 setPeriods(data.data || []);
@@ -57,7 +58,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
         setLoading(true);
         try {
-            const res = await fetch('api/Commission/calculate_commission.php', {
+            const res = await fetch(`${resolveApiBasePath()}/Commission/calculate_commission.php`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -88,7 +89,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
 
         try {
-            const res = await fetch('api/Commission/approve_period.php', {
+            const res = await fetch(`${resolveApiBasePath()}/Commission/approve_period.php`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -115,7 +116,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
 
         try {
-            const res = await fetch('api/Commission/mark_paid.php', {
+            const res = await fetch(`${resolveApiBasePath()}/Commission/mark_paid.php`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -146,7 +147,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         }
 
         try {
-            const res = await fetch('api/Commission/delete_period.php', {
+            const res = await fetch(`${resolveApiBasePath()}/Commission/delete_period.php`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -168,7 +169,7 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
 
     const handleViewDetail = async (periodId: number) => {
         try {
-            const res = await fetch(`api/Commission/get_period_detail.php?period_id=${periodId}`);
+            const res = await fetch(`${resolveApiBasePath()}/Commission/get_period_detail.php?period_id=${periodId}`);
             const data = await res.json();
 
             if (data.ok) {
@@ -180,6 +181,11 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
         } catch (error: any) {
             alert('Error: ' + error.message);
         }
+    };
+
+    const handleExport = (periodId: number) => {
+        const url = `${resolveApiBasePath()}/Commission/export_period_csv.php?period_id=${periodId}`;
+        window.open(url, '_blank');
     };
 
     const formatCurrency = (amount: number) => {
@@ -346,6 +352,14 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                                                 </button>
                                             )}
                                             <button
+                                                onClick={() => handleExport(period.id)}
+                                                className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 flex-inline items-center"
+                                                title="Export CSV"
+                                            >
+                                                <FileText className="w-3 h-3 inline mr-1" />
+                                                CSV
+                                            </button>
+                                            <button
                                                 onClick={() => handleViewDetail(period.id)}
                                                 className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                             >
@@ -376,12 +390,21 @@ const CommissionPage: React.FC<CommissionPageProps> = ({ currentUser }) => {
                             <h2 className="text-xl font-semibold">
                                 รายละเอียดค่าคอม - {detailData.period.period_display}
                             </h2>
-                            <button
-                                onClick={() => setShowDetailModal(false)}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                <X size={24} />
-                            </button>
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={() => handleExport(detailData.period.id)}
+                                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 flex items-center"
+                                >
+                                    <FileText className="w-4 h-4 mr-1" />
+                                    Export CSV
+                                </button>
+                                <button
+                                    onClick={() => setShowDetailModal(false)}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="p-6 overflow-y-auto">
