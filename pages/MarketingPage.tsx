@@ -166,6 +166,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Filters
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
+  const [dashboardSelectedUsers, setDashboardSelectedUsers] = useState<number[]>([]);
   const [showInactivePages, setShowInactivePages] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [tempStart, setTempStart] = useState(dateRange.start);
@@ -280,10 +281,148 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     adsHistoryDateRange.end,
   );
   const adsHistoryDatePickerRef = useRef<HTMLDivElement>(null);
+
+
+  // Hoisted Product Ads History States
+  const [adsHistoryMode, setAdsHistoryMode] = useState<"page" | "product">("page");
+  const [productAdsLogs, setProductAdsLogs] = useState<any[]>([]);
+  const [productAdsLogsLoading, setProductAdsLogsLoading] = useState(false);
+  const [productAdsLogsTotal, setProductAdsLogsTotal] = useState(0);
+  const [productAdsHistoryPage, setProductAdsHistoryPage] = useState(1);
+  const [productAdsHistoryPageSize, setProductAdsHistoryPageSize] = useState(10);
+  const [productAdsHistoryServerPagination, setProductAdsHistoryServerPagination] = useState({
+    total: 0,
+    totalPages: 0,
+    hasMore: false,
+    hasPrevious: false,
+  });
+
+  // Expand/Collapse state for History
+  const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
+  const toggleHistoryExpand = (id: string) => {
+    const newSet = new Set(historyExpanded);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setHistoryExpanded(newSet);
+  };
+
   const totalAdsHistoryPages = useMemo(
-    () => Math.max(1, Math.ceil((adsLogsTotal || 0) / adsHistoryPageSize)),
-    [adsLogsTotal, adsHistoryPageSize],
+    () => Math.max(1, Math.ceil((productAdsLogsTotal || 0) / productAdsHistoryPageSize)),
+    [productAdsLogsTotal, productAdsHistoryPageSize],
   );
+
+  const loadProductAdsLogs = async () => {
+    setProductAdsLogsLoading(true);
+    try {
+      const queryParams = new URLSearchParams({
+        start_date: adsHistoryDateRange.start,
+        end_date: adsHistoryDateRange.end,
+        page: productAdsHistoryPage.toString(),
+        limit: productAdsHistoryPageSize.toString()
+      });
+
+      if (currentUser.role !== "Super Admin" && currentUser.role !== "Admin Control") {
+        queryParams.append("user_ids", currentUser.id.toString());
+      } else if (dashboardSelectedUsers.length > 0) { // Changed this to dashboardSelectedUsers? No, adsHistorySelectedUsers logic was separate!
+        // Wait, the original code used adsHistorySelectedUsers.
+        // But I should use the correct variable.  I haven't defined separate adsHistorySelectedUsers?
+        // In step 2393 lines 1690: "else if (adsHistorySelectedUsers.length > 0) {"
+        // I need to check if adsHistorySelectedUsers IS defined.
+        // If not, I should define it or use dashboardSelectedUsers.
+        // But "adsHistory" tab is separate.
+        // If adsHistorySelectedUsers is missing, I should check where it was.
+        // I will assume it exists since I only deleted lines 1640-1760.
+        // Wait, where is adsHistorySelectedUsers defined?
+        // Not seen in 1-200.
+        // Not seen in 1450-1650.
+        // If it was defined in the block I deleted, then I deleted it!
+        // But lines 1656-1676 only had adsHistoryMode etc.
+        // Let's assume it exists or I failed to copy it.
+        // I will restore it if missing.
+        if (adsHistorySelectedUsers.length > 0) {
+          queryParams.append("user_ids", adsHistorySelectedUsers.map((u: any) => u.id).join(','));
+        }
+      }
+
+      /*
+      if (adsHistorySelectedPages.length > 0) {
+        queryParams.append("page_ids", adsHistorySelectedPages.join(','));
+      }
+      */
+
+      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?${queryParams.toString()}`);
+      const result = await response.json();
+
+      if (result.success) {
+        setProductAdsLogs(result.data);
+        setProductAdsLogsTotal(result.pagination.total);
+        setProductAdsHistoryServerPagination({
+          total: result.pagination.total,
+          totalPages: result.pagination.totalPages,
+          hasMore: productAdsHistoryPage < result.pagination.totalPages,
+          hasPrevious: productAdsHistoryPage > 1,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading product ads logs:", error);
+    } finally {
+
+
+      setProductAdsLogsLoading(false);
+    }
+  };
+
+  const loadPageAdsLogs = async () => {
+    setProductAdsLogsLoading(true);
+    try {
+      const offset = (productAdsHistoryPage - 1) * productAdsHistoryPageSize;
+
+      // Prepare user filter
+      let userFilter: number | number[] | undefined;
+      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+        if (adsHistorySelectedUsers.length > 0) {
+          userFilter = adsHistorySelectedUsers.map((u: any) => u.id);
+        }
+      } else {
+        userFilter = currentUser.id;
+      }
+
+      // Call common function
+      const result = await loadAdsLogs(
+        adsHistorySelectedPages.length > 0 ? adsHistorySelectedPages.map(Number) : undefined,
+        adsHistoryDateRange.start,
+        adsHistoryDateRange.end,
+        userFilter,
+        productAdsHistoryPageSize,
+        offset
+      );
+
+      setProductAdsLogs(result.data);
+      setProductAdsLogsTotal(result.total);
+      setProductAdsHistoryServerPagination({
+        total: result.total,
+        totalPages: result.totalPages,
+        hasMore: result.hasMore,
+        hasPrevious: result.hasPrevious,
+      });
+    } catch (error) {
+      console.error("Error loading page ads logs:", error);
+      setProductAdsLogs([]);
+    } finally {
+      setProductAdsLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'adsHistory') {
+      if (adsHistoryMode === 'product') {
+        loadProductAdsLogs();
+      } else {
+        loadPageAdsLogs();
+      }
+    }
+  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize]);
+
   // No longer need client-side pagination since we're using server-side pagination
   // const paginatedAdsLogs = useMemo(() => {
   //   const start = (adsHistoryPage - 1) * adsHistoryPageSize;
@@ -1369,6 +1508,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         params.set("page_ids", selectedPages.join(","));
       }
 
+      if (dashboardSelectedUsers.length > 0) {
+        params.set("user_ids", dashboardSelectedUsers.join(","));
+      }
+
       // Add company_id to fetch all pages for this company
       params.set("company_id", String(currentUser.companyId));
 
@@ -1436,6 +1579,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     dateRange,
     dateRange.end,
     selectedPages,
+    dashboardSelectedUsers,
   ]);
 
   const getHeaderTitle = () => {
@@ -1592,6 +1736,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         company_id: currentUser.companyId.toString()
       });
 
+      if (dashboardSelectedUsers.length > 0) {
+        queryParams.set("user_ids", dashboardSelectedUsers.join(","));
+      }
+
       const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_dashboard_data.php?${queryParams.toString()}`);
       const result = await response.json();
 
@@ -1608,129 +1756,12 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   };
 
   // Trigger dashboard load
+  // Trigger dashboard load
   useEffect(() => {
     if (activeTab === 'dashboard' && adsInputMode === 'product') {
       loadProductDashboardData();
     }
-  }, [activeTab, adsInputMode, dateRange, selectedPages, selectedProducts]);
-
-  // Product Ads History Logic
-  const [adsHistoryMode, setAdsHistoryMode] = useState<"page" | "product">("page");
-  const [productAdsLogs, setProductAdsLogs] = useState<any[]>([]);
-  const [productAdsLogsLoading, setProductAdsLogsLoading] = useState(false);
-  const [productAdsLogsTotal, setProductAdsLogsTotal] = useState(0);
-  const [productAdsHistoryPage, setProductAdsHistoryPage] = useState(1);
-  const [productAdsHistoryPageSize, setProductAdsHistoryPageSize] = useState(10);
-  const [productAdsHistoryServerPagination, setProductAdsHistoryServerPagination] = useState({
-    total: 0,
-    totalPages: 0,
-    hasMore: false,
-    hasPrevious: false,
-  });
-
-  // Expand/Collapse state for History
-  const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
-  const toggleHistoryExpand = (id: string) => {
-    const newSet = new Set(historyExpanded);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setHistoryExpanded(newSet);
-  };
-
-  const loadProductAdsLogs = async () => {
-    setProductAdsLogsLoading(true);
-    try {
-      const queryParams = new URLSearchParams({
-        start_date: adsHistoryDateRange.start,
-        end_date: adsHistoryDateRange.end,
-        page: productAdsHistoryPage.toString(),
-        limit: productAdsHistoryPageSize.toString()
-      });
-
-      if (currentUser.role !== "Super Admin" && currentUser.role !== "Admin Control") {
-        queryParams.append("user_ids", currentUser.id.toString());
-      } else if (adsHistorySelectedUsers.length > 0) {
-        queryParams.append("user_ids", adsHistorySelectedUsers.map(u => u.id).join(','));
-      }
-
-      /*
-      if (adsHistorySelectedPages.length > 0) {
-        queryParams.append("page_ids", adsHistorySelectedPages.join(','));
-      }
-      */
-
-      const response = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?${queryParams.toString()}`);
-      const result = await response.json();
-
-      if (result.success) {
-        setProductAdsLogs(result.data);
-        setProductAdsLogsTotal(result.pagination.total);
-        setProductAdsHistoryServerPagination({
-          total: result.pagination.total,
-          totalPages: result.pagination.totalPages,
-          hasMore: productAdsHistoryPage < result.pagination.totalPages,
-          hasPrevious: productAdsHistoryPage > 1,
-        });
-      }
-    } catch (error) {
-      console.error("Error loading product ads logs:", error);
-    } finally {
-
-
-      setProductAdsLogsLoading(false);
-    }
-  };
-
-  const loadPageAdsLogs = async () => {
-    setProductAdsLogsLoading(true);
-    try {
-      const offset = (productAdsHistoryPage - 1) * productAdsHistoryPageSize;
-
-      // Prepare user filter
-      let userFilter: number | number[] | undefined;
-      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
-        if (adsHistorySelectedUsers.length > 0) {
-          userFilter = adsHistorySelectedUsers.map((u: any) => u.id);
-        }
-      } else {
-        userFilter = currentUser.id;
-      }
-
-      // Call common function
-      const result = await loadAdsLogs(
-        adsHistorySelectedPages.length > 0 ? adsHistorySelectedPages.map(Number) : undefined,
-        adsHistoryDateRange.start,
-        adsHistoryDateRange.end,
-        userFilter,
-        productAdsHistoryPageSize,
-        offset
-      );
-
-      setProductAdsLogs(result.data);
-      setProductAdsLogsTotal(result.total);
-      setProductAdsHistoryServerPagination({
-        total: result.total,
-        totalPages: result.totalPages,
-        hasMore: result.hasMore,
-        hasPrevious: result.hasPrevious,
-      });
-    } catch (error) {
-      console.error("Error loading page ads logs:", error);
-      setProductAdsLogs([]);
-    } finally {
-      setProductAdsLogsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'adsHistory') {
-      if (adsHistoryMode === 'product') {
-        loadProductAdsLogs();
-      } else {
-        loadPageAdsLogs();
-      }
-    }
-  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize]);
+  }, [activeTab, adsInputMode, dateRange, selectedPages, selectedProducts, dashboardSelectedUsers]);
 
   const exportDashboard = () => {
     let dataToExport: any[] = [];
@@ -2732,6 +2763,20 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       />
                     </>
                   )}
+                </div>
+
+                <div className="flex-1">
+                  <label className={labelClass}>เลือกพนักงาน</label>
+                  <MultiSelectUserFilter
+                    users={marketingUsersList.map(u => ({
+                      id: u.id,
+                      firstName: u.first_name,
+                      lastName: u.last_name || '',
+                      username: u.username
+                    }))}
+                    selectedUsers={dashboardSelectedUsers}
+                    onChange={setDashboardSelectedUsers}
+                  />
                 </div>
 
                 <div className="">

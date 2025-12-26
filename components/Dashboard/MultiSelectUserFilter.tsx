@@ -39,9 +39,9 @@ const MultiSelectUserFilter: React.FC<MultiSelectUserFilterProps> = ({
 
   const filteredUsers = users.filter(
     (user) =>
-      user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.username.toLowerCase().includes(searchTerm.toLowerCase()),
+      (user.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.lastName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.username || "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleToggleUser = (userId: number) => {
@@ -130,11 +130,10 @@ const MultiSelectUserFilter: React.FC<MultiSelectUserFilterProps> = ({
                     {/* Checkbox */}
                     <div className="relative mr-3">
                       <div
-                        className={`w-4 h-4 border rounded transition-colors ${
-                          isSelected
+                        className={`w-4 h-4 border rounded transition-colors ${isSelected
                             ? "bg-blue-500 border-blue-500"
                             : "bg-white border-gray-300 hover:border-gray-400"
-                        }`}
+                          }`}
                       >
                         {isSelected && (
                           <Check className="w-3 h-3 text-white absolute top-0.5 left-0.5" />
