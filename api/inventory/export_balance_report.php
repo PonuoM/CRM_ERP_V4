@@ -53,6 +53,11 @@ try {
         }
     }
 
+    if ($companyId) {
+        $whereClause .= " AND w.company_id = ?";
+        $params[] = $companyId;
+    }
+
     $sqlStock = "SELECT 
                 ws.warehouse_id, 
                 w.name as warehouse_name, 
@@ -72,18 +77,20 @@ try {
     // 2. Fetch Lots (To map to stocks)
     // We fetch all active lots for these products/warehouses
     $lotMap = []; // [warehouse_id][product_id] => array of lots
-    $sqlLots = "SELECT warehouse_id, product_id, lot_number, quantity_remaining 
-                FROM product_lots 
-                WHERE status = 'Active' 
-                ORDER BY purchase_date ASC, id ASC"; // FIFO like distribution
-    // Optimization: Filter by product_ids in PHP if list is huge? For now select all active or filter by join if needed.
-    // If we have filters, apply to lots too safely.
+    $sqlLots = "SELECT pl.warehouse_id, pl.product_id, pl.lot_number, pl.quantity_remaining 
+                FROM product_lots pl
+                JOIN warehouses w ON w.id = pl.warehouse_id
+                WHERE pl.status = 'Active' ";
+    
     $lotWhere = "";
     $lotParams = [];
-    if ($warehouseId) { $lotWhere .= " AND warehouse_id = ?"; $lotParams[] = $warehouseId; }
-    if ($productId && is_numeric($productId)) { $lotWhere .= " AND product_id = ?"; $lotParams[] = $productId; }
+    if ($companyId) { $lotWhere .= " AND w.company_id = ?"; $lotParams[] = $companyId; }
+    if ($warehouseId) { $lotWhere .= " AND pl.warehouse_id = ?"; $lotParams[] = $warehouseId; }
+    if ($productId && is_numeric($productId)) { $lotWhere .= " AND pl.product_id = ?"; $lotParams[] = $productId; }
     
-    $stmtLots = $pdo->prepare($sqlLots . $lotWhere);
+    $sqlLots .= $lotWhere . " ORDER BY pl.purchase_date ASC, pl.id ASC";
+
+    $stmtLots = $pdo->prepare($sqlLots);
     $stmtLots->execute($lotParams);
     while ($row = $stmtLots->fetch(PDO::FETCH_ASSOC)) {
         $lotMap[$row['warehouse_id']][$row['product_id']][] = $row;
@@ -95,6 +102,7 @@ try {
     // We map NULL key too.
     $allocWhere = "";
     $allocParams = [];
+    if ($companyId) { $allocWhere .= " AND o.company_id = ?"; $allocParams[] = $companyId; }
     if ($warehouseId) { $allocWhere .= " AND a.warehouse_id = ?"; $allocParams[] = $warehouseId; }
     if ($productId && is_numeric($productId)) { $allocWhere .= " AND a.product_id = ?"; $allocParams[] = $productId; }
     

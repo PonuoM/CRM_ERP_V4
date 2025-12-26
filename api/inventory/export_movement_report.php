@@ -69,6 +69,11 @@ try {
         $params[] = $type;
     }
 
+    if ($companyId) {
+        $where[] = "w.company_id = ?";
+        $params[] = $companyId;
+    }
+
     $sql = "SELECT 
                 sm.created_at,
                 sm.document_number,

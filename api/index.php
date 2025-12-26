@@ -756,12 +756,31 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
 }
 
 function handle_customers(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $authCompanyId = $user['company_id'];
+    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+
+    // Enforce company scope for non-SuperAdmins
+    if (!$isSuperAdmin) {
+        $_GET['companyId'] = $authCompanyId;
+    }
+
     switch (method()) {
         case 'GET':
             try {
                 if ($id) {
-                    $stmt = $pdo->prepare('SELECT * FROM customers WHERE customer_id = ?');
-                    $stmt->execute([$id]);
+                    $sql = 'SELECT * FROM customers WHERE customer_id = ?';
+                    $params = [$id];
+                    if (!$isSuperAdmin) {
+                        $sql .= ' AND company_id = ?';
+                        $params[] = $authCompanyId;
+                    }
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
                     $cust = $stmt->fetch();
                     if (!$cust) json_response(['error' => 'NOT_FOUND'], 404);
                     $tags = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
@@ -1387,6 +1406,13 @@ function handle_products(PDO $pdo, ?string $id): void {
 }
 
 function handle_promotions(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     switch (method()) {
         case 'GET':
             if ($id) {
@@ -1410,14 +1436,8 @@ function handle_promotions(PDO $pdo, ?string $id): void {
                 json_response($promo);
             } else {
                 // Get all promotions with items (both active and inactive)
-                $companyId = $_GET['companyId'] ?? null;
-                $sql = 'SELECT * FROM promotions';
-                $params = [];
-                if ($companyId) {
-                    $sql .= ' WHERE company_id = ?';
-                    $params[] = $companyId;
-                }
-                $sql .= ' ORDER BY id DESC';
+                $sql = 'SELECT * FROM promotions WHERE company_id = ? ORDER BY id DESC';
+                $params = [$companyId];
                 
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
@@ -3856,6 +3876,13 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
 // Stock allocation API: backoffice assigns warehouse/lot for each order item allocation
 function handle_allocations(PDO $pdo, ?string $id, ?string $action): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     switch (method()) {
         case 'GET':
             // GET /allocations?order_id=...&status=PENDING
@@ -3866,8 +3893,9 @@ function handle_allocations(PDO $pdo, ?string $id, ?string $action): void {
                     JOIN orders o ON o.id = a.order_id
                     LEFT JOIN products p ON p.id = a.product_id
                     LEFT JOIN warehouses w ON w.id = a.warehouse_id
-                    WHERE o.order_status NOT IN ("Picking", "Packed", "Shipped", "Completed", "Cancelled")';
-            $params = [];
+                    WHERE o.order_status NOT IN ("Picking", "Packed", "Shipped", "Completed", "Cancelled")
+                    AND o.company_id = ?';
+            $params = [$companyId];
             if ($orderId) { $sql .= ' AND a.order_id = ?'; $params[] = $orderId; }
             if ($status) { $sql .= ' AND a.status = ?'; $params[] = $status; }
             $sql .= ' ORDER BY a.order_id, a.product_id, a.id';
@@ -4159,12 +4187,25 @@ function handle_bank_accounts(PDO $pdo, ?string $id): void {
 }
 
 function handle_platforms(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $userCompanyId = $user['company_id'];
+    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+
     try {
         $companyId = $_GET['companyId'] ?? null;
         if (!$companyId && method() !== 'GET') {
             // For POST, PATCH, DELETE, get companyId from request body
             $in = json_input();
             $companyId = $in['companyId'] ?? null;
+        }
+
+        // Strict Enforcement: If not SuperAdmin, always use user's company ID
+        if (!$isSuperAdmin) {
+            $companyId = $userCompanyId;
         }
 
         // Optional role-based visibility filter (Super Admin sees all)
@@ -4910,55 +4951,94 @@ function handle_exports(PDO $pdo, ?string $id): void {
     ensure_exports_table($pdo);
     cleanup_old_exports($pdo, $baseDir);
 
-    switch (method()) {
-        case 'GET':
-            if ($id) {
-                $download = isset($_GET['download']) && ($_GET['download'] === '1' || $_GET['download'] === 'true');
-                $stmt = $pdo->prepare('SELECT * FROM exports WHERE id = ?');
-                $stmt->execute([$id]);
-                $row = $stmt->fetch();
-                if (!$row) json_response(['error' => 'NOT_FOUND'], 404);
-                if ($download) {
-                    $path = $row['file_path'];
-                    if (!file_exists($path)) json_response(['error' => 'FILE_MISSING'], 404);
-                    try { $pdo->prepare('UPDATE exports SET download_count = download_count + 1 WHERE id = ?')->execute([$id]); } catch (Throwable $e) { /* ignore */ }
-                    header('Content-Type: text/csv; charset=utf-8');
-                    header('Content-Disposition: attachment; filename="' . basename($row['filename']) . '"');
-                    header('Content-Length: ' . filesize($path));
-                    readfile($path);
-                    exit;
-                }
-                json_response($row);
-            } else {
-                // List last 30 days
-                $stmt = $pdo->prepare('SELECT * FROM exports WHERE created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC LIMIT 200');
-                $stmt->execute();
-                json_response($stmt->fetchAll());
+    if ($id) {
+        if (isset($_GET['download'])) {
+            $stmt = $pdo->prepare('SELECT * FROM exports WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
+            $row = $stmt->fetch();
+            
+            if (!$row) {
+                http_response_code(404);
+                die('File not found or unauthorized');
             }
-            break;
-        case 'POST':
-            $in = json_input();
-            $filename = trim((string)($in['filename'] ?? ''));
-            $contentB64 = (string)($in['contentBase64'] ?? '');
-            $ordersCount = (int)($in['ordersCount'] ?? 0);
-            $userId = isset($in['userId']) ? (int)$in['userId'] : null;
-            $exportedBy = isset($in['exportedBy']) ? (string)$in['exportedBy'] : null;
-            if ($filename === '' || $contentB64 === '' || $ordersCount <= 0) {
-                json_response(['error' => 'INVALID_INPUT'], 400);
-            }
-            $safeName = preg_replace('/[^A-Za-z0-9_.-]+/', '_', $filename);
-            $ts = date('Ymd_His');
-            $path = $baseDir . DIRECTORY_SEPARATOR . $ts . '_' . $safeName;
-            $data = base64_decode($contentB64);
-            if ($data === false) json_response(['error' => 'DECODE_FAILED'], 400);
-            if (file_put_contents($path, $data) === false) json_response(['error' => 'WRITE_FAILED'], 500);
 
-            $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by) VALUES (?,?,?,?,?)');
-            $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy]);
-            json_response(['ok' => true, 'id' => $pdo->lastInsertId()]);
-            break;
-        default:
-            json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+            $path = $row['file_path'];
+            if (!file_exists($path)) {
+                http_response_code(404);
+                die('Physical file missing');
+            }
+
+            try {
+                $pdo->prepare('UPDATE exports SET download_count = download_count + 1 WHERE id = ?')->execute([$id]);
+            } catch (Throwable $e) { /* ignore */ }
+
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . basename($row['filename']) . '"');
+            readfile($path);
+            exit;
+        }
+        // Only download is supported for ID right now
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+    } else {
+        switch (method()) {
+            case 'GET':
+                $stmt = $pdo->prepare('SELECT * FROM exports WHERE company_id = ? AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC LIMIT 200');
+                $stmt->execute([$companyId]);
+                json_response($stmt->fetchAll());
+                break;
+
+            case 'POST':
+                try {
+                    $in = json_input();
+                    if (empty($in['filename']) || empty($in['contentBase64'])) {
+                        json_response(['error' => 'MISSING_PARAMS'], 400);
+                    }
+                    
+                    $filename = $in['filename'];
+                    // Ensure unique filename
+                    $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '', $filename);
+                    if (!$safeName) $safeName = 'export_' . date('Ymd_His') . '.csv';
+                    
+                    // Add timestamp to filename to prevent collision
+                    $info = pathinfo($safeName);
+                    $safeName = $info['filename'] . '_' . date('Ymd_His') . '.' . ($info['extension'] ?? 'csv');
+
+                    $content = base64_decode($in['contentBase64']);
+                    if ($content === false) {
+                        json_response(['error' => 'INVALID_BASE64'], 400);
+                    }
+
+                    // Add BOM for Excel UTF-8
+                    $bom = "\xEF\xBB\xBF";
+                    if (substr($content, 0, 3) !== $bom) {
+                        $content = $bom . $content;
+                    }
+
+                    $uploadDir = __DIR__ . '/../uploads/exports';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0777, true);
+                    }
+                    
+                    $path = $uploadDir . '/' . $safeName;
+                    if (file_put_contents($path, $content) === false) {
+                        json_response(['error' => 'WRITE_FAILED'], 500);
+                    }
+
+                    $ordersCount = (int)($in['ordersCount'] ?? 0);
+                    $exportedBy = $in['exportedBy'] ?? 'Unknown';
+
+                    $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by, company_id) VALUES (?, ?, ?, ?, ?, ?)');
+                    $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy, $companyId]);
+
+                    json_response(['ok' => true, 'id' => $pdo->lastInsertId()]);
+                } catch (Throwable $e) {
+                    json_response(['error' => 'EXPORT_LOG_FAILED', 'message' => $e->getMessage()], 500);
+                }
+                break;
+
+            default:
+                json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        }
     }
 }
 
@@ -6220,15 +6300,39 @@ function handle_permissions(PDO $pdo): void {
 
 // ==================== Companies Handler ====================
 function handle_companies(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+    $isSuperAdmin = ($user['role'] === 'SuperAdmin');
+
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM companies WHERE id = ?');
-                $stmt->execute([$id]);
+                // If specific ID requested, ensure it belongs to user's company (unless SuperAdmin)
+                $sql = 'SELECT * FROM companies WHERE id = ?';
+                $params = [$id];
+                if (!$isSuperAdmin) {
+                    $sql .= ' AND id = ?';
+                    $params[] = $companyId;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $stmt = $pdo->query('SELECT * FROM companies ORDER BY id ASC');
+                // List companies: only show user's company (unless SuperAdmin)
+                $sql = 'SELECT * FROM companies';
+                $params = [];
+                if (!$isSuperAdmin) {
+                    $sql .= ' WHERE id = ?';
+                    $params[] = $companyId;
+                }
+                $sql .= ' ORDER BY id ASC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
                 json_response($stmt->fetchAll());
             }
             break;
@@ -6652,6 +6756,13 @@ function handle_purchases(PDO $pdo, ?string $id, ?string $action = null): void {
 }
 
 function handle_warehouse_stocks(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     if (method() === 'GET') {
         if ($id) {
             $stmt = $pdo->prepare('SELECT * FROM warehouse_stocks WHERE id = ?');
@@ -6666,6 +6777,11 @@ function handle_warehouse_stocks(PDO $pdo, ?string $id): void {
         if (isset($_GET['warehouseId'])) { $w[] = 'ws.warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
         if (isset($_GET['productId'])) { $w[] = 'ws.product_id = ?'; $params[] = $_GET['productId']; }
         if (isset($_GET['lotNumber'])) { $w[] = 'ws.lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        
+        // Add company filter
+        $w[] = 'ws.warehouse_id IN (SELECT id FROM warehouses WHERE company_id = ?)';
+        $params[] = $companyId;
+
         if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
         $sql .= ' ORDER BY ws.warehouse_id, ws.product_id, ws.lot_number';
         $stmt = $pdo->prepare($sql);
@@ -6677,23 +6793,34 @@ function handle_warehouse_stocks(PDO $pdo, ?string $id): void {
 }
 
 function handle_product_lots(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     if (method() === 'GET') {
         if ($id) {
-            $stmt = $pdo->prepare('SELECT * FROM product_lots WHERE id = ?');
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare('SELECT pl.* FROM product_lots pl JOIN warehouses w ON w.id = pl.warehouse_id WHERE pl.id = ? AND w.company_id = ?');
+            $stmt->execute([$id, $companyId]);
             $row = $stmt->fetch();
             $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             return;
         }
         $params = [];
         $w = [];
-        $sql = 'SELECT * FROM product_lots';
-        if (isset($_GET['warehouseId'])) { $w[] = 'warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
-        if (isset($_GET['productId'])) { $w[] = 'product_id = ?'; $params[] = $_GET['productId']; }
-        if (isset($_GET['status'])) { $w[] = 'status = ?'; $params[] = $_GET['status']; }
-        if (isset($_GET['lotNumber'])) { $w[] = 'lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        $sql = 'SELECT pl.* FROM product_lots pl JOIN warehouses w ON w.id = pl.warehouse_id';
+        
+        $w[] = 'w.company_id = ?';
+        $params[] = $companyId;
+
+        if (isset($_GET['warehouseId'])) { $w[] = 'pl.warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+        if (isset($_GET['productId'])) { $w[] = 'pl.product_id = ?'; $params[] = $_GET['productId']; }
+        if (isset($_GET['status'])) { $w[] = 'pl.status = ?'; $params[] = $_GET['status']; }
+        if (isset($_GET['lotNumber'])) { $w[] = 'pl.lot_number = ?'; $params[] = $_GET['lotNumber']; }
         if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
-        $sql .= ' ORDER BY purchase_date DESC, id DESC';
+        $sql .= ' ORDER BY pl.purchase_date DESC, pl.id DESC';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         json_response($stmt->fetchAll());
@@ -6888,23 +7015,34 @@ function handle_product_lots(PDO $pdo, ?string $id): void {
 }
 
 function handle_stock_movements(PDO $pdo, ?string $id): void {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     if (method() === 'GET') {
         if ($id) {
-            $stmt = $pdo->prepare('SELECT * FROM stock_movements WHERE id = ?');
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare('SELECT sm.* FROM stock_movements sm JOIN warehouses w ON w.id = sm.warehouse_id WHERE sm.id = ? AND w.company_id = ?');
+            $stmt->execute([$id, $companyId]);
             $row = $stmt->fetch();
             $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             return;
         }
         $params = [];
         $w = [];
-        $sql = 'SELECT * FROM stock_movements';
-        if (isset($_GET['warehouseId'])) { $w[] = 'warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
-        if (isset($_GET['productId'])) { $w[] = 'product_id = ?'; $params[] = $_GET['productId']; }
-        if (isset($_GET['lotNumber'])) { $w[] = 'lot_number = ?'; $params[] = $_GET['lotNumber']; }
-        if (isset($_GET['type'])) { $w[] = 'movement_type = ?'; $params[] = $_GET['type']; }
+        $sql = 'SELECT sm.* FROM stock_movements sm JOIN warehouses w ON w.id = sm.warehouse_id';
+
+        $w[] = 'w.company_id = ?';
+        $params[] = $companyId;
+
+        if (isset($_GET['warehouseId'])) { $w[] = 'sm.warehouse_id = ?'; $params[] = $_GET['warehouseId']; }
+        if (isset($_GET['productId'])) { $w[] = 'sm.product_id = ?'; $params[] = $_GET['productId']; }
+        if (isset($_GET['lotNumber'])) { $w[] = 'sm.lot_number = ?'; $params[] = $_GET['lotNumber']; }
+        if (isset($_GET['type'])) { $w[] = 'sm.movement_type = ?'; $params[] = $_GET['type']; }
         if ($w) { $sql .= ' WHERE ' . implode(' AND ', $w); }
-        $sql .= ' ORDER BY created_at DESC, id DESC';
+        $sql .= ' ORDER BY sm.created_at DESC, sm.id DESC';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         json_response($stmt->fetchAll());

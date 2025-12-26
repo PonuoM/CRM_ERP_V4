@@ -11,6 +11,13 @@ function handle_statement_report(PDO $pdo) {
     $bankId = isset($_GET['bankId']) && $_GET['bankId'] !== '' ? (int)$_GET['bankId'] : null;
     $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     $params = [];
     $sql = "
         SELECT 
@@ -35,6 +42,10 @@ function handle_statement_report(PDO $pdo) {
     
     $params[] = $month;
     $params[] = $year;
+    
+    // Strict Company Filter
+    $sql .= " AND b.company_id = ?";
+    $params[] = $companyId;
 
     if ($bankId) {
         $sql .= " AND sl.bank_account_id = ?";

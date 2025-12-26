@@ -22,19 +22,27 @@ if (empty($order_id)) {
   exit();
 }
 
-if ($company_id <= 0) {
-  echo json_encode([
-    "success" => false,
-    "message" => "Company ID is required",
-  ]);
-  exit();
-}
+// $company_id check removed as it is enforced by token
 
+// Database connection using PDO with UTF-8
 try {
-  // Database connection using PDO with UTF-8
   $conn = db_connect();
   $conn->exec("SET NAMES utf8mb4");
   $conn->exec("SET CHARACTER SET utf8mb4");
+
+  // Authenticate
+  $user = get_authenticated_user($conn);
+  if (!$user) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit();
+  }
+  
+  // Enforce company scope
+  $company_id = $user['company_id'];
+
+  // Override or check parameters
+  // $order_id is still required from GET
+
 
   // Query to get slip history with bank account details
   $sql = "SELECT

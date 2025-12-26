@@ -2,6 +2,13 @@
 require_once __DIR__ . '/../config.php';
 
 function handle_sent_orders(PDO $pdo) {
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    $companyId = $user['company_id'];
+
     switch (method()) {
         case 'GET':
             $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
@@ -9,7 +16,7 @@ function handle_sent_orders(PDO $pdo) {
             $bankId = isset($_GET['bankId']) && $_GET['bankId'] !== '' ? (int)$_GET['bankId'] : null;
             $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-            $params = [];
+            $params = [$companyId];
             $sql = "
                 SELECT 
                     o.id,
@@ -32,7 +39,7 @@ function handle_sent_orders(PDO $pdo) {
                 LEFT JOIN order_tracking_numbers otn ON otn.parent_order_id = o.id
                 LEFT JOIN order_slips os ON os.order_id = o.id
                 LEFT JOIN bank_account b ON b.id = os.bank_account_id
-                WHERE 1=1
+                WHERE o.company_id = ?
             ";
 
             // Filter Condition: Sent/Billed (Has Tracking OR Delivered/Returned OR Picked Up)

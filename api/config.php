@@ -131,3 +131,34 @@ function validate_auth(PDO $pdo): void
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Token expired'], 401);
   }
 }
+
+function get_authenticated_user(PDO $pdo): ?array
+{
+  $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+  
+  if (!$auth && function_exists('getallheaders')) {
+      $headers = getallheaders();
+      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+  }
+  
+  if (!$auth && isset($_GET['token'])) {
+      $auth = 'Bearer ' . $_GET['token'];
+  }
+
+  if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+      return null;
+  }
+  $token = $matches[1];
+
+  $stmt = $pdo->prepare('
+      SELECT u.id, u.username, u.role, u.company_id, u.status 
+      FROM user_tokens ut
+      JOIN users u ON u.id = ut.user_id
+      WHERE ut.token = ? AND ut.expires_at > NOW()
+  ');
+  $stmt->execute([$token]);
+  $user = $stmt->fetch();
+
+  return $user ?: null;
+}
+

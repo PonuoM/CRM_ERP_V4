@@ -565,6 +565,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
         const response = await listCustomers({
           q: searchTerm,
           pageSize: 50,
+          companyId: currentUser.companyId,
         });
         if (response && response.data) {
           setSearchResults(response.data.map((item: any) => mapCustomerData(item)));
