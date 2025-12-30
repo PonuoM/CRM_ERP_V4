@@ -131,11 +131,23 @@ try {
         if (empty($items)) continue; // Should not happen for valid orders
         
         // Calculate Total Value for Ratio
+        // IMPORTANT: Only count commissionable items (exclude freebies and promotion children from same creator)
         $total_item_value = 0;
         foreach ($items as $item) {
-             // Ratio is based on ALL items value to determine how much of the bill was paid
-             // Usually confirmed_amount should match sum(net_total), but if diff, we prorate.
-             $total_item_value += (float)$item['net_total'];
+            // Skip freebies
+            if ((int)$item['is_freebie'] === 1) continue;
+            
+            // Skip promotion children from the same creator
+            if (!empty($item['parent_item_id'])) {
+                $item_creator_id = !empty($item['creator_id']) ? $item['creator_id'] : null;
+                // If same creator as order, it's a promotion child - skip
+                if (!$item_creator_id || $item_creator_id == $order_creator_id) {
+                    continue;
+                }
+                // If different creator, it's an upsell item - include it
+            }
+            
+            $total_item_value += (float)$item['net_total'];
         }
         
         $ratio = 1.0;
@@ -152,15 +164,27 @@ try {
         foreach ($items as $item) {
             // Exclusion Logic
             if ((int)$item['is_freebie'] === 1) continue;
-            if (!empty($item['parent_item_id'])) continue;
+            
+            // Determine beneficiary first to check if this is an upsell item
+            $item_creator_id = !empty($item['creator_id']) ? $item['creator_id'] : null;
+            $beneficiary_id = $item_creator_id ?? $order_creator_id;
+            
+            // Skip promotion children ONLY if they belong to the same creator as the order
+            // If creator_id is different (upsell), we should include it even if it has parent_item_id
+            if (!empty($item['parent_item_id'])) {
+                // If item has a creator_id and it's different from order creator, it's an upsell item
+                if ($item_creator_id && $item_creator_id != $order_creator_id) {
+                    // This is an upsell item, don't skip it
+                } else {
+                    // This is a promotion child from the same creator, skip it
+                    continue;
+                }
+            }
             
             $item_net = (float)$item['net_total'];
             $commissionable_amount = $item_net * $ratio;
             
             if ($commissionable_amount <= 0) continue;
-            
-            // Beneficiary
-            $beneficiary_id = !empty($item['creator_id']) ? $item['creator_id'] : $order_creator_id;
             
             if (!$beneficiary_id) continue; // Should not happen if data integrity is good
             
