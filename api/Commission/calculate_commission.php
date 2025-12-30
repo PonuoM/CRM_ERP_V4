@@ -1,21 +1,16 @@
 <?php
 /**
- * Calculate Commission for a specific period
- * Uses orders table with payment_status='Approved' and order_status='Delivered'
- * REQUIRES statement_reconcile_logs.confirmed_amount (orders without reconcile log are excluded)
+ * Calculate Commission for a specific period (Upsell Supported)
  * 
- * POST /api/Commission/calculate_commission.php
- * 
- * Request body:
- * {
- *   "company_id": 1,
- *   "period_month": 12,  // เดือนที่คำนวณ (ธันวาคม)
- *   "period_year": 2024,
- *   "commission_rate": 5.0  // % ค่าคอมเริ่มต้น (optional)
- * }
- * 
- * Logic: Selects orders with order_date BEFORE the selected month
- * Example: period_month=12 (Dec) => selects orders with order_date < 2024-12-01
+ * Logic:
+ * 1. Select Eligible Orders (Confirmed Reconcile, Date < Period Start, Not Calculated)
+ * 2. For each order, fetch items.
+ * 3. Calculate Payment Ratio = Confirmed Amount / Sum(All Items net_total)
+ * 4. Iterate items:
+ *    - Skip if is_freebie=1 or parent_item_id is NOT NULL
+ *    - Item Amount = net_total * Ratio
+ *    - Beneficiary = item.creator_id ?? order.creator_id
+ * 5. Group by Beneficiary and save.
  */
 
 require_once __DIR__ . "/../config.php";
@@ -42,11 +37,9 @@ try {
         exit;
     }
     
-    // Calculate period_start_date for filtering
-    // Period Dec 2024 => orders before Dec 1, 2024 (Nov 30 and earlier)
     $period_start_date = sprintf('%04d-%02d-01', $period_year, $period_month);
     
-    // Keep order_month/order_year for display purposes
+    // Display dates
     $order_month = $period_month - 1;
     $order_year = $period_year;
     if ($order_month < 1) {
@@ -54,12 +47,11 @@ try {
         $order_year--;
     }
     
-    // Cutoff date: 20th of period_month
     $cutoff_date = sprintf('%04d-%02d-20', $period_year, $period_month);
     
     $pdo->beginTransaction();
     
-    // Check if period already exists
+    // Check existing period
     $checkStmt = $pdo->prepare("
         SELECT id, status FROM commission_periods 
         WHERE company_id = ? AND period_year = ? AND period_month = ?
@@ -76,46 +68,32 @@ try {
         exit;
     }
     
-    // Delete existing draft if any
     if ($existing) {
+        // Delete existing draft (cascade will handle lines if set up, but let's be safe)
+        // Note: commission_records and commission_order_lines should cascade delete if FK is correct. 
+        // Assuming standard Laravel/Prisma behavior or manual cleanup.
+        // Let's rely on Prisma schema 'onDelete: Cascade' visible in previous views -> Yes, FKs have onDelete: Cascade.
         $pdo->prepare("DELETE FROM commission_periods WHERE id = ?")->execute([$existing['id']]);
     }
     
-    // Get eligible orders from ORDERS table with reconcile amount
-    // Orders with payment_status='Approved', order_status='Delivered', and order_date before period_start
-    // MUST have reconcile log with confirmed_amount
-    // EXCLUDE orders already used in commission_order_lines
+    // 1. Get Eligible Orders
+    // Using explicit table alias for clarity
     $ordersStmt = $pdo->prepare("
         SELECT 
             o.id,
-            o.creator_id,
+            o.creator_id as order_creator_id,
             o.order_date,
-            srl.confirmed_amount as order_amount
+            srl.confirmed_amount,
+            srl.confirmed_at
         FROM orders o
-        INNER JOIN statement_reconcile_logs srl 
-            ON srl.order_id = o.id
-        LEFT JOIN commission_order_lines col
-            ON col.order_id = o.id
+        INNER JOIN statement_reconcile_logs srl ON srl.order_id = o.id
+        LEFT JOIN commission_order_lines col ON col.order_id = o.id
         WHERE 
-            -- Payment status = Approved
-            o.payment_status = 'Approved'
-            
-            -- Order status = Delivered
-            AND o.order_status = 'Delivered'
-            
-            -- Order date BEFORE selected month
+            srl.confirmed_action = 'Confirmed'
             AND o.order_date < :period_start
-            
-            -- Must have confirmed amount
-            AND srl.confirmed_amount IS NOT NULL
-            
-            -- NOT already used in commission calculation
             AND col.id IS NULL
-            
-            -- Company filter
             AND o.company_id = :company_id
-            
-        ORDER BY o.creator_id, o.order_date
+        ORDER BY o.order_date
     ");
     
     $ordersStmt->execute([
@@ -125,28 +103,124 @@ try {
     
     $orders = $ordersStmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Group by creator_id
-    $salesData = [];
+    $salesData = []; // [user_id => ['total_sales' => 0, 'lines' => []]]
+    
+    // Prepared statement for items
+    $itemsStmt = $pdo->prepare("
+        SELECT 
+            id, 
+            creator_id, 
+            net_total, 
+            is_freebie, 
+            parent_item_id 
+        FROM order_items 
+        WHERE order_id = ?
+    ");
+    
+    $totalOrdersProcessed = 0;
+    
     foreach ($orders as $order) {
-        $creator_id = $order['creator_id'];
-        if (!isset($salesData[$creator_id])) {
-            $salesData[$creator_id] = [
-                'total_sales' => 0,
-                'order_count' => 0,
-                'orders' => []
-            ];
+        $order_id = $order['id'];
+        $confirmed_amount = (float)$order['confirmed_amount'];
+        $order_creator_id = $order['order_creator_id'];
+        
+        // Fetch Items
+        $itemsStmt->execute([$order_id]);
+        $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($items)) continue; // Should not happen for valid orders
+        
+        // Calculate Total Value for Ratio
+        $total_item_value = 0;
+        foreach ($items as $item) {
+             // Ratio is based on ALL items value to determine how much of the bill was paid
+             // Usually confirmed_amount should match sum(net_total), but if diff, we prorate.
+             $total_item_value += (float)$item['net_total'];
         }
-        $salesData[$creator_id]['total_sales'] += (float)$order['order_amount'];
-        $salesData[$creator_id]['order_count']++;
-        $salesData[$creator_id]['orders'][] = $order;
+        
+        $ratio = 1.0;
+        if ($total_item_value > 0) {
+            $ratio = $confirmed_amount / $total_item_value;
+        } else {
+            // Edge case: items have 0 value but confirmed amount > 0? 
+            // Or both 0. If value is 0, no commission anyway.
+            $ratio = 0; 
+        }
+        
+        $hasCommissionableItems = false;
+        
+        foreach ($items as $item) {
+            // Exclusion Logic
+            if ((int)$item['is_freebie'] === 1) continue;
+            if (!empty($item['parent_item_id'])) continue;
+            
+            $item_net = (float)$item['net_total'];
+            $commissionable_amount = $item_net * $ratio;
+            
+            if ($commissionable_amount <= 0) continue;
+            
+            // Beneficiary
+            $beneficiary_id = !empty($item['creator_id']) ? $item['creator_id'] : $order_creator_id;
+            
+            if (!$beneficiary_id) continue; // Should not happen if data integrity is good
+            
+            // Add to sales data
+            if (!isset($salesData[$beneficiary_id])) {
+                $salesData[$beneficiary_id] = [
+                    'total_sales' => 0,
+                    'order_count' => 0, // We'll count unique orders later or just increment line count?
+                                        // Requirement usually counts Distinct Orders. 
+                                        // But here we are splitting. Let's count "transactions" or keep track of unique orders per user.
+                    'orders_seen' => [] 
+                ];
+            }
+            
+            $salesData[$beneficiary_id]['total_sales'] += $commissionable_amount;
+            
+            // Track unique orders for this user
+            if (!isset($salesData[$beneficiary_id]['orders_seen'][$order_id])) {
+                $salesData[$beneficiary_id]['order_count']++;
+                $salesData[$beneficiary_id]['orders_seen'][$order_id] = true;
+            }
+            
+            // Prepare Line Data
+            // We might have multiple items for same user in same order. 
+            // We should aggregate them or insert multiple lines?
+            // "commission_order_lines" links to "orders". If we insert multiple lines for same order_id, 
+            // the Primary Key is 'id', so it supports multiple rows with same order_id.
+            // Let's insert per item for maximum detail if needed, OR aggregate per order per user.
+            // Aggregating per order per user is cleaner for the report (1 line per order for that user).
+            
+            if (!isset($salesData[$beneficiary_id]['lines'][$order_id])) {
+                $salesData[$beneficiary_id]['lines'][$order_id] = [
+                     'order_id' => $order_id,
+                     'order_date' => $order['order_date'],
+                     'confirmed_at' => $order['confirmed_at'] ?? $order['order_date'], // Fallback
+                     'amount' => 0
+                ];
+            }
+            $salesData[$beneficiary_id]['lines'][$order_id]['amount'] += $commissionable_amount;
+            
+            $hasCommissionableItems = true;
+        }
+        
+        if ($hasCommissionableItems) {
+            $totalOrdersProcessed++;
+        }
     }
     
-    // Calculate totals
-    $totalSales = array_sum(array_column($salesData, 'total_sales'));
-    $totalOrders = array_sum(array_column($salesData, 'order_count'));
-    $totalCommission = $totalSales * ($commission_rate / 100);
+    // Calculate Global Totals
+    $grandTotalSales = 0;
+    $grandTotalOrders = $totalOrdersProcessed; // Unique orders processed in this run
+    $grandTotalCommission = 0;
     
-    // Create period
+    foreach ($salesData as $uid => $data) {
+        $grandTotalSales += $data['total_sales'];
+        $userComm = $data['total_sales'] * ($commission_rate / 100);
+        $grandTotalCommission += $userComm;
+    }
+    
+    // Insert Period
     $periodStmt = $pdo->prepare("
         INSERT INTO commission_periods (
             company_id, period_month, period_year, order_month, order_year,
@@ -157,12 +231,12 @@ try {
     
     $periodStmt->execute([
         $company_id, $period_month, $period_year, $order_month, $order_year,
-        $cutoff_date, $totalSales, $totalCommission, $totalOrders
+        $cutoff_date, $grandTotalSales, $grandTotalCommission, $grandTotalOrders
     ]);
     
     $period_id = $pdo->lastInsertId();
     
-    // Create records for each salesperson
+    // Insert Records and Lines
     $recordStmt = $pdo->prepare("
         INSERT INTO commission_records (
             period_id, user_id, total_sales, commission_rate, commission_amount, order_count
@@ -176,29 +250,32 @@ try {
     ");
     
     foreach ($salesData as $user_id => $data) {
-        $userCommission = $data['total_sales'] * ($commission_rate / 100);
+        $userTotalSales = $data['total_sales'];
+        $userCommission = $userTotalSales * ($commission_rate / 100);
+        $userOrderCount = $data['order_count'];
         
         $recordStmt->execute([
             $period_id,
             $user_id,
-            $data['total_sales'],
+            $userTotalSales,
             $commission_rate,
             $userCommission,
-            $data['order_count']
+            $userOrderCount
         ]);
         
         $record_id = $pdo->lastInsertId();
         
-        // Insert order lines
-        foreach ($data['orders'] as $order) {
-            $orderCommission = (float)$order['order_amount'] * ($commission_rate / 100);
+        foreach ($data['lines'] as $line) {
+            $lineAmount = $line['amount'];
+            $lineCommission = $lineAmount * ($commission_rate / 100);
+            
             $lineStmt->execute([
                 $record_id,
-                $order['id'],
-                date('Y-m-d', strtotime($order['order_date'])),
-                date('Y-m-d H:i:s', strtotime($order['order_date'])), // Use order_date as confirmed_at
-                $order['order_amount'],
-                $orderCommission
+                $line['order_id'],
+                date('Y-m-d', strtotime($line['order_date'])),
+                date('Y-m-d H:i:s', strtotime($line['confirmed_at'])),
+                $lineAmount,
+                $lineCommission
             ]);
         }
     }
@@ -209,13 +286,13 @@ try {
         'ok' => true,
         'data' => [
             'period_id' => $period_id,
-            'total_sales' => $totalSales,
-            'total_commission' => $totalCommission,
-            'total_orders' => $totalOrders,
+            'total_sales' => $grandTotalSales,
+            'total_commission' => $grandTotalCommission,
+            'total_orders' => $grandTotalOrders,
             'salesperson_count' => count($salesData)
         ]
     ]);
-    
+
 } catch (Exception $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();

@@ -1,5 +1,6 @@
 <?php
 date_default_timezone_set("Asia/Bangkok");
+ini_set('memory_limit', '256M');
 // Database configuration
 // Adjust host/port if your MySQL runs elsewhere
 $DB_HOST = getenv("DB_HOST") ?: "localhost";
@@ -8,6 +9,8 @@ $DB_NAME = getenv("DB_NAME") ?: "primacom_mini_erp";
 $DB_USER = getenv("DB_USER") ?: "primacom_bloguser";
 // $DB_PASS = getenv("DB_PASS") ?: "pJnL53Wkhju2LaGPytw8";
 $DB_PASS = getenv("DB_PASS") ?: "MzBpsVmDmhg8afrxgaUg";
+
+
 
 function db_connect(): PDO
 {
@@ -30,12 +33,11 @@ function db_connect(): PDO
       PDO::ATTR_EMULATE_PREPARES => false,
       // May be ignored by mysql driver, but harmless
       PDO::ATTR_TIMEOUT => 3,
+      // CRITICAL: Force utf8mb4_unicode_ci collation at connection init to prevent MySQL 8 default utf8mb4_0900_ai_ci
+      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '+07:00', collation_connection = 'utf8mb4_unicode_ci'",
     ];
     try {
       $pdo = new PDO($dsn, $DB_USER, $DB_PASS, $opts);
-      // Force connection collation to match database (avoids 1267 mix errors)
-      $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-      $pdo->exec("SET CHARACTER SET utf8mb4");
       return $pdo;
     } catch (Throwable $e) {
       $lastError = $e;
@@ -97,6 +99,7 @@ function cors(): void
 
 function validate_auth(PDO $pdo): void
 {
+  file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH CHECK: " . ($_SERVER['REQUEST_URI'] ?? 'unknown') . " Mem: " . memory_get_usage() . "\n", FILE_APPEND);
   $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
   
   if (!$auth && function_exists('getallheaders')) {
@@ -110,6 +113,7 @@ function validate_auth(PDO $pdo): void
   }
 
   if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: No Bearer token found in header: '$auth'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Missing or invalid token'], 401);
   }
   $token = $matches[1];
@@ -119,10 +123,42 @@ function validate_auth(PDO $pdo): void
   $t = $stmt->fetch();
 
   if (!$t) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token not found in DB: '$token'\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Invalid token'], 401);
   }
 
   if (strtotime($t['expires_at']) < time()) {
+    file_put_contents('auth_debug.log', date('Y-m-d H:i:s') . " AUTH FAIL: Token expired. Expires: '{$t['expires_at']}', Now: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
     json_response(['error' => 'UNAUTHORIZED', 'message' => 'Token expired'], 401);
   }
+}
+
+function get_authenticated_user(PDO $pdo): ?array
+{
+  $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+  
+  if (!$auth && function_exists('getallheaders')) {
+      $headers = getallheaders();
+      $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+  }
+  
+  if (!$auth && isset($_GET['token'])) {
+      $auth = 'Bearer ' . $_GET['token'];
+  }
+
+  if (!preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+      return null;
+  }
+  $token = $matches[1];
+
+  $stmt = $pdo->prepare('
+      SELECT u.id, u.username, u.role, u.company_id, u.status 
+      FROM user_tokens ut
+      JOIN users u ON u.id = ut.user_id
+      WHERE ut.token = ? AND ut.expires_at > NOW()
+  ');
+  $stmt->execute([$token]);
+  $user = $stmt->fetch();
+
+  return $user ?: null;
 }

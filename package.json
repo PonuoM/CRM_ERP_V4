@@ -25,12 +25,14 @@
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-apexcharts": "^1.8.0",
+    "react-datepicker": "^9.1.0",
     "react-dom": "^19.1.1",
     "thai-data": "^3.0.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react-datepicker": "^6.2.0",
     "@vitejs/plugin-react": "^5.0.0",
     "prisma": "^6.19.0",
     "tsx": "^4.19.2",

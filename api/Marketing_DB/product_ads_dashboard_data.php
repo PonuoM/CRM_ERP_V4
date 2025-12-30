@@ -66,6 +66,14 @@ try {
   if ($pageIds) {
     $orderWhere[] = "o.sales_channel_page_id IN ($pageIds)";
   }
+  if ($userIds) {
+    $uIds = array_filter(explode(',', $userIds), 'is_numeric');
+    if (!empty($uIds)) {
+        $in = str_repeat('?,', count($uIds) - 1) . '?';
+        $orderWhere[] = "o.creator_id IN ($in)";
+        $orderParams = array_merge($orderParams, $uIds);
+    }
+  }
   if ($productIds) {
     $pIds = array_filter(explode(',', $productIds), 'is_numeric');
     if (!empty($pIds)) {

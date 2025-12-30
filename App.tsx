@@ -2358,6 +2358,7 @@ const App: React.FC = () => {
           }
           return item;
         }),
+        boxes: updatedOrder.boxes || [], // CRITICAL: Backend needs boxes to generate sub-order IDs
         sales_channel: updatedOrder.salesChannel,
         sales_channel_page_id: updatedOrder.salesChannelPageId,
         paymentMethod: updatedOrder.paymentMethod,
