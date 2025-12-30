@@ -5639,7 +5639,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           </div>
         </div>
 
-        <div className="w-full mx-auto p-6 space-y-6">
+        <div className="max-w-[1200px] mx-auto space-y-4 xl:space-y-6 px-4 md:px-6 xl:px-0 mt-4 md:mt-6">
           {upsellError && (
             <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">
               {upsellError}
@@ -6587,12 +6587,12 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="w-full mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[#0e141b]">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg md:text-2xl font-bold text-[#0e141b] truncate">
               สร้างคำสั่งซื้อ
             </h1>
 
-            <p className="text-[#4e7397]">
+            <p className="text-xs md:text-sm text-[#4e7397] truncate">
               กรอกข้อมูลลูกค้า สินค้า และการชำระเงินในหน้าเดียว
             </p>
           </div>
@@ -6616,8 +6616,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
             {/* Section 1: Customer Information */}
 
             {
-              <div className="bg-white rounded-lg border border-gray-300 p-6">
-                <h2 className="text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
+              <div className="bg-white rounded-lg border border-gray-300 p-4 md:p-6">
+                <h2 className="text-base md:text-lg font-semibold text-[#0e141b] mb-4 pb-3 border-b">
                   ข้อมูลลูกค้า
                 </h2>
 
@@ -6735,9 +6735,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 `${c.phone}-${c.firstName}-${c.lastName}`
                               }
                               onClick={() => handleSelectCustomer(c)}
-                              className="p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0"
+                              className="p-3 md:p-2 hover:bg-slate-50 cursor-pointer text-[#0e141b] border-b last:border-b-0 flex flex-col md:flex-row md:items-start md:justify-between gap-1"
                             >
-                              {`${c.firstName} ${c.lastName}`} - {c.phone}
+                              <div className="flex flex-col">
+                                <div className="font-medium md:inline">{c.firstName}</div>
+                                <div className="font-medium md:inline">{c.lastName}</div>
+                              </div>
+                              <div className="text-sm text-gray-500">{c.phone}</div>
                             </li>
                           ))}
                         </ul>
@@ -6762,7 +6766,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     <>
                       <div className="p-4 border border-gray-300 rounded-md bg-slate-50">
                         {isCreatingNewCustomer ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-4">
                             <div>
                               <label className={commonLabelClass}>
                                 ชื่อ <span className="text-red-500">*</span>
@@ -6798,7 +6802,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               />
                             </div>
 
-                            <div className="col-span-2 grid md:grid-cols-2 gap-4">
+                            <div className="col-span-2 grid xl:grid-cols-2 gap-4">
                               <div>
                                 <label className={commonLabelClass}>
                                   เบอร์โทรศัพท์{" "}
@@ -6820,7 +6824,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 )}
                               </div>
 
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                 <div>
                                   <label className={commonLabelClass}>
                                     เบอร์สำรอง
@@ -6867,7 +6871,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-4">
                             <div>
                               <label className={commonLabelClass}>
                                 ชื่อ <span className="text-red-500">*</span>
@@ -6900,7 +6904,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                               />
                             </div>
 
-                            <div className="col-span-2 grid md:grid-cols-2 gap-4">
+                            <div className="col-span-2 grid xl:grid-cols-2 gap-4">
                               <div>
                                 <label className={commonLabelClass}>
                                   เบอร์โทรศัพท์{" "}
@@ -6922,7 +6926,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                 )}
                               </div>
 
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                 <div>
                                   <label className={commonLabelClass}>
                                     เบอร์สำรอง
@@ -6971,7 +6975,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div>
                           <label className={commonLabelClass}>
                             ชื่อใน Facebook
@@ -7002,7 +7006,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                           ช่องทางการขาย <span className="text-red-500">*</span>
                         </label>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                           <select
                             ref={salesChannelRef}
                             value={salesChannel}
@@ -7401,7 +7405,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-3">
                       <div>
                         <label className={commonLabelClass}>
                           ชื่อ (ผู้รับ) <span className="text-red-500">*</span>
@@ -7447,7 +7451,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                       <div className="relative province-dropdown-container">
                         <label className={commonLabelClass}>
                           จังหวัด <span className="text-red-500">*</span>
@@ -7763,7 +7767,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                       <div className="relative subdistrict-dropdown-container">
                         <label className={commonLabelClass}>
                           ตำบล/แขวง <span className="text-red-500">*</span>
@@ -8136,7 +8140,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <div>
                       <label className={commonLabelClass}>
                         วันที่จัดส่ง <span className="text-red-500">*</span>
@@ -8264,7 +8268,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-2">
                     <div>
                       <label className={commonLabelClass}>
                         คลังจัดส่ง (อัตโนมัติจากจังหวัด)
@@ -8757,7 +8761,200 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                   })()}
                 </div>
 
-                <div className="overflow-x-auto">
+                {/* Product List - Mobile Card Layout */}
+                <div className="md:hidden space-y-4 mb-4">
+                  {(() => {
+                    let rowNumber = 0;
+                    return (orderData.items || []).map((item, index) => {
+                      if (!item.parentItemId) {
+                        rowNumber++;
+                      }
+                      const displayRowNumber = item.parentItemId ? "" : rowNumber;
+                      const isChild = !!item.parentItemId;
+                      const isParent = item.isPromotionParent;
+
+                      if (isChild && item.parentItemId && !expandedPromotions.has(item.parentItemId)) {
+                        return null;
+                      }
+
+                      const itemTotal = item.isFreebie
+                        ? 0
+                        : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) - (Number(item.discount) || 0);
+
+                      return (
+                        <div key={item.id} className={`bg-white border rounded-lg p-4 shadow-sm ${isChild ? 'ml-6 border-l-4 border-l-blue-200 bg-slate-50' : 'border-gray-200'}`}>
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                {!isChild && <span className="text-xs font-mono text-gray-500">#{displayRowNumber}</span>}
+                                <span className={`text-sm font-semibold ${isParent ? 'text-blue-700' : 'text-gray-900 line-clamp-2'}`}>
+                                  {isChild && <span className="text-gray-400 mr-1">↳</span>}
+                                  {item.productName}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 font-mono">
+                                SKU: {item.sku || (item.productId ? (products.find((p) => p.id === item.productId)?.sku || "-") : "-")}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {!isChild && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      const input = window.prompt("ระบุจำนวนที่ต้องการคัดลอก (จำนวนแถว)", "1");
+                                      if (input !== null) {
+                                        const count = parseInt(input, 10);
+                                        if (!isNaN(count) && count > 0) {
+                                          handleDuplicateItem(item, count);
+                                        }
+                                      }
+                                    }}
+                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-full"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const current = orderData.items || [];
+                                      const id = item.id;
+                                      const nextItems = current.filter(it => it.id !== id && it.parentItemId !== id);
+                                      const nonChildItems = nextItems.filter(it => !it.parentItemId);
+                                      const existingBoxes = Array.from(new Set(nonChildItems.map(it => Number(it.boxNumber || 1)))).sort((a, b) => a - b);
+                                      const boxMap = new Map<number, number>();
+                                      existingBoxes.forEach((oldBox, idx) => boxMap.set(oldBox, idx + 1));
+                                      const reindexedItems = nextItems.map(it => ({ ...it, boxNumber: boxMap.get(Number(it.boxNumber || 1)) || 1 }));
+                                      const currentBoxes = orderData.boxes || [];
+                                      const reindexedBoxes = currentBoxes.filter(b => boxMap.has(b.boxNumber)).map(b => ({ ...b, boxNumber: boxMap.get(b.boxNumber)! })).sort((a, b) => (a.boxNumber || 1) - (b.boxNumber || 1));
+                                      updateOrderData("items", reindexedItems);
+                                      updateOrderData("boxes", reindexedBoxes);
+                                    }}
+                                    className="p-2 text-red-500 hover:bg-red-50 rounded-full"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2m-6 9 2 2 4-4" /></svg>
+                                  </button>
+                                </>
+                              )}
+                              {isParent && (
+                                <button
+                                  onClick={() => togglePromotion(item.id)}
+                                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={expandedPromotions.has(item.id) ? "" : "-rotate-90 transition-transform"}><path d="m6 9 6 6 6-6" /></svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">จำนวน</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity ?? 1}
+                                  readOnly={isChild}
+                                  onChange={(e) => {
+                                    if (isChild) return;
+                                    const rawVal = e.target.value;
+                                    // Allow empty string for clearing input during typing
+                                    const nextQty = rawVal === "" ? 0 : Number(rawVal);
+
+                                    const baseTotal = item.isFreebie ? 0 : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
+                                    const currentDiscount = Number(item.discount) || 0;
+                                    const clampedDiscount = Math.min(currentDiscount, baseTotal);
+                                    let newItems = orderData.items?.map(it => it.id === item.id ? { ...it, quantity: rawVal === "" ? "" : nextQty, discount: clampedDiscount } : it) || [];
+                                    if (item.isPromotionParent) {
+                                      newItems = newItems.map(child => child.parentItemId === item.id ? { ...child, quantity: (rawVal === "" ? 1 : nextQty) * (Number(child.originalQuantity) || 1) } : child);
+                                    }
+                                    updateOrderData("items", newItems);
+                                  }}
+                                  className={`w-full border rounded px-2 py-1 ${isChild ? 'bg-gray-100' : ''}`}
+                                />
+                              </div>
+                              {!isChild && (
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-1">ส่วนลด</label>
+                                  <input
+                                    type="number"
+                                    value={item.discount || 0}
+                                    min={0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value) || 0;
+                                      const base = (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0);
+                                      updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, discount: Math.min(val, base) } : it));
+                                    }}
+                                    className="w-full border rounded px-2 py-1 text-red-600"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">ราคา/หน่วย</label>
+                                <div className="w-full bg-gray-50 border rounded px-2 py-1 text-gray-600">
+                                  ฿{(item.pricePerUnit || 0).toLocaleString()}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">รวม</label>
+                                <div className="w-full font-semibold text-gray-900 border rounded px-2 py-1 bg-slate-50">
+                                  ฿{itemTotal.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={item.isFreebie}
+                                  disabled={isChild}
+                                  onChange={(e) => updateOrderData("items", orderData.items?.map(it => it.id === item.id ? { ...it, isFreebie: e.target.checked } : it))}
+                                  className="w-4 h-4 rounded text-blue-600"
+                                />
+                                <span className={`text-xs ${isChild ? 'text-gray-400' : 'text-gray-600'}`}>แถม</span>
+                              </label>
+
+                              {!isChild && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-600">กล่องที่:</span>
+                                  <select
+                                    value={item.boxNumber || 1}
+                                    onChange={(e) => {
+                                      const b = Number(e.target.value);
+                                      let items = orderData.items?.map(it => it.id === item.id ? { ...it, boxNumber: b } : it) || [];
+                                      if (item.isPromotionParent) {
+                                        items = items.map(it => it.parentItemId === item.id ? { ...it, boxNumber: b } : it);
+                                      }
+                                      updateOrderData("items", items);
+                                    }}
+                                    className="border rounded px-1 text-xs"
+                                  >
+                                    {Array.from({ length: numBoxes }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                            {item.isFreebie && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">แถม</span>}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+
+                  <button
+                    onClick={() => openProductSelector("products")}
+                    className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-blue-600 font-medium hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m-7-7v14" /></svg>
+                    เพิ่มสินค้า
+                  </button>
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b">
@@ -8820,8 +9017,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
                           const itemTotal = item.isFreebie
                             ? 0
-                            : (item.quantity || 0) * (item.pricePerUnit || 0) -
-                            (item.discount || 0);
+                            : (Number(item.quantity) || 0) * (Number(item.pricePerUnit) || 0) -
+                            (Number(item.discount) || 0);
 
                           return (
                             <tr
@@ -8904,13 +9101,13 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                   readOnly={isChild}
                                   onChange={(e) => {
                                     if (isChild) return;
-                                    const nextQty = clampQuantity(
-                                      e.target.value,
-                                    );
+                                    const rawVal = e.target.value;
+                                    const nextQty = rawVal === "" ? 0 : Number(rawVal);
+
                                     const baseTotal = item.isFreebie
                                       ? 0
-                                      : nextQty * (item.pricePerUnit || 0);
-                                    const currentDiscount = item.discount || 0;
+                                      : (nextQty || 1) * (Number(item.pricePerUnit) || 0);
+                                    const currentDiscount = Number(item.discount) || 0;
                                     const clampedDiscount = Math.max(
                                       0,
                                       Math.min(currentDiscount, baseTotal),
@@ -8922,7 +9119,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         it.id === item.id
                                           ? {
                                             ...it,
-                                            quantity: nextQty,
+                                            quantity: rawVal === "" ? "" : nextQty,
                                             discount: clampedDiscount,
                                           }
                                           : it,
@@ -8935,7 +9132,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         if (child.parentItemId === parentId) {
                                           return {
                                             ...child,
-                                            quantity: nextQty * (child.originalQuantity || 1), // Assuming originalQuantity is stored
+                                            quantity: (rawVal === "" ? 1 : nextQty) * (child.originalQuantity || 1),
                                           };
                                         }
                                         return child;
@@ -8969,8 +9166,8 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                                         Number(e.target.value) || 0;
                                       const baseTotal = item.isFreebie
                                         ? 0
-                                        : (item.quantity || 0) *
-                                        (item.pricePerUnit || 0);
+                                        : (Number(item.quantity) || 0) *
+                                        (Number(item.pricePerUnit) || 0);
                                       const clampedDiscount = Math.max(
                                         0,
                                         Math.min(discountValue, baseTotal),
@@ -9238,14 +9435,14 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
           {/* Footer Actions */}
           {
             (selectedCustomer || isCreatingNewCustomer) && (
-              <div className="mt-6 flex justify-end gap-3 pb-6">
+              <div className="mt-8 flex flex-col md:flex-row justify-end gap-3 pb-8 md:pb-6">
                 <button
                   onClick={handleSave}
                   disabled={
                     !isCodValid ||
                     (isCreatingNewCustomer && !!newCustomerPhoneError)
                   }
-                  className="px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="w-full md:w-auto px-8 py-4 md:py-2.5 bg-green-600 text-white text-lg md:text-base font-bold md:font-semibold rounded-xl md:rounded-lg hover:bg-green-700 shadow-lg shadow-green-200 md:shadow-none disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed transition-all"
                 >
                   บันทึกคำสั่งซื้อ
                 </button>
