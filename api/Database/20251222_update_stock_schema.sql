@@ -1,4 +1,3 @@
--- 1. Table: Documents Header
 CREATE TABLE IF NOT EXISTS `stock_transactions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `document_number` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,

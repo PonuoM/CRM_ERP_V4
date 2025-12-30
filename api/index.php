@@ -816,7 +816,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $sql .= ' AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)';
                             $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%"; $params[] = "%$q%";
                         }
-                        $sql .= ' ORDER BY c.date_assigned DESC LIMIT 200';
+                        $sql .= ' ORDER BY c.date_assigned DESC';
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
@@ -848,7 +848,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                 $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
                                 $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
                             }
-                            $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC LIMIT 200";
+                            $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC";
                         } elseif ($source === 'waiting_return') {
                             $sql = "SELECT c.* FROM customers c\n"
                                  . "WHERE COALESCE(c.is_blocked,0) = 0\n"
@@ -861,7 +861,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                 $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
                                 $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
                             }
-                            $sql .= " ORDER BY c.waiting_basket_start_date ASC LIMIT 200";
+                            $sql .= " ORDER BY c.waiting_basket_start_date ASC";
                         } else { // stock
                             $sql = "SELECT c.* FROM customers c\n"
                                  . "WHERE COALESCE(c.is_blocked,0) = 0\n"
@@ -881,7 +881,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                 $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
                                 $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
                             }
-                            $sql .= " ORDER BY c.date_assigned DESC LIMIT 200";
+                            $sql .= " ORDER BY c.date_assigned DESC";
                         }
 
                         $stmt = $pdo->prepare($sql);
@@ -1042,8 +1042,6 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";
-                        } else {
-                            $sql .= " LIMIT 200";
                         }
 
                         $stmt = $pdo->prepare($sql);
@@ -1341,7 +1339,7 @@ function handle_products(PDO $pdo, ?string $id): void {
                     $sql .= ' WHERE company_id = ?';
                     $params[] = $companyId;
                 }
-                $sql .= ' ORDER BY id DESC LIMIT 500';
+                $sql .= ' ORDER BY id DESC';
                 $stmt = $pdo->prepare($sql);
                 if (!empty($params)) {
                     $stmt->execute($params);
@@ -4035,7 +4033,7 @@ function handle_pages(PDO $pdo, ?string $id): void {
                         }
                     }
 
-                    $sql .= ' ORDER BY id DESC LIMIT 500';
+                    $sql .= ' ORDER BY id DESC';
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
                     json_response($stmt->fetchAll());
@@ -4437,7 +4435,7 @@ function handle_ad_spend(PDO $pdo, ?string $id): void {
             $sql = 'SELECT * FROM ad_spend';
             $params = [];
             if ($pageId) { $sql .= ' WHERE page_id=?'; $params[] = $pageId; }
-            $sql .= ' ORDER BY spend_date DESC, id DESC LIMIT 500';
+            $sql .= ' ORDER BY spend_date DESC, id DESC';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             json_response($stmt->fetchAll());
@@ -4982,7 +4980,7 @@ function handle_exports(PDO $pdo, ?string $id): void {
     } else {
         switch (method()) {
             case 'GET':
-                $stmt = $pdo->prepare('SELECT * FROM exports WHERE company_id = ? AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC LIMIT 200');
+                $stmt = $pdo->prepare('SELECT * FROM exports WHERE company_id = ? AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC');
                 $stmt->execute([$companyId]);
                 json_response($stmt->fetchAll());
                 break;
