@@ -383,8 +383,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   // Listen for modal close event to refresh data
   useEffect(() => {
-    const handleModalClose = () => {
-      setRefreshCounter(prev => prev + 1);
+    const handleModalClose = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail && customEvent.detail.saved) {
+        setRefreshCounter(prev => prev + 1);
+      }
     };
 
     window.addEventListener('orderModalClosed', handleModalClose);

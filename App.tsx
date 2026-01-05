@@ -2318,11 +2318,11 @@ const App: React.FC = () => {
     }
   };
 
-  const closeModal = () => {
+  const closeModal = (saved: boolean = false) => {
     setModalState({ type: null, data: null });
 
-    // Dispatch custom event to trigger refresh in ManageOrdersPage
-    window.dispatchEvent(new CustomEvent('orderModalClosed'));
+    // Dispatch custom event to trigger refresh in ManageOrdersPage only if saved
+    window.dispatchEvent(new CustomEvent('orderModalClosed', { detail: { saved } }));
   };
 
   // Fetch warehouse data when currentUser changes
@@ -2524,7 +2524,7 @@ const App: React.FC = () => {
         prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
       );
 
-      closeModal();
+      closeModal(true); // Pass true to indicate successful save
       // Optional: alert("Order updated successfully");
     } catch (e) {
       console.error("Failed to update order", e);
