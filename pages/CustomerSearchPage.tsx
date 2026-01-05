@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Customer, Order, User, Address, UserRole } from "../types";
-import { listOrders } from "../services/api";
+import { listOrders, listCustomers } from "../services/api";
 import { mapOrderFromApi } from "../utils/orderMapper";
+import { mapCustomerFromApi } from "../utils/customerMapper";
 import {
   Search,
   Trash2,
@@ -37,6 +38,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   const [fetchedOrders, setFetchedOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   const fetchCustomerOrders = useCallback(async (customer: Customer) => {
     setLoadingOrders(true);
@@ -81,45 +83,60 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
       return;
     }
     setHasSearched(true);
-    const lowercasedTerm = searchTerm.toLowerCase();
-    const foundCustomers = customers.filter(
-      (c) =>
-        c.phone.includes(searchTerm) ||
-        `${c.firstName} ${c.lastName}`.toLowerCase().includes(lowercasedTerm),
-    );
+    setIsSearching(true);
 
-    if (foundCustomers.length === 1) {
-      setSelectedCustomer(foundCustomers[0]);
-      setSearchResults([]);
-    } else if (foundCustomers.length > 1) {
-      setSearchResults(foundCustomers);
-    } else {
-      // No customer found by name/phone, try searching by Order ID
-      try {
-        const res = await listOrders({ orderId: searchTerm.trim() });
-        if (res.ok && Array.isArray(res.orders) && res.orders.length > 0) {
-          const order = res.orders[0]; // Assuming unique order ID matches or taking first
-          // Find customer by ID or Phone
-          const customer = customers.find(c =>
-            String(c.id) === String(order.customer_id) ||
-            String(c.pk) === String(order.customer_id) ||
-            c.phone === order.customer_phone
-          );
+    try {
+      // Search via API instead of filtering local prop
+      const companyId = currentUser?.companyId;
+      const response = await listCustomers({
+        q: searchTerm.trim(),
+        companyId: companyId,
+        pageSize: 100, // Reasonable limit for search results
+      });
 
-          if (customer) {
-            setSelectedCustomer(customer);
-            setHighlightedOrderId(String(order.id));
-            setSearchResults([]);
+      const foundCustomers = (response.data || []).map((c: any) => mapCustomerFromApi(c));
+
+      if (foundCustomers.length === 1) {
+        setSelectedCustomer(foundCustomers[0]);
+        setSearchResults([]);
+      } else if (foundCustomers.length > 1) {
+        setSearchResults(foundCustomers);
+      } else {
+        // No customer found by name/phone, try searching by Order ID
+        try {
+          const res = await listOrders({ orderId: searchTerm.trim() });
+          if (res.ok && Array.isArray(res.orders) && res.orders.length > 0) {
+            const order = res.orders[0]; // Assuming unique order ID matches or taking first
+            // Search for the customer by phone from the order
+            if (order.customer_phone) {
+              const customerRes = await listCustomers({
+                phone: order.customer_phone,
+                companyId: companyId,
+              });
+              const matchedCustomers = (customerRes.data || []).map((c: any) => mapCustomerFromApi(c));
+              if (matchedCustomers.length > 0) {
+                setSelectedCustomer(matchedCustomers[0]);
+                setHighlightedOrderId(String(order.id));
+                setSearchResults([]);
+              } else {
+                setSearchResults([]);
+              }
+            } else {
+              setSearchResults([]);
+            }
           } else {
             setSearchResults([]);
           }
-        } else {
+        } catch (e) {
+          console.error("Order search failed", e);
           setSearchResults([]);
         }
-      } catch (e) {
-        console.error("Order search failed", e);
-        setSearchResults([]);
       }
+    } catch (error) {
+      console.error("Customer search failed", error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -457,12 +474,19 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
             </div>
           </div>
         ) : (
-          searchResults.length === 0 && hasSearched && (
+          searchResults.length === 0 && hasSearched && !isSearching && (
             <div className="mt-6 text-center text-gray-500">
               <p>ไม่พบข้อมูลลูกค้าที่ตรงกับคำค้นหา: "{searchTerm}"</p>
-              <p className="text-xs mt-2">จำนวนลูกค้าทั้งหมดในระบบ: {customers.length} คน</p>
+              <p className="text-xs mt-2">ลองค้นหาด้วยเบอร์โทรหรือชื่อลูกค้า</p>
             </div>
           )
+        )}
+
+        {/* Loading State */}
+        {isSearching && (
+          <div className="mt-6 text-center text-gray-500">
+            <p>กำลังค้นหา...</p>
+          </div>
         )}
 
         {/* Footer */}

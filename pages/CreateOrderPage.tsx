@@ -30,6 +30,8 @@ import {
   listCustomers,
 } from "../services/api";
 import { formatThaiDateTime, toThaiIsoString } from "../utils/datetime";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import ProductSelectorModal from "../components/ProductSelectorModal";
 
 import resolveApiBasePath from "../utils/apiBasePath";
@@ -540,7 +542,7 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
 
     billDiscount: 0,
 
-    deliveryDate: toThaiIsoString(new Date(Date.now() + 864e5)).split("T")[0],
+    deliveryDate: "", // ให้พนักงานขายใส่เอง
 
     customerId: initialData?.customer?.id,
 
@@ -8150,77 +8152,47 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
                       </label>
 
                       <div className="relative">
-                        <input
-                          type="text"
-                          readOnly
-                          value={
-                            orderData.deliveryDate
-                              ? (() => {
-                                const [y, m, d] =
-                                  orderData.deliveryDate.split("-");
-                                return `${d}/${m}/${y}`;
-                              })()
-                              : ""
-                          }
-                          placeholder="dd/mm/yyyy"
-                          className={commonInputClass}
-                        />
-                        <input
-                          type="date"
-                          ref={deliveryDateRef}
-                          value={orderData.deliveryDate}
-                          min={(() => {
-                            return new Date().toISOString().split("T")[0];
-                          })()}
-                          max={(() => {
-                            const now = new Date();
-                            const nextMonth = new Date(
-                              now.getFullYear(),
-                              now.getMonth() + 1,
-                              7,
-                            );
-                            return nextMonth.toISOString().split("T")[0];
-                          })()}
-                          onChange={(e) => {
-                            const selectedDate = e.target.value;
-                            const now = new Date();
-                            const nextMonth = new Date(
-                              now.getFullYear(),
-                              now.getMonth() + 1,
-                              7,
-                            );
-                            const maxDate = nextMonth
-                              .toISOString()
-                              .split("T")[0];
-                            if (selectedDate > maxDate) {
-                              const maxDateObj = new Date(maxDate);
-                              const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
-                              alert(
-                                `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                        <DatePicker
+                          selected={orderData.deliveryDate ? new Date(orderData.deliveryDate) : null}
+                          onChange={(date: Date | null) => {
+                            if (date) {
+                              const now = new Date();
+                              const nextMonth = new Date(
+                                now.getFullYear(),
+                                now.getMonth() + 1,
+                                7,
                               );
-                              updateOrderData("deliveryDate", maxDate);
-                              return;
+                              const maxDate = nextMonth.toISOString().split("T")[0];
+                              const year = date.getFullYear();
+                              const month = String(date.getMonth() + 1).padStart(2, '0');
+                              const day = String(date.getDate()).padStart(2, '0');
+                              const selectedDate = `${year}-${month}-${day}`;
+
+                              if (selectedDate > maxDate) {
+                                const maxDateObj = new Date(maxDate);
+                                const maxDateStr = `${maxDateObj.getDate()}/${maxDateObj.getMonth() + 1}/${maxDateObj.getFullYear()}`;
+                                alert(
+                                  `วันที่จัดส่งต้องไม่เกินวันที่ 7 ของเดือนถัดไป (สูงสุด ${maxDateStr})`,
+                                );
+                                updateOrderData("deliveryDate", maxDate);
+                                return;
+                              }
+                              updateOrderData("deliveryDate", selectedDate);
+                            } else {
+                              updateOrderData("deliveryDate", "");
                             }
-                            updateOrderData("deliveryDate", selectedDate);
                           }}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          minDate={new Date()}
+                          maxDate={(() => {
+                            const now = new Date();
+                            return new Date(now.getFullYear(), now.getMonth() + 1, 7);
+                          })()}
+                          dateFormat="dd/MM/yyyy"
+                          placeholderText="กรุณาเลือกวันที่จัดส่ง"
+                          className="w-full p-3 border border-gray-300 rounded-lg text-base cursor-pointer focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          wrapperClassName="w-full"
+                          showPopperArrow={false}
                         />
-                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            strokeWidth={1.5}
-                            stroke="currentColor"
-                            className="w-5 h-5"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 9v7.5"
-                            />
-                          </svg>
-                        </div>
                       </div>
 
                       {(() => {
