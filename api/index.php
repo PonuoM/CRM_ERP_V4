@@ -5256,7 +5256,7 @@ function handle_exports(PDO $pdo, ?string $id): void {
 
     if ($id) {
         if (isset($_GET['download'])) {
-            $stmt = $pdo->prepare('SELECT * FROM exports WHERE id = ? AND company_id = ?');
+            $stmt = $pdo->prepare('SELECT * FROM exports WHERE id = ? AND (company_id = ? OR company_id IS NULL)');
             $stmt->execute([$id, $companyId]);
             $row = $stmt->fetch();
             
@@ -5285,7 +5285,7 @@ function handle_exports(PDO $pdo, ?string $id): void {
     } else {
         switch (method()) {
             case 'GET':
-                $stmt = $pdo->prepare('SELECT * FROM exports WHERE company_id = ? AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC');
+                $stmt = $pdo->prepare('SELECT * FROM exports WHERE (company_id = ? OR company_id IS NULL) AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC');
                 $stmt->execute([$companyId]);
                 json_response($stmt->fetchAll());
                 break;
@@ -5329,9 +5329,10 @@ function handle_exports(PDO $pdo, ?string $id): void {
 
                     $ordersCount = (int)($in['ordersCount'] ?? 0);
                     $exportedBy = $in['exportedBy'] ?? 'Unknown';
+                    $category = $in['category'] ?? null;
 
-                    $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by, company_id) VALUES (?, ?, ?, ?, ?, ?)');
-                    $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy, $companyId]);
+                    $stmt = $pdo->prepare('INSERT INTO exports (filename, file_path, orders_count, user_id, exported_by, company_id, category) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                    $stmt->execute([$safeName, $path, $ordersCount, $userId, $exportedBy, $companyId, $category]);
 
                     json_response(['ok' => true, 'id' => $pdo->lastInsertId()]);
                 } catch (Throwable $e) {
