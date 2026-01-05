@@ -805,7 +805,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           const rowData: { [key: string]: string | number | undefined } = {
             'หมายเลขออเดอร์ออนไลน์': index === 0 ? onlineOrderId : '',
             'ชื่อร้านค้า': shopName,
-            'เวลาที่สั่งซื้อ': index === 0 ? (order.orderDate?.substring(0, 10) ?? '') : '',
+            'เวลาที่สั่งซื้อ': index === 0 ? (order.deliveryDate?.substring(0, 10) ?? '') : '',
             'บัญชีร้านค้า': '',
             'หมายเลขใบชำระเงิน': '',
             'COD': codValue,
