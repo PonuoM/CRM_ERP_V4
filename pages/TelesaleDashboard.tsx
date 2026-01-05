@@ -1178,23 +1178,37 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       {/* Advanced Filters Toggle + Panel (wrapped for click-away) */}
       <div ref={advRef}>
         <div className="bg-white p-3 rounded-lg shadow mb-3">
-          <div className="flex items-center gap-2">
-
-            <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
-              {showAdvanced ? 'ซ่อนตัวกรองขั้นสูง' : 'แสดงตัวกรองขั้นสูง'}
-            </button>
-            <button
-              onClick={handleServerSearch}
-              disabled={isServerSearching}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100 ${isServerSearching ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {isServerSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
-            </button>
-            {(appliedSearchTerm || selectedTagIds.length > 0 || selectedGrades.length > 0 || selectedProvinces.length > 0 || selectedLifecycleStatuses.length > 0 || selectedExpiryDays !== null || activeDatePreset !== 'all' || (dateRange.start || dateRange.end) || sortBy !== "system" || sortByExpiry !== "" || hideTodayCalls || hideTodayCallsRangeEnabled) && (
-              <button onClick={handleClearAllFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600">
-                ล้างตัวกรอง
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อ หรือเบอร์โทร..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleServerSearch();
+                }}
+                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2 self-end md:self-auto">
+              <button
+                onClick={handleServerSearch}
+                disabled={isServerSearching}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100 ${isServerSearching ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isServerSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
               </button>
-            )}
+              <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
+                {showAdvanced ? 'ซ่อนตัวกรอง' : 'ตัวกรองขั้นสูง'}
+              </button>
+              {(appliedSearchTerm || selectedTagIds.length > 0 || selectedGrades.length > 0 || selectedProvinces.length > 0 || selectedLifecycleStatuses.length > 0 || selectedExpiryDays !== null || activeDatePreset !== 'all' || (dateRange.start || dateRange.end) || sortBy !== "system" || sortByExpiry !== "" || hideTodayCalls || hideTodayCallsRangeEnabled) && (
+                <button onClick={handleClearAllFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600">
+                  ล้างตัวกรอง
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1202,21 +1216,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         <div className={`bg-white p-4 rounded-lg shadow mb-6 ${showAdvanced ? 'block' : 'hidden'}`}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* ช่องค้นหา */}
-            <div className="md:col-span-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาชื่อ หรือเบอร์โทร..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleServerSearch();
-                  }}
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
+
 
             {/* ตัวกรองแถวแรก */}
             <div>
