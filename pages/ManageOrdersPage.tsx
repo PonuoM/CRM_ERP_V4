@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
-import { createExportLog, listOrderSlips, listOrders, getOrderCounts } from '../services/api';
+import { logExport, listOrderSlips, listOrders, getOrderCounts } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -860,7 +860,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         ws[cell_address].t = 's'; // Force Text
         ws[cell_address].v = String(ws[cell_address].v); // Ensure value is string
         ws[cell_address].z = '@'; // Format as Text
-      }
+      } 
     }
 
     const wb = XLSX.utils.book_new();
@@ -889,12 +889,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       }
       const b64 = btoa(binary);
 
-      await createExportLog({
+      await logExport({
         filename,
         contentBase64: b64,
         ordersCount: selectedOrders.length,
-        userId: user?.id,
-        exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || undefined,
+        exportedBy: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Unknown',
+        category: 'export_shipping_provider',
       });
     } catch (e) {
       console.error('Failed to log export file', e);

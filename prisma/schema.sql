@@ -3351,6 +3351,8 @@ DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS `exports` (
 `id` INT AUTO_INCREMENT NOT NULL,
+`company_id` INT NULL,
+`category` VARCHAR(100) NULL,
 `filename` VARCHAR(255) NULL,
 `file_path` VARCHAR(1024) NULL,
 `orders_count` INT NULL,
@@ -3360,6 +3362,26 @@ CREATE TABLE IF NOT EXISTS `exports` (
 `download_count` INT NULL,
   PRIMARY KEY (`id`)
 );
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'company_id'
+) = 0,
+  'ALTER TABLE `exports` ADD COLUMN `company_id` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'category'
+) = 0,
+  'ALTER TABLE `exports` ADD COLUMN `category` VARCHAR(100) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND COLUMN_NAME = 'filename'
@@ -3435,6 +3457,26 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_created_at'
 ) = 0,
   'CREATE INDEX `idx_exports_created_at` ON `exports`(`created_at`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_company'
+) = 0,
+  'CREATE INDEX `idx_exports_company` ON `exports`(`company_id`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_category'
+) = 0,
+  'CREATE INDEX `idx_exports_category` ON `exports`(`category`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

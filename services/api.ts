@@ -984,29 +984,6 @@ export async function listDoDashboard(userId: number, companyId?: number) {
   return apiFetch(`do_dashboard?${qs}`);
 }
 
-// Export history
-export async function listExports() {
-  return apiFetch("exports");
-}
-
-export async function createExportLog(payload: {
-  filename: string;
-  contentBase64: string;
-  ordersCount: number;
-  userId?: number;
-  exportedBy?: string;
-}) {
-  return apiFetch("exports", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function downloadExportUrl(id: number | string) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
-  let url = `api/index.php/exports/${encodeURIComponent(String(id))}?download=1`;
-  if (token) {
-    url += `&token=${encodeURIComponent(token)}`;
-  }
-  return url;
-}
 
 // Order slips (multi-image)
 export async function createOrderSlip(
@@ -1768,4 +1745,45 @@ export async function validateTrackingBulk(items: { orderId: string; trackingNum
   });
 }
 
+/**
+ * Log CSV export to database
+ */
+export async function logExport(params: {
+  filename: string;
+  contentBase64: string;
+  ordersCount: number;
+  exportedBy: string;
+  category?: string;
+}) {
+  return apiFetch('exports', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+}
+
+/**
+ * Get export history
+ */
+export async function getExportHistory() {
+  return apiFetch('exports', {
+    method: 'GET'
+  });
+}
+
+/**
+ * List exports (alias for getExportHistory)
+ */
+export async function listExports() {
+  return getExportHistory();
+}
+
+/**
+ * Generate download URL for export file
+ */
+export function downloadExportUrl(exportId: number): string {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  const apiBasePath = typeof window === 'undefined' ? '/api' : resolveApiBasePath();
+  const baseUrl = `${apiBasePath.replace(/\/$/, '')}/index.php/exports/${exportId}`;
+  return `${baseUrl}?download=1${token ? `&token=${token}` : ''}`;
+}
 
