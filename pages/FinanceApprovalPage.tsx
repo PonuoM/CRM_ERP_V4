@@ -628,12 +628,11 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           ? `&bank_account_id=${doc.bank_account_id}`
           : "";
       try {
-        const res = await fetch(
-          `${apiBase}/Statement_DB/reconcile_list.php?company_id=${user.companyId}&start_date=${encodeURIComponent(
+        const data: any = await apiFetch(
+          `Statement_DB/reconcile_list.php?company_id=${user.companyId}&start_date=${encodeURIComponent(
             startDate,
           )}&end_date=${encodeURIComponent(endDate)}${bankFilter}`,
         );
-        const data = await res.json();
         if (!data?.ok) {
           throw new Error(data?.error || "ไม่สามารถดึงรายการ statement ได้");
         }
@@ -784,10 +783,9 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
 
   const fetchBankAccounts = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${user.companyId}`,
+      const data: any = await apiFetch(
+        `Bank_DB/get_bank_accounts.php?company_id=${user.companyId}`,
       );
-      const data = await res.json();
       if (data?.success && Array.isArray(data.data)) {
         setBankAccounts(data.data);
         if (!filters.bankAccountId && data.data.length > 0) {
@@ -833,13 +831,12 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     setLoadingStatements(true);
     setStatusMessage(null);
     try {
-      const url = `${apiBase}/Statement_DB/reconcile_list.php?company_id=${user.companyId}&start_date=${encodeURIComponent(
+      const url = `Statement_DB/reconcile_list.php?company_id=${user.companyId}&start_date=${encodeURIComponent(
         filters.startDate,
       )}&end_date=${encodeURIComponent(
         filters.endDate,
       )}&bank_account_id=${encodeURIComponent(filters.bankAccountId)}`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const data: any = await apiFetch(url);
       if (!data?.ok) {
         throw new Error(data?.error || "ไม่สามารถดึงข้อมูลได้");
       }
@@ -915,13 +912,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     setSavingCod(true);
     setCodStatusMessage(null);
     try {
-      const res = await fetch(
-        `${apiBase}/Statement_DB/cod_reconcile_save.php`,
+      const data: any = await apiFetch(
+        `Statement_DB/cod_reconcile_save.php`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({
             company_id: user.companyId,
             user_id: user.id,
@@ -931,40 +925,7 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
         },
       );
 
-      // Check if response is ok
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("API Error Response:", text);
-        // Try to parse as JSON if possible
-        let errorMsg = `HTTP ${res.status}: Server error`;
-        try {
-          const errorData = JSON.parse(text);
-          errorMsg = errorData.error || errorData.message || errorMsg;
-          if (errorData.file) {
-            errorMsg += ` (${errorData.file}:${errorData.line || ""})`;
-          }
-        } catch {
-          // If not JSON, use text directly
-          if (text && text.length > 0) {
-            errorMsg = `HTTP ${res.status}: ${text.substring(0, 200)}`;
-          }
-        }
-        throw new Error(errorMsg);
-      }
 
-      // Get response text first to check if it's valid JSON
-      const text = await res.text();
-      if (!text || text.trim() === "") {
-        throw new Error("Empty response from server");
-      }
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        console.error("Failed to parse JSON:", text);
-        throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`);
-      }
 
       if (!data?.ok) {
         throw new Error(data?.error || "ไม่สามารถบันทึกการตรวจสอบ COD ได้");
@@ -1168,13 +1129,10 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
     setSaving(true);
     setStatusMessage(null);
     try {
-      const res = await fetch(
-        `${apiBase}/Statement_DB/reconcile_save.php`,
+      const data: any = await apiFetch(
+        `Statement_DB/reconcile_save.php`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({
             company_id: user.companyId,
             user_id: user.id,
@@ -1185,7 +1143,6 @@ const FinanceApprovalPage: React.FC<FinanceApprovalPageProps> = ({
           }),
         },
       );
-      const data = await res.json();
       if (!data?.ok) {
         throw new Error(data?.error || "Unable to save reconciliation");
       }
