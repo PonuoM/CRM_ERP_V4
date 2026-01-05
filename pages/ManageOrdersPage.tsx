@@ -74,7 +74,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadCancelled, setLoadCancelled] = useState(false);
+
   const [totalOrders, setTotalOrders] = useState(0);
   const [apiTotalPages, setApiTotalPages] = useState(1);
 
@@ -182,13 +182,17 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
   // Fetch orders from API
   useEffect(() => {
+    // Abort previous request if exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const fetchOrders = async () => {
       if (!user?.companyId) return;
 
       setLoading(true);
-      setLoadCancelled(false); // Reset cancelled state
       try {
         // Helper to interpret date presets (local within effect or outside)
         const getDeliveryDateFilter = () => {
@@ -341,11 +345,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           }
         }
       } catch (error: any) {
-        if (error.name === 'AbortError') {
-          setLoadCancelled(true);
-        } else {
-          console.error('Fetch orders failed:', error);
-        }
+        console.error('Fetch orders failed:', error);
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -354,11 +354,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     };
 
     fetchOrders();
-
-    return () => {
-      controller.abort();
-      abortControllerRef.current = null;
-    };
+    // No cleanup needed - abort is handled when new request starts
   }, [
     user?.companyId,
     currentPage,
@@ -1266,7 +1262,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   };
 
   const renderPagination = (isTop = false) => {
-    if (totalItems === 0 && !loading && !loadCancelled) return null;
+    if (totalItems === 0 && !loading) return null;
     return (
       <div className={`flex items-center justify-between px-6 py-4 border-gray-200 ${isTop ? 'border-b' : 'border-t'}`}>
         {/* Left side - Display range with loading and cancel button */}
@@ -1276,10 +1272,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 <span>กำลังโหลดข้อมูล...</span>
-              </div>
-            ) : loadCancelled ? (
-              <div className="text-sm text-red-600 font-medium">
-                โหลดข้อมูลไม่สำเร็จ (ยกเลิกโดยผู้ใช้)
               </div>
             ) : (
               <>แสดง {displayStart} - {displayEnd} จาก {totalItems} รายการ</>
@@ -1294,7 +1286,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                   abortControllerRef.current.abort();
                   abortControllerRef.current = null;
                   setLoading(false);
-                  setLoadCancelled(true);
                 }
               }}
               className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
