@@ -5303,8 +5303,18 @@ function handle_exports(PDO $pdo, ?string $id): void {
     } else {
         switch (method()) {
             case 'GET':
-                $stmt = $pdo->prepare('SELECT * FROM exports WHERE (company_id = ? OR company_id IS NULL) AND created_at >= (NOW() - INTERVAL 30 DAY) ORDER BY created_at DESC');
-                $stmt->execute([$companyId]);
+                $category = $_GET['category'] ?? null;
+                $sql = 'SELECT * FROM exports WHERE (company_id = ? OR company_id IS NULL) AND created_at >= (NOW() - INTERVAL 30 DAY)';
+                $params = [$companyId];
+                
+                if ($category) {
+                    $sql .= ' AND category = ?';
+                    $params[] = $category;
+                }
+                
+                $sql .= ' ORDER BY created_at DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
                 json_response($stmt->fetchAll());
                 break;
 

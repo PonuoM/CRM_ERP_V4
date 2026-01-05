@@ -4,8 +4,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
-import { logExport, listOrderSlips, listOrders, getOrderCounts } from '../services/api';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText } from 'lucide-react';
+import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -46,7 +46,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [refreshCounter, setRefreshCounter] = useState(0); // For triggering refresh on modal close
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all'); // Always 'all' - payment status filtering is done via advanced filters
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showExportHistory, setShowExportHistory] = useState(false);
+  const [exportHistory, setExportHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
   const [fTracking, setFTracking] = useState('');
   const [fOrderDate, setFOrderDate] = useState<{ start: string; end: string }>({ start: '', end: '' });
@@ -98,7 +101,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         setDateRange(saved.dateRange ?? { start: '', end: '' });
 
         setPayTab('all'); // Always use 'all' - payment status filtering is done via advanced filters
-        setShowAdvanced(!!saved.showAdvanced);
+        setShowAdvancedFilters(!!saved.showAdvancedFilters);
         setFOrderId(saved.fOrderId ?? '');
         setFTracking(saved.fTracking ?? '');
         setFOrderDate(saved.fOrderDate ?? { start: '', end: '' });
@@ -128,7 +131,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         activeDatePreset,
         dateRange,
         activeTab,
-        showAdvanced, // Removed payTab
+        showAdvancedFilters, // Removed payTab
         fOrderId,
         fTracking,
         fOrderDate,
@@ -151,7 +154,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       };
       localStorage.setItem(filterStorageKey, JSON.stringify(payload));
     } catch { }
-  }, [activeDatePreset, dateRange, activeTab, showAdvanced, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
+  }, [activeDatePreset, dateRange, activeTab, showAdvancedFilters, fOrderId, fTracking, fOrderDate, fDeliveryDate, fPaymentMethod, fPaymentStatus, fCustomerName, fCustomerPhone, fShop, afOrderId, afTracking, afOrderDate, afDeliveryDate, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, afShop]);
 
   // --- API Fetching Logic ---
 
@@ -1218,7 +1221,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   // Click outside to collapse advanced filters
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (!showAdvanced) return;
+      if (!showAdvancedFilters) return;
       const el = advRef.current;
       if (el && e.target instanceof Node && !el.contains(e.target)) {
         setShowAdvanced(false);
@@ -1226,7 +1229,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [showAdvanced]);
+  }, [showAdvancedFilters]);
 
   const datePresets = [
     { label: 'วันนี้', value: 'today' },
@@ -1378,6 +1381,27 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <Send size={16} className="mr-2" />
               {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
             </button>
+            {activeTab === 'waitingExport' && (
+              <button
+                onClick={async () => {
+                  setShowExportHistory(true);
+                  setLoadingHistory(true);
+                  try {
+                    const data = await listExports('export_shipping_provider');
+                    setExportHistory(Array.isArray(data) ? data : []);
+                  } catch (e) {
+                    console.error('Failed to load export history', e);
+                    setExportHistory([]);
+                  } finally {
+                    setLoadingHistory(false);
+                  }
+                }}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <FileText size={16} className="mr-2" />
+                ประวัติการส่งออก
+              </button>
+            )}
           </div>
         )}
         {activeTab === 'verified' && (
@@ -1414,7 +1438,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             </button>
           )}
         </div>
-        {showAdvanced && (
+        {showAdvancedFilters && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">ชื่อลูกค้า</label>
@@ -1660,6 +1684,62 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         {/* Bottom pagination */}
         {renderPagination(false)}
       </div>
+
+      {/* Export History Modal */}
+      {showExportHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">ประวัติการส่งออกข้อมูล</h3>
+              <button
+                onClick={() => setShowExportHistory(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
+              {loadingHistory ? (
+                <div className="text-center py-8 text-gray-500">กำลังโหลด...</div>
+              ) : exportHistory.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">ไม่พบประวัติการส่งออกใน 30 วันที่ผ่านมา</div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3">ชื่อไฟล์</th>
+                      <th className="px-4 py-3">วันที่/เวลา</th>
+                      <th className="px-4 py-3">จำนวนออเดอร์</th>
+                      <th className="px-4 py-3">ผู้ส่งออก</th>
+                      <th className="px-4 py-3">ดาวน์โหลดซ้ำ</th>
+                      <th className="px-4 py-3">การทำงาน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exportHistory.map((exp: any) => (
+                      <tr key={exp.id} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{exp.filename}</td>
+                        <td className="px-4 py-3">{new Date(exp.created_at).toLocaleString('th-TH')}</td>
+                        <td className="px-4 py-3">{exp.orders_count?.toLocaleString()}</td>
+                        <td className="px-4 py-3">{exp.exported_by || '-'}</td>
+                        <td className="px-4 py-3">{exp.download_count || 0}</td>
+                        <td className="px-4 py-3">
+                          <a
+                            href={downloadExportUrl(exp.id)}
+                            className="text-blue-600 hover:underline"
+                          >
+                            ดาวน์โหลด
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1773,8 +1773,11 @@ export async function getExportHistory() {
 /**
  * List exports (alias for getExportHistory)
  */
-export async function listExports() {
-  return getExportHistory();
+export async function listExports(category?: string) {
+  const params = category ? `?category=${encodeURIComponent(category)}` : '';
+  return apiFetch(`exports${params}`, {
+    method: 'GET'
+  });
 }
 
 /**
