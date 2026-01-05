@@ -2620,7 +2620,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleProcessOrders = async (orderIds: string[]) => {
+  const handleProcessOrders = async (ordersToProcess: { id: string; customerId?: string; creatorId?: number }[]) => {
+    const orderIds = ordersToProcess.map(o => o.id);
     const activitiesToAdd: Activity[] = [];
     setOrders((prevOrders) => {
       const updated = prevOrders.map((o) => {
@@ -2662,13 +2663,65 @@ const App: React.FC = () => {
       return updated;
     });
     if (true) {
-      for (const id of orderIds) {
+      // Group orders by customer to minimize API calls
+      const customerUpdates: Record<string, { creatorId: number }> = {};
+
+      for (const orderData of ordersToProcess) {
         try {
-          await apiPatchOrder(id, { orderStatus: "Picking" });
+          await apiPatchOrder(orderData.id, { orderStatus: "Picking" });
+
+          console.log(`Processing order ${orderData.id} for customer update`, { orderData });
+          if (orderData.customerId && orderData.creatorId) {
+            // We prioritize the *latest* order if multiple for same customer in batch? 
+            // Just take the first one encountered or overwrite.
+            customerUpdates[orderData.customerId] = { creatorId: orderData.creatorId };
+            console.log(`Queueing update for customer ${orderData.customerId} to creator ${orderData.creatorId}`);
+          } else {
+            console.warn(`Order ${orderData.id} missing info for customer update`, {
+              customerId: orderData.customerId,
+              creatorId: orderData.creatorId
+            });
+          }
+
         } catch (e) {
           console.error("batch patch", e);
         }
       }
+
+      // Process customer updates
+      const ownershipExpires = new Date();
+      ownershipExpires.setDate(ownershipExpires.getDate() + 90);
+      const ownershipExpiresIso = ownershipExpires.toISOString();
+
+      Object.entries(customerUpdates).forEach(async ([customerId, data]) => {
+        try {
+          // 1. API Update
+          await updateCustomer(customerId, {
+            assignedTo: data.creatorId,
+            assigned_to: data.creatorId,
+            lifecycleStatus: CustomerLifecycleStatus.Old3Months,
+            lifecycle_status: CustomerLifecycleStatus.Old3Months,
+            ownershipExpires: ownershipExpiresIso,
+            ownership_expires: ownershipExpiresIso
+          });
+
+          // 2. Local State Update
+          setCustomers(prev => prev.map(c => {
+            if (String(c.id) === String(customerId) || String(c.pk) === String(customerId)) {
+              return {
+                ...c,
+                assignedTo: data.creatorId,
+                lifecycleStatus: CustomerLifecycleStatus.Old3Months,
+                ownershipExpires: ownershipExpiresIso
+              };
+            }
+            return c;
+          }));
+
+        } catch (err) {
+          console.error(`Failed to auto-update customer ${customerId} on export`, err);
+        }
+      });
     }
   };
 

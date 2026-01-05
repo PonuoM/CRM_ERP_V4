@@ -17,7 +17,7 @@ interface ManageOrdersPageProps {
   users: User[];
   products: Product[];
   openModal: (type: ModalType, data: Order) => void;
-  onProcessOrders: (orderIds: string[]) => void;
+  onProcessOrders: (orders: { id: string; customerId?: string; creatorId?: number }[]) => void;
   onCancelOrders: (orderIds: string[]) => void;
   onUpdateShippingProvider: (orderId: string, shippingProvider: string) => Promise<void> | void;
 }
@@ -1053,7 +1053,12 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         // Then, use setTimeout to schedule the state updates to run in the next
         // event loop cycle to avoid interfering with the download.
         setTimeout(() => {
-          onProcessOrders(selectedIds);
+          const ordersToProcess = selectedOrders.map(o => ({
+            id: o.id,
+            customerId: o.customerId,
+            creatorId: o.creatorId
+          }));
+          onProcessOrders(ordersToProcess);
           setSelectedIds([]);
           // Trigger refresh to update the grid and tab counts
           setRefreshCounter(prev => prev + 1);
@@ -1088,7 +1093,15 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
         }).filter(Boolean) as Order[];
 
         // ส่งข้อมูลที่อัปเดตกลับไปยัง parent component
-        onProcessOrders(selectedIds);
+        const ordersToProcess = selectedIds.map(id => {
+          const o = orders.find(ord => ord.id === id);
+          return {
+            id,
+            customerId: o?.customerId,
+            creatorId: o?.creatorId
+          };
+        });
+        onProcessOrders(ordersToProcess);
 
         // แสดงข้อความยืนยัน
         alert(`ย้ายออเดอร์ ${selectedIds.length} รายการไปยัง "รอดึงข้อมูล" เรียบร้อยแล้ว`);
