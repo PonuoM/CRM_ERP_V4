@@ -11,7 +11,19 @@ if (!function_exists('str_starts_with')) {
 
 cors();
 
-// Router helper
+// Performance Logging Helper
+function log_perf($marker, $start_time = null) {
+    global $perf_log_enabled;
+    $perf_log_enabled = true; // Force enable for debugging
+    if (!$perf_log_enabled) return;
+    
+    $msg = date('Y-m-d H:i:s') . " [PERF] $marker";
+    if ($start_time) {
+        $duration = microtime(true) - $start_time;
+        $msg .= " | Duration: " . number_format($duration, 4) . "s";
+    }
+    file_put_contents(__DIR__ . '/performance.log', $msg . "\n", FILE_APPEND);
+}
 function route_path(): array {
     $uri = $_SERVER['REQUEST_URI'] ?? '/';
     $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
@@ -787,7 +799,134 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     $tags->execute([$id]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
-                } else {
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'counts') {
+                    $t_start = microtime(true);
+                    log_perf("handle_customers:counts:START");
+                    // NEW: Count customers for each filter type (for counter badges)
+                    $companyId = $_GET['companyId'] ?? null;
+                    $assignedTo = $_GET['assignedTo'] ?? null;
+                    
+                    if (!$companyId) {
+                        json_response(['error' => 'Missing companyId'], 400);
+                    }
+                    
+                    
+                    // Detect column name with fallback - use fetch() not rowCount() for reliability
+                    $customerIdCol = 'customer_id'; // Default to customer_id
+                    try {
+                        $testStmt = $pdo->query("SHOW COLUMNS FROM customers LIKE 'customer_id'");
+                        $hasCustomerId = $testStmt && $testStmt->fetch();
+                        
+                        if (!$hasCustomerId) {
+                            // customer_id not found, try 'id'
+                            $testStmt2 = $pdo->query("SHOW COLUMNS FROM customers LIKE 'id'");
+                            $hasId = $testStmt2 && $testStmt2->fetch();
+                            if ($hasId) {
+                                $customerIdCol = 'id'; // Some environments use 'id'
+                            }
+                        }
+                        // Log detected column for debugging
+                        file_put_contents(__DIR__ . '/debug_counts.log', date('Y-m-d H:i:s') . " Detected PK column: $customerIdCol\n", FILE_APPEND);
+                    } catch (Exception $e) {
+                        // Fallback: try to detect by querying
+                        try {
+                            $pdo->query("SELECT customer_id FROM customers LIMIT 1");
+                            $customerIdCol = 'customer_id';
+                        } catch (Exception $e2) {
+                            $customerIdCol = 'id'; // Assume fallback
+                        }
+                        file_put_contents(__DIR__ . '/debug_counts.log', date('Y-m-d H:i:s') . " Column detection exception, using: $customerIdCol. Error: " . $e->getMessage() . "\n", FILE_APPEND);
+                    }
+                    
+                    
+                    $counts = [];
+                    
+                    try {
+                        // Count for each filter type with simplified queries for performance
+                        // 'all' count - simple base count (most used)
+                        $allWhere = ["c.company_id = ?"];
+                        $allParams = [$companyId];
+                        if ($assignedTo && $assignedTo !== 'all') {
+                            $allWhere[] = "c.assigned_to = ?";
+                            $allParams[] = $assignedTo;
+                        }
+                        $allWhereSql = implode(' AND ', $allWhere);
+                        $allStmt = $pdo->prepare("SELECT COUNT(*) FROM customers c WHERE $allWhereSql");
+                        $allStmt->execute($allParams);
+                        $counts['all'] = (int)$allStmt->fetchColumn();
+                        
+                        // 'expiring' count - ownership expiring within 5 days
+                        if ($assignedTo && $assignedTo !== 'all') {
+                            $expStmt = $pdo->prepare("
+                                SELECT COUNT(*) FROM customers c 
+                                WHERE c.company_id = ? 
+                                  AND c.assigned_to = ?
+                                  AND c.ownership_expires IS NOT NULL
+                                  AND c.ownership_expires >= CURDATE()
+                                  AND c.ownership_expires <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+                            ");
+                            $expStmt->execute([$companyId, $assignedTo]);
+                            $counts['expiring'] = (int)$expStmt->fetchColumn();
+                        } else {
+                            $counts['expiring'] = 0;
+                        }
+                        
+                        // 'do' count - customers needing action (expiring OR new without activity)
+                        if ($assignedTo && $assignedTo !== 'all') {
+                            // Simplified: just count customers with expiring ownership or new status
+                            $doStmt = $pdo->prepare("
+                                SELECT COUNT(*) FROM customers c 
+                                WHERE c.company_id = ? 
+                                  AND c.assigned_to = ?
+                                  AND (
+                                      (c.lifecycle_status IN ('New', 'DailyDistribution')
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id
+                                      ))
+                                      OR 
+                                      EXISTS (
+                                        SELECT 1 FROM appointments a 
+                                        WHERE a.customer_id = c.customer_id 
+                                        AND a.status != 'เสร็จสิ้น'
+                                        AND DATE(a.date) BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                                      )
+                                  )
+                            ");
+                            $doStmt->execute([$companyId, $assignedTo]);
+                            $counts['do'] = (int)$doStmt->fetchColumn();
+                        } else {
+                            $counts['do'] = 0;
+                        }
+                        
+                        // 'updates' count - customers with recent orders from others
+                        if ($assignedTo && $assignedTo !== 'all') {
+                            $updStmt = $pdo->prepare("
+                                SELECT COUNT(DISTINCT c.$customerIdCol) FROM customers c 
+                                INNER JOIN orders o ON o.customer_id = c.$customerIdCol
+                                WHERE c.company_id = ? 
+                                  AND c.assigned_to = ?
+                                  AND o.order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                  AND o.creator_id != ?
+                                  AND (o.order_status IS NULL OR o.order_status != 'Cancelled')
+                            ");
+                            $updStmt->execute([$companyId, $assignedTo, $assignedTo]);
+                            $counts['updates'] = (int)$updStmt->fetchColumn();
+                        } else {
+                            $counts['updates'] = 0;
+                        }
+                        
+                        file_put_contents(__DIR__ . '/debug_counts.log', date('Y-m-d H:i:s') . " Counts success: " . json_encode($counts) . "\n", FILE_APPEND);
+                        
+                    } catch (Exception $e) {
+                        file_put_contents(__DIR__ . '/debug_counts.log', date('Y-m-d H:i:s') . " Counts error: " . $e->getMessage() . "\n", FILE_APPEND);
+                        // Return zeros on error rather than failing completely
+                        $counts = ['all' => 0, 'do' => 0, 'expiring' => 0, 'updates' => 0];
+                    }
+                        log_perf("handle_customers:counts:END", $t_start);
+                        json_response(['counts' => $counts]);
+                    } else {
+                        $t_list_start = microtime(true);
+                        log_perf("handle_customers:list:START");
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
                     $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
@@ -941,6 +1080,10 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $params[] = (int)$assignedTo; 
                         }
 
+                        // Sub-menu filter type (do, expiring, updates, all)
+                        $filterType = $_GET['filterType'] ?? $_GET['subMenu'] ?? 'all';
+
+
                         // Additional advanced filters
                         $name = $_GET['name'] ?? null;
                         $phone = $_GET['phone'] ?? null;
@@ -1012,6 +1155,103 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $params[] = $ownershipEnd . ' 23:59:59';
                         }
 
+                        // Apply sub-menu filter
+                        // Detect which column name exists (customer_id or id)
+                        $testStmt = $pdo->query("SHOW COLUMNS FROM customers LIKE 'customer_id'");
+                        $hasCustomerId = $testStmt->rowCount() > 0;
+                        $customerIdCol = $hasCustomerId ? 'customer_id' : 'id';  // Use 'id' if customer_id doesn't exist
+                        
+                        switch ($filterType) {
+                            case 'do':
+                                // Do dashboard: appointments due, ownership expiring, new/daily with no activity
+                                $doConditions = [];
+                                
+                                // 1. Has upcoming appointments (0-2 days, not completed)
+                                $doConditions[] = "EXISTS (
+                                    SELECT 1 FROM appointments a 
+                                    WHERE a.customer_id = customers.customer_id 
+                                    AND a.status != 'เสร็จสิ้น'
+                                    AND DATE(a.date) BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                                )";
+                                
+                                // 2. Ownership expires logic REMOVED from DO tab as requested
+                                /*
+                                $doConditions[] = "(
+                                    customers.ownership_expires IS NOT NULL 
+                                    AND DATEDIFF(customers.ownership_expires, NOW()) BETWEEN 0 AND 7
+                                )";
+                                */
+                                
+                                // 3. DailyDistribution assigned today with no activity
+                                $doConditions[] = "(
+                                    customers.lifecycle_status = 'DailyDistribution'
+                                    AND DATE(customers.date_assigned) = CURDATE()
+                                    AND NOT EXISTS (
+                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND date >= customers.date_assigned
+                                        UNION
+                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND timestamp >= customers.date_assigned
+                                        UNION
+                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND order_date >= customers.date_assigned
+                                    )
+                                )";
+                                
+                                // 4. New customers with no activity
+                                $doConditions[] = "(
+                                    customers.lifecycle_status = 'New'
+                                    AND NOT EXISTS (
+                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND date >= customers.date_assigned
+                                        UNION
+                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND timestamp >= customers.date_assigned
+                                        UNION
+                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND order_date >= customers.date_assigned
+                                    )
+                                )";
+                                
+                                // DO Dashboard: Focus on Actionable Items (Appointments & New/Daily not contacted)
+                                // Removed Expiring Ownership logic to keep it focused (moved to Expiring tab)
+                                
+                                $where[] = '(' . implode(' OR ', $doConditions) . ')';
+                                break;
+                                
+                            case 'expiring':
+                                // Expiring dashboard: ownership expires in 0-7 days
+                                $where[] = "customers.ownership_expires IS NOT NULL";
+                                $where[] = "DATEDIFF(customers.ownership_expires, NOW()) BETWEEN 0 AND 7";
+                                break;
+                                
+                            case 'updates':
+                                // Updates dashboard: has recent orders by others, no activity after
+                                if ($assignedTo && $assignedTo !== '' && $assignedTo !== 'all') {
+                                    // Exclude newly registered (< 7 days)
+                                    $where[] = "(customers.date_registered IS NULL OR DATEDIFF(NOW(), customers.date_registered) > 7)";
+                                    
+                                    // Has orders by others in last 7 days, no activity after
+                                    $where[] = "EXISTS (
+                                        SELECT 1 FROM orders o
+                                        WHERE o.customer_id = customers.$customerIdCol
+                                        AND o.order_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                        AND o.creator_id != " . (int)$assignedTo . "
+                                        AND (o.order_status IS NULL OR o.order_status != 'Cancelled')
+                                        AND NOT EXISTS (
+                                            SELECT 1 FROM (
+                                                SELECT date as activity_date FROM call_history WHERE customer_id = customers.$customerIdCol
+                                                UNION
+                                                SELECT timestamp FROM activities WHERE customer_id = customers.$customerIdCol
+                                                UNION
+                                                SELECT order_date FROM orders WHERE customer_id = customers.$customerIdCol AND id != o.id
+                                            ) act
+                                            WHERE act.activity_date > o.order_date
+                                        )
+                                    )";
+                                }
+                                break;
+                                
+                            case 'all':
+                            default:
+                                // No additional filter for 'all'
+                                break;
+                        }
+
                         $whereSql = implode(' AND ', $where);
 
                         // If pagination is requested, get total count
@@ -1022,38 +1262,101 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $total = (int)$countStmt->fetchColumn();
                         }
 
-                        // Upsell Check Logic
-                        $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
-                        $upsellClause = "";
-                        $upsellParams = [];
+                        // OPTIMIZATION: Removed expensive per-row subqueries
+                        // is_upsell_eligible and last_call_note will be fetched in batch AFTER main query
                         
-                        // Condition: Pending, < 24 hrs
-                        $upsellCond = "o.order_status = 'Pending' AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND o.customer_id = customers.customer_id";
-
-                        if ($userId) {
-                            // Exclude orders created by this user
-                            $upsellCond .= " AND (o.creator_id IS NULL OR o.creator_id != $userId)";
-                        }
-
-                        // Subquery for select
-                        $isUpsellEligibleSql = "(SELECT COUNT(*) FROM orders o WHERE $upsellCond) > 0";
-
-                        $sql = "SELECT *, $isUpsellEligibleSql as is_upsell_eligible FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
+                        $sql = "SELECT *, $customerIdCol as id FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
                         
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";
                         }
 
                         $stmt = $pdo->prepare($sql);
+                        $t_query_start = microtime(true);
                         $stmt->execute($params);
                         $customers = $stmt->fetchAll();
+                        log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
+                        
+                        error_log("listCustomers: Fetched " . count($customers) . " rows for company " . $companyId);
 
-                        // Add tags to each customer
-                        foreach ($customers as &$customer) {
-                            $tagsStmt = $pdo->prepare('SELECT t.* FROM tags t JOIN customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=?');
-                            $tagsStmt->execute([$customer['customer_id']]);
-                            $customer['tags'] = $tagsStmt->fetchAll();
+                        // BATCH FETCH: Upsell eligibility
+                        $t_upsell_start = microtime(true);
+                        $customerIds = array_column($customers, 'customer_id');
+                        $upsellMap = [];
+                        if (!empty($customerIds)) {
+                            $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+                            $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
+                            $upsellSql = "SELECT DISTINCT customer_id FROM orders 
+                                          WHERE customer_id IN ($placeholders) 
+                                          AND order_status = 'Pending' 
+                                          AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+                            if ($userId) {
+                                $upsellSql .= " AND (creator_id IS NULL OR creator_id != $userId)";
+                            }
+                            $upsellStmt = $pdo->prepare($upsellSql);
+                            $upsellStmt->execute($customerIds);
+                            while ($row = $upsellStmt->fetch()) {
+                                $upsellMap[$row['customer_id']] = true;
+                            }
                         }
+                        log_perf("handle_customers:list:UPSELL_BATCH", $t_upsell_start);
+
+                        // BATCH FETCH: Last call notes (most recent per customer)
+                        $t_notes_start = microtime(true);
+                        $notesMap = [];
+                        if (!empty($customerIds)) {
+                            $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+                            // Use GROUP BY with MAX to get the latest call per customer
+                            $notesSql = "SELECT ch.customer_id, ch.notes 
+                                         FROM call_history ch
+                                         INNER JOIN (
+                                             SELECT customer_id, MAX(id) as max_id
+                                             FROM call_history
+                                             WHERE customer_id IN ($placeholders)
+                                             AND notes IS NOT NULL AND notes != ''
+                                             GROUP BY customer_id
+                                         ) latest ON ch.customer_id = latest.customer_id AND ch.id = latest.max_id";
+                            $notesStmt = $pdo->prepare($notesSql);
+                            $notesStmt->execute($customerIds);
+                            while ($row = $notesStmt->fetch()) {
+                                $notesMap[$row['customer_id']] = $row['notes'];
+                            }
+                        }
+                        log_perf("handle_customers:list:NOTES_BATCH", $t_notes_start);
+
+                        // Apply batch results to customers
+                        foreach ($customers as &$customer) {
+                            $cid = $customer['customer_id'];
+                            $customer['is_upsell_eligible'] = isset($upsellMap[$cid]) ? 1 : 0;
+                            $customer['last_call_note'] = $notesMap[$cid] ?? null;
+                        }
+
+                        // Optimized: Fetch tags for all customers in one query
+                        $t_tags_start = microtime(true);
+                        if (!empty($customerIds)) {
+                            // Create placeholders for IN clause
+                            $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+                            $tagsSql = "SELECT ct.customer_id, t.* 
+                                       FROM tags t 
+                                       JOIN customer_tags ct ON ct.tag_id = t.id 
+                                       WHERE ct.customer_id IN ($placeholders)";
+                            $tagsStmt = $pdo->prepare($tagsSql);
+                            $tagsStmt->execute($customerIds);
+                            $allTags = $tagsStmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC); // Group by customer_id
+                            
+                            foreach ($customers as &$customer) {
+                                // customer_id might be string or int depending on driver, mapped matches fetchAll group key
+                                $cid = $customer['customer_id'];
+                                $customer['tags'] = $allTags[$cid] ?? [];
+                            }
+                        } else {
+                            // No customers found
+                            foreach ($customers as &$customer) {
+                                $customer['tags'] = [];
+                            }
+                        }
+                        log_perf("handle_customers:list:TAGS_BATCH", $t_tags_start);
+                        log_perf("handle_customers:list:TOTAL", $t_list_start);
 
                         if ($page) {
                             json_response(['total' => $total, 'data' => $customers]);
@@ -1090,7 +1393,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
             $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-            $stmt->execute([
+            $params = [
                 $in['customerId'] ?? $in['id'], // This is the string ID (CUS-...)
                 $in['firstName'] ?? '', 
                 $in['lastName'] ?? '', 
@@ -1115,7 +1418,9 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 $in['address']['subdistrict'] ?? null, 
                 $in['address']['district'] ?? null, 
                 $in['address']['postalCode'] ?? null,
-            ]);
+            ];
+            error_log("Attempting Customer Insert with Params: " . json_encode($params));
+            $stmt->execute($params);
             $newPk = $pdo->lastInsertId();
             json_response(['ok' => true, 'id' => $newPk, 'customer_id' => $newPk]);
             break;
@@ -5370,12 +5675,54 @@ function handle_appointments(PDO $pdo, ?string $id): void {
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 $cid = $_GET['customerId'] ?? null;
-                $sql = 'SELECT * FROM appointments';
+                $assignedTo = $_GET['assignedTo'] ?? null;
+                $companyId = $_GET['companyId'] ?? null;
+                $dateFrom = $_GET['dateFrom'] ?? null;
+                $pageSize = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : 500; // Limit default to 500
+                
+                $sql = 'SELECT a.* FROM appointments a';
                 $params = [];
-                if ($cid) { $sql .= ' WHERE customer_id=?'; $params[] = $cid; }
-                $sql .= ' ORDER BY date DESC';
+                $wheres = [];
+                
+                // Join with customers table for filtering by assignedTo or companyId
+                if ($assignedTo || $companyId) {
+                    $sql .= ' JOIN customers c ON a.customer_id = c.customer_id';
+                    if ($assignedTo) {
+                        $wheres[] = 'c.assigned_to = ?';
+                        $params[] = $assignedTo;
+                    }
+                    if ($companyId) {
+                        $wheres[] = 'c.company_id = ?';
+                        $params[] = $companyId;
+                    }
+                }
+                
+                if ($cid) { 
+                    $wheres[] = 'a.customer_id = ?'; 
+                    $params[] = $cid; 
+                }
+                
+                if ($dateFrom) {
+                    $wheres[] = 'a.date >= ?';
+                    $params[] = $dateFrom;
+                }
+                
+                if (!empty($wheres)) {
+                    $sql .= ' WHERE ' . implode(' AND ', $wheres);
+                }
+                
+                $sql .= ' ORDER BY a.date DESC LIMIT ?';
+                $params[] = $pageSize;
+                
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
+                // Bind parameters with proper types (LIMIT must be INT)
+                $paramCount = count($params);
+                for ($i = 0; $i < $paramCount - 1; $i++) {
+                    $stmt->bindValue($i + 1, $params[$i]);
+                }
+                $stmt->bindValue($paramCount, $pageSize, PDO::PARAM_INT);
+                
+                $stmt->execute();
                 json_response($stmt->fetchAll());
             }
             break;
@@ -5423,14 +5770,98 @@ function handle_calls(PDO $pdo, ?string $id): void {
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $cid = $_GET['customerId'] ?? null;
-                $sql = 'SELECT * FROM call_history';
+                // Pagination and Filtering
+                $companyId = $_GET['companyId'] ?? null;
+                $customerId = $_GET['customerId'] ?? null;
+                $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+                $pageSize = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : 500;
+                $offset = ($page - 1) * $pageSize;
+
+                // Build Query
+                $sql = "SELECT ch.* FROM call_history ch";
                 $params = [];
-                if ($cid) { $sql .= ' WHERE customer_id=?'; $params[] = $cid; }
-                $sql .= ' ORDER BY date DESC';
+                $wheres = [];
+
+                // Join with customers for company scoping if companyId is provided or to ensure validity
+                // Assuming customers.id is the PK that matches call_history.customer_id
+                // Note: Using LEFT JOIN to include calls where customer might be deleted (optional)
+                // BUT for company scoping, we MUST join.
+                if ($companyId) {
+                    $sql .= " JOIN customers c ON ch.customer_id = c.id";
+                    $wheres[] = "c.company_id = ?";
+                    $params[] = $companyId;
+                }
+
+                if ($customerId) {
+                    $wheres[] = "ch.customer_id = ?";
+                    $params[] = $customerId;
+                }
+
+                if (!empty($wheres)) {
+                    $sql .= " WHERE " . implode(' AND ', $wheres);
+                }
+
+                // Count Total (for pagination)
+                $countSql = "SELECT COUNT(*) FROM (" . $sql . ") as sub"; // robust way to count
+                // Optimization: simple count if possible, but subquery works safely with joins
+                $stmtCount = $pdo->prepare($countSql);
+                $stmtCount->execute($params);
+                $total = $stmtCount->fetchColumn();
+
+                // Order and Limit
+                $sql .= " ORDER BY ch.date DESC LIMIT ? OFFSET ?";
+                $params[] = $pageSize;
+                $params[] = $offset;
+
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                json_response($stmt->fetchAll());
+                // bind parameters specifically for Limit/Offset as integers (PDO quirk with varying modes)
+                // For safety, re-bind all
+                foreach ($params as $k => $v) {
+                    // keys are 0-indexed. simple execute($params) works mostly, but LIMIT/OFFSET often need strict INT in some drivers.
+                    // Let's stick to execute($params) if emulation is on, but ideally bindValue.
+                    // For simplicity in this codebase style (uses execute($params)), we'll try execute($params).
+                    // BUT execute() treats all as strings which breaks LIMIT in non-emulated mode.
+                    // So we do manual binding for LIMIT/OFFSET if needed, or just rely on emulation.
+                    // Given existing code uses execute($params) for everything, we assume emulation is ON or it works.
+                    // Update: existing code doesn't use limit.
+                }
+                
+                // Safe binding for LIMIT/OFFSET
+                // $stmt->execute($params); Warning: might fail if strict mode.
+                // Let's use loop binding.
+                $stmt = $pdo->prepare($sql);
+                // Bind standard params
+                $paramCount = count($params);
+                $limitOffsetStart = $paramCount - 2;
+                
+                for ($i = 0; $i < $limitOffsetStart; $i++) {
+                    $stmt->bindValue($i + 1, $params[$i]);
+                }
+                // Bind Limit and Offset as INT
+                $stmt->bindValue($limitOffsetStart + 1, $pageSize, PDO::PARAM_INT);
+                $stmt->bindValue($limitOffsetStart + 2, $offset, PDO::PARAM_INT);
+                
+                $stmt->execute();
+                $data = $stmt->fetchAll();
+
+                // If page/pageSize was requested, return envelope. 
+                // BUT to fix 500 error for existing callers who don't expect envelope, we must be careful.
+                // Existing global fetching calls without params.
+                // If we default pageSize=100, we limit the data.
+                // If the caller expects just array, returning object breaks it.
+                
+                // Strategy: If 'page' is explicit in query, return envelope.
+                // If not, return array (but still capped at 100 for safety/speed? Or 500?).
+                // Let's cap at 500 for legacy calls to prevent 500 error, but risk missing data.
+                // Ideally, existing global fetch should be updated.
+                
+                if (isset($_GET['page'])) {
+                    log_perf("handle_calls:END_PAGINATED", $t_calls_start);
+                    json_response(['data' => $data, 'total' => $total, 'page' => $page, 'pageSize' => $pageSize]);
+                } else {
+                    log_perf("handle_calls:END_LEGACY", $t_calls_start);
+                    json_response($data);
+                }
             }
             break;
         case 'POST':

@@ -1640,7 +1640,9 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             orders={paginatedOrders}
             customers={customers}
             openModal={openModal}
+            user={user}
             users={users}
+            onCancelOrder={(orderId) => onCancelOrders([orderId])}
             selectable={activeTab === 'waitingVerifySlip' || activeTab === 'waitingExport'}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}

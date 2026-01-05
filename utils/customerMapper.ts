@@ -78,6 +78,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
         waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
         isBlocked: Boolean(r.is_blocked ?? false),
+        lastCallNote: r.last_call_note ?? undefined,
         // AI Specific Fields (pass through if present)
         ai_priority_score: r.ai_priority_score,
         ai_insight: r.ai_insight

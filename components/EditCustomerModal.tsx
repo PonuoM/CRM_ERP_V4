@@ -117,7 +117,11 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
             setSubDistricts(data.data || []);
             // Find sub-district by name
             if (customer.address?.subdistrict) {
-              const subDistrict = data.data?.find((sd: AddressData) => sd.name_th === customer.address.subdistrict);
+              const subDistrict = data.data?.find((sd: AddressData) =>
+                sd.name_th === customer.address.subdistrict &&
+                (!customer.address.postalCode || String(sd.zip_code) === String(customer.address.postalCode))
+              ) || data.data?.find((sd: AddressData) => sd.name_th === customer.address.subdistrict);
+
               if (subDistrict) {
                 setSelectedSubDistrict(subDistrict.id);
                 setSubDistrictSearchTerm(subDistrict.name_th);

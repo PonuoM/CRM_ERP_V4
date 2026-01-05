@@ -14,9 +14,18 @@ require_once '../config.php';
 // Set headers for JSON response
 header('Content-Type: application/json');
 
-// Function to log messages
+// Set unlimited execution time for large imports
+set_time_limit(0);
+ini_set('memory_limit', '512M');
+
+// Function to log messages with immediate output flushing
 function logMessage($message) {
-    echo $message . "\n";
+    $isCli = (php_sapi_name() === 'cli');
+    echo $message . ($isCli ? "\n" : "<br>");
+    
+    // Force flush buffers
+    if (ob_get_level() > 0) ob_flush();
+    flush();
 }
 
 // Function to insert or update data in a table
@@ -33,17 +42,9 @@ function insertOrUpdateData($pdo, $table, $data) {
             $checkParams = [];
             $checkSql = "";
 
-            // Custom check checks based on table
-            if ($table === 'address_sub_districts') {
-                // For sub-districts, strictly check ID + ZipCode (and maybe DistrictID)
-                // Using ID + ZipCode as unique identifier
-                $checkSql = "SELECT COUNT(*) FROM `$table` WHERE `id` = ? AND `zip_code` = ?";
-                $checkParams = [$row['id'], $row['zip_code']];
-            } else {
-                // For other tables, assume ID is unique
-                $checkSql = "SELECT COUNT(*) FROM `$table` WHERE `id` = ?";
-                $checkParams = [$row['id']];
-            }
+            // Check presence by ID for ALL tables
+            $checkSql = "SELECT COUNT(*) FROM `$table` WHERE `id` = ?";
+            $checkParams = [$row['id']];
 
             // Check existence
             $checkStmt = $pdo->prepare($checkSql);
@@ -66,15 +67,8 @@ function insertOrUpdateData($pdo, $table, $data) {
                 }
                 
                 // Add WHERE clause params
-                $sql = "UPDATE `$table` SET " . implode(', ', $updateClauses) . " WHERE ";
-                if ($table === 'address_sub_districts') {
-                    $sql .= "`id` = ? AND `zip_code` = ?";
-                    $updateParams[] = $row['id'];
-                    $updateParams[] = $row['zip_code'];
-                } else {
-                    $sql .= "`id` = ?";
-                    $updateParams[] = $row['id'];
-                }
+                $sql = "UPDATE `$table` SET " . implode(', ', $updateClauses) . " WHERE `id` = ?";
+                $updateParams[] = $row['id'];
                 
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($updateParams);

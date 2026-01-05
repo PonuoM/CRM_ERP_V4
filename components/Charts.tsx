@@ -5,38 +5,61 @@ import ReactApexChart from "react-apexcharts";
 interface MonthlyOrdersChartProps {
   data?: Record<string, number>;
   loading?: boolean;
+  year?: string; // Selected year
 }
 
-export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, loading }) => {
-  // Process data if available, otherwise default to empty or maybe a fallback
+export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, loading, year }) => {
+  // Process data to show all 12 months of selected year
   const processData = () => {
-    if (!data) return { labels: [], values: [] };
-    // Sort keys just in case
-    const sortedKeys = Object.keys(data).sort();
-    // Take last 12 months or similar logic if needed, but API usually returns last 12
-    return {
-      labels: sortedKeys, // "2024-01", "2024-02"
-      values: sortedKeys.map(k => data[k])
-    };
+    const targetYear = year || String(new Date().getFullYear());
+    const monthLabels = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+    // Generate all 12 months for the selected year
+    const labels: string[] = [];
+    const values: number[] = [];
+
+    for (let m = 1; m <= 12; m++) {
+      const monthKey = `${targetYear}-${String(m).padStart(2, '0')}`;
+      labels.push(monthLabels[m - 1]);
+      values.push(data?.[monthKey] || 0);
+    }
+
+    return { labels, values };
   };
 
   const { labels, values } = processData();
 
   const series = [
-    { name: "Orders", data: values.length ? values : [] },
+    { name: "ออเดอร์", data: values },
   ];
 
   const options: any = {
-    chart: { type: "line", toolbar: { show: false } },
-    stroke: { curve: "smooth", width: 3 },
-    colors: ["#34D399"],
+    chart: { type: "bar", toolbar: { show: false } },
+    plotOptions: {
+      bar: {
+        borderRadius: 4,
+        columnWidth: '60%',
+      }
+    },
+    colors: ["#3B82F6"],
     xaxis: {
-      categories: labels, // YYYY-MM
+      categories: labels,
+    },
+    yaxis: {
+      labels: {
+        formatter: (val: number) => Math.round(val).toString()
+      }
+    },
+    dataLabels: {
+      enabled: true,
+      style: {
+        fontSize: '10px',
+      }
     },
     grid: { borderColor: "#E5E7EB" },
     legend: { show: false },
     noData: {
-      text: loading ? ' ' : 'No Data',
+      text: loading ? ' ' : 'ไม่มีข้อมูล',
       align: 'center',
       verticalAlign: 'middle',
       style: {
@@ -59,7 +82,7 @@ export const MonthlyOrdersChart: React.FC<MonthlyOrdersChartProps> = ({ data, lo
           <ReactApexChart
             options={options}
             series={series}
-            type="line"
+            type="bar"
             height={250}
             width="100%"
           />

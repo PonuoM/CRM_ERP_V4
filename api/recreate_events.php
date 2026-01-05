@@ -25,7 +25,9 @@ try {
         BEGIN
             UPDATE customers
             SET is_in_waiting_basket = 1,
-                waiting_basket_start_date = NOW()
+                waiting_basket_start_date = NOW(),
+                assigned_to = NULL,
+                bucket_type = 'waiting'
             WHERE COALESCE(is_blocked, 0) = 0
               AND COALESCE(is_in_waiting_basket, 0) = 0
               AND ownership_expires IS NOT NULL
@@ -50,7 +52,8 @@ try {
                 lifecycle_status = 'DailyDistribution',
                 follow_up_count = 0,
                 followup_bonus_remaining = 1,
-                assigned_to = NULL
+                assigned_to = NULL,
+                bucket_type = 'ready'
             WHERE COALESCE(is_in_waiting_basket, 0) = 1
               AND waiting_basket_start_date IS NOT NULL
               AND TIMESTAMPDIFF(DAY, waiting_basket_start_date, NOW()) >= 30

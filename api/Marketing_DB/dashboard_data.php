@@ -45,6 +45,19 @@ try {
       }
     }
 
+    // Add user IDs filter for Pages (Show only pages assigned to selected users)
+    if ($userIds) {
+      $userIdArray = explode(",", $userIds);
+      $userIdArray = array_map("intval", $userIdArray);
+      $userIdArray = array_filter($userIdArray);
+
+      if (!empty($userIdArray)) {
+        $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
+        $pageWhereConditions[] = "p.id IN (SELECT page_id FROM marketing_user_page WHERE user_id IN ($placeholders))";
+        $pageParams = array_merge($pageParams, $userIdArray);
+      }
+    }
+
     $pageWhereClause = implode(" AND ", $pageWhereConditions);
 
     // Build WHERE conditions for ads log
@@ -83,34 +96,30 @@ try {
     $orderParams = [];
 
     if ($dateFrom && $dateTo) {
+      // Fix: Append time to ensure full day is included
+      // BETWEEN 'date' AND 'date' only matches 00:00:00, missing all orders with time
       $orderWhereConditions[] = "order_date BETWEEN ? AND ?";
-      $orderParams[] = $dateFrom;
-      $orderParams[] = $dateTo;
+      $orderParams[] = $dateFrom . ' 00:00:00';
+      $orderParams[] = $dateTo . ' 23:59:59';
     } elseif ($dateFrom) {
       $orderWhereConditions[] = "order_date >= ?";
-      $orderParams[] = $dateFrom;
+      $orderParams[] = $dateFrom . ' 00:00:00';
     } elseif ($dateTo) {
       $orderWhereConditions[] = "order_date <= ?";
-      $orderParams[] = $dateTo;
+      $orderParams[] = $dateTo . ' 23:59:59';
     }
 
-    // Add user IDs filter for orders
-    if ($userIds) {
-      $userIdArray = explode(",", $userIds);
-      $userIdArray = array_map("intval", $userIdArray);
-      $userIdArray = array_filter($userIdArray);
-
-      if (!empty($userIdArray)) {
-        $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
-        $orderWhereConditions[] = "creator_id IN ($placeholders)";
-        $orderParams = array_merge($orderParams, $userIdArray);
-      }
-    }
+    // NOTE: Do NOT filter orders by user_ids here!
+    // user_ids = Marketing staff who manage Pages (กรอกค่าแอด)
+    // creator_id = Sales/Telesale staff who create Orders
+    // These are different people, so filtering orders by Marketing user_ids causes 0 sales.
+    // Orders are already filtered by sales_channel_page_id (which page the order came from).
 
     $orderWhereClause = implode(" AND ", $orderWhereConditions);
 
     // Query to get all pages for the company with aggregated ads log and order data
-    // Aggregate by page only (not by date)
+    // FIX: Pre-aggregate ads_log and orders BEFORE joining to prevent Cartesian Product
+    // The previous query caused ads_cost to be multiplied by order count
     $query = "
         SELECT
             p.id as page_id,
@@ -118,27 +127,44 @@ try {
             p.platform,
             p.page_type,
             p.page_id as external_page_id,
-            COALESCE(SUM(mal.ads_cost), 0) as ads_cost,
-            COALESCE(SUM(mal.impressions), 0) as impressions,
-            COALESCE(SUM(mal.reach), 0) as reach,
-            COALESCE(SUM(mal.clicks), 0) as clicks,
-            COALESCE(SUM(o.total_amount), 0) as total_sales,
-            COALESCE(COUNT(DISTINCT o.id), 0) as total_orders,
-            COALESCE(SUM(CASE WHEN o.customer_type = 'New Customer' THEN 1 ELSE 0 END), 0) as new_customer_orders,
-            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN 1 ELSE 0 END), 0) as reorder_customer_orders,
-            COALESCE(SUM(CASE WHEN o.customer_type = 'New Customer' THEN o.total_amount ELSE 0 END), 0) as new_customer_sales,
-            COALESCE(SUM(CASE WHEN o.customer_type = 'Reorder Customer' THEN o.total_amount ELSE 0 END), 0) as reorder_customer_sales,
-            COALESCE(COUNT(DISTINCT o.customer_id), 0) as total_customers,
+            COALESCE(ads_agg.ads_cost, 0) as ads_cost,
+            COALESCE(ads_agg.impressions, 0) as impressions,
+            COALESCE(ads_agg.reach, 0) as reach,
+            COALESCE(ads_agg.clicks, 0) as clicks,
+            COALESCE(orders_agg.total_sales, 0) as total_sales,
+            COALESCE(orders_agg.total_orders, 0) as total_orders,
+            COALESCE(orders_agg.new_customer_orders, 0) as new_customer_orders,
+            COALESCE(orders_agg.reorder_customer_orders, 0) as reorder_customer_orders,
+            COALESCE(orders_agg.new_customer_sales, 0) as new_customer_sales,
+            COALESCE(orders_agg.reorder_customer_sales, 0) as reorder_customer_sales,
+            COALESCE(orders_agg.total_customers, 0) as total_customers,
             staff.staff_names
         FROM pages p
         LEFT JOIN (
-            SELECT * FROM marketing_ads_log
+            SELECT 
+                page_id,
+                SUM(ads_cost) as ads_cost,
+                SUM(impressions) as impressions,
+                SUM(reach) as reach,
+                SUM(clicks) as clicks
+            FROM marketing_ads_log
             WHERE $logWhereClause
-        ) mal ON p.id = mal.page_id
+            GROUP BY page_id
+        ) ads_agg ON p.id = ads_agg.page_id
         LEFT JOIN (
-            SELECT * FROM orders
+            SELECT 
+                sales_channel_page_id,
+                SUM(total_amount) as total_sales,
+                COUNT(DISTINCT id) as total_orders,
+                SUM(CASE WHEN customer_type = 'New Customer' THEN 1 ELSE 0 END) as new_customer_orders,
+                SUM(CASE WHEN customer_type = 'Reorder Customer' THEN 1 ELSE 0 END) as reorder_customer_orders,
+                SUM(CASE WHEN customer_type = 'New Customer' THEN total_amount ELSE 0 END) as new_customer_sales,
+                SUM(CASE WHEN customer_type = 'Reorder Customer' THEN total_amount ELSE 0 END) as reorder_customer_sales,
+                COUNT(DISTINCT customer_id) as total_customers
+            FROM orders
             WHERE $orderWhereClause
-        ) o ON p.id = o.sales_channel_page_id
+            GROUP BY sales_channel_page_id
+        ) orders_agg ON p.id = orders_agg.sales_channel_page_id
         LEFT JOIN (
             SELECT mup.page_id, GROUP_CONCAT(u.first_name SEPARATOR ', ') as staff_names
             FROM marketing_user_page mup
@@ -146,7 +172,6 @@ try {
             GROUP BY mup.page_id
         ) staff ON p.id = staff.page_id
         WHERE $pageWhereClause
-        GROUP BY p.id, p.name, p.platform, p.page_type, p.page_id, staff.staff_names
         ORDER BY p.name ASC
     ";
 

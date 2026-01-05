@@ -17,9 +17,10 @@ interface TelesaleOrdersPageProps {
   openModal: (type: ModalType, data: Order) => void;
   onCancelOrder: (orderId: string) => void;
   title?: string;
+  openCreateOrderModal?: () => void;
 }
 
-const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, orders, customers, openModal, onCancelOrder, title }) => {
+const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, orders, customers, openModal, onCancelOrder, title, openCreateOrderModal }) => {
   const filterStorageKey = `telesale_orders_filters_${user?.id ?? '0'}`;
 
   const savedFilters = useMemo<Record<string, unknown> | null>(() => {
@@ -91,6 +92,20 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   const [apiTotalPages, setApiTotalPages] = useState(1);
   const [pendingSlipTotal, setPendingSlipTotal] = useState(0);
   const [allOrdersTotal, setAllOrdersTotal] = useState(0);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // Listen for modal close event to refresh data
+  useEffect(() => {
+    const handleModalClose = () => {
+      setRefreshCounter(prev => prev + 1);
+    };
+
+    window.addEventListener('orderModalClosed', handleModalClose);
+
+    return () => {
+      window.removeEventListener('orderModalClosed', handleModalClose);
+    };
+  }, []);
 
   // Load saved filters (key depends on user)
   useEffect(() => {
@@ -261,7 +276,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     };
 
     fetchOrders();
-  }, [user?.companyId, user?.id, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone]);
+  }, [user?.companyId, user?.id, currentPage, itemsPerPage, activeTab, afOrderId, afTracking, afOrderDate.start, afOrderDate.end, afDeliveryDate.start, afDeliveryDate.end, afPaymentMethod, afPaymentStatus, afCustomerName, afCustomerPhone, refreshCounter]);
 
   // Fetch pending slip count for badge (only when not on pendingSlip tab)
   useEffect(() => {
@@ -442,7 +457,20 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">{title || "คำสั่งซื้อของฉัน"}</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold text-gray-800">{title || "คำสั่งซื้อของฉัน"}</h2>
+        {openCreateOrderModal && (
+          <button
+            onClick={openCreateOrderModal}
+            className="bg-green-600 hover:bg-green-700 text-white font-medium rounded-md px-4 py-2 text-sm flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            สร้างคำสั่งซื้อ
+          </button>
+        )}
+      </div>
 
       <div className="flex border-b border-gray-200 mb-6">
         <button

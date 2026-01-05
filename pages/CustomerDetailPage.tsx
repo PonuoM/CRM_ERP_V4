@@ -43,6 +43,9 @@ import {
   listCustomerLogs,
   getOrder,
   checkUpsellEligibility,
+  listCallHistory,
+  listAppointments,
+  listOrders,
 } from "../services/api";
 import {
   actionLabels,
@@ -134,15 +137,143 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   const [hasUpsell, setHasUpsell] = useState(false);
   const [upsellLoading, setUpsellLoading] = useState(true);
 
+  // Per-customer call history state (to bypass global sync limit)
+  const [localCallHistory, setLocalCallHistory] = useState<CallHistory[]>([]);
+  const [callsLoading, setCallsLoading] = useState(false);
+
+  // Per-customer appointments state (to bypass global sync limit)
+  const [localAppointments, setLocalAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+
+  // Per-customer orders state (to bypass global sync limit)
+  const [localOrders, setLocalOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  const mapCall = (r: any): CallHistory => ({
+    id: r.id,
+    customerId: r.customer_id,
+    date: r.date,
+    caller: r.caller,
+    status: r.status,
+    result: r.result,
+    cropType: r.crop_type ?? undefined,
+    areaSize: r.area_size ?? undefined,
+    notes: r.notes ?? undefined,
+    duration: r.duration ?? undefined,
+  });
+
   const usersById = useMemo(() => {
+    const map = new Map<number, User>();
+    allUsers.forEach((userItem) => {
+      map.set(userItem.id, userItem);
+    });
+    return map;
+  }, [allUsers]);
+
+  // Compatibility map for both number and string lookups
+  const usersByIdAny = useMemo(() => {
     const map = new Map<number | string, User>();
     allUsers.forEach((userItem) => {
-      // Store with both number and string keys for compatibility
       map.set(userItem.id, userItem);
       map.set(String(userItem.id), userItem);
     });
     return map;
   }, [allUsers]);
+
+  // Fetch call history for this customer
+  useEffect(() => {
+    let mounted = true;
+    const cid = customer.id || String(customer.pk);
+    if (!cid) return;
+
+    setCallsLoading(true);
+    listCallHistory({ customerId: cid, pageSize: 500 })
+      .then((res) => {
+        if (!mounted) return;
+        const data = Array.isArray(res) ? res : (res?.data || []);
+        setLocalCallHistory(data.map(mapCall));
+      })
+      .catch((err) => {
+        console.error("Failed to fetch call history for customer", cid, err);
+      })
+      .finally(() => {
+        if (mounted) setCallsLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [customer.id, customer.pk]);
+
+  // Fetch appointments for this customer
+  useEffect(() => {
+    let mounted = true;
+    const cid = customer.pk ? String(customer.pk) : customer.id;
+    if (!cid) return;
+
+    setAppointmentsLoading(true);
+    listAppointments({ customerId: cid, pageSize: 500 })
+      .then((res: any) => {
+        if (!mounted) return;
+        const data = Array.isArray(res) ? res : (res?.data || res || []);
+        const mapped: Appointment[] = data.map((r: any) => ({
+          id: Number(r.id), // Ensure ID is a number for onCompleteAppointment
+          customerId: r.customer_id,
+          date: r.date,
+          title: r.title,
+          status: r.status,
+          notes: r.notes ?? undefined,
+        }));
+        setLocalAppointments(mapped);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch appointments for customer", cid, err);
+      })
+      .finally(() => {
+        if (mounted) setAppointmentsLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [customer.id, customer.pk]);
+
+  // Fetch orders for this customer
+  useEffect(() => {
+    let mounted = true;
+    const cid = customer.pk ? String(customer.pk) : customer.id;
+    if (!cid) return;
+
+    setOrdersLoading(true);
+    // Use phone to search for orders since orders use different customer ID schemes
+    listOrders({ customerPhone: customer.phone, pageSize: 100 })
+      .then((res: any) => {
+        if (!mounted) return;
+        const orderData = res?.orders || [];
+        // Map API response to Order type
+        const mapped: Order[] = orderData.map((o: any) => ({
+          id: o.id,
+          customerId: o.customer_id,
+          creatorId: o.creator_id,
+          orderDate: o.order_date,
+          deliveryDate: o.delivery_date,
+          totalAmount: parseFloat(o.total_amount || 0),
+          discountAmount: parseFloat(o.discount_amount || 0),
+          discountPercent: parseFloat(o.discount_percent || 0),
+          netAmount: parseFloat(o.net_amount || 0),
+          orderStatus: o.order_status,
+          paymentStatus: o.payment_status,
+          paymentMethod: o.payment_method,
+          trackingNumber: o.tracking_number,
+          notes: o.notes,
+        }));
+        setLocalOrders(mapped);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch orders for customer", cid, err);
+      })
+      .finally(() => {
+        if (mounted) setOrdersLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [customer.id, customer.pk, customer.phone]);
 
   // Check upsell eligibility
   useEffect(() => {
@@ -692,7 +823,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     const logItems = recentLogEntries.map(({ log, summaries }) => ({
       id: `log-${log.id}`,
       timestamp: log.createdAt,
-      description: summaries.map(s => s.summary).join(', ') || '',
+      description: summaries.join(', ') || '',
       actorName: allUsers.find(u => u.id === log.createdBy)?.firstName + ' ' + allUsers.find(u => u.id === log.createdBy)?.lastName || '',
       type: 'log' as const,
       actionType: log.actionType,
@@ -735,30 +866,35 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     );
   };
 
-  const totalCallPages = Math.ceil(callHistory.length / ITEMS_PER_PAGE);
-  const paginatedCallHistory = callHistory.slice(
+  const effectiveCallHistory = localCallHistory.length > 0 ? localCallHistory : callHistory;
+  const totalCallPages = Math.ceil(effectiveCallHistory.length / ITEMS_PER_PAGE);
+  const paginatedCallHistory = effectiveCallHistory.slice(
     (callHistoryPage - 1) * ITEMS_PER_PAGE,
     callHistoryPage * ITEMS_PER_PAGE,
   );
 
-  const totalAppointmentPages = Math.ceil(appointments.length / ITEMS_PER_PAGE);
-  const paginatedAppointments = appointments.slice(
+  const effectiveAppointments = localAppointments.length > 0 ? localAppointments : appointments;
+  const totalAppointmentPages = Math.ceil(effectiveAppointments.length / ITEMS_PER_PAGE);
+  const paginatedAppointments = effectiveAppointments.slice(
     (appointmentsPage - 1) * ITEMS_PER_PAGE,
     appointmentsPage * ITEMS_PER_PAGE,
   );
 
-  const totalOrderPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
-  const paginatedOrders = orders.slice(
+  const effectiveOrders = localOrders.length > 0 ? localOrders : orders;
+  const totalOrderPages = Math.ceil(effectiveOrders.length / ITEMS_PER_PAGE);
+  const paginatedOrders = effectiveOrders.slice(
     (ordersPage - 1) * ITEMS_PER_PAGE,
     ordersPage * ITEMS_PER_PAGE,
   );
 
   // Filter appointments to show only future follow-ups that are not completed
-  const upcomingFollowUps = appointments
+  const upcomingFollowUps = effectiveAppointments
     .filter((appointment) => {
       const appointmentDate = new Date(appointment.date);
       const now = new Date();
-      return appointmentDate > now && appointment.status !== "เสร็จสิ้น";
+      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      // Show appointments that are between now and 7 days from now, and not completed
+      return appointmentDate >= now && appointmentDate <= sevenDaysFromNow && appointment.status !== "เสร็จสิ้น";
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -846,15 +982,15 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
               <InfoItem label="เกรดลูกค้า" value={customer.grade} />
               <InfoItem
                 label="ยอดซื้อรวม"
-                value={`฿${customer.totalPurchases.toLocaleString()}`}
+                value={`฿${effectiveOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString()}`}
               />
               <InfoItem
                 label="จำนวนครั้งที่ซื้อ"
-                value={`${orders.length} ครั้ง`}
+                value={`${effectiveOrders.length} ครั้ง`}
               />
               <InfoItem
                 label="จำนวนครั้งที่ติดต่อ"
-                value={`${customer.totalCalls} ครั้ง`}
+                value={`${Math.max(customer.totalCalls || 0, effectiveCallHistory.length)} ครั้ง`}
               />
               <InfoItem label="ผู้ดูแล">
                 <div className="flex items-center">
@@ -958,6 +1094,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   >
                     <Phone size={16} className="inline mr-2" />
                     ประวัติการโทร
+                    {effectiveCallHistory.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px]">
+                        {effectiveCallHistory.length}
+                      </span>
+                    )}
+                    {callsLoading && <span className="ml-1 animate-pulse">...</span>}
                   </button>
                   <button
                     onClick={() => setActiveTab("appointments")}
@@ -965,6 +1107,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   >
                     <Calendar size={16} className="inline mr-2" />
                     รายการนัดหมาย
+                    {effectiveAppointments.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px]">
+                        {effectiveAppointments.length}
+                      </span>
+                    )}
+                    {appointmentsLoading && <span className="ml-1 animate-pulse">...</span>}
                   </button>
                   <button
                     onClick={() => setActiveTab("orders")}
@@ -972,6 +1120,12 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   >
                     <ShoppingCart size={16} className="inline mr-2" />
                     ประวัติคำสั่งซื้อ
+                    {effectiveOrders.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px]">
+                        {effectiveOrders.length}
+                      </span>
+                    )}
+                    {ordersLoading && <span className="ml-1 animate-pulse">...</span>}
                   </button>
                 </nav>
               </div>
@@ -1067,9 +1221,16 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                   ) : (
                                     props.onCompleteAppointment && (
                                       <button
-                                        onClick={() =>
-                                          props.onCompleteAppointment!(a.id)
-                                        }
+                                        onClick={() => {
+                                          console.log('Complete appointment clicked, ID:', a.id, 'Type:', typeof a.id);
+                                          props.onCompleteAppointment!(Number(a.id));
+                                          // Update local state immediately for instant UI feedback
+                                          setLocalAppointments((prev) =>
+                                            prev.map((apt) =>
+                                              apt.id === a.id ? { ...apt, status: "เสร็จสิ้น" } : apt
+                                            )
+                                          );
+                                        }}
                                         className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
                                       >
                                         ทำเครื่องหมายเสร็จ
@@ -1108,7 +1269,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                             {paginatedOrders.map((o) => {
                               // Match seller by id (ensure type compatibility)
                               const seller = o.creatorId
-                                ? usersById.get(o.creatorId) || usersById.get(String(o.creatorId)) || usersById.get(Number(o.creatorId))
+                                ? usersByIdAny.get(o.creatorId)
                                 : undefined;
                               const sellerName = seller
                                 ? `${seller.firstName} ${seller.lastName}`
@@ -1444,25 +1605,25 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
             <div className="grid grid-cols-2 gap-4 text-center">
               <div>
                 <p className="text-2xl font-bold text-blue-600">
-                  {orders.length}
+                  {effectiveOrders.length}
                 </p>
                 <p className="text-xs text-gray-500">คำสั่งซื้อ</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-blue-600">
-                  ฿{customer.totalPurchases.toLocaleString()}
+                  ฿{effectiveOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-500">ยอดซื้อรวม</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-blue-600">
-                  {customer.totalCalls}
+                  {effectiveCallHistory.length}
                 </p>
                 <p className="text-xs text-gray-500">การโทร</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-blue-600">
-                  {appointments.length}
+                  {effectiveAppointments.length}
                 </p>
                 <p className="text-xs text-gray-500">นัดหมาย</p>
               </div>

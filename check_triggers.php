@@ -1,42 +1,20 @@
-// Standalone DB connect
-function getDbConnection() {
-    $host = 'localhost';
-    $db   = 'mini_erp'; 
-    $user = 'root';
-    $pass = '12345678'; 
-    $charset = 'utf8mb4';
-    try {
-        return new PDO("mysql:host=$host;dbname=$db;charset=$charset", $user, $pass);
-    } catch (\PDOException $e) {
-        return new PDO("mysql:host=$host;dbname=$db;charset=$charset", 'root', '');
-    }
-}
+<?php
+require_once __DIR__ . '/api/config.php';
 
 try {
-    $pdo = getDbConnection();
+    $pdo = db_connect();
     
-    echo "--- Triggers on Appointments ---\n";
-    $stmt = $pdo->query("SHOW TRIGGERS LIKE 'appointments'");
+    echo "--- All Triggers on customers ---\n";
+    $stmt = $pdo->query("SHOW TRIGGERS WHERE `Table` = 'customers'");
     $triggers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if ($triggers) {
-        foreach ($triggers as $t) {
-            echo "Trigger: {$t['Trigger']}\nEvent: {$t['Event']}\nStatement: {$t['Statement']}\n\n";
-        }
-    } else {
-        echo "No triggers found on appointments.\n";
+    foreach ($triggers as $t) {
+        echo "Trigger: " . $t['Trigger'] . "\n";
+        echo "Timing: " . $t['Timing'] . "\n";
+        echo "Event: " . $t['Event'] . "\n";
+        echo "Statement:\n" . $t['Statement'] . "\n";
+        echo "--------------------------------\n";
     }
 
-    echo "\n--- Triggers on Call History ---\n";
-    $stmt = $pdo->query("SHOW TRIGGERS LIKE 'call_history'");
-    $triggers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-     if ($triggers) {
-        foreach ($triggers as $t) {
-            echo "Trigger: {$t['Trigger']}\nEvent: {$t['Event']}\nStatement: {$t['Statement']}\n\n";
-        }
-    } else {
-        echo "No triggers found on call_history.\n";
-    }
-    
 } catch (Exception $e) {
     echo "Error: " . $e->getMessage();
 }

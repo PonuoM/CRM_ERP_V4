@@ -55,6 +55,14 @@ const MarketingDatePicker: React.FC<MarketingDatePickerProps> = ({
     return "เลือกช่วงวันที่";
   }, [value]);
 
+  // Helper function to format date as YYYY-MM-DD in local timezone
+  const formatDateLocal = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const applyPreset = (type: string) => {
     const now = new Date();
     let startDate: Date;
@@ -62,11 +70,17 @@ const MarketingDatePicker: React.FC<MarketingDatePickerProps> = ({
 
     switch (type) {
       case "thisWeek":
+        // Week starts on Monday (dayOfWeek: Monday=1, Sunday=0)
         const dayOfWeek = now.getDay();
+        // Calculate days to subtract to get to Monday
+        // If today is Sunday (0), go back 6 days to Monday
+        // If today is Monday (1), go back 0 days
+        // If today is Tuesday (2), go back 1 day, etc.
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
         startDate = new Date(now);
-        startDate.setDate(now.getDate() - dayOfWeek);
+        startDate.setDate(now.getDate() - daysToMonday);
         endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + 6);
+        endDate.setDate(startDate.getDate() + 6); // Monday to Sunday
         break;
       case "thisMonth":
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -87,8 +101,8 @@ const MarketingDatePicker: React.FC<MarketingDatePickerProps> = ({
     }
 
     const newRange = {
-      start: startDate.toISOString().slice(0, 10),
-      end: endDate.toISOString().slice(0, 10),
+      start: formatDateLocal(startDate),
+      end: formatDateLocal(endDate),
     };
     setStart(newRange.start);
     setEnd(newRange.end);

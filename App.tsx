@@ -346,6 +346,7 @@ const App: React.FC = () => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
     useState(false);
+  const [viewingCustomerData, setViewingCustomerData] = useState<Customer | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
@@ -464,6 +465,69 @@ const App: React.FC = () => {
       window.history.replaceState({}, "", nextUrl);
     }
   }, [activePage, hideSidebar]);
+
+  // Permission check: Redirect to permitted page if user doesn't have access to activePage
+  useEffect(() => {
+    if (!sessionUser || !rolePermissions) return;
+
+    // SuperAdmin always has access
+    if (sessionUser.role === UserRole.SuperAdmin) return;
+
+    // Page to permission key mapping
+    const pagePermissionMap: Record<string, string> = {
+      'Home': 'home.dashboard',
+      'Dashboard': 'home.dashboard',
+      'Sales Overview': 'home.sales_overview',
+      'Calls Overview': 'calls.overview',
+      'Call Details': 'calls.details',
+      'Customers': 'nav.customers',
+      'Manage Customers': 'nav.manage_customers',
+      'Orders': 'nav.orders',
+      'Manage Orders': 'nav.manage_orders',
+      'Search': 'nav.search',
+      'Debt': 'nav.debt',
+      'Bulk Tracking': 'nav.bulk_tracking',
+      'COD Management': 'nav.cod_management',
+      'Warehouses': 'inventory.warehouses',
+      'Warehouse Stock': 'inventory.stock',
+      'Slip Upload': 'payment_slip.upload',
+      'All Slips': 'payment_slip.all',
+      'Reports': 'reports.reports',
+      'Export History': 'reports.export_history',
+      'Users': 'data.users',
+      'Products': 'data.products',
+      'Pages': 'data.pages',
+      'Marketing Dashboard': 'marketing.dashboard',
+      'Ads Input': 'marketing.ads_input',
+      'Accounting Report': 'accounting.report',
+    };
+
+    // Check if current page needs permission check
+    const permissionKey = pagePermissionMap[activePage];
+
+    // If page has a permission key and user doesn't have view permission
+    if (permissionKey && !rolePermissions[permissionKey]?.view) {
+      console.log(`User doesn't have permission for ${activePage}, redirecting...`);
+
+      // Find first allowed page
+      const fallbackPages = [
+        { page: 'Customers', key: 'nav.customers' },
+        { page: 'Orders', key: 'nav.orders' },
+        { page: 'Sales Overview', key: 'home.sales_overview' },
+        { page: 'Dashboard', key: 'home.dashboard' },
+      ];
+
+      for (const fallback of fallbackPages) {
+        if (rolePermissions[fallback.key]?.view) {
+          setActivePage(fallback.page);
+          return;
+        }
+      }
+
+      // Ultimate fallback
+      setActivePage('Customers');
+    }
+  }, [activePage, sessionUser, rolePermissions]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -740,8 +804,9 @@ const App: React.FC = () => {
       try {
         const isDashboard = activePage === 'Dashboard';
         const isAdmin = sessionUser?.role === UserRole.Admin;
-        // Optimized: Skip loading customers unless we are on the Customers page
-        const shouldSkipCustomers = activePage !== 'Customers' && activePage !== 'Search';
+        // Optimized: Skip loading customers global list. ManageCustomersPage handles its own pagination.
+        // We only might need it for Search page (if it relies on client-side search), otherwise skip always.
+        const shouldSkipCustomers = activePage !== 'Search';
 
         const [
           u,
@@ -760,7 +825,11 @@ const App: React.FC = () => {
           whs,
         ] = await Promise.all([
           listUsers(sessionUser?.company_id),
-          shouldSkipCustomers ? Promise.resolve([]) : listCustomers({ companyId: sessionUser?.company_id }),
+          shouldSkipCustomers ? Promise.resolve([]) : listCustomers({
+            companyId: sessionUser?.company_id,
+            pageSize: 10000,
+            assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
+          }),
           // Orders are now fetched only in TelesaleOrdersPage
           Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
           listProducts(sessionUser?.company_id),
@@ -768,7 +837,7 @@ const App: React.FC = () => {
           listPages(sessionUser?.company_id, undefined, undefined, true),
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
           listCallHistory(),
-          listAppointments(),
+          listAppointments({ assignedTo: sessionUser?.id, pageSize: 500 }),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
           listActivities(),
           listTags({ type: "SYSTEM" }),
@@ -1228,7 +1297,8 @@ const App: React.FC = () => {
             : [],
         );
         setPromotions(Array.isArray(promo) ? promo.map(mapPromotion) : []);
-        setCallHistory(Array.isArray(ch) ? ch.map(mapCall) : []);
+        const callHistoryData = Array.isArray(ch) ? ch : (ch?.data || []);
+        setCallHistory(Array.isArray(callHistoryData) ? callHistoryData.map(mapCall) : []);
         setAppointments(Array.isArray(ap) ? ap.map(mapAppt) : []);
 
         // Set system tags and companies from API
@@ -1313,17 +1383,22 @@ const App: React.FC = () => {
 
     const hasCustomers = customers.length > 0;
 
-    // Optimized: Only lazy load customers when on the Customers page (ManageCustomersPage)
+    // Optimized: Only lazy load customers when on the Customers/Search page
     // and if we haven't loaded them yet.
-    if ((activePage === 'Customers' || activePage === 'Search') && !hasCustomers) {
-      console.log("Lazy loading customers for ManageCustomersPage...");
+    if ((activePage === 'Search' || activePage === 'Customers') && !hasCustomers) {
+      console.log("Lazy loading customers for " + activePage + "...");
       let cancelled = false;
 
       const lazyLoad = async () => {
         try {
           const [ctags, cData] = await Promise.all([
             listCustomerTags(),
-            listCustomers({ companyId: sessionUser.company_id }),
+            listCustomers({
+              companyId: sessionUser.company_id,
+              pageSize: 100, // Reduced from 10000 for pagination support
+              page: 1,       // Initial page
+              assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
+            }),
           ]);
           const c = cData.data || [];
 
@@ -1568,6 +1643,26 @@ const App: React.FC = () => {
       // If no users available, return null to trigger re-login
       // Only log error if we've actually tried to load users (not during initial load)
       // This will be handled by the useEffect below
+
+      // FALLBACK: If we have a valid sessionUser but users list failed to load,
+      // return a minimal user object from sessionUser so pages can still function (e.g. fetch customers)
+      if (users.length === 0) {
+        console.warn(`Users list empty, falling back to sessionUser for ID ${sessionUser.id}`);
+        return {
+          id: sessionUser.id,
+          username: sessionUser.username,
+          role: sessionUser.role,
+          companyId: sessionUser.company_id,
+          firstName: sessionUser.username, // Fallback
+          lastName: '', // Fallback
+          email: '',
+          phone: '',
+          status: sessionUser.status || 'active',
+          customTags: [], // Ensure this is initialized to prevent iteration errors
+          ...sessionUser // Spread any other props
+        } as User;
+      }
+
       return null;
     }
     return users.length > 0 ? users[0] : null;
@@ -1983,9 +2078,14 @@ const App: React.FC = () => {
   ]);
 
   const viewingCustomer = useMemo(() => {
+    // Priority 1: Use explicitly set data (prevents lookup failure on lazy-loaded lists)
+    if (viewingCustomerData && viewingCustomerData.id === viewingCustomerId) {
+      return viewingCustomerData;
+    }
+    // Priority 2: Fallback to lookup (legacy support)
     if (!viewingCustomerId) return null;
     return customers.find((c) => c.id === viewingCustomerId);
-  }, [viewingCustomerId, customers]);
+  }, [viewingCustomerId, customers, viewingCustomerData]);
 
   const isSuperAdmin = useMemo(
     () => currentUser?.role === UserRole.SuperAdmin,
@@ -2120,6 +2220,10 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // IMMEDIATELY clear user state to hide menu before any other operation
+    setSessionUser(null);
+    setRolePermissions(null);
+
     // Clear session data and any UI state tied to the previous role
     try {
       localStorage.removeItem("sessionUser");
@@ -2127,7 +2231,6 @@ const App: React.FC = () => {
       /* ignore storage errors */
     }
     resetPersistentUiState();
-    setSessionUser(null);
 
     // Redirect to login page without leftover UI query params
     const url = new URL(window.location.href);
@@ -2229,9 +2332,14 @@ const App: React.FC = () => {
     }
   }, [currentUser?.companyId]);
 
-  const handleViewCustomer = (customer: Customer) =>
+  const handleViewCustomer = (customer: Customer) => {
+    setViewingCustomerData(customer);
     setViewingCustomerId(customer.id);
-  const handleCloseCustomerDetail = () => setViewingCustomerId(null);
+  }
+  const handleCloseCustomerDetail = () => {
+    setViewingCustomerId(null);
+    setViewingCustomerData(null);
+  }
 
   // Clear any transient create-order initial data when leaving the page
   useEffect(() => {
@@ -2425,48 +2533,27 @@ const App: React.FC = () => {
   const handleCancelOrder = async (orderId: string) => {
     if (
       window.confirm(
-        "à¸„à¸¸à¸“à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸¢à¸à¹€à¸¥à¸´à¸คำสั่งซื้อà¸™à¸µà¹‰à¹ƒà¸Šà¹ˆหรือไม่?",
+        "คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่หรือไม่?",
       )
     ) {
-      const orderToCancel = orders.find((o) => o.id === orderId);
-      if (orderToCancel && orderToCancel.orderStatus === OrderStatus.Pending) {
-        const customerIdForActivity = getCustomerIdForActivity(orderToCancel.customerId);
-        if (customerIdForActivity) {
-          const newActivity: Activity = {
-            id: Date.now() + Math.random(),
-            customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-            timestamp: new Date().toISOString(),
-            type: ActivityType.OrderCancelled,
-            description: `ยกเลิกคำสั่งซื้อ ${orderId}`,
-            actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-          };
-          if (true) {
-            try {
-              await createActivity({
-                customerId: customerIdForActivity, // ส่ง INT ไป API
-                timestamp: newActivity.timestamp,
-                type: newActivity.type,
-                description: newActivity.description,
-                actorName: newActivity.actorName,
-              });
-            } catch (e) {
-              console.error("Failed to create activity", e);
-            }
-          }
-          setActivities((prev) => [newActivity, ...prev]);
-        }
-        if (true) {
-          try {
-            await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
-          } catch (e) {
-            console.error("cancel API", e);
-          }
-        }
+      try {
+        // Call API to cancel order directly
+        await apiPatchOrder(orderId, { orderStatus: "Cancelled" });
+
+        // Update local state if order exists there
         setOrders((prevOrders) =>
           prevOrders.map((o) =>
             o.id === orderId ? { ...o, orderStatus: OrderStatus.Cancelled } : o,
           ),
         );
+
+        // Dispatch event to refresh data in pages
+        window.dispatchEvent(new CustomEvent('orderModalClosed'));
+
+        alert('ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว');
+      } catch (e) {
+        console.error("cancel API", e);
+        alert('เกิดข้อผิดพลาดในการยกเลิกคำสั่งซื้อ');
       }
     }
   };
@@ -4457,139 +4544,16 @@ const App: React.FC = () => {
   };
 
   const handleCompleteAppointment = async (appointmentId: number) => {
-    const appointmentToUpdate = appointments.find(
-      (a) => a.id === appointmentId,
-    );
-    if (!appointmentToUpdate) return;
-
-    const updatedAppointment = {
-      ...appointmentToUpdate,
-      status: "เสร็จสิ้น",
-    };
-
-    if (true) {
-      try {
-        await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
-      } catch (e) {
-        console.error("update appointment API failed", e);
-        // If API fails, still update local state
-        setAppointments((prev) =>
-          prev.map((a) => (a.id === appointmentId ? updatedAppointment : a)),
-        );
-        return;
-      }
-    }
-
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === appointmentId ? updatedAppointment : a)),
-    );
-
-    // Check if customer has any remaining pending appointments
-    const customerAppointments = appointments.filter(
-      (a) =>
-        a.customerId === appointmentToUpdate.customerId &&
-        a.id !== appointmentId,
-    );
-
-    const hasPendingAppointments = customerAppointments.some(
-      (a) => a.status !== "เสร็จสิ้น",
-    );
-
-    // If no pending appointments, update customer lifecycle status
-    if (!hasPendingAppointments) {
-      setCustomers((prev) =>
-        prev.map((c) => {
-          if (c.id === appointmentToUpdate.customerId) {
-            // Determine the new lifecycle status based on new business rules
-            let newLifecycleStatus = c.lifecycleStatus;
-            if (c.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
-              // If sold and within 90 days -> Old3Months, else revert to previous status
-              const cutoff = new Date();
-              cutoff.setDate(cutoff.getDate() - 90);
-              const hasRecentOrder = orders.some(
-                (o) => o.customerId === c.id && new Date(o.orderDate) >= cutoff,
-              );
-              if (hasRecentOrder) {
-                newLifecycleStatus = CustomerLifecycleStatus.Old3Months;
-              } else {
-                newLifecycleStatus =
-                  c.previousLifecycleStatus ?? newLifecycleStatus;
-              }
-            }
-
-            return {
-              ...c,
-              followUpDate: undefined,
-              lifecycleStatus: newLifecycleStatus,
-              previousLifecycleStatus:
-                newLifecycleStatus === CustomerLifecycleStatus.FollowUp
-                  ? c.previousLifecycleStatus
-                  : undefined,
-            };
-          }
-          return c;
-        }),
+    // Call API directly - the appointment may be from localAppointments (per-customer fetch)
+    // and not exist in the global appointments state
+    try {
+      await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
+      // Update global state if the appointment exists there
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === appointmentId ? { ...a, status: "เสร็จสิ้น" } : a)),
       );
-
-      if (true) {
-        try {
-          // Update customer in the database
-          const customer = customers.find(
-            (c) => c.id === appointmentToUpdate.customerId,
-          );
-          if (customer) {
-            let updateData: any = { followUpDate: null };
-
-            // Mirror local logic for lifecycle status change
-            let newLifecycleStatus = customer.lifecycleStatus;
-            if (customer.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
-              const cutoff = new Date();
-              cutoff.setDate(cutoff.getDate() - 90);
-              const hasRecentOrder = orders.some(
-                (o) =>
-                  o.customerId === customer.id &&
-                  new Date(o.orderDate) >= cutoff,
-              );
-              if (hasRecentOrder) {
-                newLifecycleStatus = CustomerLifecycleStatus.Old3Months;
-                updateData.lifecycleStatus = newLifecycleStatus;
-              } else if (customer.previousLifecycleStatus) {
-                updateData.lifecycleStatus = customer.previousLifecycleStatus;
-              }
-            }
-
-            await updateCustomer(appointmentToUpdate.customerId, updateData);
-          }
-        } catch (e) {
-          console.error("update customer after appointment completion", e);
-        }
-      }
-    }
-
-    const customerIdForActivity = getCustomerIdForActivity(appointmentToUpdate.customerId);
-    if (customerIdForActivity) {
-      const newActivity: Activity = {
-        id: Date.now() + Math.random(),
-        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-        timestamp: new Date().toISOString(),
-        type: ActivityType.AppointmentSet,
-        description: `นัดหมาย "${appointmentToUpdate.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว`,
-        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-      };
-      if (true) {
-        try {
-          await createActivity({
-            customerId: customerIdForActivity, // ส่ง INT ไป API
-            timestamp: newActivity.timestamp,
-            type: newActivity.type,
-            description: newActivity.description,
-            actorName: newActivity.actorName,
-          });
-        } catch (e) {
-          console.error("Failed to create activity", e);
-        }
-      }
-      setActivities((prev) => [newActivity, ...prev]);
+    } catch (e) {
+      console.error("update appointment API failed", e);
     }
   };
 
@@ -5818,64 +5782,7 @@ const App: React.FC = () => {
     ) {
       return <ExportHistoryPage />;
     }
-    if (viewingCustomer) {
-      return (
-        <CustomerDetailPage
-          activities={activities}
-          customer={viewingCustomer}
-          orders={companyOrders.filter(
-            (o) => {
-              // Match by string comparison (viewingCustomer.id is string, o.customerId may be string or number)
-              return String(o.customerId) === String(viewingCustomer.id) ||
-                String(o.customerId) === String(viewingCustomer.pk);
-            },
-          )}
-          callHistory={callHistory.filter(
-            (c) => {
-              // Match by string comparison (viewingCustomer.id is string, c.customerId may be string or number)
-              return String(c.customerId) === String(viewingCustomer.id) ||
-                String(c.customerId) === String(viewingCustomer.pk);
-            },
-          )}
-          appointments={appointments.filter(
-            (a) => {
-              // Match by string comparison (viewingCustomer.id is string, a.customerId may be string or number)
-              return String(a.customerId) === String(viewingCustomer.id) ||
-                String(a.customerId) === String(viewingCustomer.pk);
-            },
-          )}
-          onClose={handleCloseCustomerDetail}
-          openModal={openModal}
-          user={currentUser}
-          allUsers={companyUsers}
-          systemTags={systemTags}
-          ownerName={(function () {
-            const u = companyUsers.find(
-              (x) => x.id === (viewingCustomer as any).assignedTo,
-            );
-            return u ? `${u.firstName} ${u.lastName}` : undefined;
-          })()}
-          onAddTag={handleAddTagToCustomer}
-          onRemoveTag={handleRemoveTagFromCustomer}
-          onCreateUserTag={handleCreateUserTag}
-          onCompleteAppointment={handleCompleteAppointment}
-          onChangeOwner={handleChangeCustomerOwner}
-          customerCounts={userCustomerCounts}
-          onStartCreateOrder={(customer) => {
-            setPreviousPage(activePage);
-            setCreateOrderInitialData({ customer });
-            handleCloseCustomerDetail();
-            setActivePage("CreateOrder");
-          }}
-          onUpsellClick={(customer) => {
-            setPreviousPage(activePage);
-            setCreateOrderInitialData({ customer, upsell: true });
-            handleCloseCustomerDetail();
-            setActivePage("CreateOrder");
-          }}
-        />
-      );
-    }
+    // CustomerDetailPage is now rendered as overlay in main return JSX, not here
 
     // Global entries: simple, international dashboards for layout-only views
     if (activePage === "Sales Overview") {
@@ -5884,6 +5791,7 @@ const App: React.FC = () => {
           user={currentUser}
           orders={companyOrders}
           customers={companyCustomers}
+          openCreateOrderModal={() => setActivePage("CreateOrder")}
         />
       );
     }
@@ -6202,6 +6110,7 @@ const App: React.FC = () => {
           customers={companyCustomers}
           openModal={openModal}
           onCancelOrder={handleCancelOrder}
+          openCreateOrderModal={() => setActivePage("CreateOrder")}
         />
       );
     }
@@ -7207,139 +7116,198 @@ const App: React.FC = () => {
 
       {renderModal()}
 
-      {/* Change Password Modal */}
-      {isChangePasswordModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black bg-opacity-50"
-            onClick={() => setIsChangePasswordModalOpen(false)}
+      {/* CustomerDetailPage Overlay - renders ON TOP of current page without unmounting it */}
+      {viewingCustomer && (
+        <div className="fixed inset-0 z-50 bg-white overflow-auto">
+          <CustomerDetailPage
+            activities={activities}
+            customer={viewingCustomer}
+            orders={companyOrders.filter(
+              (o) => {
+                return String(o.customerId) === String(viewingCustomer.id) ||
+                  String(o.customerId) === String(viewingCustomer.pk);
+              },
+            )}
+            callHistory={callHistory.filter(
+              (c) => {
+                return String(c.customerId) === String(viewingCustomer.id) ||
+                  String(c.customerId) === String(viewingCustomer.pk);
+              },
+            )}
+            appointments={appointments.filter(
+              (a) => {
+                return String(a.customerId) === String(viewingCustomer.id) ||
+                  String(a.customerId) === String(viewingCustomer.pk);
+              },
+            )}
+            onClose={handleCloseCustomerDetail}
+            openModal={openModal}
+            user={currentUser}
+            allUsers={companyUsers}
+            systemTags={systemTags}
+            ownerName={(function () {
+              const u = companyUsers.find(
+                (x) => x.id === (viewingCustomer as any).assignedTo,
+              );
+              return u ? `${u.firstName} ${u.lastName}` : undefined;
+            })()}
+            onAddTag={handleAddTagToCustomer}
+            onRemoveTag={handleRemoveTagFromCustomer}
+            onCreateUserTag={handleCreateUserTag}
+            onCompleteAppointment={handleCompleteAppointment}
+            onChangeOwner={handleChangeCustomerOwner}
+            customerCounts={userCustomerCounts}
+            onStartCreateOrder={(customer) => {
+              setPreviousPage(activePage);
+              setCreateOrderInitialData({ customer });
+              handleCloseCustomerDetail();
+              setActivePage("CreateOrder");
+            }}
+            onUpsellClick={(customer) => {
+              setPreviousPage(activePage);
+              setCreateOrderInitialData({ customer, upsell: true });
+              handleCloseCustomerDetail();
+              setActivePage("CreateOrder");
+            }}
           />
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                เปลี่ยนรหัสผ่าน
-              </h3>
-              <button
-                onClick={() => setIsChangePasswordModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-6">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleChangePassword();
-                }}
-              >
-                {passwordError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-                    {passwordError}
-                  </div>
-                )}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      รหัสผ่านปัจจุบัน
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordForm.currentPassword}
-                      onChange={(e) =>
-                        setPasswordForm((prev) => ({
-                          ...prev,
-                          currentPassword: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      รหัสผ่านใหม่
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordForm.newPassword}
-                      onChange={(e) =>
-                        setPasswordForm((prev) => ({
-                          ...prev,
-                          newPassword: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      ยืนยันรหัสผ่านใหม่
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) =>
-                        setPasswordForm((prev) => ({
-                          ...prev,
-                          confirmPassword: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsChangePasswordModalOpen(false);
-                      setPasswordError("");
-                      setPasswordForm({
-                        currentPassword: "",
-                        newPassword: "",
-                        confirmPassword: "",
-                      });
-                    }}
-                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                    disabled={isChangingPassword}
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isChangingPassword}
-                  >
-                    {isChangingPassword
-                      ? "กำลังเปลี่ยนรหัสผ่าน..."
-                      : "เปลี่ยนรหัสผ่าน"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
         </div>
       )}
-    </div>
+
+      {/* Change Password Modal */}
+      {
+        isChangePasswordModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black bg-opacity-50"
+              onClick={() => setIsChangePasswordModalOpen(false)}
+            />
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  เปลี่ยนรหัสผ่าน
+                </h3>
+                <button
+                  onClick={() => setIsChangePasswordModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleChangePassword();
+                  }}
+                >
+                  {passwordError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                      {passwordError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        รหัสผ่านปัจจุบัน
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.currentPassword}
+                        onChange={(e) =>
+                          setPasswordForm((prev) => ({
+                            ...prev,
+                            currentPassword: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        รหัสผ่านใหม่
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.newPassword}
+                        onChange={(e) =>
+                          setPasswordForm((prev) => ({
+                            ...prev,
+                            newPassword: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ยืนยันรหัสผ่านใหม่
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) =>
+                          setPasswordForm((prev) => ({
+                            ...prev,
+                            confirmPassword: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 mt-6">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsChangePasswordModalOpen(false);
+                        setPasswordError("");
+                        setPasswordForm({
+                          currentPassword: "",
+                          newPassword: "",
+                          confirmPassword: "",
+                        });
+                      }}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                      disabled={isChangingPassword}
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isChangingPassword}
+                    >
+                      {isChangingPassword
+                        ? "กำลังเปลี่ยนรหัสผ่าน..."
+                        : "เปลี่ยนรหัสผ่าน"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

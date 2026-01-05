@@ -20,14 +20,30 @@ try {
         json_response(['error' => 'Missing company_id'], 400);
     }
 
+    $assignedTo = isset($_GET['assigned_to']) ? (int)$_GET['assigned_to'] : null;
+
     // 1. Get Total Customers
-    $stmtTotal = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE company_id = ?");
-    $stmtTotal->execute([$companyId]);
+    $sqlTotal = "SELECT COUNT(*) FROM customers WHERE company_id = ?";
+    $paramsTotal = [$companyId];
+    if ($assignedTo) {
+        $sqlTotal .= " AND assigned_to = ?";
+        $paramsTotal[] = $assignedTo;
+    }
+    $stmtTotal = $pdo->prepare($sqlTotal);
+    $stmtTotal->execute($paramsTotal);
     $totalCustomers = $stmtTotal->fetchColumn();
 
     // 2. Get Grade Distribution
-    $stmtGrades = $pdo->prepare("SELECT grade, COUNT(*) as count FROM customers WHERE company_id = ? GROUP BY grade");
-    $stmtGrades->execute([$companyId]);
+    $sqlGrades = "SELECT grade, COUNT(*) as count FROM customers WHERE company_id = ? ";
+    $paramsGrades = [$companyId];
+    if ($assignedTo) {
+        $sqlGrades .= " AND assigned_to = ? ";
+        $paramsGrades[] = $assignedTo;
+    }
+    $sqlGrades .= "GROUP BY grade";
+    
+    $stmtGrades = $pdo->prepare($sqlGrades);
+    $stmtGrades->execute($paramsGrades);
     $gradesData = $stmtGrades->fetchAll();
 
     $grades = [];

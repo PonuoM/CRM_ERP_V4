@@ -127,6 +127,7 @@ export async function listCustomers(params?: {
   assignedTo?: number;
   page?: number;
   pageSize?: number;
+  filterType?: "do" | "expiring" | "updates" | "all"; // Sub-menu filter
   // Advanced filters
   name?: string;
   phone?: string;
@@ -161,6 +162,7 @@ export async function listCustomers(params?: {
   if (params?.dateAssignedEnd) qs.set("dateAssignedEnd", params.dateAssignedEnd);
   if (params?.ownershipStart) qs.set("ownershipStart", params.ownershipStart);
   if (params?.ownershipEnd) qs.set("ownershipEnd", params.ownershipEnd);
+  if (params?.filterType) qs.set("filterType", params.filterType);
 
   const query = qs.toString();
   const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
@@ -171,6 +173,21 @@ export async function listCustomers(params?: {
   }
   return response as { total: number; data: any[] };
 }
+
+export async function getCustomerCounts(params: {
+  companyId: number;
+  assignedTo: number;
+}): Promise<{ counts: Record<string, number> }> {
+  const qs = new URLSearchParams();
+  qs.set("action", "counts");
+  qs.set("companyId", String(params.companyId));
+  qs.set("assignedTo", String(params.assignedTo));
+
+  const query = qs.toString();
+  const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
+  return response as { counts: Record<string, number> };
+}
+
 
 export async function listCustomersBySource(
   source: "new_sale" | "waiting_return" | "stock",
@@ -190,7 +207,7 @@ export async function listUsers(companyId?: number) {
   return apiFetch(`users${companyId ? `?${qs}` : ""}`);
 }
 
-export async function getCustomerStats(companyId: number) {
+export async function getCustomerStats(companyId: number, assignedTo?: number) {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
   const headers: any = { "Content-Type": "application/json" };
   if (token) {
@@ -198,7 +215,10 @@ export async function getCustomerStats(companyId: number) {
   }
 
   // Use direct fetch for standalone PHP endpoint
-  const url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
+  let url = `${apiBasePath.replace(/\/$/, "")}/customer/customer_stats.php?company_id=${companyId}`;
+  if (assignedTo) {
+    url += `&assigned_to=${assignedTo}`;
+  }
 
   const res = await fetch(
     url,
@@ -637,16 +657,27 @@ export async function getOrder(id: string) {
   return apiFetch(`orders/${encodeURIComponent(id)}`);
 }
 
-export async function listAppointments(customerId?: string) {
+export async function listAppointments(params?: { customerId?: string; pageSize?: number }) {
   const qs = new URLSearchParams();
-  if (customerId) qs.set("customerId", customerId);
-  return apiFetch(`appointments${customerId ? `?${qs}` : ""}`);
+  if (params?.customerId) qs.set("customerId", params.customerId);
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  return apiFetch(`appointments${qs.toString() ? `?${qs}` : ""}`);
 }
 
-export async function listCallHistory(customerId?: string) {
+export async function listCallHistory(params?: { customerId?: string; page?: number; pageSize?: number; companyId?: number }) {
   const qs = new URLSearchParams();
-  if (customerId) qs.set("customerId", customerId);
-  return apiFetch(`call_history${customerId ? `?${qs}` : ""}`);
+  if (params?.customerId) qs.set("customerId", params.customerId);
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
+
+  const response = await apiFetch(`call_history${qs.toString() ? `?${qs}` : ""}`);
+
+  // Normalize response
+  if (Array.isArray(response)) {
+    return { data: response, total: response.length };
+  }
+  return response as { data: CallHistory[]; total: number; page: number; pageSize: number };
 }
 
 // Marketing: Ad spend
@@ -875,7 +906,7 @@ export async function listCustomerBlocks(customerId?: string) {
   return apiFetch(`customer_blocks${customerId ? `?${qs}` : ""}`);
 }
 
-export async function getOrderStats(companyId: number, month?: string, year?: string) {
+export async function getOrderStats(companyId: number, month?: string, year?: string, userId?: number) {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -884,6 +915,7 @@ export async function getOrderStats(companyId: number, month?: string, year?: st
   params.set("company_id", String(companyId));
   if (month) params.set("month", month);
   if (year) params.set("year", year);
+  if (userId) params.set("user_id", String(userId));
 
   const res = await fetch(`${apiBasePath}/Orders/order_stats.php?${params.toString()}`, {
     method: "GET",
@@ -891,6 +923,34 @@ export async function getOrderStats(companyId: number, month?: string, year?: st
   });
   return res.json();
 }
+
+export async function getDailySales(
+  companyId: number,
+  month: string,
+  year: string,
+  groupBy: 'role' | 'page' | 'seller',
+  userId?: number,
+  statusFilter?: 'all' | 'confirmed' | 'delivered'
+) {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const params = new URLSearchParams();
+  params.set("company_id", String(companyId));
+  params.set("month", month);
+  params.set("year", year);
+  params.set("group_by", groupBy);
+  if (userId) params.set("user_id", String(userId));
+  if (statusFilter) params.set("status_filter", statusFilter);
+
+  const res = await fetch(`${apiBasePath}/Orders/daily_sales.php?${params.toString()}`, {
+    method: "GET",
+    headers,
+  });
+  return res.json();
+}
+
 
 export async function unblockCustomerBlock(id: number, unblockedBy: number) {
   return apiFetch(`customer_blocks/${encodeURIComponent(String(id))}`, {
@@ -1707,3 +1767,5 @@ export async function validateTrackingBulk(items: { orderId: string; trackingNum
     body: JSON.stringify({ items })
   });
 }
+
+

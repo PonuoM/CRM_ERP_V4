@@ -1,0 +1,8 @@
+Field	Type	Null	Key	Default	Extra
+customer_id	varchar(64)	YES		NULL	
+tag_id	int(11)	NO	MUL	NULL	
+Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+name	varchar(128)	NO		NULL	
+type	enum('SYSTEM','USER')	NO		NULL	
+color	varchar(20)	YES		NULL	

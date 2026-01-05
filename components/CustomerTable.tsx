@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Customer, ModalType, Tag, TagType, User, UserRole } from "../types";
 import { Eye, PhoneCall, Plus, ChevronLeft, ChevronRight, ShoppingCart, UserCog } from "lucide-react";
 import { getRemainingTimeRounded } from "@/utils/time";
@@ -24,6 +24,8 @@ interface CustomerTableProps {
   controlledPageSize?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
+  // Highlight Feature
+  viewedCustomerIds?: string[];
 }
 
 const NOOP_STORAGE: Storage = {
@@ -90,6 +92,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
     controlledPageSize,
     onPageChange,
     onPageSizeChange,
+    viewedCustomerIds = [],
   } = props;
 
   const isExternal = typeof totalCount === 'number';
@@ -345,10 +348,8 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
   };
 
   // Compute dynamic column count for empty state colSpan
-  const hasDoReason = customers.some((c) => c.doReason);
   const baseColumns = 5; // assigned date, name, province, ownership remaining, status
-  const dynamicColumns =
-    (showCallNotes ? 1 : !hideGrade ? 1 : 0) + (hasDoReason ? 1 : 0);
+  const dynamicColumns = showCallNotes ? 1 : !hideGrade ? 1 : 0;
   const trailingColumns = 2; // TAG, actions
   const totalColumns = baseColumns + dynamicColumns + trailingColumns;
 
@@ -383,11 +384,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                   เกรด
                 </th>
               )}
-              {hasDoReason && (
-                <th scope="col" className="px-6 py-3 min-w-[250px]">
-                  เหตุผล Do
-                </th>
-              )}
+
               <th scope="col" className="px-6 py-3 min-w-[200px]">
                 TAG
               </th>
@@ -413,7 +410,11 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                       customer.customerRefId ||
                       `${customer.phone}-${index}`
                     }
-                    className="bg-white border-b hover:bg-gray-50"
+
+                    className={`border-b transition-colors ${viewedCustomerIds.includes(String(customer.id || customer.pk))
+                      ? "bg-gray-100/80 hover:bg-gray-200"
+                      : "bg-white hover:bg-gray-50"
+                      }`}
                   >
                     <td className="px-6 py-4">
                       {new Date(customer.dateAssigned).toLocaleDateString(
@@ -435,11 +436,39 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                       {remainingTime.text}
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`px-2.5 py-1 text-xs font-medium rounded-full ${statusColorMap[customer.lifecycleStatus] || "bg-gray-100 text-gray-800"}`}
-                      >
-                        {lifecycleLabel(customer.lifecycleStatus)}
-                      </span>
+                      <div className="group relative inline-block">
+                        <span
+                          className={`px-2 py-0.5 text-[11px] font-medium rounded-full whitespace-nowrap cursor-help ${statusColorMap[customer.lifecycleStatus] || "bg-gray-100 text-gray-800"}`}
+                        >
+                          {lifecycleLabel(customer.lifecycleStatus)}
+                        </span>
+                        {customer.doReason && (
+                          <div
+                            className="absolute z-50 hidden group-hover:block"
+                            style={{
+                              // Smart positioning via CSS - prefer bottom, fallback to top
+                              bottom: index < 3 ? 'auto' : '100%',
+                              top: index < 3 ? '100%' : 'auto',
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              marginTop: index < 3 ? '8px' : '0',
+                              marginBottom: index >= 3 ? '8px' : '0',
+                            }}
+                          >
+                            <div className="relative bg-gray-800 text-white text-sm rounded-lg px-4 py-2 shadow-lg whitespace-nowrap">
+                              {/* Arrow */}
+                              <div
+                                className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-transparent ${index < 3
+                                  ? 'bottom-full border-b-[6px] border-b-gray-800'
+                                  : 'top-full border-t-[6px] border-t-gray-800'
+                                  }`}
+                              />
+                              <div className="font-medium text-yellow-300 text-xs">สาเหตุที่อยู่ใน Do:</div>
+                              <div className="mt-0.5">{customer.doReason}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     {showCallNotes && (
                       <td
@@ -454,15 +483,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                         {customer.grade}
                       </td>
                     )}
-                    {hasDoReason && (
-                      <td className="px-6 py-4">
-                        {customer.doReason && (
-                          <span className="text-xs text-gray-700">
-                            {customer.doReason}
-                          </span>
-                        )}
-                      </td>
-                    )}
+
                     <td className="px-6 py-4">
                       <TagColumn customer={customer} />
                     </td>
@@ -578,54 +599,56 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
       </div>
 
       {/* Change Owner Modal */}
-      {showChangeOwnerModal && currentUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                เปลี่ยนผู้ดูแลลูกค้า
-              </h3>
-            </div>
-            <div className="px-6 py-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                เลือกผู้ดูแลใหม่
-              </label>
-              <select
-                value={selectedOwnerId || ''}
-                onChange={(e) => setSelectedOwnerId(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              >
-                {getFilteredEligibleOwners(
-                  customers.find(c => c.id === showChangeOwnerModal)!
-                ).map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.firstName} {user.lastName} ({user.role})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowChangeOwnerModal(null);
-                  setSelectedOwnerId(null);
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={handleConfirmChangeOwner}
-                disabled={!selectedOwnerId}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ยืนยัน
-              </button>
+      {
+        showChangeOwnerModal && currentUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  เปลี่ยนผู้ดูแลลูกค้า
+                </h3>
+              </div>
+              <div className="px-6 py-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  เลือกผู้ดูแลใหม่
+                </label>
+                <select
+                  value={selectedOwnerId || ''}
+                  onChange={(e) => setSelectedOwnerId(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {getFilteredEligibleOwners(
+                    customers.find(c => c.id === showChangeOwnerModal)!
+                  ).map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.firstName} {user.lastName} ({user.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowChangeOwnerModal(null);
+                    setSelectedOwnerId(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleConfirmChangeOwner}
+                  disabled={!selectedOwnerId}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ยืนยัน
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 

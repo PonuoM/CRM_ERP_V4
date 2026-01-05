@@ -61,7 +61,7 @@ const ProductSelectorModal: React.FC<ProductSelectorModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-40">
             <div className="bg-white rounded-lg w-full max-w-[1200px] p-4 shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
                 {/* Header with Tabs */}
                 <div className="mb-4 border-b">

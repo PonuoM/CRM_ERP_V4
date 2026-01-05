@@ -10,13 +10,15 @@ import {
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { MonthlyOrdersChart } from "@/components/Charts";
-import { getOrderStats, getCustomerStats } from "@/services/api";
+import DailySalesChart from "@/components/DailySalesChart";
+import { getOrderStats, getCustomerStats, getDailySales } from "@/services/api";
 import Spinner from "@/components/Spinner";
 
 interface SalesDashboardProps {
   user?: any; // Accepting user for companyId
   orders?: Order[];
   customers?: Customer[];
+  openCreateOrderModal?: () => void;
 }
 
 // Custom styles to fix ApexCharts legend overflow
@@ -43,6 +45,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   user,
   orders = [],
   customers = [],
+  openCreateOrderModal,
 }) => {
   const [month, setMonth] = useState<string>(() =>
     String(new Date().getMonth() + 1).padStart(2, "0"),
@@ -57,14 +60,26 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
   const [customerStats, setCustomerStats] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Daily Sales Chart State
+  const [dailySalesData, setDailySalesData] = useState<any>(null);
+  const [dailySalesDetails, setDailySalesDetails] = useState<any[]>([]);
+  const [dailySalesLoading, setDailySalesLoading] = useState<boolean>(false);
+  const [dailySalesGroupBy, setDailySalesGroupBy] = useState<'role' | 'page' | 'seller'>('seller');
+  const [dailySalesStatus, setDailySalesStatus] = useState<'all' | 'confirmed' | 'delivered'>('all');
+
   const fetchStats = async () => {
     if (!user?.companyId) return;
 
     setLoading(true);
     try {
+      // Admin Control and Super Admin see all orders in their company
+      // Other roles only see their own orders
+      const isCompanyAdmin = user.role === 'Admin Control' || user.role === 'Super Admin';
+      const userIdFilter = isCompanyAdmin ? undefined : user.id;
+
       const [oStats, cStats] = await Promise.all([
-        getOrderStats(user.companyId, month, year),
-        getCustomerStats(user.companyId)
+        getOrderStats(user.companyId, month, year, userIdFilter),
+        getCustomerStats(user.companyId, userIdFilter) // Pass user.id to filter count
       ]);
 
       if (oStats.ok) setOrderStats(oStats.stats);
@@ -85,10 +100,44 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
     fetchStats();
   };
 
+  // Fetch Daily Sales Data
+  const fetchDailySales = async () => {
+    if (!user?.companyId) return;
+
+    setDailySalesLoading(true);
+    try {
+      const isCompanyAdmin = user.role === 'Admin Control' || user.role === 'Super Admin';
+      const userIdFilter = isCompanyAdmin ? undefined : user.id;
+
+      const result = await getDailySales(
+        user.companyId,
+        month,
+        year,
+        dailySalesGroupBy,
+        userIdFilter,
+        dailySalesStatus
+      );
+
+      if (result.ok) {
+        setDailySalesData(result.data);
+        setDailySalesDetails(result.details || []);
+      }
+    } catch (error) {
+      console.error("Daily sales fetch error", error);
+    } finally {
+      setDailySalesLoading(false);
+    }
+  };
+
   // Auto-refresh chart when page loads or when filters change
   useEffect(() => {
     fetchStats();
   }, [user?.companyId, month, year]);
+
+  // Auto-refresh daily sales when filters or groupBy change
+  useEffect(() => {
+    fetchDailySales();
+  }, [user?.companyId, month, year, dailySalesGroupBy, dailySalesStatus]);
 
   const { monthlySales, monthlyOrders, customersCount, performancePct } =
     useMemo(() => {
@@ -163,11 +212,15 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">มุมมอง</label>
-              <button className="w-full border rounded-md px-3 py-2 text-sm flex items-center justify-between">
-                <span>รายเดือน</span>
-                <ChevronDown className="w-4 h-4 text-gray-400" />
+            <div className="flex items-end">
+              <button
+                onClick={openCreateOrderModal}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-medium rounded-md px-4 py-2 text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                สร้างคำสั่งซื้อ
               </button>
             </div>
           </div>
@@ -202,18 +255,18 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
         </div>
 
         {/* Charts/sections (placeholders for layout) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full overflow-hidden">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-md font-semibold text-gray-700">
-                สรุปคำสั่งซื้อรายเดือน
+                สรุปคำสั่งซื้อรายเดือน ({year})
               </h3>
               <button
                 onClick={refreshChart}
                 disabled={isRefreshing}
                 className={`p-2 rounded-md transition-colors ${isRefreshing
-                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    : "hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : "hover:bg-gray-100 text-gray-500 hover:text-gray-700"
                   }`}
                 title={isRefreshing ? "กำลังรีเฟรช..." : "รีเฟรชกราฟ"}
               >
@@ -223,12 +276,12 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               </button>
             </div>
             <div className="w-full">
-              <MonthlyOrdersChart key={chartKey} data={orderStats?.monthlyCounts} loading={loading} />
+              <MonthlyOrdersChart key={chartKey} data={orderStats?.monthlyCounts} loading={loading} year={year} />
             </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
             <h3 className="text-md font-semibold text-gray-700 mb-4">
-              สถานะการชำระเงิน
+              ช่องทางการชำระเงิน
             </h3>
             <div className="space-y-3 text-sm">
               {loading ? (
@@ -236,17 +289,83 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({
               ) : (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">ชำระแล้ว (Transfer)</span>
+                    <span className="text-gray-600">โอนเงิน</span>
                     <span className="font-medium">{paymentCounts['Transfer'] || 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">เก็บเงินปลายทาง (COD)</span>
                     <span className="font-medium">{paymentCounts['COD'] || 0}</span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">รับสินค้าก่อน</span>
+                    <span className="font-medium">{paymentCounts['หลังจากรับสินค้า'] || paymentCounts['PayAfter'] || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">ส่งเคลม</span>
+                    <span className="font-medium">{paymentCounts['Claim'] || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">ส่งของแถม</span>
+                    <span className="font-medium">{paymentCounts['FreeGift'] || 0}</span>
+                  </div>
                 </>
               )}
             </div>
           </div>
+        </div>
+
+        {/* Order Status Section */}
+        <div className="grid grid-cols-1 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+            <h3 className="text-md font-semibold text-gray-700 mb-4">
+              สถานะออเดอร์
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
+              {loading ? (
+                <Spinner />
+              ) : (
+                <>
+                  <div className="bg-yellow-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{orderStats?.statusCounts?.['Pending'] || 0}</div>
+                    <div className="text-gray-600 mt-1">รอดำเนินการ</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-purple-600">{(orderStats?.statusCounts?.['Preparing'] || 0) + (orderStats?.statusCounts?.['Picking'] || 0)}</div>
+                    <div className="text-gray-600 mt-1">กำลังจัดเตรียม</div>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-blue-600">{orderStats?.statusCounts?.['Shipping'] || 0}</div>
+                    <div className="text-gray-600 mt-1">กำลังจัดส่ง</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-orange-600">{(orderStats?.statusCounts?.['PreApproved'] || 0) + (orderStats?.statusCounts?.['AwaitingVerification'] || 0)}</div>
+                    <div className="text-gray-600 mt-1">รอตรวจสอบ</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-green-600">{orderStats?.statusCounts?.['Delivered'] || 0}</div>
+                    <div className="text-gray-600 mt-1">เสร็จสิ้น</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-gray-600">{orderStats?.statusCounts?.['Cancelled'] || 0}</div>
+                    <div className="text-gray-600 mt-1">ยกเลิก</div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Sales Chart Section */}
+        <div className="mt-6">
+          <DailySalesChart
+            data={dailySalesData}
+            details={dailySalesDetails}
+            loading={dailySalesLoading}
+            groupBy={dailySalesGroupBy}
+            onGroupByChange={setDailySalesGroupBy}
+            statusFilter={dailySalesStatus}
+            onStatusFilterChange={setDailySalesStatus}
+          />
         </div>
       </div>
     </>

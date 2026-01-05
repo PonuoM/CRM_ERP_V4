@@ -525,7 +525,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                     {order.orderStatus === OrderStatus.Pending && (
                       <span className="text-gray-400 text-sm ml-2">รอ Export</span>
                     )}
-                    {(user?.role === UserRole.Telesale || user?.role === UserRole.Supervisor) &&
+                    {(user?.role === UserRole.Telesale || user?.role === UserRole.Supervisor || user?.role === UserRole.Admin) &&
                       order.orderStatus === OrderStatus.Pending && onCancelOrder && (
                         <button onClick={() => onCancelOrder(order.id)} className="font-medium text-red-600 hover:underline ml-2">ยกเลิก</button>
                       )}

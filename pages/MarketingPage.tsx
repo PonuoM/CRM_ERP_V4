@@ -74,6 +74,57 @@ const hasAdminAccess = (user: User) => {
   );
 };
 
+// Helper function to format date as YYYY-MM-DD in local timezone
+const formatDateLocal = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// Helper function to get date range presets
+const getDateRangePreset = (type: string): { start: string; end: string } => {
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date;
+
+  switch (type) {
+    case "thisWeek":
+      // Week starts on Monday (dayOfWeek: Monday=1, Sunday=0)
+      const dayOfWeek = now.getDay();
+      // Calculate days to subtract to get to Monday
+      // If today is Sunday (0), go back 6 days to Monday
+      // If today is Monday (1), go back 0 days
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - daysToMonday);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6); // Monday to Sunday
+      break;
+    case "thisMonth":
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      break;
+    case "last7Days":
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 6);
+      endDate = new Date(now);
+      break;
+    case "last30Days":
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 29);
+      endDate = new Date(now);
+      break;
+    default:
+      return { start: "", end: "" };
+  }
+
+  return {
+    start: formatDateLocal(startDate),
+    end: formatDateLocal(endDate),
+  };
+};
+
 // Helper function to check if page is inactive
 const isPageInactive = (page?: {
   active?: boolean | number | string | null;
@@ -1564,6 +1615,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Removed pagination reset effect
 
   // Load dashboard data when dependencies change
+  /* Auto-load disabled for Search Button logic
   useEffect(() => {
     const ready =
       activeTab === "dashboard" &&
@@ -1581,6 +1633,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     selectedPages,
     dashboardSelectedUsers,
   ]);
+  */
 
   const getHeaderTitle = () => {
     switch (activeTab) {
@@ -1757,11 +1810,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   // Trigger dashboard load
   // Trigger dashboard load
+  /* Auto-load disabled for Search Button logic
   useEffect(() => {
     if (activeTab === 'dashboard' && adsInputMode === 'product') {
       loadProductDashboardData();
     }
   }, [activeTab, adsInputMode, dateRange, selectedPages, selectedProducts, dashboardSelectedUsers]);
+  */
 
   const exportDashboard = () => {
     let dataToExport: any[] = [];
@@ -2781,7 +2836,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
                 <div className="">
                   <button
-                    onClick={() => loadDashboardData()}
+                    onClick={() => {
+                      if (adsInputMode === 'product') {
+                        loadProductDashboardData();
+                      } else {
+                        loadDashboardData();
+                      }
+                    }}
                     disabled={dashboardLoading}
                     className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md shadow-sm h-[42px]"
                   >
@@ -2842,18 +2903,24 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const dayOfWeek = now.getDay();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - dayOfWeek);
-                            const endDate = new Date(startDate);
-                            endDate.setDate(startDate.getDate() + 6);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setTempStart(newRange.start);
-                            setTempEnd(newRange.end);
+                            const yesterday = new Date();
+                            yesterday.setDate(yesterday.getDate() - 1);
+                            const dateStr = yesterday.toISOString().slice(0, 10);
+                            setTempStart(dateStr);
+                            setTempEnd(dateStr);
+                            setDateRange({ start: dateStr, end: dateStr });
+                            setDatePickerOpen(false);
+                          }}
+                          className="px-3 py-2 text-xs rounded bg-orange-100 text-orange-700 hover:bg-orange-200 flex items-center"
+                        >
+                          <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                          เมื่อวาน
+                        </button>
+                        <button
+                          onClick={() => {
+                            const range = getDateRangePreset("thisWeek");
+                            setTempStart(range.start);
+                            setTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -2862,23 +2929,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(
-                              now.getFullYear(),
-                              now.getMonth(),
-                              1,
-                            );
-                            const endDate = new Date(
-                              now.getFullYear(),
-                              now.getMonth() + 1,
-                              0,
-                            );
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setTempStart(newRange.start);
-                            setTempEnd(newRange.end);
+                            const range = getDateRangePreset("thisMonth");
+                            setTempStart(range.start);
+                            setTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -2887,16 +2940,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - 6);
-                            const endDate = new Date(now);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setTempStart(newRange.start);
-                            setTempEnd(newRange.end);
+                            const range = getDateRangePreset("last7Days");
+                            setTempStart(range.start);
+                            setTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -2905,16 +2951,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - 29);
-                            const endDate = new Date(now);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setTempStart(newRange.start);
-                            setTempEnd(newRange.end);
+                            const range = getDateRangePreset("last30Days");
+                            setTempStart(range.start);
+                            setTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -3333,18 +3372,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    const now = new Date();
-                                    const dayOfWeek = now.getDay();
-                                    const startDate = new Date(now);
-                                    startDate.setDate(now.getDate() - dayOfWeek);
-                                    const endDate = new Date(startDate);
-                                    endDate.setDate(startDate.getDate() + 6);
-                                    setExportTempStart(
-                                      startDate.toISOString().slice(0, 10),
-                                    );
-                                    setExportTempEnd(
-                                      endDate.toISOString().slice(0, 10),
-                                    );
+                                    const range = getDateRangePreset("thisWeek");
+                                    setExportTempStart(range.start);
+                                    setExportTempEnd(range.end);
                                   }}
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
@@ -3353,23 +3383,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    const now = new Date();
-                                    const startDate = new Date(
-                                      now.getFullYear(),
-                                      now.getMonth(),
-                                      1,
-                                    );
-                                    const endDate = new Date(
-                                      now.getFullYear(),
-                                      now.getMonth() + 1,
-                                      0,
-                                    );
-                                    setExportTempStart(
-                                      startDate.toISOString().slice(0, 10),
-                                    );
-                                    setExportTempEnd(
-                                      endDate.toISOString().slice(0, 10),
-                                    );
+                                    const range = getDateRangePreset("thisMonth");
+                                    setExportTempStart(range.start);
+                                    setExportTempEnd(range.end);
                                   }}
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
@@ -3378,16 +3394,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    const now = new Date();
-                                    const startDate = new Date(now);
-                                    startDate.setDate(now.getDate() - 6);
-                                    const endDate = new Date(now);
-                                    setExportTempStart(
-                                      startDate.toISOString().slice(0, 10),
-                                    );
-                                    setExportTempEnd(
-                                      endDate.toISOString().slice(0, 10),
-                                    );
+                                    const range = getDateRangePreset("last7Days");
+                                    setExportTempStart(range.start);
+                                    setExportTempEnd(range.end);
                                   }}
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
@@ -3396,16 +3405,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    const now = new Date();
-                                    const startDate = new Date(now);
-                                    startDate.setDate(now.getDate() - 29);
-                                    const endDate = new Date(now);
-                                    setExportTempStart(
-                                      startDate.toISOString().slice(0, 10),
-                                    );
-                                    setExportTempEnd(
-                                      endDate.toISOString().slice(0, 10),
-                                    );
+                                    const range = getDateRangePreset("last30Days");
+                                    setExportTempStart(range.start);
+                                    setExportTempEnd(range.end);
                                   }}
                                   className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                                 >
@@ -3693,18 +3695,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const dayOfWeek = now.getDay();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - dayOfWeek);
-                            const endDate = new Date(startDate);
-                            endDate.setDate(startDate.getDate() + 6);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setAdsHistoryTempStart(newRange.start);
-                            setAdsHistoryTempEnd(newRange.end);
+                            const range = getDateRangePreset("thisWeek");
+                            setAdsHistoryTempStart(range.start);
+                            setAdsHistoryTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -3713,23 +3706,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(
-                              now.getFullYear(),
-                              now.getMonth(),
-                              1,
-                            );
-                            const endDate = new Date(
-                              now.getFullYear(),
-                              now.getMonth() + 1,
-                              0,
-                            );
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setAdsHistoryTempStart(newRange.start);
-                            setAdsHistoryTempEnd(newRange.end);
+                            const range = getDateRangePreset("thisMonth");
+                            setAdsHistoryTempStart(range.start);
+                            setAdsHistoryTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -3738,16 +3717,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - 6);
-                            const endDate = new Date(now);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setAdsHistoryTempStart(newRange.start);
-                            setAdsHistoryTempEnd(newRange.end);
+                            const range = getDateRangePreset("last7Days");
+                            setAdsHistoryTempStart(range.start);
+                            setAdsHistoryTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >
@@ -3756,16 +3728,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                         </button>
                         <button
                           onClick={() => {
-                            const now = new Date();
-                            const startDate = new Date(now);
-                            startDate.setDate(now.getDate() - 29);
-                            const endDate = new Date(now);
-                            const newRange = {
-                              start: startDate.toISOString().slice(0, 10),
-                              end: endDate.toISOString().slice(0, 10),
-                            };
-                            setAdsHistoryTempStart(newRange.start);
-                            setAdsHistoryTempEnd(newRange.end);
+                            const range = getDateRangePreset("last30Days");
+                            setAdsHistoryTempStart(range.start);
+                            setAdsHistoryTempEnd(range.end);
                           }}
                           className="px-3 py-2 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center"
                         >

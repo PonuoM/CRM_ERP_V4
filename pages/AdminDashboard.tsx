@@ -51,11 +51,19 @@ const SummaryTable: React.FC<{ title: string, data: { label: string, value: numb
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers, openCreateOrderModal }) => {
     const [dbStats, setDbStats] = React.useState<{ totalCustomers: number; grades: Record<string, number> } | null>(null);
     const [orderStats, setOrderStats] = React.useState<{ totalOrders: number; totalRevenue: number; avgOrderValue: number; statusCounts: Record<string, number>; monthlyCounts: Record<string, number> } | null>(null);
+    const [filteredOrderStats, setFilteredOrderStats] = React.useState<{ totalOrders: number; totalRevenue: number; avgOrderValue: number } | null>(null);
     const [loadingStats, setLoadingStats] = React.useState(!!user.companyId);
+    const [loadingFiltered, setLoadingFiltered] = React.useState(false);
 
+    // Filter states
+    const [filterType, setFilterType] = React.useState<'all' | 'today' | 'month' | 'year' | 'custom'>('all');
+    const currentYear = new Date().getFullYear();
+    const [selectedYear, setSelectedYear] = React.useState<number>(currentYear);
+    const yearOptions = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
+
+    // Fetch all-time stats (for charts and tables)
     React.useEffect(() => {
-        if (user.companyId) { // Only dependency is companyId, effectively "on load" for a logged-in user context
-
+        if (user.companyId) {
             Promise.all([
                 getCustomerStats(user.companyId),
                 getOrderStats(user.companyId)
@@ -76,13 +84,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
         }
     }, [user.companyId]);
 
+    // Fetch filtered stats (for KPI cards only)
+    React.useEffect(() => {
+        if (!user.companyId) return;
+
+        if (filterType === 'all') {
+            setFilteredOrderStats(null); // Use all-time stats
+            return;
+        }
+
+        setLoadingFiltered(true);
+
+        let month: string | undefined;
+        let year: string | undefined;
+
+        const now = new Date();
+        if (filterType === 'today') {
+            month = String(now.getMonth() + 1).padStart(2, '0');
+            year = String(now.getFullYear());
+        } else if (filterType === 'month') {
+            month = String(now.getMonth() + 1).padStart(2, '0');
+            year = String(now.getFullYear());
+        } else if (filterType === 'year') {
+            year = String(now.getFullYear());
+        } else if (filterType === 'custom') {
+            year = String(selectedYear);
+        }
+
+        getOrderStats(user.companyId, month, year)
+            .then(res => {
+                if (res.ok && res.stats) {
+                    setFilteredOrderStats({
+                        totalOrders: res.stats.totalOrders,
+                        totalRevenue: res.stats.totalRevenue,
+                        avgOrderValue: res.stats.avgOrderValue,
+                    });
+                }
+            })
+            .catch(err => console.error("Failed to load filtered stats", err))
+            .finally(() => setLoadingFiltered(false));
+
+    }, [user.companyId, filterType, selectedYear]);
+
     const stats = useMemo(() => {
-        if (orderStats) {
+        // For KPI cards: use filtered stats if available, otherwise use all-time stats
+        const activeOrderStats = filteredOrderStats || orderStats;
+
+        if (activeOrderStats) {
             return {
                 totalCustomers: dbStats ? dbStats.totalCustomers : (loadingStats ? 0 : customers.length),
-                totalOrders: orderStats.totalOrders,
-                totalRevenue: orderStats.totalRevenue,
-                avgOrderValue: orderStats.avgOrderValue,
+                totalOrders: activeOrderStats.totalOrders,
+                totalRevenue: activeOrderStats.totalRevenue,
+                avgOrderValue: activeOrderStats.avgOrderValue,
             };
         }
 
@@ -96,7 +149,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
             totalRevenue,
             avgOrderValue,
         };
-    }, [orders, customers.length, dbStats, loadingStats, orderStats]);
+    }, [orders, customers.length, dbStats, loadingStats, orderStats, filteredOrderStats]);
+
+    const isLoadingCards = loadingStats || loadingFiltered;
 
     const orderStatusData = useMemo(() => {
         if (orderStats?.statusCounts) {
@@ -142,11 +197,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
                     {/* This space can be used for title if needed, but the App header already has it */}
                 </div>
                 <div className="flex items-center space-x-2">
-                    <select className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block py-2 px-3">
-                        <option>ทั้งหมด</option>
-                        <option>วันนี้</option>
-                        <option>เดือนนี้</option>
+                    <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value as any)}
+                        className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block py-2 px-3"
+                    >
+                        <option value="all">ทั้งหมด</option>
+                        <option value="today">วันนี้</option>
+                        <option value="month">เดือนนี้</option>
+                        <option value="year">ปีนี้</option>
+                        <option value="custom">เลือกปี</option>
                     </select>
+                    {filterType === 'custom' && (
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                            className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md focus:ring-green-500 focus:border-green-500 block py-2 px-3"
+                        >
+                            {yearOptions.map(y => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
+                    )}
                     <button className="bg-white border border-gray-300 text-gray-700 text-sm rounded-md py-2 px-3 flex items-center">
                         <BarChart2 className="w-4 h-4 mr-2" />
                         รายงานแบบเต็ม
@@ -167,30 +239,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, orders, customers
                         </svg>
                     </div>
                 ) : stats.totalCustomers.toLocaleString()} subtext="ลูกค้าทั้งหมดในระบบ" icon={Users} />
-                <StatCard title="คำสั่งซื้อทั้งหมด" value={loadingStats ? (
+                <StatCard title="คำสั่งซื้อ" value={isLoadingCards ? (
                     <div className="flex items-center">
                         <svg className="animate-spin h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                     </div>
-                ) : stats.totalOrders.toLocaleString()} subtext="คำสั่งซื้อทั้งหมด" icon={ShoppingCart} />
-                <StatCard title="รายได้รวม" value={loadingStats ? (
+                ) : stats.totalOrders.toLocaleString()} subtext={filterType === 'all' ? 'ทั้งหมด' : filterType === 'today' ? 'วันนี้' : filterType === 'month' ? 'เดือนนี้' : filterType === 'year' ? 'ปีนี้' : `ปี ${selectedYear}`} icon={ShoppingCart} />
+                <StatCard title="รายได้รวม" value={isLoadingCards ? (
                     <div className="flex items-center">
                         <svg className="animate-spin h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                     </div>
-                ) : `฿${stats.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} subtext="รายได้รวมทั้งหมด" icon={DollarSign} />
-                <StatCard title="ยอดเฉลี่ย/คำสั่ง" value={loadingStats ? (
+                ) : `฿${stats.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} subtext={filterType === 'all' ? 'ทั้งหมด' : filterType === 'today' ? 'วันนี้' : filterType === 'month' ? 'เดือนนี้' : filterType === 'year' ? 'ปีนี้' : `ปี ${selectedYear}`} icon={DollarSign} />
+                <StatCard title="ยอดเฉลี่ย/คำสั่ง" value={isLoadingCards ? (
                     <div className="flex items-center">
                         <svg className="animate-spin h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                     </div>
-                ) : `฿${stats.avgOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} subtext="ยอดเฉลี่ยต่อคำสั่ง" icon={BarChart2} />
+                ) : `฿${stats.avgOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} subtext={filterType === 'all' ? 'ทั้งหมด' : filterType === 'today' ? 'วันนี้' : filterType === 'month' ? 'เดือนนี้' : filterType === 'year' ? 'ปีนี้' : `ปี ${selectedYear}`} icon={BarChart2} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

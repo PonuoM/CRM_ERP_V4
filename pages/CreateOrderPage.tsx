@@ -2303,6 +2303,9 @@ export const CreateOrderPage: React.FC<CreateOrderPageProps> = ({
     ) {
       const cleanSub = cleanAddressName(shippingAddress.subdistrict);
       const subDistrict = subDistricts.find(
+        (sd) => cleanAddressName(sd.name_th) === cleanSub &&
+          (!shippingAddress.postalCode || String(sd.zip_code) === String(shippingAddress.postalCode))
+      ) || subDistricts.find(
         (sd) => cleanAddressName(sd.name_th) === cleanSub
       );
 

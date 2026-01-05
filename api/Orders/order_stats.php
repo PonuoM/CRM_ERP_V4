@@ -31,12 +31,19 @@ try {
     // Parameters
     $month = isset($_GET['month']) ? (int)$_GET['month'] : null;
     $year = isset($_GET['year']) ? (int)$_GET['year'] : null;
+    $userId = isset($_GET['user_id']) ? (int)$_GET['user_id'] : null;
 
     // Base filtering for "Summary" cards (Orders, Revenue, Status, Payment)
     // If AdminDashboard calls without filters -> All Time
     // If SalesDashboard calls with filters -> Filtered
     $filterWhere = "WHERE company_id = ?";
     $filterParams = [$companyId];
+
+    // Add user filter if provided (for user-specific stats)
+    if ($userId > 0) {
+        $filterWhere .= " AND creator_id = ?";
+        $filterParams[] = $userId;
+    }
 
     if ($year) {
         $filterWhere .= " AND YEAR(order_date) = ?";
@@ -90,6 +97,11 @@ try {
     // Let's adapt: If Year is provided, show that Year's months. Else Last 12.
     
     $chartParams = [$companyId];
+    $userFilter = "";
+    if ($userId > 0) {
+        $userFilter = " AND creator_id = ?";
+    }
+
     if ($year) {
         $chartSql = "
             SELECT 
@@ -98,10 +110,12 @@ try {
             FROM orders 
             WHERE company_id = ? 
               AND YEAR(order_date) = ?
+              $userFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
         ";
         $chartParams[] = $year;
+        if ($userId > 0) $chartParams[] = $userId;
     } else {
         $chartSql = "
             SELECT 
@@ -110,9 +124,11 @@ try {
             FROM orders 
             WHERE company_id = ? 
               AND order_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+              $userFilter
             GROUP BY month_key 
             ORDER BY month_key ASC
         ";
+        if ($userId > 0) $chartParams[] = $userId;
     }
 
     $stmtMonthly = $pdo->prepare($chartSql);

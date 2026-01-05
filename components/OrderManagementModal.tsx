@@ -1579,6 +1579,10 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     if (!selectedSubDistrict && address.subdistrict) {
       const match = subDistricts.find(
         (sd) =>
+          (sd.name_th || "").trim() === (address.subdistrict || "").trim() &&
+          (!address.postalCode || String(sd.zip_code) === String(address.postalCode)),
+      ) || subDistricts.find(
+        (sd) =>
           (sd.name_th || "").trim() === (address.subdistrict || "").trim(),
       );
 

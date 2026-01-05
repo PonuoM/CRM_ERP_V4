@@ -640,7 +640,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
             รายชื่อลูกค้า {selectedUser !== 'all' && `(${resolveUserName(Number(selectedUser))})`}
           </h2>
           <div className="text-sm text-gray-500">
-            แสดง {paginatedCustomers.length} จาก {filteredCustomers.length} รายการ
+            แสดง {paginatedCustomers.length} จาก {totalCustomersInDB.toLocaleString()} รายการ
           </div>
         </div>
         <div className="overflow-x-auto">

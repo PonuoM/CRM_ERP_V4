@@ -67,7 +67,7 @@ const Modal: React.FC<ModalProps> = ({
   return (
     <>
       <div
-        className={`fixed inset-0 z-50 flex justify-center items-start md:pt-8 pt-4 pb-4 ${backdropClassName}`}
+        className={`fixed inset-0 z-[9999] flex justify-center items-start md:pt-8 pt-4 pb-4 ${backdropClassName}`}
         aria-modal="true"
         role="dialog"
         onClick={closeOnBackdropClick ? handleClose : undefined}
@@ -94,7 +94,7 @@ const Modal: React.FC<ModalProps> = ({
 
       {/* Confirmation Dialog */}
       {showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex justify-center items-center">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">ยืนยันการปิด</h3>

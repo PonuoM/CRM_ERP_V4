@@ -12024,6 +12024,18 @@
     "deleted_at": null
   },
   {
+    "id": 961304,
+    "zip_code": 20130,
+    "name_th": "แสนสุข",
+    "name_en": "Saen Suk",
+    "district_id": 2001,
+    "lat": 13.274,
+    "long": 100.928,
+    "created_at": "2019-08-09T03:33:09.000+07:00",
+    "updated_at": "2025-09-20T06:31:26.000+07:00",
+    "deleted_at": null
+  },
+  {
     "id": 200113,
     "zip_code": 20131,
     "name_th": "แสนสุข",

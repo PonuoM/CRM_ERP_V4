@@ -62,7 +62,8 @@ lifecycle_map = {
     'followup': 'FollowUp',
     'existing_3m': 'Old3Months',
     'existing': 'Old',
-    'new': 'New'
+    'new': 'New',
+    'daily_distribution': 'DailyDistribution'
 }
 
 behavioral_map = {
@@ -72,18 +73,18 @@ behavioral_map = {
     'frozen': 'Frozen'
 }
 
-input_file = r'c:\AppServ\www\CRM_ERP_V4\exemple_import\customers (old).csv'
-output_file = r'c:\AppServ\www\CRM_ERP_V4\exemple_import\customers_ready.csv'
+input_file = r'c:\AppServ\www\CRM_ERP_V4\exemple_import\customers (old) 2.csv'
+output_file = r'c:\AppServ\www\CRM_ERP_V4\exemple_import\customers_ready_2.csv'
 
 with open(input_file, mode='r', encoding='utf-8-sig') as infile:
     reader = csv.DictReader(infile)
     
     fieldnames = [
         'customer_id', 'first_name', 'last_name', 'phone', 'email', 
-        'street', 'subdistrict', 'district', 'province', 'postal_code',
-        'company_id', 'assigned_to', 'date_assigned', 'follow_up_date',
+        'province', 'company_id', 'assigned_to', 'date_assigned', 'follow_up_date',
         'last_follow_up_date', 'lifecycle_status', 'behavioral_status', 
         'grade', 'total_purchases', 'total_calls', 'is_blocked',
+        'street', 'subdistrict', 'district', 'postal_code', 
         'followup_bonus_remaining'
     ]
     

@@ -1,7 +1,15 @@
 ﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { User, Customer, CustomerLifecycleStatus, ModalType, Tag, CustomerGrade, Appointment, Activity, ActivityType, CallHistory, Order } from '../types';
+import { User, Customer, CustomerLifecycleStatus, CustomerBehavioralStatus, ModalType, Tag, CustomerGrade, Appointment, Activity, ActivityType, CallHistory, Order } from '../types';
 import CustomerTable from '../components/CustomerTable';
-import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, ShoppingCart, UserPlus, Star, X } from 'lucide-react';
+import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, ShoppingCart, UserPlus, Star, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+
+import { db } from '../db/db';
+import { syncCustomers } from '../services/syncService';
+import { SyncProgressModal, SyncProgress } from '../components/SyncProgressModal';
+import usePersistentState from "@/utils/usePersistentState";
+
+// Module-level flag to prevent auto-sync from triggering twice (React Strict Mode double-mount)
+let hasTriggeredAutoSync = false;
 
 interface TelesaleDashboardProps {
   user: User;
@@ -292,6 +300,24 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   );
   const advRef = useRef<HTMLDivElement | null>(null);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [paginatedCustomers, setPaginatedCustomers] = useState<Customer[]>([]);
+
+
+
+  // Tab state cache: preserve page and data per tab
+  const [tabCache, setTabCache] = useState<Record<string, {
+    page: number;
+    data: Customer[];
+    total: number;
+  }>>({});
+
+
+
   // Click outside to collapse advanced filters
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -304,69 +330,146 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [showAdvanced]);
+  // Local state for DB customers
+  const [localCustomers, setLocalCustomers] = useState<Customer[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress>({
+    message: '',
+    progress: 0,
+    totalCustomers: 0,
+    syncedCustomers: 0,
+    isComplete: false,
+    isError: false,
+  });
 
-  const userCustomers = useMemo(() => {
-    return customers.filter(c => c.assignedTo === user.id);
-  }, [user.id, customers]);
+  // Lock to prevent double-syncing (especially in React Strict Mode)
+  const syncLock = useRef(false);
 
-  // Save filter state to localStorage whenever it changes
-  useEffect(() => {
-    const filterState = {
-      activeSubMenu,
-      activeDatePreset,
-      dateRange,
-      searchTerm,
-      appliedSearchTerm,
-      selectedTagIds,
-      selectedGrades,
-      selectedProvinces,
-      selectedLifecycleStatuses,
-      selectedExpiryDays,
-      sortBy,
-      sortByExpiry,
-      hideTodayCalls,
-      hideTodayCallsRangeEnabled,
-      hideTodayCallsRange,
-    };
+  const handleSyncCustomers = async () => {
+    if (syncLock.current || showSyncModal) return; // Also check if modal is already showing
+    syncLock.current = true;
+
+    setIsSyncing(true);
+    setShowSyncModal(true);
 
     try {
-      localStorage.setItem(filterStorageKey, JSON.stringify(filterState));
+      await syncCustomers(
+        user.companyId || 1,
+        (progress) => setSyncProgress(progress),
+        Number(user.id) // Filter by user ID
+      );
+
+      // Reload local data
+      const userId = Number(user.id);
+      if (!isNaN(userId)) {
+        const myCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
+        setLocalCustomers(myCustomers);
+      }
     } catch (error) {
-      console.warn('Failed to save filter state:', error);
+      console.error("Sync failed:", error);
+    } finally {
+      setIsSyncing(false);
+      // Don't release lock immediately if you want to prevent rapid re-clicks? 
+      // But for safety, release it.
+      syncLock.current = false;
     }
-  }, [activeSubMenu, activeDatePreset, dateRange, searchTerm, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange, filterStorageKey]);
+  };
+
+  // Import DB and Sync
+  useEffect(() => {
+    let active = true;
+    const loadFromDB = async () => {
+      // If we have props.customers, maybe use them? But App.tsx sends [], so rely on DB.
+      // Load all customers assigned to this user
+      if (!user || !user.id) return;
+
+      try {
+        // Check if this is Telesale or Supervisor role that needs daily sync
+        const telesaleRoles = ['Telesale', 'Supervisor', 'TelesaleSupervisor', 'SupervisorTelesale'];
+        const needsDailySync = telesaleRoles.some(role =>
+          user.role?.toLowerCase().includes(role.toLowerCase())
+        );
+
+        if (needsDailySync && !hasTriggeredAutoSync) {
+          // Check if we already synced today
+          const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+          const lastSyncKey = `lastSyncDate_${user.id}`;
+          const lastSyncDate = localStorage.getItem(lastSyncKey);
+
+          if (lastSyncDate !== today) {
+            // First login of the day - sync now!
+            hasTriggeredAutoSync = true;
+            console.log(`Daily sync: First login of the day for user ${user.id}. Syncing...`);
+            await handleSyncCustomers();
+            localStorage.setItem(lastSyncKey, today);
+          } else {
+            console.log(`Daily sync: Already synced today for user ${user.id}. Skipping.`);
+          }
+        }
+
+        // Fallback: If DB is empty (regardless of role), sync
+        const count = await db.customers.count();
+        if (count === 0 && !hasTriggeredAutoSync) {
+          hasTriggeredAutoSync = true;
+          await handleSyncCustomers();
+        }
+
+        // Valid user ID check to prevent "Uncaught DataCloneError" if user.id is weird
+        const userId = Number(user.id);
+        if (!isNaN(userId) && active) {
+          const myCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
+          setLocalCustomers(myCustomers);
+        }
+      } catch (error) {
+        console.error("Failed to load local customers", error);
+      }
+    };
+    loadFromDB();
+    return () => { active = false; };
+  }, [user.id, user.companyId, user.role]); // Added user.role to dependencies
+
+  const userCustomers = useMemo(() => {
+    // Merge props.customers (if any) with localCustomers, preferring local? 
+    // App.tsx sends [], so just use localCustomers for dashboard.
+    // Ensure uniqueness if needed, but for now just use localCustomers as the source of truth for dashboard.
+    return localCustomers;
+  }, [localCustomers]);
 
   const allAvailableTags = useMemo(
-    () => [...systemTags, ...user.customTags],
+    () => [...systemTags, ...(user.customTags || [])],
     [systemTags, user.customTags],
   );
+
   const allProvinces = useMemo(
     () =>
       [...new Set(userCustomers.map((c) => c.province).filter(Boolean))].sort(),
     [userCustomers],
   );
 
-  // Calculate Do dashboard counts (new logic)
-  const doCounts = useMemo(() => {
+  // Calculate Dashboard Counts
+  const tabCounts = useMemo(() => {
     const safeAppointments = appointments || [];
     const safeCalls = calls || [];
     const safeOrders = orders || [];
     const safeActivities = activities || [];
 
     const counts = {
-      followUp: 0, // pending appointments
+      do: 0, // This will combine followUp, daily, and new
       expiring: 0, // ownership expires in <= 5 days
-      daily: 0,    // DailyDistribution with no activity since assigned
-      new: 0,      // New with no activity since assigned
       updates: 0,  // Customers with orders in last 7 days (no activity after)
+      all: 0,      // Total customers (assigned to user)
     };
+
+    // Set 'all' count
+    counts.all = userCustomers.length;
 
     const now = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const sevenDaysAgoTime = sevenDaysAgo.getTime();
 
-    // Helper to check if customer has ANY activity (Call, Appointment, Order, Upsell/Activity)
+    // Helper to check if customer has ANY activity
     const hasAnyActivity = (c: Customer, since?: number) => {
       // Check calls
       const hasCall = safeCalls.some(ch => {
@@ -376,13 +479,6 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         return true;
       });
       if (hasCall) return true;
-
-      // Check appointments (created or updated)
-      const hasAppt = safeAppointments.some(appt => {
-        const matches = String(appt.customerId) === String(c.id) || String(appt.customerId) === String(c.pk);
-        if (!matches) return false;
-        return false; // Rely on Activity log
-      });
 
       const hasActivityLog = safeActivities.some(act => {
         const matches = String(act.customerId) === String(c.id) || String(act.customerId) === String(c.pk);
@@ -405,7 +501,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     };
 
     userCustomers.forEach((customer) => {
-      // 1) Pending appointments (not completed)
+      // 1) Pending appointments (Do)
       const hasPendingAppt = safeAppointments.some(
         (appt) => {
           const matches = String(appt.customerId) === String(customer.id) ||
@@ -417,7 +513,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         },
       );
       if (hasPendingAppt) {
-        counts.followUp++;
+        counts.do++;
       }
 
       // 2) Expiring ownership
@@ -428,26 +524,25 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         }
       }
 
-      // 3) New or Daily with no activity since assigned
+      // 3) New or Daily with no activity since assigned (Do)
       const isDaily = customer.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
       const isNew = customer.lifecycleStatus === CustomerLifecycleStatus.New;
 
       if (isDaily || isNew) {
         const assignedTime = new Date(customer.dateAssigned).getTime();
         if (!hasAnyActivity(customer, assignedTime)) {
-          if (isDaily) counts.daily++;
-          if (isNew) counts.new++;
+          counts.do++;
         }
       }
 
       // 4) Updates (Orders in last 7 days created by OTHERS)
-      if (!isDaily && !isNew) {
+      // Only count updates if not already in 'do' from daily/new or appointments
+      if (!hasPendingAppt && !(isDaily || isNew && !hasAnyActivity(customer, new Date(customer.dateAssigned).getTime()))) {
         const recentOrders = safeOrders.filter(o => {
           const matches = String(o.customerId) === String(customer.id) || String(o.customerId) === String(customer.pk);
           if (!matches) return false;
           if (!o.orderDate) return false;
 
-          // IMPORTANT: Exclude orders created by the current owner (match display logic)
           if (o.creatorId && customer.assignedTo) {
             if (String(o.creatorId) === String(customer.assignedTo)) {
               return false; // Same person, skip
@@ -478,99 +573,134 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
     let baseFiltered;
     const now = new Date();
+    const nowTime = now.getTime();
 
-    // Helper to check if customer has ANY activity (Call, Appointment, Order, Upsell/Activity)
-    const hasAnyActivity = (c: Customer, since?: number) => {
-      // Check calls
-      const hasCall = safeCalls.some(ch => {
-        const matches = String(ch.customerId) === String(c.id) || String(ch.customerId) === String(c.pk);
-        if (!matches) return false;
-        if (since) return new Date(ch.date).getTime() >= since;
-        return true;
-      });
-      if (hasCall) return true;
+    // =========== OPTIMIZATION: Pre-calculate activity indices ===========
+    // Instead of O(N*M) nested loops, build Maps once (O(M)) then do O(1) lookups
 
-      // Check appointments (created or updated)
-      // Note: Appointment creation usually logs an activity, but we check direct appointments too just in case
-      const hasAppt = safeAppointments.some(appt => {
-        const matches = String(appt.customerId) === String(c.id) || String(appt.customerId) === String(c.pk);
-        if (!matches) return false;
-        // If checking 'since', we might want to check created date, but appointment only has 'date' (scheduled date).
-        // For 'activity' check, we usually rely on the Activity log. 
-        // But let's check if there's an activity log for this appointment.
-        return false; // Rely on Activity log for appointment creation/updates
-      });
-      // Actually, let's rely on the 'activities' list which captures most things (Order, Call, Appt, etc.)
-      const hasActivityLog = safeActivities.some(act => {
-        const matches = String(act.customerId) === String(c.id) || String(act.customerId) === String(c.pk);
-        if (!matches) return false;
-        if (since) return new Date(act.timestamp).getTime() >= since;
-        return true;
-      });
-      if (hasActivityLog) return true;
+    // Build: customerId -> latestCallTime
+    const callTimeMap = new Map<string, number>();
+    for (const ch of safeCalls) {
+      const cid = String(ch.customerId);
+      const time = new Date(ch.date).getTime();
+      const existing = callTimeMap.get(cid) || 0;
+      if (time > existing) callTimeMap.set(cid, time);
+    }
 
-      // Check orders (if considered an activity)
-      const hasOrder = safeOrders.some(o => {
-        const matches = String(o.customerId) === String(c.id) || String(o.customerId) === String(c.pk);
-        if (!matches) return false;
-        if (since && o.orderDate) return new Date(o.orderDate).getTime() >= since;
-        return true;
-      });
-      if (hasOrder) return true;
+    // Build: customerId -> latestActivityTime
+    const activityTimeMap = new Map<string, number>();
+    for (const act of safeActivities) {
+      const cid = String(act.customerId);
+      const time = new Date(act.timestamp).getTime();
+      const existing = activityTimeMap.get(cid) || 0;
+      if (time > existing) activityTimeMap.set(cid, time);
+    }
 
+    // Build: customerId -> latestOrderTime
+    const orderTimeMap = new Map<string, number>();
+    for (const o of safeOrders) {
+      if (!o.orderDate) continue;
+      const cid = String(o.customerId);
+      const time = new Date(o.orderDate).getTime();
+      const existing = orderTimeMap.get(cid) || 0;
+      if (time > existing) orderTimeMap.set(cid, time);
+    }
+
+    // Build: customerId -> list of upcoming appointments
+    const upcomingAppointmentMap = new Map<string, typeof safeAppointments>();
+    const twoDaysFromNow = nowTime + 2 * 24 * 60 * 60 * 1000;
+    const oneDayAgo = nowTime - 24 * 60 * 60 * 1000;
+    for (const appt of safeAppointments) {
+      if (appt.status === 'เสร็จสิ้น') continue;
+      const apptTime = new Date(appt.date).getTime();
+      if (apptTime > twoDaysFromNow || apptTime < oneDayAgo) continue;
+      const cid = String(appt.customerId);
+      if (!upcomingAppointmentMap.has(cid)) upcomingAppointmentMap.set(cid, []);
+      upcomingAppointmentMap.get(cid)!.push(appt);
+    }
+
+    // O(1) lookup function
+    const hasAnyActivitySince = (customerId: string, since: number): boolean => {
+      const callTime = callTimeMap.get(customerId) || 0;
+      if (callTime >= since) return true;
+      const actTime = activityTimeMap.get(customerId) || 0;
+      if (actTime >= since) return true;
+      const orderTime = orderTimeMap.get(customerId) || 0;
+      if (orderTime >= since) return true;
       return false;
     };
 
+    const hasAnyActivityEver = (customerId: string): boolean => {
+      return callTimeMap.has(customerId) || activityTimeMap.has(customerId) || orderTimeMap.has(customerId);
+    };
+    // =========== END OPTIMIZATION ===========
+
     switch (activeSubMenu) {
       case 'do':
-        // New DO logic:
-        // 1. Appointments due in 0-2 days (and not completed)
-        // 2. DailyDistribution (assigned today) OR New customers
-        // Condition to disappear: ANY activity exists (Call, Appt, Order, Upsell)
-        // For Daily/New, "disappear if any activity" means checking if there is any activity SINCE they were assigned?
-        // The requirement says: "ลูกค้าแจกรายวัน = มี activiti อย่างใดอย่างนึง รวมทั้ง การ upsell สำเร็จ (โทร นัดหมาย ขายได้ รวมหมด)"
-        // This implies if they have ANY activity, they are done.
-
         baseFiltered = userCustomers.filter((c) => {
-          // 1. Appointments
-          const upcomingAppointments = safeAppointments.filter(appt => {
-            const matches = String(appt.customerId) === String(c.id) || String(appt.customerId) === String(c.pk);
-            return matches &&
-              appt.status !== 'เสร็จสิ้น' &&
-              new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000) &&
-              new Date(appt.date) >= new Date(now.getTime() - 24 * 60 * 60 * 1000); // Include today/yesterday overdue? "ก่อนถึง 2-0 วัน" usually means 0 to 2 days in future.
-          });
+          const cid = String(c.id || c.pk);
+          // O(1) lookup for upcoming appointments
+          const upcomingAppts = upcomingAppointmentMap.get(cid);
+          if (upcomingAppts && upcomingAppts.length > 0) return true;
 
-          // If has appointment in range, show it (unless we want to hide it if worked? usually appointment implies work needed)
-          // "นัดหมาย = เคลียนัดหมายออกเพื่อเคลีย" -> If appointment exists, show it. To clear, user must complete/cancel it.
-          if (upcomingAppointments.length > 0) return true;
-
-          // 2. Daily/New
           const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
-
           if (isDaily || isNew) {
-            // Check if ANY activity exists. 
-            // For Daily, they are usually assigned today. If they have activity today, they are done.
-            // For New, if they have activity, they are done.
-            // We should probably check activity *since assigned* or just *any* activity if they are new/daily?
-            // Usually "New" implies no history. "Daily" implies distributed today.
-            // Let's check for activity since 'dateAssigned'.
             const assignedTime = new Date(c.dateAssigned).getTime();
-            if (hasAnyActivity(c, assignedTime)) {
-              return false; // Has activity, remove from list
+            // O(1) activity check
+            if (hasAnyActivitySince(cid, assignedTime)) return false;
+            return true;
+          }
+          return false;
+        }).map((c) => {
+          // Add detailed doReason for each customer in Do
+          const cid = String(c.id || c.pk);
+          const upcomingAppts = upcomingAppointmentMap.get(cid);
+
+          if (upcomingAppts && upcomingAppts.length > 0) {
+            const nextAppt = upcomingAppts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+            const apptDate = new Date(nextAppt.date);
+            const daysUntil = Math.ceil((apptDate.getTime() - nowTime) / (1000 * 60 * 60 * 24));
+
+            if (daysUntil <= 0) {
+              return { ...c, doReason: `📅 นัดหมายวันนี้ (${apptDate.toLocaleDateString('th-TH')})` };
+            } else if (daysUntil === 1) {
+              return { ...c, doReason: `📅 นัดหมายพรุ่งนี้ (${apptDate.toLocaleDateString('th-TH')})` };
+            } else {
+              return { ...c, doReason: `📅 มีนัดหมายอีก ${daysUntil} วัน (${apptDate.toLocaleDateString('th-TH')})` };
             }
-            return true; // No activity, keep in list
           }
 
-          return false;
+          const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
+          const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
+          const assignedDate = new Date(c.dateAssigned);
+          const daysSinceAssigned = Math.floor((nowTime - assignedDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          if (isDaily) {
+            if (daysSinceAssigned === 0) {
+              return { ...c, doReason: '🆕 ลูกค้าแจกใหม่วันนี้ - ยังไม่มีกิจกรรม' };
+            } else if (daysSinceAssigned === 1) {
+              return { ...c, doReason: '⏰ ลูกค้าแจกใหม่เมื่อวาน - ยังไม่มีการโทร' };
+            } else {
+              return { ...c, doReason: `⚠️ ลูกค้าแจกใหม่ ${daysSinceAssigned} วันที่แล้ว - ยังไม่มีการติดต่อ` };
+            }
+          }
+
+          if (isNew) {
+            if (daysSinceAssigned === 0) {
+              return { ...c, doReason: '🆕 ลูกค้าใหม่วันนี้ - รอการติดต่อ' };
+            } else if (daysSinceAssigned === 1) {
+              return { ...c, doReason: '⏰ ลูกค้าใหม่เมื่อวาน - ยังไม่มีการโทร' };
+            } else {
+              return { ...c, doReason: `⚠️ ลูกค้าใหม่ ${daysSinceAssigned} วันที่แล้ว - ยังไม่มีกิจกรรม` };
+            }
+          }
+
+          return c;
         });
         break;
 
       case 'expiring':
-        // Customers with ownership expiring within 5 days
-        // "แสดง รายชื่อใกล้หมด 5 วัน"
-        // "วิธีการหายไปจากหน้านี้คือ หมดอายุ โดนดึงกลับ หรือ ขายได้ วันเพิ่ม" -> If sold, ownership extends, so expires > 5 days, so disappears.
         baseFiltered = userCustomers.filter(c => {
           if (!c.ownershipExpires) return false;
           const daysUntil = getDaysUntilExpiration(c.ownershipExpires);
@@ -579,216 +709,288 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         break;
 
       case 'updates':
-        // "ลูกค้ามีออเดอร์ใหม่"
-        // Show customers with orders created by OTHERS (not current owner) in last 7 days.
-        // Exclude newly registered customers (registered < 7 days).
-        // Remove if ANY activity exists AFTER the order.
-
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         const sevenDaysAgoTime = sevenDaysAgo.getTime();
 
+        // OPTIMIZATION: Pre-filter orders by date first
+        const recentOrdersMap = new Map<string, number>(); // customerId -> latestOrderTime
+        for (const o of safeOrders) {
+          if (!o.orderDate) continue;
+          const oTime = new Date(o.orderDate).getTime();
+          if (oTime < sevenDaysAgoTime) continue;
+          const cid = String(o.customerId);
+          const existing = recentOrdersMap.get(cid) || 0;
+          if (oTime > existing) recentOrdersMap.set(cid, oTime);
+        }
+
         baseFiltered = userCustomers.filter(c => {
-          // Exclude newly registered customers (registered within last 7 days)
-          // "ต้องไม่ใช่ลูกค้าที่เพิ่งสร้าง (date_registered) ภายใน 7 วัน"
           if (c.dateRegistered) {
             const registeredDate = new Date(c.dateRegistered).getTime();
-            if (registeredDate >= sevenDaysAgoTime) {
-              return false; // Too new, skip
-            }
+            if (registeredDate >= sevenDaysAgoTime) return false;
           }
-
-          // Find orders in last 7 days created by OTHERS
-          // "ต้องเป็นการขาย จาก คนอื่น ที่ไม่ใช่ เจ้าของ ณ ปัจบันที่ถืออยู่ ภายใน ระยะเวลา 7 วัน"
-          const recentOrders = safeOrders.filter(o => {
-            const matches = String(o.customerId) === String(c.id) || String(o.customerId) === String(c.pk);
-            if (!matches) return false;
-            if (!o.orderDate) return false;
-
-            // Check if order was created by someone other than current owner
-            if (o.creatorId && c.assignedTo) {
-              if (String(o.creatorId) === String(c.assignedTo)) {
-                return false; // Same person, skip
-              }
-            }
-
-            const oDate = new Date(o.orderDate).getTime();
-            return oDate >= sevenDaysAgoTime;
-          });
-
-          if (recentOrders.length === 0) return false;
-
-          // Get the latest order time
-          const latestOrderTime = Math.max(...recentOrders.map(o => new Date(o.orderDate!).getTime()));
-
-          // Check if any activity exists AFTER the latest order
-          // "เงื่อนไขการหายไป ... คือ มี activiti อย่างใดอย่างนึง ... (โทร นัดหมาย ขายได้ รวมหมด)"
-          if (hasAnyActivity(c, latestOrderTime + 1000)) { // +1s to avoid matching the order itself if logged as activity at same time
-            return false;
-          }
-
+          const cid = String(c.id || c.pk);
+          const latestOrderTime = recentOrdersMap.get(cid);
+          if (!latestOrderTime) return false; // No recent orders
+          // O(1) activity check
+          if (hasAnyActivitySince(cid, latestOrderTime + 1000)) return false;
           return true;
-        }).map(c => {
-          // Add reason
-          return { ...c, doReason: 'มีคำสั่งซื้อใหม่' } as Customer;
-        });
+        }).map(c => ({ ...c, doReason: 'มีคำสั่งซื้อใหม่' } as Customer));
         break;
 
       case 'all':
       default:
-        // For all customers, enrich with latest call note
+        // OPTIMIZATION: Create a map for latest calls to avoid O(N*M) filtering
+        // Pre-process calls: Group by customerId and find latest
+        const latestCallMap = new Map<number | string, any>();
+
+        // Sort calls once (descending)
+        const sortedCalls = [...safeCalls].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        // Populate map with the first (latest) call for each customer
+        for (const call of sortedCalls) {
+          if (!latestCallMap.has(call.customerId)) {
+            latestCallMap.set(String(call.customerId), call);
+          }
+        }
+
         baseFiltered = userCustomers.map(c => {
-          const latestCall = safeCalls
-            .filter(ch => ch.customerId === c.id)
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+          const id = String(c.id || c.pk);
+          // O(1) Lookup
+          const latestCall = latestCallMap.get(id);
+
           const lastCallNote = latestCall?.notes && latestCall.notes.trim().length > 0
             ? latestCall.notes
             : undefined;
-          return { ...c, lastCallNote } as Customer;
+          // Optimization: Don't spread if no change needed, but here we add property
+          // To avoid new object creation if unnecessary?
+          if (lastCallNote || latestCall) {
+            return { ...c, lastCallNote } as Customer;
+          }
+          return c;
         });
     }
 
-    // Apply lifecycle status filter
-    if (selectedLifecycleStatuses.length > 0) {
-      baseFiltered = baseFiltered.filter(customer =>
-        selectedLifecycleStatuses.includes(customer.lifecycleStatus)
+    // Advanced Filters
+    let filtered = baseFiltered;
+
+    // Filter by Date Range (assigned date)
+    if (dateRange.start || dateRange.end) {
+      filtered = filtered.filter(c => {
+        if (!c.dateAssigned) return false;
+        const assignedDate = new Date(c.dateAssigned);
+        assignedDate.setHours(0, 0, 0, 0);
+
+        let start = dateRange.start ? new Date(dateRange.start) : null;
+        let end = dateRange.end ? new Date(dateRange.end) : null;
+        if (start) start.setHours(0, 0, 0, 0);
+        if (end) end.setHours(23, 59, 59, 999);
+
+        if (start && assignedDate < start) return false;
+        if (end && assignedDate > end) return false;
+        return true;
+      });
+    }
+
+    // Filter by Search Term (Name/Phone)
+    if (appliedSearchTerm) {
+      const term = appliedSearchTerm.toLowerCase();
+      filtered = filtered.filter(c =>
+        (c.firstName?.toLowerCase().includes(term)) ||
+        (c.lastName?.toLowerCase().includes(term)) ||
+        (c.phone?.includes(term))
       );
     }
 
-    // Apply date filter
-    let dateFiltered = baseFiltered;
-    if (activeDatePreset !== 'all') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+    // Filter by Tags
+    if (selectedTagIds.length > 0) {
+      filtered = filtered.filter(c =>
+        c.tags?.some(t => selectedTagIds.includes(t.id))
+      );
+    }
 
-      dateFiltered = baseFiltered.filter(customer => {
-        const assignedDate = new Date(customer.dateAssigned);
-        assignedDate.setHours(0, 0, 0, 0);
+    // Filter by Grade
+    if (selectedGrades.length > 0) {
+      filtered = filtered.filter(c => selectedGrades.includes(c.grade));
+    }
 
-        switch (activeDatePreset) {
-          case 'today': return assignedDate.getTime() === today.getTime();
-          case 'yesterday':
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-            return assignedDate.getTime() === yesterday.getTime();
-          case '7days':
-            const sevenDaysAgo = new Date(today);
-            sevenDaysAgo.setDate(today.getDate() - 6);
-            return assignedDate >= sevenDaysAgo && assignedDate <= today;
-          case '30days':
-            const thirtyDaysAgo = new Date(today);
-            thirtyDaysAgo.setDate(today.getDate() - 29);
-            return assignedDate >= thirtyDaysAgo && assignedDate <= today;
-          case 'range':
-            if (!dateRange.start || !dateRange.end) return true;
-            const startDate = new Date(dateRange.start);
-            startDate.setHours(0, 0, 0, 0);
-            const endDate = new Date(dateRange.end);
-            endDate.setHours(0, 0, 0, 0);
-            return assignedDate >= startDate && assignedDate <= endDate;
-          default: return true;
+    // Filter by Province
+    if (selectedProvinces.length > 0) {
+      filtered = filtered.filter(c => selectedProvinces.includes(c.province));
+    }
+
+    // Filter by Lifecycle Status
+    if (selectedLifecycleStatuses.length > 0) {
+      filtered = filtered.filter(c => selectedLifecycleStatuses.includes(c.lifecycleStatus));
+    }
+
+    // Filter by Expiry
+    if (selectedExpiryDays !== null) {
+      filtered = filtered.filter(c => {
+        if (!c.ownershipExpires) return false;
+        const days = getDaysUntilExpiration(c.ownershipExpires);
+        return days <= selectedExpiryDays && days >= 0;
+      });
+    }
+
+    // Hide Today Calls
+    if (hideTodayCalls) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayStartTime = todayStart.getTime();
+      filtered = filtered.filter(c => {
+        const cid = String(c.id || c.pk);
+        return !hasAnyActivitySince(cid, todayStartTime);
+      });
+    }
+
+    // Hide Calls Range
+    if (hideTodayCallsRangeEnabled && hideTodayCallsRange.start && hideTodayCallsRange.end) {
+      const start = new Date(hideTodayCallsRange.start).getTime();
+      const end = new Date(hideTodayCallsRange.end).getTime() + 86400000;
+
+      // OPTIMIZATION: Pre-calculate activity set for the range
+      // Instead of filtering inside the customer loop
+      const activeCustomerIds = new Set<string>();
+
+      for (const ch of safeCalls) {
+        const time = new Date(ch.date).getTime();
+        if (time >= start && time < end) {
+          activeCustomerIds.add(String(ch.customerId));
         }
+      }
+      for (const o of safeOrders) {
+        if (!o.orderDate) continue;
+        const time = new Date(o.orderDate).getTime();
+        if (time >= start && time < end) {
+          activeCustomerIds.add(String(o.customerId));
+        }
+      }
+
+      filtered = filtered.filter(c => {
+        const id = String(c.id || c.pk);
+        return !activeCustomerIds.has(id); // If active, exclude (so return false)
       });
     }
 
-    // Apply text, tag, grade, and province filters
-    let filtered = dateFiltered.filter(customer => {
-      const lowerSearchTerm = appliedSearchTerm.toLowerCase();
-      const matchesSearch = appliedSearchTerm ?
-        (`${customer.firstName} ${customer.lastName}`.toLowerCase().includes(lowerSearchTerm) || customer.phone.includes(lowerSearchTerm))
-        : true;
-
-      const matchesTags = selectedTagIds.length > 0 ?
-        customer.tags.some(t => selectedTagIds.includes(t.id))
-        : true;
-
-      const matchesGrades = selectedGrades.length > 0 ?
-        selectedGrades.includes(customer.grade)
-        : true;
-
-      const matchesProvinces = selectedProvinces.length > 0 ?
-        selectedProvinces.includes(customer.province)
-        : true;
-
-      const matchesExpiryDays = selectedExpiryDays !== null ?
-        (() => {
-          if (!customer.ownershipExpires) return false;
-          const daysUntilExpiry = getDaysUntilExpiration(customer.ownershipExpires);
-          return daysUntilExpiry <= selectedExpiryDays && daysUntilExpiry >= 0;
-        })()
-        : true;
-
-      return matchesSearch && matchesTags && matchesGrades && matchesProvinces && matchesExpiryDays;
-    });
-
-    // Apply hide today calls filters
-    if (hideTodayCalls || hideTodayCallsRangeEnabled) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      filtered = filtered.filter(customer => {
-        // Check if customer has any activity today
-        const hasActivityToday = safeActivities.some(activity => {
-          // Match by string comparison (customer.id is string, activity.customerId may be string or number)
-          const matches = String(activity.customerId) === String(customer.id) ||
-            String(activity.customerId) === String(customer.pk);
-          if (!matches) return false;
-          const activityDate = new Date(activity.timestamp);
-          activityDate.setHours(0, 0, 0, 0);
-
-          if (hideTodayCalls) {
-            return activityDate.getTime() === today.getTime();
-          }
-
-          if (hideTodayCallsRangeEnabled && hideTodayCallsRange.start && hideTodayCallsRange.end) {
-            const startDate = new Date(hideTodayCallsRange.start);
-            startDate.setHours(0, 0, 0, 0);
-            const endDate = new Date(hideTodayCallsRange.end);
-            endDate.setHours(0, 0, 0, 0);
-            return activityDate >= startDate && activityDate <= endDate;
-          }
-
-          return false;
-        });
-
-        // Return false if customer has activity today and we want to hide them
-        return !hasActivityToday;
-      });
-    }
 
     // Apply sorting
-    if (sortBy !== "system" || sortByExpiry !== "") {
-      filtered = [...filtered].sort((a, b) => {
-        // First apply expiry date sorting if specified
-        if (sortByExpiry !== "" && a.ownershipExpires && b.ownershipExpires) {
-          const daysA = getDaysUntilExpiration(a.ownershipExpires);
-          const daysB = getDaysUntilExpiration(b.ownershipExpires);
-
-          if (sortByExpiry === "desc") {
-            return daysA - daysB; // More days remaining first
-          } else {
-            return daysB - daysA; // Fewer days remaining first
-          }
-        }
-
-        // Then apply system sorting
-        switch (sortBy) {
-          case "name":
-            return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-          case "name-desc":
-            return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
-          case "date-assigned":
-            return new Date(a.dateAssigned).getTime() - new Date(b.dateAssigned).getTime();
-          case "date-assigned-desc":
-            return new Date(b.dateAssigned).getTime() - new Date(a.dateAssigned).getTime();
-          default:
-            return 0; // Keep original order
-        }
-      });
-    }
+    filtered.sort((a, b) => {
+      if (sortByExpiry) {
+        const aExp = a.ownershipExpires ? getDaysUntilExpiration(a.ownershipExpires) : 9999;
+        const bExp = b.ownershipExpires ? getDaysUntilExpiration(b.ownershipExpires) : 9999;
+        const diff = aExp - bExp;
+        if (diff !== 0) return sortByExpiry === 'asc' ? diff : -diff;
+      }
+      if (sortBy === 'name') return (a.firstName || '').localeCompare(b.firstName || '');
+      if (sortBy === 'name-desc') return (b.firstName || '').localeCompare(a.firstName || '');
+      if (sortBy === 'date-assigned') return new Date(a.dateAssigned).getTime() - new Date(b.dateAssigned).getTime();
+      if (sortBy === 'date-assigned-desc') return new Date(b.dateAssigned).getTime() - new Date(a.dateAssigned).getTime();
+      return 0;
+    });
 
     return filtered;
-  }, [activeSubMenu, userCustomers, appointments, activities, calls, orders, selectedLifecycleStatuses, activeDatePreset, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
+  }, [userCustomers, activeSubMenu, appointments, activities, calls, orders, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
+
+  const [persistentTabPages, setPersistentTabPages] = usePersistentState<Record<string, number>>(
+    `telesale_tab_pages_v2_${user.id}`,
+    {}
+  );
+
+  // Viewed Customers Tracking (Daily Reset)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [viewedCustomerIds, setViewedCustomerIds] = usePersistentState<string[]>(
+    `viewed_customers_${user.id}_${todayStr}`,
+    []
+  );
+
+  const handleViewCustomerWrapped = (customer: Customer) => {
+    // Add to viewed list if not present
+    const id = String(customer.id || customer.pk);
+    if (!viewedCustomerIds.includes(id)) {
+      setViewedCustomerIds(prev => [...prev, id]);
+    }
+    // Call original handler
+    onViewCustomer(customer);
+  };
+
+  // Use refs to access latest state in effect without triggering re-runs
+  const tabCacheRef = useRef(tabCache);
+  const persistentTabPagesRef = useRef(persistentTabPages);
+
+  // Update refs whenever dependencies change
+  useEffect(() => {
+    tabCacheRef.current = tabCache;
+    persistentTabPagesRef.current = persistentTabPages;
+  }, [tabCache, persistentTabPages]);
+
+  // Restore page number when switching tabs
+  // Runs ONLY when activeSubMenu changes
+  useEffect(() => {
+    // 1. Try memory cache (if valid)
+    const cached = tabCacheRef.current[activeSubMenu];
+    if (cached && cached.page) {
+      setCurrentPage(cached.page);
+      return;
+    }
+
+    // 2. Try persistent storage
+    const savedPage = persistentTabPagesRef.current[activeSubMenu];
+    if (savedPage && savedPage > 0) {
+      setCurrentPage(savedPage);
+    } else {
+      // 3. Default
+      setCurrentPage(1);
+    }
+  }, [activeSubMenu]);
+
+  // Save page to persistence when changed
+  useEffect(() => {
+    setPersistentTabPages(prev => ({
+      ...prev,
+      [activeSubMenu]: currentPage
+    }));
+  }, [currentPage, activeSubMenu, setPersistentTabPages]);
+
+  // Client-side pagination effect
+  useEffect(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+
+    // Safety check in case filteredCustomers is not ready, though useMemo should prevent this
+    const data = filteredCustomers || [];
+    const sliced = data.slice(start, end);
+
+    setPaginatedCustomers(sliced);
+    setTotalCustomers(data.length);
+    setIsLoadingCustomers(false);
+  }, [filteredCustomers, currentPage, pageSize]);
+
+  // Save filter state to localStorage whenever it changes
+  useEffect(() => {
+    const filterState = {
+      activeSubMenu,
+      activeDatePreset,
+      dateRange,
+      searchTerm,
+      appliedSearchTerm,
+      selectedTagIds,
+      selectedGrades,
+      selectedProvinces,
+      selectedLifecycleStatuses,
+      selectedExpiryDays,
+      sortBy,
+      sortByExpiry,
+      hideTodayCalls,
+      hideTodayCallsRangeEnabled,
+      hideTodayCallsRange,
+    };
+    try {
+      localStorage.setItem(filterStorageKey, JSON.stringify(filterState));
+    } catch (error) {
+      console.warn('Failed to save filter state:', error);
+    }
+  }, [activeSubMenu, activeDatePreset, dateRange, searchTerm, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange, filterStorageKey]);
 
   const handleDatePresetClick = (preset: string) => {
     setActiveDatePreset(preset);
@@ -843,21 +1045,21 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       id: 'do',
       label: 'สิ่งที่ต้องทำ (Do)',
       icon: ListTodo,
-      count: doCounts.followUp + doCounts.daily + doCounts.new,
+      count: tabCounts.do, // ✅ จาก server
     },
     {
       id: 'expiring',
       label: 'ใกล้หมด',
       icon: Clock,
-      count: doCounts.expiring,
+      count: tabCounts.expiring, // ✅ จาก server
     },
     {
       id: 'updates',
       label: 'ลูกค้ามีออเดอร์ใหม่',
       icon: ShoppingCart,
-      count: doCounts.updates,
+      count: tabCounts.updates, // ✅ จาก server
     },
-    { id: 'all', label: 'ลูกค้าทั้งหมด', icon: Users, count: userCustomers.length },
+    { id: 'all', label: 'ลูกค้าทั้งหมด', icon: Users, count: tabCounts.all }, // ✅ จาก server
   ];
 
   const lifecycleStatusOptions = [
@@ -880,17 +1082,34 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-800">จัดการลูกค้า</h2>
-        <button onClick={() => setActivePage ? setActivePage('CreateOrder') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
-          <PlusCircle className="w-4 h-4 mr-2" />
-          สร้างคำสั่งซื้อ
-        </button>
+        <div className="flex">
+          <button
+            onClick={handleSyncCustomers}
+            disabled={isSyncing}
+            className={`mr-3 bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <RotateCcw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ข้อมูล'}
+          </button>
+          <button onClick={() => setActivePage ? setActivePage('CreateOrder') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
+            <PlusCircle className="w-4 h-4 mr-2" />
+            สร้างคำสั่งซื้อ
+          </button>
+        </div>
+
       </div>
 
       <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
         {menuItems.map(item => (
           <button
             key={item.id}
-            onClick={() => setActiveSubMenu(item.id as SubMenu)}
+            onClick={() => {
+              setActiveSubMenu(item.id as SubMenu);
+              // Do NOT reset to 1 here immediately, let the useEffect handle restoration
+              // But if we want clicking the tab explicitly to reset if already active? 
+              // Usually clicking a tab switches to it. restoration logic handles it.
+              // To support "switching to tab restores last page", we remove explicit reset here.
+            }}
             className={`flex-shrink-0 flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeSubMenu === item.id
               ? 'border-b-2 border-blue-600 text-blue-600'
               : 'text-gray-500 hover:text-gray-700'
@@ -908,6 +1127,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       <div ref={advRef}>
         <div className="bg-white p-3 rounded-lg shadow mb-3">
           <div className="flex items-center gap-2">
+
             <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
               {showAdvanced ? 'ซ่อนตัวกรองขั้นสูง' : 'แสดงตัวกรองขั้นสูง'}
             </button>
@@ -1139,21 +1359,53 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         </div>
       </div>
 
-      <CustomerTable
-        customers={filteredCustomers}
-        onViewCustomer={onViewCustomer}
-        openModal={openModal}
-        showCallNotes={activeSubMenu === 'all'}
-        hideGrade={true}
-        pageSizeOptions={[5, 10, 20, 50, 100, 500]}
-        storageKey={`telesale:${user.id}`}
-        currentUserId={user.id}
-        onUpsellClick={onUpsellClick}
-        onChangeOwner={onChangeOwner}
-        allUsers={allUsers}
-        currentUser={user}
+      {/* Loading indicator */}
+      {
+        isLoadingCustomers && (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">กำลังโหลดข้อมูล...</span>
+          </div>
+        )
+      }
+
+      {/* Customer Table */}
+      {
+        !isLoadingCustomers && (
+          <>
+            {/* Changed from filteredCustomers to paginatedCustomers */}
+            <CustomerTable
+              customers={paginatedCustomers}
+              onViewCustomer={handleViewCustomerWrapped}
+              viewedCustomerIds={viewedCustomerIds}
+              openModal={openModal}
+              showCallNotes={activeSubMenu === 'all'}
+              hideGrade={true}
+              totalCount={totalCustomers}
+              controlledPage={currentPage}
+              controlledPageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[50, 100, 200, 500]}
+              storageKey={`telesale:${user.id}`}
+              currentUserId={user.id}
+              onUpsellClick={onUpsellClick}
+              onChangeOwner={onChangeOwner}
+              allUsers={allUsers}
+              currentUser={user}
+            />
+          </>
+        )
+      }
+      <SyncProgressModal
+        isOpen={showSyncModal}
+        progress={syncProgress}
+        onClose={() => setShowSyncModal(false)}
       />
-    </div>
+    </div >
   );
 };
 
