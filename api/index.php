@@ -2519,7 +2519,8 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             break;
                             
                         case 'awaiting_account':
-                            $whereConditions[] = 'o.payment_status = "PreApproved"';
+                            // Show orders where payment_status = PreApproved OR order_status = PreApproved
+                            $whereConditions[] = '(o.payment_status = "PreApproved" OR o.order_status = "PreApproved")';
                             $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
                             break;
                             

@@ -1102,6 +1102,7 @@ const App: React.FC = () => {
             isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
             waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
             isBlocked: Boolean(r.is_blocked ?? false),
+            isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
           };
         };
 
@@ -1477,6 +1478,7 @@ const App: React.FC = () => {
               isInWaitingBasket: Boolean(r.is_in_waiting_basket ?? false),
               waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
               isBlocked: Boolean(r.is_blocked ?? false),
+              isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
             };
           };
 

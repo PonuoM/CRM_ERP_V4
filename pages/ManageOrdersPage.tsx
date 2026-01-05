@@ -1179,7 +1179,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     setAfCustomerName(fCustomerName.trim());
     setAfCustomerPhone(fCustomerPhone.trim());
     setAfShop(fShop.trim());
-    setShowAdvanced(false);
+    setShowAdvancedFilters(false);
   };
 
   const handleShippingProviderChange = async (orderId: string, shippingProvider: string) => {
@@ -1224,7 +1224,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       if (!showAdvancedFilters) return;
       const el = advRef.current;
       if (el && e.target instanceof Node && !el.contains(e.target)) {
-        setShowAdvanced(false);
+        setShowAdvancedFilters(false);
       }
     };
     document.addEventListener('mousedown', onDown);
@@ -1422,7 +1422,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       {/* ตัวกรองขั้นสูง toggle and panel */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-4" ref={advRef}>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
+          <button onClick={() => setShowAdvancedFilters(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
             <Filter size={14} />
             ตัวกรองขั้นสูง
             {advancedCount > 0 ? (

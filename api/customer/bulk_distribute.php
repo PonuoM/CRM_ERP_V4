@@ -38,7 +38,7 @@ try {
         // --- QUERY BUILDER ---
         
         // Base columns
-        $select = "SELECT c.customer_id, c.customer_ref_id, c.grade, c.created_at, c.last_follow_up_date, c.total_purchases";
+        $select = "SELECT c.customer_id, c.customer_ref_id, c.grade, c.date_registered, c.last_follow_up_date, c.total_purchases";
         $from = "FROM customers c";
         $where = ["c.company_id = ?", "(c.is_blocked IS NULL OR c.is_blocked = 0)"];
         $params = [$companyId];
@@ -97,7 +97,7 @@ try {
                 $orderBy = "
                     ORDER BY 
                     CASE WHEN c.grade = 'A' THEN 1 WHEN c.grade = 'B' THEN 2 WHEN c.grade = 'C' THEN 3 ELSE 4 END ASC,
-                    c.created_at ASC
+                    c.date_registered ASC
                 ";
                 break;
 
@@ -108,7 +108,7 @@ try {
                 }
                 $where[] = "c.assigned_to IS NULL";
                 $where[] = "(c.is_in_waiting_basket IS NULL OR c.is_in_waiting_basket = 0)";
-                $orderBy = "ORDER BY c.created_at DESC";
+                $orderBy = "ORDER BY c.date_registered DESC";
                 break;
 
             case 'all': 
@@ -134,9 +134,9 @@ try {
                     ORDER BY (
                         COALESCE((" . $isNewSaleScore . "), 0) +
                         (CASE WHEN c.grade = 'A' THEN 50000 WHEN c.grade = 'B' THEN 10000 ELSE 0 END) +
-                        (CASE WHEN c.created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1000 ELSE 0 END)
+                        (CASE WHEN c.date_registered > DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1000 ELSE 0 END)
                     ) DESC, 
-                    c.created_at DESC
+                    c.date_registered DESC
                 ";
                 break;
         }
@@ -227,10 +227,12 @@ try {
     }
     
 } catch (Throwable $e) {
-    error_log("Error in bulk_distribute.php: " . $e->getMessage());
+    error_log("Error in bulk_distribute.php: " . $e->getMessage() . " | Line: " . $e->getLine() . " | File: " . $e->getFile());
+    error_log("Stack trace: " . $e->getTraceAsString());
     json_response([
         'ok' => false,
-        'error' => 'Failed to distribute customers',
-        'message' => $e->getMessage()
+        'error' => 'Failed to distribute customers: ' . $e->getMessage(),
+        'line' => $e->getLine(),
+        'file' => basename($e->getFile())
     ], 500);
 }

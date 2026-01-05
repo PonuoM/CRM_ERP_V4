@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { apiFetch } from "@/services/api";
 
 interface StatementManagementPageProps {
   user: User;
@@ -109,19 +110,18 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     setBankLoading(true);
     setBankError(null);
     try {
-      const res = await fetch(
-        `${apiBase}/Bank_DB/get_bank_accounts.php?company_id=${encodeURIComponent(
+      const data = await apiFetch(
+        `Bank_DB/get_bank_accounts.php?company_id=${encodeURIComponent(
           String(user.companyId),
         )}`,
       );
-      const data = await res.json();
       if (data?.success) {
         setBankAccounts(Array.isArray(data.data) ? data.data : []);
       } else {
         setBankAccounts([]);
         setBankError(
           data?.message ||
-            "ไม่สามารถดึงรายชื่อบัญชีธนาคารได้ กรุณาลองใหม่หรือตรวจสอบสิทธิ์ผู้ใช้",
+          "ไม่สามารถดึงรายชื่อบัญชีธนาคารได้ กรุณาลองใหม่หรือตรวจสอบสิทธิ์ผู้ใช้",
         );
       }
     } catch {
@@ -416,10 +416,10 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         const amountNumber = Number(cleanedAmount);
         const hasContent = Boolean(
           (normalizedDate ?? "").trim() ||
-            (normalizedTime ?? "").trim() ||
-            cleanedAmount ||
-            r.channel.trim() ||
-            r.description.trim(),
+          (normalizedTime ?? "").trim() ||
+          cleanedAmount ||
+          r.channel.trim() ||
+          r.description.trim(),
         );
         const dateOk =
           normalizedDate !== "" &&
@@ -447,12 +447,12 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
         };
       })
       .filter((r) => r !== null) as {
-      date: string;
-      time: string;
-      amount: number;
-      channel: string;
-      description: string;
-    }[];
+        date: string;
+        time: string;
+        amount: number;
+        channel: string;
+        description: string;
+      }[];
 
     if (invalidRows.length) {
       setErrorMessage(
@@ -662,9 +662,8 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                 setErrorMessage(null);
               }}
               disabled={bankLoading}
-              className={`w-full sm:w-80 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                !selectedBankId ? "border-red-300 bg-red-50" : "border-gray-300"
-              }`}
+              className={`w-full sm:w-80 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${!selectedBankId ? "border-red-300 bg-red-50" : "border-gray-300"
+                }`}
             >
               <option value="">-- กรุณาเลือกบัญชีที่รับเงิน --</option>
               {bankAccounts.map((b) => (
@@ -870,70 +869,70 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
               </div>
             )}
             {batches.length > 0 && (
-                    <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-2 py-1 text-left font-medium text-gray-600">
-                            ลำดับ
-                          </th>
-                          <th className="px-2 py-1 text-right font-medium text-gray-600">
-                            จำนวนรายการ
-                          </th>
-                          <th className="px-2 py-1 text-left font-medium text-gray-600">
-                            บัญชีธนาคาร
-                          </th>
-                          <th className="px-2 py-1 text-left font-medium text-gray-600">
-                            ช่วงเวลาโอน
-                          </th>
-                          <th className="px-2 py-1 text-left font-medium text-gray-600">
-                            วันที่สร้าง
-                          </th>
-                          <th className="px-2 py-1 text-center font-medium text-gray-600">
-                            ดำเนินการ
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {batches.map((b) => (
-                          <tr key={b.batch} className="border-t border-gray-200">
-                            <td className="px-2 py-1 text-sm">{b.batch}</td>
-                            <td className="px-2 py-1 text-sm text-right">
-                              {b.row_count}
-                            </td>
-                            <td className="px-2 py-1 text-xs">
-                              {b.bank_display_name || "-"}
-                            </td>
-                            <td className="px-2 py-1 text-xs">
-                              {b.transfer_from && b.transfer_to
-                                ? `${formatDateTime(b.transfer_from)} - ${formatDateTime(b.transfer_to)}`
-                                : "-"}
-                            </td>
-                            <td className="px-2 py-1 text-xs text-gray-500">
-                              {formatDateTime(b.first_at)}
-                            </td>
-                            <td className="px-2 py-1 text-center space-y-1">
-                              <button
-                                type="button"
-                                onClick={() => loadBatchDetails(b.batch)}
-                                className="inline-flex items-center px-2 py-1 text-xs border rounded-md hover:bg-gray-50"
-                              >
-                                <Eye className="w-3 h-3 mr-1" />
-                                ดูรายละเอียด
-                              </button>
-                              <br />
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteBatch(b.batch)}
-                                className="inline-flex items-center px-2 py-1 text-xs border border-red-300 text-red-700 rounded-md hover:bg-red-50"
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                ลบ batch
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ลำดับ
+                    </th>
+                    <th className="px-2 py-1 text-right font-medium text-gray-600">
+                      จำนวนรายการ
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      บัญชีธนาคาร
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      ช่วงเวลาโอน
+                    </th>
+                    <th className="px-2 py-1 text-left font-medium text-gray-600">
+                      วันที่สร้าง
+                    </th>
+                    <th className="px-2 py-1 text-center font-medium text-gray-600">
+                      ดำเนินการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((b) => (
+                    <tr key={b.batch} className="border-t border-gray-200">
+                      <td className="px-2 py-1 text-sm">{b.batch}</td>
+                      <td className="px-2 py-1 text-sm text-right">
+                        {b.row_count}
+                      </td>
+                      <td className="px-2 py-1 text-xs">
+                        {b.bank_display_name || "-"}
+                      </td>
+                      <td className="px-2 py-1 text-xs">
+                        {b.transfer_from && b.transfer_to
+                          ? `${formatDateTime(b.transfer_from)} - ${formatDateTime(b.transfer_to)}`
+                          : "-"}
+                      </td>
+                      <td className="px-2 py-1 text-xs text-gray-500">
+                        {formatDateTime(b.first_at)}
+                      </td>
+                      <td className="px-2 py-1 text-center space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => loadBatchDetails(b.batch)}
+                          className="inline-flex items-center px-2 py-1 text-xs border rounded-md hover:bg-gray-50"
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          ดูรายละเอียด
+                        </button>
+                        <br />
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteBatch(b.batch)}
+                          className="inline-flex items-center px-2 py-1 text-xs border border-red-300 text-red-700 rounded-md hover:bg-red-50"
+                        >
+                          <XCircle className="w-3 h-3 mr-1" />
+                          ลบ batch
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </Modal>
@@ -963,10 +962,9 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
                 <div className="text-sm text-gray-700">
                   บัญชีธนาคาร:{" "}
                   {batchRows[0].bank_display_name ||
-                    `${batchRows[0].bank_name ?? "-"}${
-                      batchRows[0].bank_number
-                        ? ` (${batchRows[0].bank_number})`
-                        : ""
+                    `${batchRows[0].bank_name ?? "-"}${batchRows[0].bank_number
+                      ? ` (${batchRows[0].bank_number})`
+                      : ""
                     }`}
                 </div>
                 <table className="w-full text-xs border border-gray-200 rounded-md overflow-hidden">
