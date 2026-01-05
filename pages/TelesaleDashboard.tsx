@@ -5,6 +5,8 @@ import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Che
 
 import { db } from '../db/db';
 import { syncCustomers } from '../services/syncService';
+import { listCustomers } from '../services/api';
+import { mapCustomerFromApi } from '../utils/customerMapper';
 import { SyncProgressModal, SyncProgress } from '../components/SyncProgressModal';
 import usePersistentState from "@/utils/usePersistentState";
 
@@ -300,6 +302,10 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   );
   const advRef = useRef<HTMLDivElement | null>(null);
 
+  // Server-side search state
+  const [serverSearchResults, setServerSearchResults] = useState<Customer[] | null>(null);
+  const [isServerSearching, setIsServerSearching] = useState(false);
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -570,6 +576,11 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     const safeActivities = activities || [];
     const safeCalls = calls || [];
     const safeOrders = orders || [];
+
+    // Prioritize server-side search results
+    if (serverSearchResults !== null) {
+      return serverSearchResults;
+    }
 
     let baseFiltered;
     const now = new Date();
@@ -1000,6 +1011,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const handleClearAllFilters = () => {
     setSearchTerm('');
     setAppliedSearchTerm('');
+    setServerSearchResults(null);
     setSelectedTagIds([]);
     setSelectedGrades([]);
     setSelectedProvinces([]);
@@ -1018,6 +1030,45 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       localStorage.removeItem(filterStorageKey);
     } catch (error) {
       console.warn('Failed to clear filter state:', error);
+    }
+  };
+
+  const handleServerSearch = async () => {
+    // Shared logic: Update applied term
+    setAppliedSearchTerm(searchTerm.trim());
+
+    if (!searchTerm.trim()) {
+      setServerSearchResults(null);
+      return;
+    }
+
+    // Only search on Server if tab is 'all'
+    if (activeSubMenu !== 'all') {
+      setServerSearchResults(null); // Clear server results to ensure local filter takes over
+      return;
+    }
+
+    setIsServerSearching(true);
+
+    try {
+      // Search via API
+      const res = await listCustomers({
+        q: searchTerm.trim(),
+        assignedTo: Number(user.id),
+        companyId: user.companyId,
+        pageSize: 100
+      });
+
+      // Map API result to Customer object
+      const mapped = (res.data || []).map(c => mapCustomerFromApi(c));
+      setServerSearchResults(mapped);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (err) {
+      // If failed, maybe empty?
+      setServerSearchResults([]);
+      alert("เกิดข้อผิดพลาดในการค้นหาจาก Server");
+    } finally {
+      setIsServerSearching(false);
     }
   };
 
@@ -1105,6 +1156,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
             key={item.id}
             onClick={() => {
               setActiveSubMenu(item.id as SubMenu);
+              setServerSearchResults(null); // Clear server results when switching tabs
               // Do NOT reset to 1 here immediately, let the useEffect handle restoration
               // But if we want clicking the tab explicitly to reset if already active? 
               // Usually clicking a tab switches to it. restoration logic handles it.
@@ -1131,8 +1183,12 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
             <button onClick={() => setShowAdvanced(v => !v)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50">
               {showAdvanced ? 'ซ่อนตัวกรองขั้นสูง' : 'แสดงตัวกรองขั้นสูง'}
             </button>
-            <button onClick={() => setAppliedSearchTerm(searchTerm)} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100">
-              ค้นหา
+            <button
+              onClick={handleServerSearch}
+              disabled={isServerSearching}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-blue-50 text-blue-700 hover:bg-blue-100 ${isServerSearching ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {isServerSearching ? 'กำลังค้นหา...' : 'ค้นหา'}
             </button>
             {(appliedSearchTerm || selectedTagIds.length > 0 || selectedGrades.length > 0 || selectedProvinces.length > 0 || selectedLifecycleStatuses.length > 0 || selectedExpiryDays !== null || activeDatePreset !== 'all' || (dateRange.start || dateRange.end) || sortBy !== "system" || sortByExpiry !== "" || hideTodayCalls || hideTodayCallsRangeEnabled) && (
               <button onClick={handleClearAllFilters} className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-gray-50 text-gray-600">
@@ -1154,6 +1210,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                   placeholder="ค้นหาชื่อ หรือเบอร์โทร..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleServerSearch();
+                  }}
                   className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
