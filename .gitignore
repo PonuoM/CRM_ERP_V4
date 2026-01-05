@@ -28,7 +28,7 @@ api/uploads/slips/*
 api/vendor/*
 api/google-credentials.json
 /src/generated/prisma
-uploads/proofs/*
+uploads/*
 # exemple_import/*
 host
 !scripts/host

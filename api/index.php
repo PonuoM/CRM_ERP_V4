@@ -5249,10 +5249,16 @@ function cleanup_old_exports(PDO $pdo, string $dir): void {
 }
 
 function handle_exports(PDO $pdo, ?string $id): void {
+    // Get authenticated user for company_id and user_id
+    $authUser = get_authenticated_user($pdo);
+    $userId = $authUser['id'] ?? null;
+    $companyId = $authUser['company_id'] ?? null;
+    
     $baseDir = __DIR__ . DIRECTORY_SEPARATOR . 'exports';
     if (!is_dir($baseDir)) { @mkdir($baseDir, 0775, true); }
     ensure_exports_table($pdo);
     cleanup_old_exports($pdo, $baseDir);
+
 
     if ($id) {
         if (isset($_GET['download'])) {
@@ -5275,8 +5281,20 @@ function handle_exports(PDO $pdo, ?string $id): void {
                 $pdo->prepare('UPDATE exports SET download_count = download_count + 1 WHERE id = ?')->execute([$id]);
             } catch (Throwable $e) { /* ignore */ }
 
-            header('Content-Type: text/csv; charset=utf-8');
+            // Determine content type based on file extension
+            $ext = strtolower(pathinfo($row['filename'], PATHINFO_EXTENSION));
+            $contentType = 'application/octet-stream'; // default
+            if ($ext === 'csv') {
+                $contentType = 'text/csv; charset=utf-8';
+            } elseif ($ext === 'xlsx') {
+                $contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            } elseif ($ext === 'xls') {
+                $contentType = 'application/vnd.ms-excel';
+            }
+            
+            header('Content-Type: ' . $contentType);
             header('Content-Disposition: attachment; filename="' . basename($row['filename']) . '"');
+            header('Content-Length: ' . filesize($path));
             readfile($path);
             exit;
         }
@@ -5311,10 +5329,13 @@ function handle_exports(PDO $pdo, ?string $id): void {
                         json_response(['error' => 'INVALID_BASE64'], 400);
                     }
 
-                    // Add BOM for Excel UTF-8
-                    $bom = "\xEF\xBB\xBF";
-                    if (substr($content, 0, 3) !== $bom) {
-                        $content = $bom . $content;
+                    // Add BOM for Excel UTF-8 (CSV files only, not XLSX)
+                    $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION));
+                    if ($ext === 'csv') {
+                        $bom = "\xEF\xBB\xBF";
+                        if (substr($content, 0, 3) !== $bom) {
+                            $content = $bom . $content;
+                        }
                     }
 
                     $uploadDir = __DIR__ . '/../uploads/exports';
