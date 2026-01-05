@@ -37,6 +37,11 @@ export async function apiFetch(path: string, init?: RequestInit) {
     url = `${directBase}/${path}`;
   }
 
+  // Add cache-busting headers
+  headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+  headers["Pragma"] = "no-cache";
+  headers["Expires"] = "0";
+
   const res = await fetch(url, {
     ...init,
     headers,
