@@ -46,6 +46,7 @@ import {
   listCallHistory,
   listAppointments,
   listOrders,
+  updateCustomer,
 } from "../services/api";
 import {
   actionLabels,
@@ -490,7 +491,21 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     try {
       setOwnerChangeLoading(true);
       setOwnerChangeError(null);
-      await Promise.resolve(onChangeOwner(customer.id, selectedOwnerId));
+
+      // Call API to update customer assigned_to
+      const customerIdToUpdate = customer.pk ? String(customer.pk) : customer.id;
+      const dateAssigned = new Date().toISOString();
+      await updateCustomer(customerIdToUpdate, {
+        assignedTo: selectedOwnerId,
+        assigned_to: selectedOwnerId,
+        dateAssigned,
+        date_assigned: dateAssigned
+      });
+
+      // Call callback to update parent state
+      if (onChangeOwner) {
+        await Promise.resolve(onChangeOwner(customer.id, selectedOwnerId));
+      }
       setShowOwnerChange(false);
     } catch (error) {
       console.error("Failed to change owner", error);

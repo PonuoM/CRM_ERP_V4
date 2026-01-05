@@ -3771,7 +3771,17 @@ const App: React.FC = () => {
     }
 
     const dateAssigned = new Date().toISOString();
-    const customer = customers.find(c => c.id === customerId);
+    let customer = customers.find((c) => c.id === customerId);
+    // Fallback: Check viewingCustomerData if not found in main list
+    if (
+      !customer &&
+      viewingCustomerData &&
+      (viewingCustomerData.id === customerId ||
+        String(viewingCustomerData.pk) === String(customerId))
+    ) {
+      customer = viewingCustomerData;
+    }
+
     if (!customer) {
       alert("ไม่พบข้อมูลลูกค้า");
       return;
@@ -3840,6 +3850,27 @@ const App: React.FC = () => {
           : customerItem,
       ),
     );
+
+    // Update viewingCustomerData if it matches the updated customer
+    if (
+      viewingCustomerData &&
+      (viewingCustomerData.id === customerId ||
+        String(viewingCustomerData.pk) === String(targetId))
+    ) {
+      setViewingCustomerData((prev) =>
+        prev
+          ? {
+            ...prev,
+            assignedTo: newOwnerId,
+            dateAssigned,
+            assignmentHistory: [
+              ...(prev.assignmentHistory || []),
+              newOwnerId,
+            ],
+          }
+          : null,
+      );
+    }
 
     // Redistribute ownership (adds 30 days)
     try {
