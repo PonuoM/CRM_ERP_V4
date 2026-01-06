@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Customer, Order, User, Address, UserRole } from "../types";
-import { listOrders, listCustomers } from "../services/api";
+import { Customer, Order, User, Address, UserRole, Page } from "../types";
+import { listOrders, listCustomers, listPages } from "../services/api";
 import { mapOrderFromApi } from "../utils/orderMapper";
 import { mapCustomerFromApi } from "../utils/customerMapper";
 import {
@@ -20,6 +20,7 @@ interface CustomerSearchPageProps {
   users: User[];
   currentUser?: User;
   onTakeCustomer?: (customer: Customer) => void;
+  pages?: Page[];
 }
 
 const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
@@ -28,6 +29,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   users,
   currentUser,
   onTakeCustomer,
+  pages: propPages,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Customer[]>([]);
@@ -39,6 +41,25 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [pages, setPages] = useState<Page[]>(propPages || []);
+
+  // Fetch pages for mapping salesChannelPageId to page name
+  useEffect(() => {
+    if (!propPages || propPages.length === 0) {
+      listPages(currentUser?.companyId).then((res) => {
+        if (Array.isArray(res)) {
+          setPages(res);
+        }
+      }).catch((err) => console.error("Failed to fetch pages", err));
+    }
+  }, [currentUser?.companyId, propPages]);
+
+  // Helper function to get page name from page ID
+  const getPageName = useCallback((pageId?: number): string => {
+    if (!pageId) return "-";
+    const page = pages.find((p) => p.id === pageId);
+    return page?.name || "-";
+  }, [pages]);
 
   const fetchCustomerOrders = useCallback(async (customer: Customer) => {
     setLoadingOrders(true);
@@ -386,6 +407,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                 <table className="w-full text-sm text-left">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
+                      <th className="px-6 py-3 font-medium">เลขที่ Order</th>
                       <th className="px-6 py-3 font-medium">วันที่ขาย</th>
                       <th className="px-6 py-3 font-medium">สินค้า</th>
                       <th className="px-6 py-3 font-medium text-center">
@@ -395,7 +417,9 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                       <th className="px-6 py-3 font-medium">พนักงานขาย</th>
                       <th className="px-6 py-3 font-medium">แผนก</th>
                       <th className="px-6 py-3 font-medium">ช่องทางการขาย</th>
+                      <th className="px-6 py-3 font-medium">เพจ</th>
                       <th className="px-6 py-3 font-medium">สถานะออเดอร์</th>
+                      <th className="px-6 py-3 font-medium">Tracking</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -418,6 +442,9 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                             id={`order-${order.id}`}
                             className={`border-t ${isHighlighted ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200' : 'bg-white'}`}
                           >
+                            <td className="px-6 py-4 text-gray-800 font-mono text-sm">
+                              {order.id}
+                            </td>
                             <td className="px-6 py-4 text-gray-800">
                               {getThaiBuddhistDate(order.orderDate)}
                             </td>
@@ -440,7 +467,17 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                               {order.salesChannel || "-"}
                             </td>
                             <td className="px-6 py-4 text-gray-800">
+                              {order.salesChannel && order.salesChannel.toLowerCase() !== 'โทร' && order.salesChannel.toLowerCase() !== 'phone'
+                                ? getPageName(order.salesChannelPageId)
+                                : "-"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">
                               {order.orderStatus || "-"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-800 font-mono text-sm">
+                              {order.trackingNumbers && order.trackingNumbers.length > 0
+                                ? order.trackingNumbers.join(', ')
+                                : "-"}
                             </td>
                           </tr>
                         );
@@ -448,7 +485,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
                     ) : (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={11}
                           className="text-center p-8 text-gray-500"
                         >
                           ไม่มีประวัติการสั่งซื้อ
