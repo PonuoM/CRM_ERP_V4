@@ -31,4 +31,5 @@ api/google-credentials.json
 uploads/*
 # exemple_import/*
 host
+host_old
 !scripts/host

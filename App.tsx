@@ -260,16 +260,9 @@ const App: React.FC = () => {
     return "Dashboard";
   };
 
-  const shouldHideSidebar = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get("nosidebar") === "true";
-  };
-
   const [activePage, setActivePage] = useState<string>(getInitialPage);
-  const [hideSidebar, setHideSidebar] = usePersistentState<boolean>(
-    "ui.hideSidebar",
-    shouldHideSidebar(),
-  );
+
+
   const [modalState, setModalState] = useState<ModalState>({
     type: null,
     data: null,
@@ -419,12 +412,7 @@ const App: React.FC = () => {
       const nextPage = resolvePageFromParam(params.get("page"));
       setActivePage((prev) => (prev === nextPage ? prev : nextPage));
     }
-
-    if (params.has("nosidebar")) {
-      const shouldHide = params.get("nosidebar") === "true";
-      setHideSidebar((prev) => (prev === shouldHide ? prev : shouldHide));
-    }
-  }, [resolvePageFromParam, setActivePage, setHideSidebar]);
+  }, [resolvePageFromParam, setActivePage]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -458,12 +446,6 @@ const App: React.FC = () => {
       params.delete("page");
     }
 
-    if (hideSidebar) {
-      params.set("nosidebar", "true");
-    } else {
-      params.delete("nosidebar");
-    }
-
     const nextSearch = params.toString();
     const currentSearch = window.location.search.startsWith("?")
       ? window.location.search.slice(1)
@@ -474,7 +456,7 @@ const App: React.FC = () => {
         }${url.hash}`;
       window.history.replaceState({}, "", nextUrl);
     }
-  }, [activePage, hideSidebar]);
+  }, [activePage]);
 
   // Permission check: Redirect to permitted page if user doesn't have access to activePage
   useEffect(() => {
@@ -543,15 +525,13 @@ const App: React.FC = () => {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const nextPage = resolvePageFromParam(params.get("page"));
-      const shouldHide = params.get("nosidebar") === "true";
 
       setActivePage((prev) => (prev === nextPage ? prev : nextPage));
-      setHideSidebar((prev) => (prev === shouldHide ? prev : shouldHide));
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [resolvePageFromParam, setActivePage, setHideSidebar]);
+  }, [resolvePageFromParam, setActivePage]);
 
   // Always use real database - no mock data
   // API/UI enum mappings (global)
@@ -2257,14 +2237,14 @@ const App: React.FC = () => {
   const resetPersistentUiState = () => {
     try {
       localStorage.removeItem("ui.activePage");
-      localStorage.removeItem("ui.hideSidebar");
+
       localStorage.removeItem("attendance.session");
     } catch {
       /* ignore storage errors */
     }
 
     setActivePage("Dashboard");
-    setHideSidebar(false);
+    setActivePage("Dashboard");
     setAttendanceSession(null);
   };
 
@@ -2284,7 +2264,6 @@ const App: React.FC = () => {
     // Redirect to login page without leftover UI query params
     const url = new URL(window.location.href);
     url.searchParams.delete("page");
-    url.searchParams.delete("nosidebar");
     url.searchParams.set("login", "true");
     window.location.replace(url.toString());
   };
@@ -7178,7 +7157,8 @@ const App: React.FC = () => {
         </div>
       )}
       {/* Fixed Sidebar */}
-      {!viewingCustomer && !hideSidebar && (
+      {/* Fixed Sidebar */}
+      {!viewingCustomer && (
         <div className="fixed left-0 top-0 h-screen z-10">
           <Sidebar
             user={currentUser}
@@ -7197,14 +7177,14 @@ const App: React.FC = () => {
       )}
       {/* Main Content with proper margin */}
       <div
-        className={`h-screen flex flex-col transition-all duration-300 ${hideSidebar || viewingCustomer
+        className={`h-screen flex flex-col transition-all duration-300 ${viewingCustomer
           ? ""
           : isSidebarCollapsed
             ? "ml-20"
             : "ml-64"
           }`}
       >
-        {!viewingCustomer && !hideSidebar && (
+        {!viewingCustomer && (
           <header className="flex items-center px-6 h-16 bg-white border-b border-gray-200 flex-shrink-0">
             <div className="flex items-center space-x-4 flex-shrink-0">
               <button
