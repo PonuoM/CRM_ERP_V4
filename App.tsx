@@ -5476,40 +5476,228 @@ const App: React.FC = () => {
         };
 
         const processedCustomers = new Map<string, Customer>();
-        const grouped = new Map<
-            string,
-            { rows: SalesImportRow[]; firstIndex: number }
-        >();
+        const phoneToResolvedId = new Map<string, string>();
+        // Group rows sequentially to respect contiguity
+        // We use a LIST of groups instead of a Map, so we can support:
+        // Order A -> Order B -> Order A (again) as 3 separate groups if consecutive
+        const groupedList: { groupKey: string; rows: SalesImportRow[]; firstIndex: number }[] = [];
+
+        let currentGroupKey: string | null = null;
+        let currentGroupRows: SalesImportRow[] = [];
+        let currentGroupStartIndex = 0;
 
         rows.forEach((row, index) => {
-            const orderId = sanitizeValue(row.orderNumber);
+            let orderId = sanitizeValue(row.orderNumber);
+
+            // Fallback Logic: Group by Sale Date + Customer Key (Phone or Name)
             if (!orderId) {
-                summary.notes.push(`Row ${index + 2}: missing order number, skipped.`);
-                return;
+                const dateKey = sanitizeValue(row.saleDate);
+                const customerKey = sanitizeValue(row.customerPhone) ||
+                    sanitizeValue(row.customerName) ||
+                    sanitizeValue(row.customerFirstName);
+
+                if (dateKey && customerKey) {
+                    orderId = `AUTO_GROUP_${dateKey}_${customerKey}`;
+                } else {
+                    orderId = `AUTO_GEN_${index}`;
+                }
             }
-            const entry = grouped.get(orderId);
-            if (entry) {
-                entry.rows.push(row);
+
+            // If key changes or it's the first row
+            if (orderId !== currentGroupKey) {
+                // Save previous group if exists
+                if (currentGroupKey !== null && currentGroupRows.length > 0) {
+                    groupedList.push({
+                        groupKey: currentGroupKey,
+                        rows: currentGroupRows,
+                        firstIndex: currentGroupStartIndex
+                    });
+                }
+
+                // Start new group
+                currentGroupKey = orderId;
+                currentGroupRows = [row];
+                currentGroupStartIndex = index;
             } else {
-                grouped.set(orderId, { rows: [row], firstIndex: index });
+                // Continue same group
+                currentGroupRows.push(row);
             }
         });
 
-        for (const [orderId, group] of grouped.entries()) {
+        // Push valid last group
+        if (currentGroupKey !== null && currentGroupRows.length > 0) {
+            groupedList.push({
+                groupKey: currentGroupKey,
+                rows: currentGroupRows,
+                firstIndex: currentGroupStartIndex
+            });
+        }
+
+        // Initialize counter for auto-generation
+        // We will try to guess the next number to avoid hammering API
+        // Format: YYYYMMDD-XXXXXXexternal
+        const todayStr = toThaiIsoString(new Date()).split('T')[0].replace(/-/g, ''); // YYYYMMDD
+        let currentRunningNumber = 1;
+
+        for (const group of groupedList) {
             const { rows: orderRows, firstIndex } = group;
             const first = orderRows[0];
             if (!first) continue;
 
-            const rawCustomerId = sanitizeValue(first.customerId);
-            let customerId = rawCustomerId;
-            if (!customerId) {
-                const phoneSeed = normalizePhone(sanitizeValue(first.customerPhone));
-                if (phoneSeed) {
-                    customerId = `CUST-${phoneSeed}`;
-                } else {
-                    customerId = `CUST-${Date.now()}-${firstIndex}`;
+            // ... (Customer lookup logic remains here, skipping for brevity in this replace block if possible, but I need to be careful not to delete it) ...
+            // WAIT - I need to keep the customer lookup logic I just added. 
+            // I will target the Order ID section specifically.
+
+            // ... [Customer Lookup Code Block] ... 
+
+            // Start of Order ID Generation Logic
+            // We ignore the CSV orderId (groupKey might be "AUTO_GEN_...")
+            // We MUST generate a new ID.
+
+            let orderId = "";
+            let uniqueFound = false;
+
+            while (!uniqueFound) {
+                const runningStr = String(currentRunningNumber).padStart(6, '0');
+                const candidateId = `${todayStr}-${runningStr}external`;
+
+                try {
+                    // Check if exists
+                    await apiFetch(`orders/${encodeURIComponent(candidateId)}`);
+                    // If no error, it exists. Increment and try next.
+                    currentRunningNumber++;
+                } catch (err: any) {
+                    if (err?.status === 404) {
+                        // 404 = Not Found = Unique!
+                        orderId = candidateId;
+                        uniqueFound = true;
+                        // Don't duplicate increment here, we use this number.
+                        // But for NEXT order, we should start at current + 1
+                        currentRunningNumber++;
+                    } else {
+                        // Unexpected error
+                        console.error("Error checking order ID", err);
+                        // Force break or skip? 
+                        // Let's increment to be safe and try next
+                        currentRunningNumber++;
+                    }
+                }
+                // Safety break
+                if (currentRunningNumber > 999999) {
+                    break; // Should likely throw
                 }
             }
+
+            if (!orderId) {
+                summary.notes.push(`Could not generate unique Order ID for row ${firstIndex + 1}`);
+                continue;
+            }
+
+            // Check existence (Double check? No, we just did.)
+            // Logic below expected 'orderId' to be set.
+
+
+
+
+            const phone = normalizePhone(sanitizeValue(first.customerPhone));
+            if (!phone) {
+                summary.notes.push(
+                    `Order ${orderId}: customer phone missing, skipped.`,
+                );
+                continue;
+            }
+
+            // Lookup customer by Phone first (Ignore CSV Customer ID)
+            let customerId = phoneToResolvedId.get(phone);
+
+            if (!customerId) {
+                try {
+                    // 1. Search existing customer by phone
+                    // We need to fetch from API because local 'customers' list might be incomplete (lazy loaded)
+                    const searchResults = await apiFetch(`customers?q=${encodeURIComponent(phone)}&companyId=${sessionUser?.company_id || ""}`);
+
+                    // Filter for exact phone match and company match
+                    // The API fuzzy searches, so we must verify strict equality
+                    const existing = Array.isArray(searchResults)
+                        ? searchResults.find((c: any) =>
+                            c.phone === phone &&
+                            String(c.company_id) === String(sessionUser?.company_id)
+                        )
+                        : null;
+
+                    if (existing) {
+                        // Found! Use existing ID to trigger an update
+                        customerId = existing.customer_ref_id || existing.customer_id || String(existing.id); // Prefer ref_id
+                    } else {
+                        // Not found! Generate NEW ID format: CUS-{phoneNoZero}-{companyId}
+                        // Remove leading '0' from phone if present
+                        let phonePart = phone;
+                        if (phonePart.startsWith('0')) {
+                            phonePart = phonePart.substring(1);
+                        }
+                        const companyId = sessionUser?.company_id || 1;
+
+                        // Collision Check Loop: append _n if ID exists
+                        let suffix = 0;
+                        let uniqueFound = false;
+
+                        while (!uniqueFound) {
+                            // Construct Candidate ID
+                            let candidateId = `CUS-${phonePart}-${companyId}`;
+                            if (suffix > 0) {
+                                candidateId = `CUS-${phonePart}_${suffix}-${companyId}`;
+                            }
+
+                            // Check if candidate ID exists in DB
+                            try {
+                                // We use the same 'customers/ID' endpoint. 
+                                // If it throws 404, it means ID is free. 
+                                // If it returns data, ID is taken.
+                                await apiFetch(`customers/${encodeURIComponent(candidateId)}`);
+
+                                // If we receive a response, the ID exists -> Conflict!
+                                console.log(`Generated ID ${candidateId} already exists. Incrementing suffix...`);
+                                suffix++;
+
+                                // Safety break to prevent infinite loops in weird cases
+                                if (suffix > 50) {
+                                    throw new Error("Too many ID collisions");
+                                }
+
+                            } catch (checkErr: any) {
+                                if (checkErr?.status === 404) {
+                                    // 404 means NOT FOUND -> ID is unique!
+                                    customerId = candidateId;
+                                    uniqueFound = true;
+                                } else {
+                                    // Other error? Re-throw or break
+                                    console.warn("Error checking ID uniqueness", checkErr);
+                                    // Assume unique to proceed, or fail?
+                                    // Let's assume unique to avoid blocking, OR throw.
+                                    // Safer to break loop and try using it (worst case DB error)
+                                    customerId = candidateId;
+                                    uniqueFound = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (customerId) {
+                        phoneToResolvedId.set(phone, customerId);
+                    }
+
+                } catch (err) {
+                    console.error("Error looking up customer by phone", err);
+                    // Fallback to old generation logic if API fails? 
+                    // Or maybe just fail this row? Let's fallback to generation to be safe.
+                    let phonePart = phone;
+                    if (phonePart.startsWith('0')) {
+                        phonePart = phonePart.substring(1);
+                    }
+                    customerId = `CUS-${phonePart}-${sessionUser?.company_id || 1}`;
+                }
+            }
+
 
             const firstName =
                 sanitizeValue(first.customerFirstName) ||
@@ -5519,13 +5707,7 @@ const App: React.FC = () => {
                 sanitizeValue(first.customerLastName) ||
                 sanitizeValue(first.customerName).split(/\s+/).slice(1).join(" ");
 
-            const phone = normalizePhone(sanitizeValue(first.customerPhone));
-            if (!phone) {
-                summary.notes.push(
-                    `Order ${orderId}: customer phone missing, skipped.`,
-                );
-                continue;
-            }
+
 
             const { id: resolvedCaretakerId, reference: resolvedCaretakerRef } =
                 normalizeCaretakerIdentifier(first.caretakerId);
@@ -5602,8 +5784,19 @@ const App: React.FC = () => {
 
             const orderDateIso =
                 parseDateToIso(first.saleDate) ?? toThaiIsoString(new Date());
+
+            // Default Delivery Date = Order Date + 1 Day
+            let deliveryDateIso = parseDateToIso(first.deliveryDate);
+            if (!deliveryDateIso) {
+                const oDate = new Date(orderDateIso);
+                oDate.setDate(oDate.getDate() + 1);
+                deliveryDateIso = toThaiIsoString(oDate);
+            }
+
             const paymentMethod = normalizePaymentMethodValue(first.paymentMethod);
-            const paymentStatus = normalizePaymentStatusValue(first.paymentStatus);
+            // Hardcode Payment Status to Approved
+            const paymentStatus = PaymentStatus.Approved;
+
             const recipientFirstName = sanitizeValue(
                 (first as any).recipientFirstName ??
                 (first as any).recipient_first_name ??
@@ -5688,7 +5881,7 @@ const App: React.FC = () => {
                 companyId: currentUser.companyId,
                 creatorId: resolvedCreatorId,
                 orderDate: orderDateIso,
-                deliveryDate: orderDateIso,
+                deliveryDate: deliveryDateIso,
                 shippingAddress,
                 shippingProvider: undefined,
                 items: payloadItems,
@@ -5699,10 +5892,10 @@ const App: React.FC = () => {
                 paymentStatus,
                 slipUrl: null,
                 amountPaid:
-                    paymentStatus === PaymentStatus.Paid ? totalAmount : undefined,
+                    (paymentStatus === PaymentStatus.Paid || paymentStatus === PaymentStatus.Approved) ? totalAmount : undefined,
                 codAmount:
                     paymentMethod === PaymentMethod.COD ? totalAmount : undefined,
-                orderStatus: OrderStatus.Pending,
+                orderStatus: OrderStatus.Delivered,
                 trackingNumbers: [],
                 boxes: [],
                 notes: sanitizeValue(first.notes) || undefined,

@@ -785,8 +785,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
         case 'GET':
             try {
                 if ($id) {
-                    $sql = 'SELECT * FROM customers WHERE customer_id = ?';
-                    $params = [$id];
+                    $sql = 'SELECT * FROM customers WHERE (customer_id = ? OR customer_ref_id = ?)';
+                    $params = [$id, $id];
                     if (!$isSuperAdmin) {
                         $sql .= ' AND company_id = ?';
                         $params[] = $authCompanyId;

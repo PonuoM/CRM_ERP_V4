@@ -280,6 +280,7 @@ export interface SalesImportRow {
   saleDate?: string;
   paymentMethod?: string;
   paymentStatus?: string;
+  deliveryDate?: string;
   productName?: string;
   productCode?: string;
   quantity?: number;
