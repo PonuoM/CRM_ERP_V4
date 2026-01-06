@@ -1,0 +1,3 @@
+* * * * * php /home/primacom/public_html/path/to/api/cron/cleanup_stale_sessions.php
+
+

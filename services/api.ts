@@ -119,6 +119,25 @@ export async function checkInAttendance(userId: number) {
   });
 }
 
+export async function pingAttendance(userId: number) {
+  try {
+    return await apiFetch("attendance/ping", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
+  } catch {
+    // Silent fail - expected if no active session or unauthorized
+    return null;
+  }
+}
+
+export async function logoutAttendance(userId: number) {
+  return apiFetch("attendance/logout", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
 export async function listCustomers(params?: {
   q?: string;
   companyId?: number;

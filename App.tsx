@@ -63,6 +63,8 @@ import {
   deleteTag,
   listAttendance,
   checkInAttendance,
+  pingAttendance,
+  logoutAttendance,
   apiFetch,
   createUser as apiCreateUser,
   updateUser as apiUpdateUser,
@@ -137,6 +139,8 @@ import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
 import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
+import AttendanceReportPage from "./pages/AttendanceReportPage";
+import OrdersReportPage from "./pages/OrdersReportPage";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
 const FULL_THRESHOLD_SECONDS = 4 * 3600;
@@ -178,7 +182,13 @@ const formatTimeText = (iso?: string | null): string => {
   });
 };
 
-const getTodayIsoString = (): string => new Date().toISOString().slice(0, 10);
+const getTodayIsoString = (): string => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const formatCustomerId = (phone: string, companyId?: number | null): string => {
   const digitsOnly = (phone ?? "").replace(/\D/g, "");
@@ -2078,6 +2088,43 @@ const App: React.FC = () => {
     attendanceInfo?.lastLogout,
     attendanceInfo?.effectiveSeconds,
   ]);
+
+  // Heartbeat ping to keep session alive (every 60 seconds)
+  useEffect(() => {
+    if (!currentUser?.id || !hasCheckedIn) return;
+
+    // Only ping if we have a valid auth token
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
+
+    const sendPing = () => {
+      pingAttendance(currentUser.id).catch(() => {
+        // Silent fail - expected if no active session
+      });
+    };
+
+    sendPing(); // Initial ping when checked in
+    const interval = window.setInterval(sendPing, 60 * 1000); // Every 60 seconds
+
+    return () => window.clearInterval(interval);
+  }, [currentUser?.id, hasCheckedIn]);
+
+  // Logout on browser close/refresh
+  useEffect(() => {
+    if (!currentUser?.id || !hasCheckedIn) return;
+
+    const handleUnload = () => {
+      // Use sendBeacon for reliable delivery on page unload
+      const apiBase = typeof window !== "undefined"
+        ? (window as any).__API_BASE_PATH__ || "/api"
+        : "/api";
+      const url = `${apiBase.replace(/\/$/, "")}/index.php/attendance/logout`;
+      navigator.sendBeacon(url, JSON.stringify({ userId: currentUser.id }));
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [currentUser?.id, hasCheckedIn]);
 
   const viewingCustomer = useMemo(() => {
     // Priority 1: Use explicitly set data (prevents lookup failure on lazy-loaded lists)
@@ -5880,6 +5927,12 @@ const App: React.FC = () => {
           openCreateOrderModal={() => setActivePage("CreateOrder")}
         />
       );
+    }
+    if (activePage === "Attendance Report") {
+      return <AttendanceReportPage currentUser={currentUser} />;
+    }
+    if (activePage === "Orders Report") {
+      return <OrdersReportPage currentUser={currentUser} />;
     }
     if (activePage === "Calls Overview") {
       return <CallsDashboard calls={callHistory} user={currentUser} />;

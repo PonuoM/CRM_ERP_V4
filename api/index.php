@@ -7588,6 +7588,118 @@ function handle_user_login_history(PDO $pdo, ?string $id): void {
 function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
     switch (method()) {
         case 'GET':
+            // Sub-route: /attendance/report - Pivot table for monthly report
+            if ($id === 'report') {
+                $month = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
+                $year = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
+                $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : null;
+                
+                // Get first and last day of month
+                $startDate = sprintf('%04d-%02d-01', $year, $month);
+                $endDate = date('Y-m-t', strtotime($startDate));
+                $daysInMonth = (int)date('t', strtotime($startDate));
+                
+                // Build query - join with roles table to get role id for ordering
+                $sql = "
+                    SELECT 
+                        u.id as user_id,
+                        u.first_name,
+                        u.last_name,
+                        u.role,
+                        COALESCE(r.id, 999) as role_order,
+                        DATE(h.login_time) as work_date,
+                        SUM(
+                            TIMESTAMPDIFF(SECOND, 
+                                h.login_time, 
+                                COALESCE(h.logout_time, NOW())
+                            )
+                        ) as effective_seconds
+                    FROM users u
+                    LEFT JOIN roles r ON u.role = r.name
+                    LEFT JOIN user_login_history h 
+                        ON u.id = h.user_id 
+                        AND DATE(h.login_time) >= ? 
+                        AND DATE(h.login_time) <= ?
+                    WHERE u.status = 'active'
+                ";
+                $params = [$startDate, $endDate];
+                
+                if ($companyId) {
+                    $sql .= " AND u.company_id = ?";
+                    $params[] = $companyId;
+                }
+                
+                $sql .= " GROUP BY u.id, u.first_name, u.last_name, u.role, r.id, DATE(h.login_time)";
+                $sql .= " ORDER BY role_order, u.first_name, DATE(h.login_time)";
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $rows = $stmt->fetchAll();
+                
+                // Get roles ordered by id
+                $rolesStmt = $pdo->query("SELECT name FROM roles WHERE is_active = 1 ORDER BY id");
+                $orderedRoles = $rolesStmt->fetchAll(PDO::FETCH_COLUMN);
+                
+                // Transform to pivot structure
+                $userMap = [];
+                $roleSet = [];
+                
+                foreach ($rows as $row) {
+                    $uid = $row['user_id'];
+                    $role = $row['role'];
+                    
+                    if (!isset($userMap[$uid])) {
+                        $userMap[$uid] = [
+                            'userId' => $uid,
+                            'name' => $row['first_name'] . ' ' . $row['last_name'],
+                            'role' => $role,
+                            'roleOrder' => (int)$row['role_order'],
+                            'days' => [],
+                            'totalSeconds' => 0,
+                            'workDays' => 0,
+                        ];
+                        $roleSet[$role] = (int)$row['role_order'];
+                    }
+                    
+                    if ($row['work_date']) {
+                        $day = (int)date('j', strtotime($row['work_date']));
+                        $seconds = (int)$row['effective_seconds'];
+                        $hours = $seconds / 3600;
+                        $userMap[$uid]['days'][$day] = $seconds;
+                        $userMap[$uid]['totalSeconds'] += $seconds;
+                        
+                        // Work day calculation: ≥4h=1, 2-4h=0.5, <2h=0
+                        if ($hours >= 4) {
+                            $userMap[$uid]['workDays'] += 1.0;
+                        } elseif ($hours >= 2) {
+                            $userMap[$uid]['workDays'] += 0.5;
+                        }
+                        // <2h = 0, don't add anything
+                    }
+                }
+                
+                // Sort roles by their order (from roles table)
+                asort($roleSet);
+                $roles = array_keys($roleSet);
+                
+                // Group by role
+                $grouped = [];
+                foreach ($roles as $role) {
+                    $grouped[$role] = [];
+                }
+                foreach ($userMap as $user) {
+                    $grouped[$user['role']][] = $user;
+                }
+                
+                json_response([
+                    'month' => $month,
+                    'year' => $year,
+                    'daysInMonth' => $daysInMonth,
+                    'roles' => $roles,
+                    'data' => $grouped,
+                ]);
+            }
+
             // Parameters
             $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
             $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : null;
@@ -7676,6 +7788,88 @@ function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
                 $att->execute([$userId, $today]);
                 json_response(['ok' => true, 'loginHistoryId' => $hid, 'attendance' => $att->fetch() ?: null]);
             }
+            
+            // Sub-action: /attendance/ping - Heartbeat to keep session alive
+            if ($id === 'ping') {
+                $in = json_input();
+                $userId = isset($in['userId']) ? (int)$in['userId'] : null;
+                if (!$userId) { json_response(['error' => 'USER_ID_REQUIRED'], 400); }
+                
+                $today = (new DateTime('now'))->format('Y-m-d');
+                
+                // Find the latest active session for today
+                $stmt = $pdo->prepare('
+                    SELECT id FROM user_login_history 
+                    WHERE user_id = ? 
+                      AND login_time >= ? 
+                      AND login_time < DATE_ADD(?, INTERVAL 1 DAY)
+                      AND logout_time IS NULL 
+                    ORDER BY login_time DESC 
+                    LIMIT 1
+                ');
+                $stmt->execute([$userId, $today, $today]);
+                $row = $stmt->fetch();
+                
+                if ($row) {
+                    // Update last_activity
+                    $update = $pdo->prepare('UPDATE user_login_history SET last_activity = NOW() WHERE id = ?');
+                    $update->execute([$row['id']]);
+                    json_response(['ok' => true, 'sessionId' => (int)$row['id']]);
+                }
+                
+                // No active session - check if user checked in today and auto-resume
+                $checkedInToday = $pdo->prepare('
+                    SELECT id FROM user_login_history 
+                    WHERE user_id = ? 
+                      AND login_time >= ? 
+                      AND login_time < DATE_ADD(?, INTERVAL 1 DAY)
+                    LIMIT 1
+                ');
+                $checkedInToday->execute([$userId, $today, $today]);
+                
+                if ($checkedInToday->fetch()) {
+                    // User checked in today, auto-resume with new session
+                    $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+                    $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
+                    $ins = $pdo->prepare('INSERT INTO user_login_history (user_id, login_time, last_activity, ip_address, user_agent) VALUES (?, NOW(), NOW(), ?, ?)');
+                    $ins->execute([$userId, $ip, $ua]);
+                    $newId = (int)$pdo->lastInsertId();
+                    
+                    // Recompute attendance
+                    try { $pdo->prepare('CALL sp_upsert_user_daily_attendance(?, ?)')->execute([$userId, $today]); } catch (Throwable $e) {}
+                    
+                    json_response(['ok' => true, 'sessionId' => $newId, 'resumed' => true]);
+                }
+                
+                json_response(['ok' => false, 'error' => 'NO_ACTIVE_SESSION'], 404);
+            }
+            
+            // Sub-action: /attendance/logout - Manual logout when closing browser
+            if ($id === 'logout') {
+                $in = json_input();
+                $userId = isset($in['userId']) ? (int)$in['userId'] : null;
+                if (!$userId) { json_response(['error' => 'USER_ID_REQUIRED'], 400); }
+                
+                $today = (new DateTime('now'))->format('Y-m-d');
+                
+                // Close all active sessions for today
+                $stmt = $pdo->prepare('
+                    UPDATE user_login_history 
+                    SET logout_time = NOW(),
+                        session_duration = TIMESTAMPDIFF(SECOND, login_time, NOW())
+                    WHERE user_id = ? 
+                      AND login_time >= ? 
+                      AND login_time < DATE_ADD(?, INTERVAL 1 DAY)
+                      AND logout_time IS NULL
+                ');
+                $stmt->execute([$userId, $today, $today]);
+                
+                // Recompute attendance
+                try { $pdo->prepare('CALL sp_upsert_user_daily_attendance(?, ?)')->execute([$userId, $today]); } catch (Throwable $e) {}
+                
+                json_response(['ok' => true, 'closed' => $stmt->rowCount()]);
+            }
+            
             json_response(['error' => 'NOT_FOUND'], 404);
         default:
             json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);

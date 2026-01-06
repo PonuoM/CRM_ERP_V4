@@ -27,6 +27,7 @@ import {
   DollarSign,
   PackagePlus,
   ClipboardList,
+  Clock,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -144,6 +145,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     "System": "ระบบ",
     "Change Password": "เปลี่ยนรหัสผ่าน",
     "Marketing Dashboard": "แดชบอร์ด (มาร์เก็ตติ้ง)",
+    "Attendance Report": "รายงานเวลาเข้างาน",
+    "Orders Report": "รายงานคำสั่งซื้อ",
     "Ads Input": "กรอกค่า Ads",
     "Ads History": "ประวัติการกรอก Ads",
     "Marketing User Management": "จัดการผู้ใช้การตลาด-เพจ",
@@ -160,6 +163,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       children: [
         { label: "Dashboard", icon: LayoutDashboard, key: "home.dashboard" },
         { label: "Sales Overview", icon: LayoutDashboard, key: "home.sales_overview" },
+        { label: "Attendance Report", icon: Clock, key: "home.attendance_report" },
+        { label: "Orders Report", icon: ShoppingCart, key: "home.orders_report" },
         { label: "Accounting Report", icon: FileText, key: "accounting.report" },
       ]
     },
