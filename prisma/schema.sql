@@ -3454,9 +3454,9 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_created_at'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_category'
 ) = 0,
-  'CREATE INDEX `idx_exports_created_at` ON `exports`(`created_at`)',
+  'CREATE INDEX `idx_exports_category` ON `exports`(`category`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -3474,9 +3474,9 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_category'
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exports' AND INDEX_NAME = 'idx_exports_created_at'
 ) = 0,
-  'CREATE INDEX `idx_exports_category` ON `exports`(`category`)',
+  'CREATE INDEX `idx_exports_created_at` ON `exports`(`created_at`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -7643,10 +7643,10 @@ CREATE TABLE IF NOT EXISTS `pages` (
 `active` BOOLEAN NULL,
 `still_in_list` BOOLEAN NULL,
 `user_count` INT NULL,
-`display_name` VARCHAR(255) NULL,
-`sell_product_type` VARCHAR(255) NULL,
 `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 `updated_at` TIMESTAMP NULL,
+`display_name` VARCHAR(255) NULL,
+`sell_product_type` VARCHAR(255) NULL,
   PRIMARY KEY (`id`)
 );
 SET @sql := IF((
@@ -7741,26 +7741,6 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'display_name'
-) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `display_name` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'sell_product_type'
-) = 0,
-  'ALTER TABLE `pages` ADD COLUMN `sell_product_type` VARCHAR(255) NULL ',
-  'SELECT 1'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-SET @sql := IF((
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'created_at'
 ) = 0,
   'ALTER TABLE `pages` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP',
@@ -7774,6 +7754,26 @@ SET @sql := IF((
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'updated_at'
 ) = 0,
   'ALTER TABLE `pages` ADD COLUMN `updated_at` TIMESTAMP NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'display_name'
+) = 0,
+  'ALTER TABLE `pages` ADD COLUMN `display_name` VARCHAR(255) NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pages' AND COLUMN_NAME = 'sell_product_type'
+) = 0,
+  'ALTER TABLE `pages` ADD COLUMN `sell_product_type` VARCHAR(255) NULL ',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -9742,6 +9742,7 @@ CREATE TABLE IF NOT EXISTS `user_login_history` (
 `ip_address` VARCHAR(45) NULL,
 `user_agent` TEXT NULL,
 `logout_time` DATETIME NULL,
+`last_activity` DATETIME NULL,
 `session_duration` INT NULL,
   PRIMARY KEY (`id`)
 );
@@ -9797,9 +9798,29 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 SET @sql := IF((
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'last_activity'
+) = 0,
+  'ALTER TABLE `user_login_history` ADD COLUMN `last_activity` DATETIME NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND COLUMN_NAME = 'session_duration'
 ) = 0,
   'ALTER TABLE `user_login_history` ADD COLUMN `session_duration` INT NULL ',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql := IF((
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_login_history' AND INDEX_NAME = 'idx_last_activity'
+) = 0,
+  'CREATE INDEX `idx_last_activity` ON `user_login_history`(`last_activity`)',
   'SELECT 1'
 );
 PREPARE stmt FROM @sql;

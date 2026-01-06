@@ -391,9 +391,9 @@ model exports {
   created_at     DateTime @default(now()) @db.DateTime(0)
   download_count Int      @default(0)
 
-  @@index([created_at], map: "idx_exports_created_at")
-  @@index([company_id], map: "idx_exports_company")
   @@index([category], map: "idx_exports_category")
+  @@index([company_id], map: "idx_exports_company")
+  @@index([created_at], map: "idx_exports_created_at")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -878,20 +878,20 @@ model page_user {
 }
 
 model pages {
-  id            Int       @id @default(autoincrement())
-  page_id       String?   @db.VarChar(255)
-  name          String    @db.VarChar(255)
-  platform      String    @default("Facebook") @db.VarChar(64)
-  page_type     String?   @db.VarChar(50)
-  url           String?   @db.VarChar(1024)
-  company_id    Int
-  active        Boolean   @default(true)
-  still_in_list Boolean   @default(true)
+  id                Int       @id @default(autoincrement())
+  page_id           String?   @db.VarChar(255)
+  name              String    @db.VarChar(255)
+  platform          String    @default("Facebook") @db.VarChar(64)
+  page_type         String?   @db.VarChar(50)
+  url               String?   @db.VarChar(1024)
+  company_id        Int
+  active            Boolean   @default(true)
+  still_in_list     Boolean   @default(true)
   user_count        Int       @default(0)
+  created_at        DateTime? @default(now()) @db.Timestamp(0)
+  updated_at        DateTime? @default(now()) @db.Timestamp(0)
   display_name      String?   @db.VarChar(255)
   sell_product_type String?   @db.VarChar(255)
-  created_at        DateTime? @default(now()) @db.Timestamp(0)
-  updated_at    DateTime? @default(now()) @db.Timestamp(0)
 
   @@index([page_id], map: "idx_page_id")
   @@index([page_type], map: "idx_page_type")
@@ -1196,8 +1196,10 @@ model user_login_history {
   ip_address       String?   @db.VarChar(45)
   user_agent       String?   @db.Text
   logout_time      DateTime? @db.DateTime(0)
+  last_activity    DateTime? @db.DateTime(0)
   session_duration Int?
 
+  @@index([last_activity], map: "idx_last_activity")
   @@index([login_time], map: "idx_login_time")
   @@index([user_id], map: "idx_login_user_id")
 }
