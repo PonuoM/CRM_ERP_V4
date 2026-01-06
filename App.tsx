@@ -5530,6 +5530,29 @@ const App: React.FC = () => {
             const { id: resolvedCaretakerId, reference: resolvedCaretakerRef } =
                 normalizeCaretakerIdentifier(first.caretakerId);
 
+            // Logic: If salesperson is a Telesale/Supervisor, they become the caretaker (Assigned To)
+            // unless explicit caretaker overrides (but usually salesperson IS the owner in this context)
+            let effectiveCaretakerId = resolvedCaretakerId;
+            // Resolve Salesperson FIRST to see if they should own the customer
+            const {
+                id: resolvedCreatorId, // This is now available here because we moved the logic block up (wait, I need to move it up in the file too)
+                matched: salespersonMatched,
+                reference: salespersonReference,
+            } = resolveSalespersonForImport(first.salespersonId);
+
+            if (resolvedCreatorId) {
+                const creatorUser = companyUsers.find(u => u.id === resolvedCreatorId);
+                const isSalesRole = creatorUser && (
+                    creatorUser.role === UserRole.Telesale ||
+                    creatorUser.role === UserRole.Supervisor ||
+                    String(creatorUser.role).includes('Telesale')
+                );
+
+                if (isSalesRole) {
+                    effectiveCaretakerId = resolvedCreatorId;
+                }
+            }
+
             const customer = await ensureCustomerForImport(
                 {
                     id: customerId,
@@ -5542,7 +5565,7 @@ const App: React.FC = () => {
                     district: sanitizeValue(first.district),
                     province: sanitizeValue(first.province),
                     postalCode: sanitizeValue(first.postalCode),
-                    caretakerId: resolvedCaretakerId ?? undefined,
+                    caretakerId: effectiveCaretakerId ?? undefined,
                     caretakerRef: resolvedCaretakerRef ?? undefined,
                 },
                 summary,
@@ -5603,11 +5626,7 @@ const App: React.FC = () => {
                 postalCode: sanitizeValue(first.postalCode),
             };
 
-            const {
-                id: resolvedCreatorId,
-                matched: salespersonMatched,
-                reference: salespersonReference,
-            } = resolveSalespersonForImport(first.salespersonId);
+            // resolvedCreatorId is already resolved above for ownership assignment
 
             if (!salespersonMatched && salespersonReference) {
                 summary.notes.push(
