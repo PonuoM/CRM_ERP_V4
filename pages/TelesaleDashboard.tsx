@@ -903,6 +903,25 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     return filtered;
   }, [userCustomers, activeSubMenu, appointments, activities, calls, orders, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    activeDatePreset,
+    dateRange,
+    appliedSearchTerm,
+    selectedTagIds,
+    selectedGrades,
+    selectedProvinces,
+    selectedLifecycleStatuses,
+    selectedExpiryDays,
+    sortBy,
+    sortByExpiry,
+    hideTodayCalls,
+    hideTodayCallsRangeEnabled,
+    hideTodayCallsRange
+  ]);
+
   const [persistentTabPages, setPersistentTabPages] = usePersistentState<Record<string, number>>(
     `telesale_tab_pages_v2_${user.id}`,
     {}
