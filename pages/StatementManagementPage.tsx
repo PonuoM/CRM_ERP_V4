@@ -362,7 +362,13 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
     );
 
     const header = ["date", "time", "amount", "channel", "description"];
-    const lines = [header.join(",")];
+    const exampleRow = [
+      "12/12/2025",
+      "16:05:00",
+      "21060",
+      "Kbank",
+      "จากนายสมมุติ นามสกุล จำนวนเงิน 21060"
+    ];
 
     const escapeCsv = (value: string) => {
       if (/[",\n]/.test(value)) {
@@ -370,6 +376,11 @@ const StatementManagementPage: React.FC<StatementManagementPageProps> = ({
       }
       return value;
     };
+
+    const lines = [
+      header.join(","),
+      exampleRow.map(escapeCsv).join(",")
+    ];
 
     for (const r of nonEmpty) {
       lines.push(
