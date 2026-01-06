@@ -903,9 +903,21 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     return filtered;
   }, [userCustomers, activeSubMenu, appointments, activities, calls, orders, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
 
-  // Reset pagination when filters change
+  const [persistentTabPages, setPersistentTabPages] = usePersistentState<Record<string, number>>(
+    `telesale_tab_pages_v2_${user.id}`,
+    {}
+  );
+
+  // Reset pagination when filters change (Reset ALL tabs)
   useEffect(() => {
     setCurrentPage(1);
+
+    // Clear persistent page state for all tabs to ensure filtering applies cleanly everywhere
+    setPersistentTabPages({});
+
+    // Clear memory cache as well
+    setTabCache({});
+
   }, [
     activeDatePreset,
     dateRange,
@@ -919,13 +931,10 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     sortByExpiry,
     hideTodayCalls,
     hideTodayCallsRangeEnabled,
-    hideTodayCallsRange
+    hideTodayCallsRange,
+    setPersistentTabPages // Check if this stable
   ]);
 
-  const [persistentTabPages, setPersistentTabPages] = usePersistentState<Record<string, number>>(
-    `telesale_tab_pages_v2_${user.id}`,
-    {}
-  );
 
   // Viewed Customers Tracking (Daily Reset)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -983,12 +992,23 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   }, [currentPage, activeSubMenu, setPersistentTabPages]);
 
   // Client-side pagination effect
+  // Client-side pagination effect
   useEffect(() => {
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-
     // Safety check in case filteredCustomers is not ready, though useMemo should prevent this
     const data = filteredCustomers || [];
+
+    // Auto-correction: If current page is out of bounds (e.g. after filter), reset to 1
+    const total = data.length;
+    const maxPage = Math.max(1, Math.ceil(total / pageSize));
+
+    if (currentPage > maxPage) {
+      setCurrentPage(1);
+      // We can return early because the effect will run again when currentPage changes
+      return;
+    }
+
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
     const sliced = data.slice(start, end);
 
     setPaginatedCustomers(sliced);
@@ -1025,6 +1045,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const handleDatePresetClick = (preset: string) => {
     setActiveDatePreset(preset);
     setDateRange({ start: '', end: '' });
+    setCurrentPage(1);
   };
 
   const handleClearAllFilters = () => {
@@ -1043,6 +1064,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     setHideTodayCalls(false);
     setHideTodayCallsRangeEnabled(false);
     setHideTodayCallsRange({ start: "", end: "" });
+    setCurrentPage(1);
 
     // Clear localStorage as well
     try {
@@ -1055,6 +1077,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const handleServerSearch = async () => {
     // Shared logic: Update applied term
     setAppliedSearchTerm(searchTerm.trim());
+    setCurrentPage(1);
 
     if (!searchTerm.trim()) {
       setServerSearchResults(null);
@@ -1100,6 +1123,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       }
       return newRange;
     });
+    setCurrentPage(1);
   };
 
   const handleFilterSelect = (setter: React.Dispatch<React.SetStateAction<any[]>>, selected: any[], value: any) => {
@@ -1108,6 +1132,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     } else {
       setter([...selected, value]);
     }
+    setCurrentPage(1);
   };
 
   const menuItems = [
@@ -1248,6 +1273,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                   } else {
                     setSelectedGrades([]);
                   }
+                  setCurrentPage(1);
                 }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
@@ -1268,6 +1294,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                   } else {
                     setSelectedProvinces([]);
                   }
+                  setCurrentPage(1);
                 }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
@@ -1288,6 +1315,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                   } else {
                     setSelectedLifecycleStatuses([]);
                   }
+                  setCurrentPage(1);
                 }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
@@ -1303,7 +1331,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
               <label className="block text-xs text-gray-500 mb-1">เรียงตามระบบ</label>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="system">ค่าเริ่มต้น</option>
@@ -1318,7 +1346,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
               <label className="block text-xs text-gray-500 mb-1">เรียงตามวันที่คงเหลือ</label>
               <select
                 value={sortByExpiry}
-                onChange={(e) => setSortByExpiry(e.target.value)}
+                onChange={(e) => { setSortByExpiry(e.target.value); setCurrentPage(1); }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">ไม่เรียง</option>
@@ -1337,6 +1365,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                   } else {
                     setSelectedExpiryDays(null);
                   }
+                  setCurrentPage(1);
                 }}
                 className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
@@ -1357,7 +1386,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                     type="checkbox"
                     id="hideTodayCalls"
                     checked={hideTodayCalls}
-                    onChange={(e) => setHideTodayCalls(e.target.checked)}
+                    onChange={(e) => { setHideTodayCalls(e.target.checked); setCurrentPage(1); }}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="hideTodayCalls" className="ml-2 text-sm text-gray-700">
@@ -1370,7 +1399,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                     type="checkbox"
                     id="hideTodayCallsRangeEnabled"
                     checked={hideTodayCallsRangeEnabled}
-                    onChange={(e) => setHideTodayCallsRangeEnabled(e.target.checked)}
+                    onChange={(e) => { setHideTodayCallsRangeEnabled(e.target.checked); setCurrentPage(1); }}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="hideTodayCallsRangeEnabled" className="ml-2 text-sm text-gray-700">
@@ -1383,14 +1412,14 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
                     <input
                       type="date"
                       value={hideTodayCallsRange.start}
-                      onChange={(e) => setHideTodayCallsRange(prev => ({ ...prev, start: e.target.value }))}
+                      onChange={(e) => { setHideTodayCallsRange(prev => ({ ...prev, start: e.target.value })); setCurrentPage(1); }}
                       className="p-1 border border-gray-300 rounded-md text-sm"
                     />
                     <span className="text-gray-500 text-sm">ถึง</span>
                     <input
                       type="date"
                       value={hideTodayCallsRange.end}
-                      onChange={(e) => setHideTodayCallsRange(prev => ({ ...prev, end: e.target.value }))}
+                      onChange={(e) => { setHideTodayCallsRange(prev => ({ ...prev, end: e.target.value })); setCurrentPage(1); }}
                       className="p-1 border border-gray-300 rounded-md text-sm"
                     />
                   </div>
