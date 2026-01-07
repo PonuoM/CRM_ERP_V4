@@ -265,12 +265,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Data Management",
       icon: Database,
       children: [
-        { label: "Users", icon: Users, key: "data.users" },
+        { label: "Users", icon: Users },
         { label: "Products", icon: Package, key: "data.products" },
-        { label: "Pages", icon: Share2, key: "data.pages" },
+        { label: "Pages", icon: Share2 },
         { label: "Platforms", icon: Share2, key: "data.platforms" },
         { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
-        { label: "Tags", icon: FileText, key: "data.tags" },
+        { label: "Tags", icon: FileText },
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "Role Management", icon: Key, key: "data.roles" },
       ]

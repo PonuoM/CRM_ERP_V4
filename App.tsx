@@ -486,9 +486,7 @@ const App: React.FC = () => {
             'All Slips': 'payment_slip.all',
             'Reports': 'reports.reports',
             'Export History': 'reports.export_history',
-            'Users': 'data.users',
             'Products': 'data.products',
-            'Pages': 'data.pages',
             'Accounting Report': 'accounting.report',
         };
 
@@ -6245,9 +6243,6 @@ const App: React.FC = () => {
             Permissions: [UserRole.SuperAdmin],
             Teams: [UserRole.SuperAdmin],
             Products: [UserRole.SuperAdmin, UserRole.AdminControl],
-            Users: [UserRole.SuperAdmin, UserRole.AdminControl],
-            Pages: [UserRole.SuperAdmin, UserRole.AdminControl],
-            Tags: [UserRole.SuperAdmin, UserRole.AdminControl],
         };
         const allowedRoles = pageRoleLimits[activePage];
         if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
