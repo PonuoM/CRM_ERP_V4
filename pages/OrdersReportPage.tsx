@@ -78,8 +78,8 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
             if (paymentStatus !== "All") url += `&paymentStatus=${paymentStatus}`;
 
             const result = await apiFetch(url);
-            setOrders(result.data || []);
-            setTotal(result.total || 0);
+            setOrders(result.orders || []);
+            setTotal(result.pagination?.total || 0);
         } catch (error) {
             console.error("Failed to fetch orders", error);
             setOrders([]);
@@ -230,18 +230,18 @@ const OrdersReportPage: React.FC<OrdersReportPageProps> = ({ currentUser }) => {
                                         <td className="px-2 py-1.5 text-center text-gray-600">{order.payment_method || "-"}</td>
                                         <td className="px-2 py-1.5 text-center">
                                             <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${order.payment_status === "Paid" ? "bg-green-100 text-green-700" :
-                                                    order.payment_status === "Pending" ? "bg-yellow-100 text-yellow-700" :
-                                                        order.payment_status === "PartialPaid" ? "bg-blue-100 text-blue-700" :
-                                                            "bg-gray-100 text-gray-600"
+                                                order.payment_status === "Pending" ? "bg-yellow-100 text-yellow-700" :
+                                                    order.payment_status === "PartialPaid" ? "bg-blue-100 text-blue-700" :
+                                                        "bg-gray-100 text-gray-600"
                                                 }`}>
                                                 {order.payment_status || "-"}
                                             </span>
                                         </td>
                                         <td className="px-2 py-1.5 text-center">
                                             <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${order.order_status === "Completed" ? "bg-green-100 text-green-700" :
-                                                    order.order_status === "Shipped" ? "bg-blue-100 text-blue-700" :
-                                                        order.order_status === "Cancelled" ? "bg-red-100 text-red-700" :
-                                                            "bg-gray-100 text-gray-600"
+                                                order.order_status === "Shipped" ? "bg-blue-100 text-blue-700" :
+                                                    order.order_status === "Cancelled" ? "bg-red-100 text-red-700" :
+                                                        "bg-gray-100 text-gray-600"
                                                 }`}>
                                                 {order.order_status || "-"}
                                             </span>
