@@ -265,12 +265,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Data Management",
       icon: Database,
       children: [
-        { label: "Users", icon: Users },
+        { label: "Users", icon: Users, key: "data.users" },
         { label: "Products", icon: Package, key: "data.products" },
-        { label: "Pages", icon: Share2 },
+        { label: "Pages", icon: Share2, key: "data.pages" },
         { label: "Platforms", icon: Share2, key: "data.platforms" },
         { label: "Bank Accounts", icon: Database, key: "data.bank_accounts" },
-        { label: "Tags", icon: FileText },
+        { label: "Tags", icon: FileText, key: "data.tags" },
         { label: "Companies", icon: Briefcase, key: "data.companies" },
         { label: "Role Management", icon: Key, key: "data.roles" },
       ]
@@ -291,10 +291,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Marketing",
       icon: BarChart2,
       children: [
-        { label: "Marketing Dashboard", icon: BarChart2 },
-        { label: "Ads Input", icon: Pencil },
-        { label: "Ads History", icon: Calendar },
-        { label: "Marketing User Management", icon: Users },
+        { label: "Marketing Dashboard", icon: BarChart2, key: "marketing.dashboard" },
+        { label: "Ads Input", icon: Pencil, key: "marketing.ads_input" },
+        { label: "Ads History", icon: Calendar, key: "marketing.ads_history" },
+        { label: "Marketing User Management", icon: Users, key: "marketing.user_management" },
       ]
     },
   ];
