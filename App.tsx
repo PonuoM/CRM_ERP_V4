@@ -5324,8 +5324,13 @@ const App: React.FC = () => {
                 updatePayload.totalPurchases = resolvedTotalPurchases;
             }
 
+            let updatedDbId = input.id;
             try {
-                await updateCustomer(input.id, updatePayload);
+                const res: any = await updateCustomer(input.id, updatePayload);
+                // API returns { ... customer_id as pk ... }
+                if (res && (res.pk || res.customer_id || res.id)) {
+                    updatedDbId = String(res.pk || res.customer_id || res.id);
+                }
             } catch (error) {
                 notes.push(
                     `Failed to update customer ${input.id}: ${(error as Error).message}`,
@@ -5334,7 +5339,8 @@ const App: React.FC = () => {
             }
 
             const baseCustomer: Customer = existing ?? {
-                id: input.id,
+                id: updatedDbId, // Use numeric ID if available
+
                 firstName,
                 lastName,
                 phone,
@@ -5419,8 +5425,14 @@ const App: React.FC = () => {
         createPayload.grade = resolvedGrade;
         createPayload.totalPurchases = resolvedTotalPurchases;
 
+        let newlyCreatedId = input.id; // Fallback to provided ID if API doesn't return one
+
         try {
-            await apiCreateCustomer(createPayload);
+            const apiRes: any = await apiCreateCustomer(createPayload);
+            // API returns { ok: true, id: <INT>, customer_id: <INT> }
+            if (apiRes && (apiRes.id || apiRes.customer_id)) {
+                newlyCreatedId = String(apiRes.id || apiRes.customer_id);
+            }
         } catch (error) {
             notes.push(
                 `Failed to create customer ${input.id}: ${(error as Error).message}`,
@@ -5429,7 +5441,7 @@ const App: React.FC = () => {
         }
 
         const newCustomer: Customer = {
-            id: input.id,
+            id: newlyCreatedId, // Use the real DB PK
             firstName,
             lastName,
             phone,
@@ -5447,6 +5459,7 @@ const App: React.FC = () => {
             tags: [],
             totalPurchases: resolvedTotalPurchases,
             totalCalls: 0,
+            customerRefId: input.id, // Keep the generated Ref ID for reference
         };
 
         setCustomers((prev) => {
@@ -5832,6 +5845,27 @@ const App: React.FC = () => {
                     sanitizeValue(line.productName) ||
                     sanitizeValue(line.productCode) ||
                     `Item ${index + 1}`;
+
+                // Logic to map Product ID based on SKU (productCode from CSV)
+                const importSku = sanitizeValue(line.productCode);
+                let matchedProduct = undefined;
+
+                if (importSku) {
+                    matchedProduct = products.find(p =>
+                        p.sku === importSku &&
+                        Number(p.companyId) === Number(currentUser.companyId)
+                    );
+                }
+
+                // If not found, try to find UNKNOWN-PRODUCT-COMPANY{id}
+                if (!matchedProduct) {
+                    const unknownSku = `UNKNOWN-PRODUCT-COMPANY${currentUser.companyId}`;
+                    matchedProduct = products.find(p =>
+                        p.sku === unknownSku &&
+                        Number(p.companyId) === Number(currentUser.companyId)
+                    );
+                }
+
                 return {
                     id: index + 1,
                     productName,
@@ -5844,13 +5878,15 @@ const App: React.FC = () => {
                             Number.isFinite(line.unitPrice)
                             ? line.unitPrice
                             : 0,
+                    productId: matchedProduct ? matchedProduct.id : undefined, // Map the found ID
+                    sku: matchedProduct ? matchedProduct.sku : importSku, // Map the found SKU or keep import SKU
                     discount:
                         typeof line.discount === "number" && Number.isFinite(line.discount)
                             ? line.discount
                             : 0,
                     isFreebie: false,
                     boxNumber: 0,
-                    productId: undefined,
+                    // productId: undefined, // Removed duplicate
                     promotionId: undefined,
                     parentItemId: undefined,
                     isPromotionParent: false,
