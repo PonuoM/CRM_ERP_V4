@@ -116,6 +116,10 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
       if (sessionData) {
         const session = JSON.parse(sessionData);
         if (session) {
+          // Map snake_case to camelCase if needed, as User interface uses companyId
+          if ('company_id' in session && !('companyId' in session)) {
+            session.companyId = session.company_id;
+          }
           setCurrentUser(session);
 
           checkDbSetting();
@@ -128,11 +132,11 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
   const checkDbSetting = async () => {
     try {
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=page_store_db`);
       if (envResponse.ok) {
         const envData = await envResponse.json();
-        const dbSetting = Array.isArray(envData) ? envData.find((env: any) => env.key === 'page_store_db') : null;
-        setIsStoreDbEnabled(dbSetting ? dbSetting.value === '1' : true);
+        // envData is { key, value... }
+        setIsStoreDbEnabled(envData && envData.value ? envData.value === '1' : true);
       }
     } catch (error) {
       console.error('Error checking database setting:', error);
@@ -157,7 +161,7 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
   // Check for access token when component mounts
   useEffect(() => {
     if (currentUser && !isEnvSidebarOpen && !wasEnvSidebarOpened) {
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
       const hasAccessToken = envVariables.some(envVar => envVar.key === accessTokenKey);
 
       // Only show warning modal if env variables have been loaded and no token is found
@@ -528,13 +532,18 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
+      // Get access token
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${accessTokenKey}`);
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
+
       const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
-      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+      let accessToken = '';
+      if (envData && envData.value) {
+        accessToken = envData.value;
+      }
 
       if (!accessToken) {
         alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
@@ -761,13 +770,18 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
 
     try {
       // Get access token
-      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php`);
+      // Get access token
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
+      const envResponse = await fetch(`${apiBase}/Page_DB/env_manager.php?key=${accessTokenKey}`);
       if (!envResponse.ok) {
         throw new Error('ไม่สามารถดึงข้อมูล env ได้');
       }
+
       const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
-      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
+      let accessToken = '';
+      if (envData && envData.value) {
+        accessToken = envData.value;
+      }
 
       if (!accessToken) {
         alert(`ไม่พบ ACCESS_TOKEN สำหรับ ${accessTokenKey}`);
@@ -1105,13 +1119,20 @@ const PageStatsPage: React.FC<PageStatsPageProps> = ({ orders = [], customers = 
     setIsSearching(true);
     try {
       // First, get the access token from env variables
-      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php`, { method: 'GET' });
-      if (!envResponse.ok) {
-        throw new Error('ไม่สามารถดึงข้อมูล env ได้');
+      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.companyId}`;
+      const envResponse = await fetchWithRetry(`${apiBase}/Page_DB/env_manager.php?key=${accessTokenKey}`, { method: 'GET' });
+
+      let accessToken = '';
+      if (envResponse.ok) {
+        const envData = await envResponse.json();
+        // If success, envData is the object { key, value, ... }
+        // If not found (my script returns error json but status 200?), need to check
+        // My php returns json_response(['error' => ...]) which usually sets 200 unless specified? 
+        // Helper json_response default is 200? Let's assume standard behavior.
+        if (envData && envData.value) {
+          accessToken = envData.value;
+        }
       }
-      const envData = await envResponse.json();
-      const accessTokenKey = `ACCESS_TOKEN_PANCAKE_${currentUser.company_id}`;
-      const accessToken = envData.find((env: any) => env.key === accessTokenKey)?.value;
 
       if (!accessToken) {
         setIsAccessTokenWarningOpen(true);

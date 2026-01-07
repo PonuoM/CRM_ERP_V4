@@ -220,6 +220,7 @@ export interface Customer {
   id: string;
   customerId?: string; // Public ID (e.g. CUS-xxx). Historically used as primary key in UI.
   customerRefId?: string; // Explicit public ref (customer_ref_id)
+  customer_id?: number; // Internal database ID (PK), alias for pk
   pk?: number; // Internal database ID (customer_id)
   firstName: string;
   lastName: string;

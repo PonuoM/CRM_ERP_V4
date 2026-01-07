@@ -1065,6 +1065,7 @@ const App: React.FC = () => {
           return {
             id: resolvedId,
             pk: pk != null ? Number(pk) : undefined,
+            customer_id: pk != null ? Number(pk) : undefined,
             customerId: refId ?? undefined,
             customerRefId: refId ?? undefined,
             firstName: r.first_name,
@@ -5274,124 +5275,30 @@ const App: React.FC = () => {
     };
 
     if (recordExists) {
-      const updatePayload: any = {
-        firstName,
-        lastName,
-        phone,
-        email,
-        province: province || undefined,
-        address: {
-          street: street || undefined,
-          subdistrict: subdistrict || undefined,
-          district: district || undefined,
-          province: province || undefined,
-          postalCode: postalCode || undefined,
-        },
-      };
+      if (!existing) {
+        // If customer exists in DB but not in local state, fetch it
+        try {
+          const freshData = await apiFetch(`customers/${encodeURIComponent(input.id)}`);
+          if (freshData) {
+            existing = mapCustomer(freshData); // Use the same mapping logic
+          }
+        } catch (err) {
+          notes.push(`Failed to fetch existing customer ${input.id}: ${(err as Error).message}`);
+        }
+      }
 
       if (assignedTo !== null) {
-        updatePayload.assignedTo = assignedTo;
-        if (dateAssignedIso) {
-          updatePayload.dateAssigned = dateAssignedIso;
-        }
+        // Even if no update, we might want to update assignment if specifically requested?
+        // User said: "If customer exists, there will be NO UPDATE of any data".
+        // So we do nothing.
       }
 
-      if (input.dateRegistered) {
-        updatePayload.dateRegistered = resolvedDateRegistered;
-      } else if (!existing?.dateRegistered && resolvedDateRegistered) {
-        updatePayload.dateRegistered = resolvedDateRegistered;
+      // Return existing record as is without changes
+      summary.updatedCustomers += 0; // No increment
+      if (existing) {
+        processed.set(input.id, existing);
+        return existing;
       }
-
-      if (input.ownershipExpires) {
-        updatePayload.ownershipExpires = resolvedOwnershipExpires;
-      } else if (!existing?.ownershipExpires && assignedTo !== null) {
-        updatePayload.ownershipExpires = resolvedOwnershipExpires;
-      }
-
-      if (input.lifecycleStatus) {
-        updatePayload.lifecycleStatus = resolvedLifecycleStatus;
-      }
-
-      if (input.behavioralStatus) {
-        updatePayload.behavioralStatus = resolvedBehavioralStatus;
-      } else if (!existing?.behavioralStatus) {
-        updatePayload.behavioralStatus = resolvedBehavioralStatus;
-      }
-
-      if (input.grade) {
-        updatePayload.grade = resolvedGrade;
-      } else if (!existing?.grade) {
-        updatePayload.grade = resolvedGrade;
-      }
-
-      if (
-        typeof input.totalPurchases === "number" &&
-        Number.isFinite(input.totalPurchases)
-      ) {
-        updatePayload.totalPurchases = resolvedTotalPurchases;
-      }
-
-      try {
-        await updateCustomer(input.id, updatePayload);
-      } catch (error) {
-        notes.push(
-          `Failed to update customer ${input.id}: ${(error as Error).message}`,
-        );
-        return existing ?? null;
-      }
-
-      const baseCustomer: Customer = existing ?? {
-        id: input.id,
-        firstName,
-        lastName,
-        phone,
-        email,
-        address,
-        province,
-        companyId: currentUser.companyId,
-        assignedTo,
-        dateAssigned: dateAssignedIso ?? toThaiIsoString(now),
-        dateRegistered: resolvedDateRegistered,
-        ownershipExpires: resolvedOwnershipExpires,
-        lifecycleStatus: resolvedLifecycleStatus,
-        behavioralStatus: resolvedBehavioralStatus,
-        grade: resolvedGrade,
-        tags: [],
-        totalPurchases: resolvedTotalPurchases,
-        totalCalls: 0,
-      };
-
-      const mergedCustomer: Customer = {
-        ...baseCustomer,
-        firstName,
-        lastName,
-        phone,
-        email,
-        address,
-        province,
-        assignedTo,
-        dateAssigned: dateAssignedIso ?? baseCustomer.dateAssigned,
-        dateRegistered: resolvedDateRegistered ?? baseCustomer.dateRegistered,
-        ownershipExpires:
-          resolvedOwnershipExpires || baseCustomer.ownershipExpires,
-        lifecycleStatus: resolvedLifecycleStatus,
-        behavioralStatus: resolvedBehavioralStatus,
-        grade: resolvedGrade,
-        totalPurchases: resolvedTotalPurchases,
-      };
-
-      setCustomers((prev) => {
-        if (prev.some((c) => c.id === input.id)) {
-          return prev.map((c) =>
-            c.id === input.id ? { ...c, ...mergedCustomer } : c,
-          );
-        }
-        return [mergedCustomer, ...prev];
-      });
-
-      summary.updatedCustomers += 1;
-      processed.set(input.id, mergedCustomer);
-      return mergedCustomer;
     }
 
     const createPayload: any = {
@@ -5426,8 +5333,17 @@ const App: React.FC = () => {
     createPayload.grade = resolvedGrade;
     createPayload.totalPurchases = resolvedTotalPurchases;
 
+    let createdPk: number | undefined;
     try {
-      await apiCreateCustomer(createPayload);
+      console.log('Creating customer for import:', createPayload);
+      const res: any = await apiCreateCustomer(createPayload);
+      console.log('Create customer response:', res);
+      if (res && res.id) {
+        createdPk = Number(res.id);
+        console.log('Captured createdPk:', createdPk);
+      } else {
+        console.warn('Create customer response missing ID:', res);
+      }
     } catch (error) {
       notes.push(
         `Failed to create customer ${input.id}: ${(error as Error).message}`,
@@ -5437,6 +5353,8 @@ const App: React.FC = () => {
 
     const newCustomer: Customer = {
       id: input.id,
+      pk: createdPk,
+      customer_id: createdPk,
       firstName,
       lastName,
       phone,
@@ -5488,12 +5406,54 @@ const App: React.FC = () => {
       { rows: SalesImportRow[]; firstIndex: number }
     >();
 
+    let currentAutoOrderId: string | null = null;
+    let currentAutoGroupCriteria: { phone: string; date: string } | null = null;
+
     rows.forEach((row, index) => {
-      const orderId = sanitizeValue(row.orderNumber);
-      if (!orderId) {
-        summary.notes.push(`Row ${index + 2}: missing order number, skipped.`);
-        return;
+      let orderId = sanitizeValue(row.orderNumber);
+
+      if (orderId) {
+        // Explicit order ID present - reset auto-grouping state
+        currentAutoOrderId = null;
+        currentAutoGroupCriteria = null;
+      } else {
+        // Missing order ID - attempt to group
+        const rowPhone = sanitizeValue(row.customerPhone); // Use raw sanitize, normalization happens later if needed, or consistent raw input
+        const rowDate = sanitizeValue(row.saleDate);
+
+        // Check if matches previous auto-grouping criteria
+        if (
+          currentAutoOrderId &&
+          currentAutoGroupCriteria &&
+          currentAutoGroupCriteria.phone === rowPhone &&
+          currentAutoGroupCriteria.date === rowDate
+        ) {
+          // Continue with same auto-generated ID
+          orderId = currentAutoOrderId;
+        } else {
+          // Start new auto-generated ID
+          let dateObj = new Date();
+          if (rowDate) {
+            const d = new Date(rowDate);
+            if (!isNaN(d.getTime())) dateObj = d;
+          }
+
+          const yyyy = dateObj.getFullYear();
+          const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const dd = String(dateObj.getDate()).padStart(2, '0');
+          const datePart = `${yyyy}${mm}${dd}`;
+
+          // Generate unique ID: YYYYMMDD-{seq}EXTERNAL
+          // seq is 6 digits: 000001
+          const seq = String(index + 1).padStart(6, '0');
+          orderId = `${datePart}-${seq}EXTERNAL`;
+
+          // Update state
+          currentAutoOrderId = orderId;
+          currentAutoGroupCriteria = { phone: rowPhone, date: rowDate };
+        }
       }
+
       const entry = grouped.get(orderId);
       if (entry) {
         entry.rows.push(row);
@@ -5510,11 +5470,69 @@ const App: React.FC = () => {
       const rawCustomerId = sanitizeValue(first.customerId);
       let customerId = rawCustomerId;
       if (!customerId) {
-        const phoneSeed = normalizePhone(sanitizeValue(first.customerPhone));
-        if (phoneSeed) {
-          customerId = `CUST-${phoneSeed}`;
+        const phone = normalizePhone(sanitizeValue(first.customerPhone));
+        if (phone) {
+          // Generate ID: CUS-{phone}-{companyId}, CUS1-{phone}-{companyId}, ...
+          let suffix = 0;
+          let foundId = "";
+
+          while (true) {
+            const prefix = suffix === 0 ? "CUS" : `CUS${suffix}`;
+            const tryId = `${prefix}-${phone}-${currentUser.companyId}`;
+
+            // Check if ID exists
+            const existing = customers.find(c => c.id === tryId);
+            const processed = processedCustomers.get(tryId);
+
+            const record = existing || processed;
+
+            if (!record) {
+              // ID is available, use it (will be created)
+              foundId = tryId;
+              break;
+            }
+
+            // ID exists, check if it's the "same" customer to reuse
+            // Since we assume ID based on phone is unique to that customer,
+            // finding it means we found the customer.
+            // AND user wants to reuse existing customer without updating.
+            // So if we find it, we stick with it.
+            // UNLESS... the user wants to force separation?
+            // "If ID repeats, add auto increment" - this usually implies collision resolution for DIFFERENT entities.
+            // But here, if I import Mr. A (081234) and Mr. A (081234) is in DB, I should use CUS-081234.
+            // If I import Mr. B (081234) and Mr. A (081234) is in DB (Real name conflict)... 
+            // The requirement "If ID repeats -> CUS1" implies we treat it as a collision.
+            // But how do we know it's a collision vs a match?
+            // "If existing customer... no update".
+            // Implementation: We'll assume if ID exists, we check if it is acceptable.
+            // If the user wants to support multiple people with same phone, and distinct names...
+            // Let's compare names if possible? Or just rely on the fact that if an ID exists, we move to next?
+            // If I always move to next on existence, I will never match existing customers!
+            // I MUST match if it's the same customer.
+
+            // Heuristic: If ID exists, check Name similarity?
+            // If names are reasonably similar, reuse. If completely different, increment.
+
+            const firstFirst = sanitizeValue(first.customerFirstName) || sanitizeValue(first.customerName).split(/\s+/)[0];
+            const existingFirst = record.firstName;
+
+            // Simple check: If first names match (case insensitive), we assume it's the same person
+            if (firstFirst && existingFirst && firstFirst.toLowerCase() === existingFirst.toLowerCase()) {
+              foundId = tryId;
+              break;
+            }
+
+            // If name is totally different, try next ID
+            suffix++;
+            if (suffix > 99) { // Safety break
+              foundId = `${prefix}-${phone}-${currentUser.companyId}-${Date.now()}`;
+              break;
+            }
+          }
+          customerId = foundId;
+
         } else {
-          customerId = `CUST-${Date.now()}-${firstIndex}`;
+          customerId = `CUS-${Date.now()}-${firstIndex}-${currentUser.companyId}`;
         }
       }
 
@@ -5627,6 +5645,20 @@ const App: React.FC = () => {
           sanitizeValue(line.productName) ||
           sanitizeValue(line.productCode) ||
           `Item ${index + 1}`;
+        const rawSku = sanitizeValue(line.productCode) || "";
+        const companyId = currentUser.companyId;
+
+        // 1. Find exact match by SKU and Company ID
+        let matchedProduct = products.find(
+          (p) => p.sku === rawSku && p.companyId === companyId,
+        );
+
+        // 2. Fallback: Find specific UNKNOWN product for this company
+        if (!matchedProduct) {
+          const fallbackSku = `UNKNOWN-PRODUCT-COMPANY${companyId}`;
+          matchedProduct = products.find((p) => p.sku === fallbackSku);
+        }
+
         return {
           id: index + 1,
           productName,
@@ -5645,7 +5677,7 @@ const App: React.FC = () => {
               : 0,
           isFreebie: false,
           boxNumber: 0,
-          productId: undefined,
+          productId: matchedProduct ? matchedProduct.id : undefined,
           promotionId: undefined,
           parentItemId: undefined,
           isPromotionParent: false,
@@ -5708,9 +5740,15 @@ const App: React.FC = () => {
         continue;
       }
 
+      const validCustomerId = customer.customer_id || customer.pk;
+      if (!validCustomerId || isNaN(Number(validCustomerId))) {
+        summary.notes.push(`Order ${orderId} skipped: Invalid numeric Customer ID for ${customer.id}`);
+        return;
+      }
+
       const newOrder: Order = {
         id: orderId,
-        customerId: customer.id,
+        customerId: String(validCustomerId),
         companyId: currentUser.companyId,
         creatorId: resolvedCreatorId,
         orderDate: orderDateIso,
