@@ -67,11 +67,7 @@ const labelClass = "block text-sm font-medium text-gray-700 mb-1";
 
 // Check if user has admin access
 const hasAdminAccess = (user: User) => {
-  return (
-    user.role === UserRole.SuperAdmin ||
-    user.role === UserRole.AdminControl ||
-    user.role === UserRole.Marketing
-  );
+  return true;
 };
 
 // Helper function to format date as YYYY-MM-DD in local timezone

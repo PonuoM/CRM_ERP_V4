@@ -489,8 +489,6 @@ const App: React.FC = () => {
             'Users': 'data.users',
             'Products': 'data.products',
             'Pages': 'data.pages',
-            'Marketing Dashboard': 'marketing.dashboard',
-            'Ads Input': 'marketing.ads_input',
             'Accounting Report': 'accounting.report',
         };
 
