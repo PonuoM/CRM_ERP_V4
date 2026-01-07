@@ -20,8 +20,7 @@ type ImportKind = "sales" | "customers";
 
 const SALES_HEADERS = [
   "วันที่ขาย",
-  "หมายเลขคำสั่งซื้อ",
-  "รหัสลูกค้า",
+  "วันที่จัดส่ง",
   "ชื่อลูกค้า",
   "นามสกุลลูกค้า",
   "เบอร์โทรลูกค้า",
@@ -39,24 +38,21 @@ const SALES_HEADERS = [
   "ยอดรวมรายการ",
   "รหัสพนักงานขาย",
   "รหัสผู้ดูแล",
+  "รหัสผู้ดูแล",
   "วิธีชำระเงิน",
-  "สถานะการชำระเงิน",
   "หมายเหตุคำสั่งซื้อ",
 ];
 
 const CUSTOMER_HEADERS = [
-  "รหัสลูกค้า",
-  "ชื่อลูกค้า",
-  "นามสกุลลูกค้า",
-  "เบอร์โทร",
+  "ชื่อลูกค้า (First Name)",
+  "นามสกุลลูกค้า (Last Name)",
+  "เบอร์โทร (Phone)",
   "อีเมล",
   "แขวง/ตำบล",
   "เขต/อำเภอ",
   "จังหวัด",
   "รหัสไปรษณีย์",
   "ที่อยู่",
-  "ประเภทธุรกิจ",
-  "แหล่งที่มา",
   "รหัสผู้ดูแล",
   "หมายเหตุ",
 ];
@@ -70,8 +66,7 @@ const CSV_TEMPLATES: Record<
     rows: [
       [
         "2024-12-01",
-        "ORD-001",
-        "CUST001",
+        "2024-12-02",
         "สมชาย",
         "ใจดี",
         "0812345678",
@@ -90,7 +85,6 @@ const CSV_TEMPLATES: Record<
         "SALES001",
         "CARE001",
         "โอน",
-        "ชำระแล้ว",
         "จัดส่งภายใน 3 วัน",
       ],
     ],
@@ -99,7 +93,6 @@ const CSV_TEMPLATES: Record<
     headers: CUSTOMER_HEADERS,
     rows: [
       [
-        "CUST001",
         "สมชาย",
         "ใจดี",
         "0812345678",
@@ -146,6 +139,9 @@ const downloadCsvTemplate = (type: TemplateKey) => {
 
 const SALES_HEADER_MAP: Record<string, keyof SalesImportRow> = {
   วันที่ขาย: "saleDate",
+  วันที่จัดส่ง: "deliveryDate",
+  วันที่ส่งของ: "deliveryDate",
+  "delivery date": "deliveryDate",
   วันที่สั่งซื้อ: "saleDate",
   "sale date": "saleDate",
   "order date": "saleDate",
@@ -214,29 +210,25 @@ const SALES_HEADER_MAP: Record<string, keyof SalesImportRow> = {
   "owner id": "caretakerId",
   วิธีชำระเงิน: "paymentMethod",
   "payment method": "paymentMethod",
-  สถานะการชำระเงิน: "paymentStatus",
-  "payment status": "paymentStatus",
   หมายเหตุคำสั่งซื้อ: "notes",
   "order notes": "notes",
   notes: "notes",
-  ทุน: "capital",
-  total_purchases: "totalPurchases",
-  "purchase total": "totalPurchases",
   หมายเหตุ: "notes",
 };
 
 const CUSTOMER_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
-  รหัสลูกค้า: "customerId",
-  "customer id": "customerId",
-  "customer code": "customerId",
   ชื่อลูกค้า: "firstName",
+  "ชื่อลูกค้า (first name)": "firstName",
   "customer first name": "firstName",
   "first name": "firstName",
   นามสกุลลูกค้า: "lastName",
+  "namสกุลลูกค้า (last name)": "lastName",
+  "นามสกุลลูกค้า (last name)": "lastName",
   "customer last name": "lastName",
   "last name": "lastName",
   "customer name": "customerName",
   เบอร์โทร: "phone",
+  "เบอร์โทร (phone)": "phone",
   phone: "phone",
   mobile: "phone",
   อีเมล: "email",
@@ -253,11 +245,6 @@ const CUSTOMER_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
   zipcode: "postalCode",
   ที่อยู่: "address",
   address: "address",
-  ประเภทธุรกิจ: "businessType",
-  "business type": "businessType",
-  แหล่งที่มา: "source",
-  "lead source": "source",
-  source: "source",
   รหัสผู้ดูแล: "caretakerId",
   "caretaker id": "caretakerId",
   "owner id": "caretakerId",
@@ -725,135 +712,135 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
             นำเข้าข้อมูล
           </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-800 mb-4">
-                  นำเข้าข้อมูลการขาย
-                </h3>
-                <div className="flex items-center gap-3 mb-4">
-                  <button
-                    type="button"
-                    onClick={() => downloadCsvTemplate("sales")}
-                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  >
-                    <Download size={16} className="mr-1" />
-                    CSV
-                  </button>
-                  <input
-                    ref={salesInputRef}
-                    type="file"
-                    accept=".csv"
-                    disabled={isProcessing}
-                    onChange={(event) => handleFileSelect(event, "sales")}
-                    className="text-sm text-gray-500
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="font-medium text-gray-800 mb-4">
+                นำเข้าข้อมูลการขาย
+              </h3>
+              <div className="flex items-center gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => downloadCsvTemplate("sales")}
+                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  <Download size={16} className="mr-1" />
+                  CSV
+                </button>
+                <input
+                  ref={salesInputRef}
+                  type="file"
+                  accept=".csv"
+                  disabled={isProcessing}
+                  onChange={(event) => handleFileSelect(event, "sales")}
+                  className="text-sm text-gray-500
                       file:mr-4 file:py-2 file:px-4
                       file:rounded-md file:border-0
                       file:text-sm file:font-semibold
                       file:bg-blue-50 file:text-blue-600
                       hover:file:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60
                       cursor-pointer"
-                  />
-                </div>
-                {selectedFiles.sales && (
-                  <div className="mb-3 flex items-center justify-between text-sm text-gray-600">
-                    <span className="truncate pr-3">
-                      {selectedFiles.sales.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => resetSelectedFile("sales")}
-                      className="text-xs text-red-500 hover:text-red-600 focus:outline-none"
-                    >
-                      ลบไฟล์
-                    </button>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleUpload("sales")}
-                  disabled={!selectedFiles.sales || isProcessing}
-                  className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-300 disabled:text-gray-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                >
-                  อัปโหลดไฟล์
-                </button>
+                />
               </div>
-
-              <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="font-medium text-gray-800 mb-4">
-                  นำเข้าข้อมูลลูกค้า
-                </h3>
-                <div className="flex items-center gap-3 mb-4">
+              {selectedFiles.sales && (
+                <div className="mb-3 flex items-center justify-between text-sm text-gray-600">
+                  <span className="truncate pr-3">
+                    {selectedFiles.sales.name}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => downloadCsvTemplate("customers")}
-                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    onClick={() => resetSelectedFile("sales")}
+                    className="text-xs text-red-500 hover:text-red-600 focus:outline-none"
                   >
-                    <Download size={16} className="mr-1" />
-                    CSV
+                    ลบไฟล์
                   </button>
-                  <input
-                    ref={customersInputRef}
-                    type="file"
-                    accept=".csv"
-                    disabled={isProcessing}
-                    onChange={(event) => handleFileSelect(event, "customers")}
-                    className="text-sm text-gray-500
-                      file:mr-4 file:py-2 file:px-4
-                      file:rounded-md file:border-0
-                      file:text-sm file:font-semibold
-                      file:bg-blue-50 file:text-blue-600
-                      hover:file:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60
-                      cursor-pointer"
-                  />
                 </div>
-                {selectedFiles.customers && (
-                  <div className="mb-3 flex items-center justify-between text-sm text-gray-600">
-                    <span className="truncate pr-3">
-                      {selectedFiles.customers.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => resetSelectedFile("customers")}
-                      className="text-xs text-red-500 hover:text-red-600 focus:outline-none"
-                    >
-                      ลบไฟล์
-                    </button>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleUpload("customers")}
-                  disabled={!selectedFiles.customers || isProcessing}
-                  className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-md disabled:bg-gray-300 disabled:text-gray-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
-                >
-                  อัปโหลดไฟล์
-                </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={() => handleUpload("sales")}
+                disabled={!selectedFiles.sales || isProcessing}
+                className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md disabled:bg-gray-300 disabled:text-gray-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                อัปโหลดไฟล์
+              </button>
             </div>
 
-            <div className="bg-blue-50 border border-blue-100 rounded-md p-4 mt-6">
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">
-                คำแนะนำก่อนนำเข้า
-              </h4>
-              <ul className="text-sm text-blue-700 space-y-1">
-                <li>
-                  บรรทัดแรกต้องเป็นหัวคอลัมน์และสะกดตรงตามแม่แบบที่ดาวน์โหลดเสมอ
-                </li>
-                <li>
-                  บันทึกไฟล์เป็น CSV (UTF-8 with BOM)
-                  เพื่อป้องกันภาษาไทยแสดงผลผิดพลาดในระบบ
-                </li>
-                <li>
-                  สำหรับรหัสพนักงานขายและผู้ดูแล ให้กรอกเป็นตัวเลข ID
-                  ที่ตรงกับระบบ
-                </li>
-                <li>
-                  กรณีไม่ระบุผู้ดูแล ลูกค้าจะถูกจัดเข้าตะกร้าพักอัตโนมัติ
-                  และรอการจัดสรรใหม่ตามเงื่อนไข
-                </li>
-              </ul>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h3 className="font-medium text-gray-800 mb-4">
+                นำเข้าข้อมูลลูกค้า
+              </h3>
+              <div className="flex items-center gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => downloadCsvTemplate("customers")}
+                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  <Download size={16} className="mr-1" />
+                  CSV
+                </button>
+                <input
+                  ref={customersInputRef}
+                  type="file"
+                  accept=".csv"
+                  disabled={isProcessing}
+                  onChange={(event) => handleFileSelect(event, "customers")}
+                  className="text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-blue-50 file:text-blue-600
+                      hover:file:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60
+                      cursor-pointer"
+                />
+              </div>
+              {selectedFiles.customers && (
+                <div className="mb-3 flex items-center justify-between text-sm text-gray-600">
+                  <span className="truncate pr-3">
+                    {selectedFiles.customers.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => resetSelectedFile("customers")}
+                    className="text-xs text-red-500 hover:text-red-600 focus:outline-none"
+                  >
+                    ลบไฟล์
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => handleUpload("customers")}
+                disabled={!selectedFiles.customers || isProcessing}
+                className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-md disabled:bg-gray-300 disabled:text-gray-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
+              >
+                อัปโหลดไฟล์
+              </button>
             </div>
           </div>
+
+          <div className="bg-blue-50 border border-blue-100 rounded-md p-4 mt-6">
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">
+              คำแนะนำก่อนนำเข้า
+            </h4>
+            <ul className="text-sm text-blue-700 space-y-1">
+              <li>
+                บรรทัดแรกต้องเป็นหัวคอลัมน์และสะกดตรงตามแม่แบบที่ดาวน์โหลดเสมอ
+              </li>
+              <li>
+                บันทึกไฟล์เป็น CSV (UTF-8 with BOM)
+                เพื่อป้องกันภาษาไทยแสดงผลผิดพลาดในระบบ
+              </li>
+              <li>
+                สำหรับรหัสพนักงานขายและผู้ดูแล ให้กรอกเป็นตัวเลข ID
+                ที่ตรงกับระบบ
+              </li>
+              <li>
+                กรณีไม่ระบุผู้ดูแล ลูกค้าจะถูกจัดเข้าตะกร้าพักอัตโนมัติ
+                และรอการจัดสรรใหม่ตามเงื่อนไข
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       {report && (

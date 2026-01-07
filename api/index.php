@@ -785,8 +785,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
         case 'GET':
             try {
                 if ($id) {
-                    $sql = 'SELECT * FROM customers WHERE customer_id = ?';
-                    $params = [$id];
+                    $sql = 'SELECT * FROM customers WHERE (customer_id = ? OR customer_ref_id = ?)';
+                    $params = [$id, $id];
                     if (!$isSuperAdmin) {
                         $sql .= ' AND company_id = ?';
                         $params[] = $authCompanyId;
@@ -1406,7 +1406,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 'phone' => $in['phone'] ?? null,
                 'backupPhone' => $in['backupPhone'] ?? null,
             ]));
-            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt = $pdo->prepare('INSERT INTO customers (customer_ref_id, first_name, last_name, phone, backup_phone, email, province, company_id, assigned_to, date_assigned, date_registered, follow_up_date, ownership_expires, lifecycle_status, behavioral_status, grade, total_purchases, total_calls, facebook_name, line_id, street, subdistrict, district, postal_code, bucket_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $params = [
                 $in['customerId'] ?? $in['id'], // This is the string ID (CUS-...)
                 $in['firstName'] ?? '', 
@@ -1432,6 +1432,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 $in['address']['subdistrict'] ?? null, 
                 $in['address']['district'] ?? null, 
                 $in['address']['postalCode'] ?? null,
+                $in['bucketType'] ?? null,
             ];
             error_log("Attempting Customer Insert with Params: " . json_encode($params));
             $stmt->execute($params);
@@ -1530,7 +1531,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     'postal_code=COALESCE(?, postal_code)',
                     'is_in_waiting_basket=COALESCE(?, is_in_waiting_basket)',
                     'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
-                    'is_blocked=COALESCE(?, is_blocked)'
+                    'is_blocked=COALESCE(?, is_blocked)',
+                    'bucket_type=COALESCE(?, bucket_type)'
                 ];
 
                 $params = [
@@ -1561,6 +1563,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
                     $in['waiting_basket_start_date'] ?? null,
                     array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
+                    $in['bucketType'] ?? null,
                 ];
 
                 if ($newCustomerRefId) {

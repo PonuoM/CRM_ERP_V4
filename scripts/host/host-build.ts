@@ -163,9 +163,44 @@ function main(): void {
       console.log("Skipped vendor compression (using preserved file).");
     }
 
-    // Copy .htaccess
-    console.log("Copying .htaccess (if exists)...");
-    copyFileIfExists(htaccessFile, path.join(hostDir, ".htaccess"), ".htaccess");
+    // Copy and update .htaccess
+    console.log("Processing .htaccess...");
+    if (fs.existsSync(htaccessFile)) {
+      let htaccessContent = fs.readFileSync(htaccessFile, "utf-8");
+
+      // Read APP_BASE_PATH from appBasePath.ts
+      const appBasePathFile = path.join(projectRoot, "appBasePath.ts");
+      let appBasePath = "/"; // Default fallback
+      if (fs.existsSync(appBasePathFile)) {
+        const appBaseContent = fs.readFileSync(appBasePathFile, "utf-8");
+        const lines = appBaseContent.split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          // Skip comments
+          if (trimmed.startsWith("//") || trimmed.startsWith("/*")) continue;
+
+          // Match const APP_BASE_PATH = '/.../';
+          const match = trimmed.match(/const\s+APP_BASE_PATH\s*=\s*['"]([^'"]+)['"]/);
+          if (match) {
+            appBasePath = match[1];
+            console.log(`Found APP_BASE_PATH: ${appBasePath}`);
+            break; // Stop after first valid match
+          }
+        }
+      }
+
+      // Replace RewriteBase /mini_erp/ (or whatever is there) with new base path
+      // Regex looks for "RewriteBase /.../" and replaces it
+      htaccessContent = htaccessContent.replace(
+        /RewriteBase\s+\/[^\s]*/,
+        `RewriteBase ${appBasePath}`
+      );
+
+      fs.writeFileSync(path.join(hostDir, ".htaccess"), htaccessContent);
+      console.log(`Copied .htaccess and updated RewriteBase to ${appBasePath}`);
+    } else {
+      console.log("No .htaccess found to copy.");
+    }
 
     // Replace api/config.php with root config.php
     console.log("Replacing host/api/config.php with project-root config.php...");

@@ -260,6 +260,7 @@ export interface Customer {
   orderCount?: number; // จำนวนออเดอร์
   isNewCustomer?: boolean; // ลูกค้าใหม่
   isRepeatCustomer?: boolean; // ลูกค้าเก่า
+  bucketType?: 'ready' | 'waiting' | 'assigned' | 'blocked' | 'unassigned';
 }
 
 export interface SalesImportRow {
@@ -280,6 +281,7 @@ export interface SalesImportRow {
   saleDate?: string;
   paymentMethod?: string;
   paymentStatus?: string;
+  deliveryDate?: string;
   productName?: string;
   productCode?: string;
   quantity?: number;

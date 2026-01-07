@@ -1056,13 +1056,13 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
         // Then, use setTimeout to schedule the state updates to run in the next
         // event loop cycle to avoid interfering with the download.
-        setTimeout(() => {
+        setTimeout(async () => {
           const ordersToProcess = selectedOrders.map(o => ({
             id: o.id,
             customerId: o.customerId,
             creatorId: o.creatorId
           }));
-          onProcessOrders(ordersToProcess);
+          await onProcessOrders(ordersToProcess);
           setSelectedIds([]);
           // Trigger refresh to update the grid and tab counts
           setRefreshCounter(prev => prev + 1);
