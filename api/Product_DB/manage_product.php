@@ -124,8 +124,8 @@ try {
             throw new Exception("Product ID is required for delete.");
         }
 
-        // Soft delete
-        $sql = "UPDATE products SET status = 'Inactive' WHERE id = :id";
+        // Soft delete with timestamp
+        $sql = "UPDATE products SET status = 'Inactive', deleted_at = NOW() WHERE id = :id";
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(':id', $data->id);
         

@@ -1665,10 +1665,10 @@ function handle_products(PDO $pdo, ?string $id): void {
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 $companyId = $_GET['companyId'] ?? null;
-                $sql = 'SELECT * FROM products';
+                $sql = 'SELECT * FROM products WHERE (deleted_at IS NULL) AND (status = "Active" OR status IS NULL OR status = "" OR status = "1")';
                 $params = [];
                 if ($companyId) {
-                    $sql .= ' WHERE company_id = ?';
+                    $sql .= ' AND company_id = ?';
                     $params[] = $companyId;
                 }
                 $sql .= ' ORDER BY id DESC';

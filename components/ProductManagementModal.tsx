@@ -108,20 +108,32 @@ const productUnits = ['กระสอบ', 'ถุง', 'ซอง', 'ขวด
 const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ product, onSave, onClose, companyId, warehouses = [], products = [] }) => {
   const [activeTab, setActiveTab] = useState<'basic' | 'lots'>('basic');
 
-  // ดึงรายการร้านค้าที่มีอยู่แล้ว (เฉพาะบริษัทตัวเอง)
+  // Helper helper to check product status
+  const getProductStatus = (product: Product) => {
+    const rawStatus = (product.status ?? '').toString().trim();
+    if (!rawStatus) return 'Active';
+    const lower = rawStatus.toLowerCase();
+    if (lower === 'active') return 'Active';
+    if (lower === 'inactive') return 'Inactive';
+    if (lower === '1' || lower === 'true' || lower === 'enabled') return 'Active';
+    if (lower === '0' || lower === 'false' || lower === 'disabled') return 'Inactive';
+    return rawStatus;
+  };
+
+  // ดึงรายการร้านค้าที่มีอยู่แล้ว (เฉพาะบริษัทตัวเอง และ active/non-unknown)
   const existingShops = useMemo(() => {
     const shops = products
-      .filter(p => p.companyId === companyId && p.shop)
+      .filter(p => p.companyId === companyId && p.shop && getProductStatus(p) !== 'Inactive' && !p.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY'))
       .map(p => p.shop!)
       .filter((shop, index, self) => self.indexOf(shop) === index) // unique
       .sort();
     return shops;
   }, [products, companyId]);
 
-  // ดึงรายการหมวดหมู่ที่มีอยู่แล้ว (รวม default และจาก DB)
+  // ดึงรายการหมวดหมู่ที่มีอยู่แล้ว (รวม default และจาก DB, กรอง active/non-unknown)
   const existingCategories = useMemo(() => {
     const dbCategories = products
-      .filter(p => p.companyId === companyId && p.category)
+      .filter(p => p.companyId === companyId && p.category && getProductStatus(p) !== 'Inactive' && !p.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY'))
       .map(p => p.category)
       .filter((c, index, self) => self.indexOf(c) === index);
     return [...new Set([...productCategories, ...dbCategories])].sort();

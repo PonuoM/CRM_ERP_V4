@@ -44,7 +44,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   useEffect(() => {
     const loadAllProductLots = async () => {
       const lotsData: { [key: number]: any[] } = {};
-      
+
       for (const product of products) {
         try {
           const lots = await listProductLots({ productId: product.id });
@@ -54,7 +54,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           lotsData[product.id] = [];
         }
       }
-      
+
       setProductLots(lotsData);
     };
 
@@ -67,7 +67,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   useEffect(() => {
     const fetchProductStocks = async () => {
       const stocks: { [key: number]: number } = {};
-      
+
       // ดึงข้อมูลสต็อกสำหรับแต่ละสินค้า
       for (const product of products) {
         try {
@@ -78,7 +78,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           stocks[product.id] = product.stock || 0; // ใช้ค่าเดิมถ้าเกิดข้อผิดพลาด
         }
       }
-      
+
       setProductStocks(stocks);
     };
 
@@ -88,6 +88,12 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   }, [products]);
 
   const handleDelete = (product: Product) => {
+    // Prevent deletion of system reserved products
+    if (product.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY')) {
+      alert('ไม่สามารถลบสินค้านี้ได้ (System Reserved)');
+      return;
+    }
+
     openModal('confirmDelete', {
       id: product.id,
       name: product.name,
@@ -118,7 +124,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
       const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
 
       await updateProduct(product.id, { status: newStatus });
-      
+
       // แจ้ง parent component ให้อัปเดตข้อมูล
       openModal('refreshProducts');
     } catch (error) {
@@ -135,10 +141,10 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   const getAverageCost = (productId: number) => {
     const lots = productLots[productId] || [];
     if (lots.length === 0) return 0;
-    
+
     const totalCost = lots.reduce((sum, lot) => sum + (parseFloat(lot.unit_cost) * parseFloat(lot.quantity_remaining)), 0);
     const totalQuantity = lots.reduce((sum, lot) => sum + parseFloat(lot.quantity_remaining), 0);
-    
+
     return totalQuantity > 0 ? totalCost / totalQuantity : 0;
   };
 
@@ -152,7 +158,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   const getLatestLot = (productId: number) => {
     const lots = productLots[productId] || [];
     if (lots.length === 0) return '-';
-    
+
     // เรียงตามวันที่รับเข้าล่าสุด
     const sortedLots = lots.sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
     return sortedLots[0].lot_number;
@@ -180,11 +186,18 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
   };
 
   const productCategories = useMemo(() => {
-    return [...new Set(products.map(p => p.category))];
+    return [...new Set(products
+      .filter(p => getProductStatus(p) !== 'Inactive' && !p.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY'))
+      .map(p => p.category)
+    )];
   }, [products]);
 
   const productShops = useMemo(() => {
-    return [...new Set(products.map(p => p.shop).filter(Boolean))].sort();
+    return [...new Set(products
+      .filter(p => getProductStatus(p) !== 'Inactive' && !p.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY'))
+      .map(p => p.shop)
+      .filter(Boolean)
+    )].sort();
   }, [products]);
 
   const isSuperAdmin = currentUser.role === UserRole.SuperAdmin;
@@ -194,6 +207,12 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
       const categoryMatch = !categoryFilter || product.category === categoryFilter;
       const companyMatch = !isSuperAdmin || !companyFilter || product.companyId === parseInt(companyFilter);
       const shopMatch = !shopFilter || product.shop === shopFilter;
+
+      // Filter out system reserved products
+      if (product.sku?.startsWith('UNKNOWN-PRODUCT-COMPANY')) {
+        return false;
+      }
+
       return categoryMatch && companyMatch && shopMatch;
     });
   }, [products, categoryFilter, companyFilter, shopFilter, isSuperAdmin]);
@@ -209,7 +228,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           onClick={() => openModal('addProduct')}
           className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm"
         >
-          <PlusCircle size={16} className="mr-2"/>
+          <PlusCircle size={16} className="mr-2" />
           เพิ่มสินค้าใหม่
         </button>
       </div>
@@ -297,7 +316,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                 </td>
                 <td className="px-6 py-4">{getLatestLot(product.id)}</td>
                 <td className="px-6 py-4">
-                  <div 
+                  <div
                     className="flex items-center cursor-pointer"
                     onClick={() => handleToggleProductStatus(product)}
                   >
@@ -313,16 +332,16 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                   </div>
                 </td>
                 <td className="px-6 py-4 flex items-center justify-end space-x-2">
-                  <button 
-                    onClick={() => handleManageLots(product)} 
-                    className="p-2 text-green-600 hover:bg-green-100 rounded-full" 
+                  <button
+                    onClick={() => handleManageLots(product)}
+                    className="p-2 text-green-600 hover:bg-green-100 rounded-full"
                     title="จัดการ Lot"
                   >
                     <Plus size={16} />
                   </button>
-                  <button 
-                    onClick={() => handleViewLots(product)} 
-                    className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-full" 
+                  <button
+                    onClick={() => handleViewLots(product)}
+                    className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-full"
                     title="ดูข้อมูล Lot"
                   >
                     <Eye size={16} />
@@ -347,7 +366,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
           <div className="bg-white rounded-lg p-6 w-full max-w-7xl max-h-[90vh] overflow-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">ข้อมูล Lot ของสินค้า: {selectedProductName}</h3>
-              <button 
+              <button
                 onClick={() => setShowLotsModal(false)}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -356,7 +375,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                 </svg>
               </button>
             </div>
-            
+
             {selectedProductLots.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 ไม่พบข้อมูล Lot สำหรับสินค้านี้
@@ -378,7 +397,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                       selectedProductLots.forEach(lot => {
                         warehousesSet.add(lot.warehouse_id);
                       });
-                      
+
                       return Array.from(warehousesSet).map(warehouseId => (
                         <option key={warehouseId} value={warehouseId}>
                           {getWarehouseName(warehouseId)}
@@ -387,7 +406,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                     })()}
                   </select>
                 </div>
-                
+
                 {/* สรุปสต็อกตามคลัง */}
                 <div className="mb-6 bg-gray-50 p-4 rounded-lg">
                   <h4 className="font-medium text-gray-800 mb-3">สรุปสต็อกตามคลัง</h4>
@@ -402,23 +421,22 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                         }
                         lotsByWarehouse[warehouseId].push(lot);
                       });
-                      
+
                       // กรองตามคลังที่เลือก
-                      const filteredWarehouses = selectedWarehouse 
+                      const filteredWarehouses = selectedWarehouse
                         ? { [selectedWarehouse]: lotsByWarehouse[selectedWarehouse] }
                         : lotsByWarehouse;
-                      
+
                       return Object.entries(filteredWarehouses).map(([warehouseId, lots]) => {
                         const totalStock = lots.reduce((sum, lot) => sum + parseFloat(lot.quantity_remaining), 0);
                         const activeLots = lots.filter(lot => lot.status === 'Active').length;
-                        
+
                         return (
                           <div key={warehouseId} className="bg-white p-3 rounded border border-gray-200">
                             <div className="flex justify-between items-center mb-2">
                               <h5 className="font-medium text-gray-700">{getWarehouseName(parseInt(warehouseId))}</h5>
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                activeLots > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                              }`}>
+                              <span className={`px-2 py-1 text-xs rounded-full ${activeLots > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}>
                                 {activeLots > 0 ? 'มีสินค้า' : 'ไม่มีสินค้า'}
                               </span>
                             </div>
@@ -433,7 +451,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                     })()}
                   </div>
                 </div>
-                
+
                 {/* รายละเอียด Lot แบบกลุ่มตามคลัง */}
                 <div className="overflow-x-auto">
                   {(() => {
@@ -442,7 +460,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                     if (selectedWarehouse) {
                       filteredLots = selectedProductLots.filter(lot => lot.warehouse_id === selectedWarehouse);
                     }
-                    
+
                     // จัดกลุ่ม Lot ตามคลัง
                     const lotsByWarehouse: { [key: number]: any[] } = {};
                     filteredLots.forEach(lot => {
@@ -452,7 +470,7 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                       }
                       lotsByWarehouse[warehouseId].push(lot);
                     });
-                    
+
                     return Object.entries(lotsByWarehouse).map(([warehouseId, lots]) => (
                       <div key={warehouseId} className="mb-6">
                         <h4 className="font-medium text-gray-800 mb-3 flex items-center">
@@ -480,11 +498,10 @@ const ProductManagementPage: React.FC<ProductManagementPageProps> = ({ products,
                                 <td className="px-4 py-2">฿{Number(lot.unit_cost).toLocaleString()}</td>
                                 <td className="px-4 py-2">{lot.expiry_date || '-'}</td>
                                 <td className="px-4 py-2">
-                                  <span className={`px-2 py-1 text-xs rounded-full ${
-                                    lot.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                                    lot.status === 'Depleted' ? 'bg-red-100 text-red-800' : 
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
+                                  <span className={`px-2 py-1 text-xs rounded-full ${lot.status === 'Active' ? 'bg-green-100 text-green-800' :
+                                    lot.status === 'Depleted' ? 'bg-red-100 text-red-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
                                     {lot.status}
                                   </span>
                                 </td>
