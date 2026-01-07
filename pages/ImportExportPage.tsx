@@ -44,18 +44,15 @@ const SALES_HEADERS = [
 ];
 
 const CUSTOMER_HEADERS = [
-  "รหัสลูกค้า",
-  "ชื่อลูกค้า",
-  "นามสกุลลูกค้า",
-  "เบอร์โทร",
+  "ชื่อลูกค้า (First Name)",
+  "นามสกุลลูกค้า (Last Name)",
+  "เบอร์โทร (Phone)",
   "อีเมล",
   "แขวง/ตำบล",
   "เขต/อำเภอ",
   "จังหวัด",
   "รหัสไปรษณีย์",
   "ที่อยู่",
-  "ประเภทธุรกิจ",
-  "แหล่งที่มา",
   "รหัสผู้ดูแล",
   "หมายเหตุ",
 ];
@@ -96,7 +93,6 @@ const CSV_TEMPLATES: Record<
     headers: CUSTOMER_HEADERS,
     rows: [
       [
-        "CUST001",
         "สมชาย",
         "ใจดี",
         "0812345678",
@@ -221,17 +217,18 @@ const SALES_HEADER_MAP: Record<string, keyof SalesImportRow> = {
 };
 
 const CUSTOMER_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
-  รหัสลูกค้า: "customerId",
-  "customer id": "customerId",
-  "customer code": "customerId",
   ชื่อลูกค้า: "firstName",
+  "ชื่อลูกค้า (first name)": "firstName",
   "customer first name": "firstName",
   "first name": "firstName",
   นามสกุลลูกค้า: "lastName",
+  "namสกุลลูกค้า (last name)": "lastName",
+  "นามสกุลลูกค้า (last name)": "lastName",
   "customer last name": "lastName",
   "last name": "lastName",
   "customer name": "customerName",
   เบอร์โทร: "phone",
+  "เบอร์โทร (phone)": "phone",
   phone: "phone",
   mobile: "phone",
   อีเมล: "email",
@@ -248,11 +245,6 @@ const CUSTOMER_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
   zipcode: "postalCode",
   ที่อยู่: "address",
   address: "address",
-  ประเภทธุรกิจ: "businessType",
-  "business type": "businessType",
-  แหล่งที่มา: "source",
-  "lead source": "source",
-  source: "source",
   รหัสผู้ดูแล: "caretakerId",
   "caretaker id": "caretakerId",
   "owner id": "caretakerId",

@@ -5157,6 +5157,7 @@ const App: React.FC = () => {
             behavioralStatus?: CustomerBehavioralStatus;
             grade?: CustomerGrade;
             totalPurchases?: number;
+            bucketType?: 'ready' | 'waiting' | 'assigned' | 'blocked' | 'unassigned';
         },
         summary: ImportResultSummary,
         notes: string[],
@@ -5320,6 +5321,10 @@ const App: React.FC = () => {
                 updatePayload.totalPurchases = resolvedTotalPurchases;
             }
 
+            if (input.bucketType) {
+                updatePayload.bucketType = input.bucketType;
+            }
+
             let updatedDbId = input.id;
             try {
                 const res: any = await updateCustomer(input.id, updatePayload);
@@ -5354,6 +5359,7 @@ const App: React.FC = () => {
                 tags: [],
                 totalPurchases: resolvedTotalPurchases,
                 totalCalls: 0,
+                bucketType: input.bucketType,
             };
 
             const mergedCustomer: Customer = {
@@ -5373,6 +5379,7 @@ const App: React.FC = () => {
                 behavioralStatus: resolvedBehavioralStatus,
                 grade: resolvedGrade,
                 totalPurchases: resolvedTotalPurchases,
+                bucketType: input.bucketType || baseCustomer.bucketType,
             };
 
             setCustomers((prev) => {
@@ -5420,6 +5427,9 @@ const App: React.FC = () => {
         createPayload.behavioralStatus = resolvedBehavioralStatus;
         createPayload.grade = resolvedGrade;
         createPayload.totalPurchases = resolvedTotalPurchases;
+        if (input.bucketType) {
+            createPayload.bucketType = input.bucketType;
+        }
 
         let newlyCreatedId = input.id; // Fallback to provided ID if API doesn't return one
 
@@ -5455,6 +5465,7 @@ const App: React.FC = () => {
             tags: [],
             totalPurchases: resolvedTotalPurchases,
             totalCalls: 0,
+            bucketType: input.bucketType,
             customerRefId: input.id, // Keep the generated Ref ID for reference
         };
 
@@ -6014,17 +6025,13 @@ const App: React.FC = () => {
             const row = rows[index];
             const rowNumber = index + 2;
 
-            let customerId = sanitizeValue(row.customerId);
+            let customerId = "";
             const rawPhone = sanitizeValue(row.phone);
             const phone = normalizePhone(rawPhone);
 
-            if (!customerId) {
-                if (phone) {
-                    customerId = `CUST-${phone}`;
-                } else {
-                    customerId = `CUST-IMP-${timestamp}-${counter++}`;
-                }
-            }
+            // NOTE: ID generation moved to logic below to enforce specific format CUS-...
+            // Removed redundant CUST- logic here
+
 
             const firstName =
                 sanitizeValue(row.firstName) ||
@@ -6047,19 +6054,54 @@ const App: React.FC = () => {
                 normalizeCaretakerIdentifier(row.caretakerId);
 
             const dateRegisteredIso = parseDateToIso(row.dateRegistered);
-            const ownershipExpiresIso = parseDateToIso(row.ownershipExpires);
-            const lifecycleStatus = normalizeLifecycleStatusValue(
-                row.lifecycleStatus,
-            );
+            // Request: Lifecycle Status always 'New'
+            const lifecycleStatus = CustomerLifecycleStatus.New;
+
             const behavioralStatus = normalizeBehavioralStatusValue(
                 row.behavioralStatus,
             );
             const grade = normalizeGradeValue(row.grade);
-            const totalPurchases =
-                typeof row.totalPurchases === "number" &&
-                    Number.isFinite(row.totalPurchases)
-                    ? row.totalPurchases
-                    : undefined;
+            const totalPurchases = 0; // Request: Ignore CSV total purchases
+
+            // Logic: if assignedTo is set, calculate ownershipExpires (Today + 30 days) and bucketType = 'assigned'
+            // else bucketType = 'ready', ownershipExpires = null
+            let ownershipExpiresIso: string | undefined = undefined;
+            let bucketType: 'ready' | 'waiting' | 'assigned' | 'blocked' | 'unassigned' = 'ready';
+
+            if (resolvedCaretakerId) {
+                bucketType = 'assigned';
+                // Ownership expires 30 days from now
+                const d = new Date();
+                d.setDate(d.getDate() + 30);
+                ownershipExpiresIso = toThaiIsoString(d);
+            } else {
+                bucketType = 'ready';
+                ownershipExpiresIso = undefined;
+            }
+
+            const companyId = sessionUser?.company_id || 1;
+            let phonePart = phone;
+            if (phonePart.startsWith('0')) phonePart = phonePart.substring(1);
+
+            if (phone) {
+                // Logic: Generate ID, check for collision in local state or processed list
+                // If collision, try CUS1-, CUS2-, etc.
+                let prefix = 'CUS';
+                let run = 0;
+                let candidateId = `${prefix}-${phonePart}-${companyId}`;
+
+                const isTaken = (id: string) => {
+                    return processedCustomers.has(id) || customers.some(c => c.id === id || c.customerRefId === id);
+                };
+
+                while (isTaken(candidateId)) {
+                    run++;
+                    candidateId = `CUS${run}-${phonePart}-${companyId}`;
+                }
+                customerId = candidateId;
+            } else {
+                customerId = `CUST-IMP-${timestamp}-${counter++}`;
+            }
 
             const customer = await ensureCustomerForImport(
                 {
@@ -6081,6 +6123,7 @@ const App: React.FC = () => {
                     behavioralStatus,
                     grade,
                     totalPurchases,
+                    bucketType,
                 },
                 summary,
                 summary.notes,
