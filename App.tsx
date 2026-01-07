@@ -842,7 +842,10 @@ const App: React.FC = () => {
           }),
           // Orders are now fetched only in TelesaleOrdersPage
           Promise.resolve({ ok: true, orders: [], pagination: { page: 1, pageSize: 50, total: 0, totalPages: 0 } }),
-          listProducts(sessionUser?.company_id),
+          listProducts({
+            companyId: sessionUser?.company_id,
+            include: activePage === 'Products' ? 'inactive' : undefined
+          }),
           listPromotions(sessionUser?.company_id),
           listPages(sessionUser?.company_id, undefined, undefined, true),
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),

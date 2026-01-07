@@ -1665,7 +1665,14 @@ function handle_products(PDO $pdo, ?string $id): void {
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
                 $companyId = $_GET['companyId'] ?? null;
-                $sql = 'SELECT * FROM products WHERE (deleted_at IS NULL) AND (status = "Active" OR status IS NULL OR status = "" OR status = "1")';
+                $include = $_GET['include'] ?? '';
+                
+                $sql = 'SELECT * FROM products WHERE (deleted_at IS NULL)';
+                
+                if ($include !== 'inactive') {
+                    $sql .= ' AND (status = "Active" OR status IS NULL OR status = "" OR status = "1")';
+                }
+
                 $params = [];
                 if ($companyId) {
                     $sql .= ' AND company_id = ?';

@@ -386,10 +386,19 @@ export async function deleteUser(id: number) {
   });
 }
 
-export async function listProducts(companyId?: number) {
+export async function listProducts(params?: number | { companyId?: number; include?: string }) {
   const qs = new URLSearchParams();
+  let companyId: number | undefined;
+
+  if (typeof params === 'number') {
+    companyId = params;
+  } else if (typeof params === 'object') {
+    companyId = params.companyId;
+    if (params.include) qs.set("include", params.include);
+  }
+
   if (companyId) qs.set("companyId", String(companyId));
-  return apiFetch(`products${companyId ? `?${qs}` : ""}`);
+  return apiFetch(`products${qs.toString() ? `?${qs}` : ""}`);
 }
 
 export async function listPromotions(companyId?: number) {
