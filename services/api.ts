@@ -161,6 +161,7 @@ export async function listCustomers(params?: {
   dateAssignedEnd?: string;
   ownershipStart?: string;
   ownershipEnd?: string;
+  since?: number; // timestamp in ms
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -187,15 +188,16 @@ export async function listCustomers(params?: {
   if (params?.ownershipStart) qs.set("ownershipStart", params.ownershipStart);
   if (params?.ownershipEnd) qs.set("ownershipEnd", params.ownershipEnd);
   if (params?.filterType) qs.set("filterType", params.filterType);
+  if (params?.since) qs.set("since", String(params.since));
 
   const query = qs.toString();
   const response = await apiFetch(`customers${query ? `?${query}` : ""}`);
 
   // Normalize response to { total, data }
   if (Array.isArray(response)) {
-    return { total: response.length, data: response };
+    return { total: response.length, data: response, server_timestamp: undefined };
   }
-  return response as { total: number; data: any[] };
+  return response as { total: number; data: any[]; server_timestamp?: number };
 }
 
 export async function getCustomerCounts(params: {

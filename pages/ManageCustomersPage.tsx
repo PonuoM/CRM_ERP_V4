@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { User, Customer, Order, ModalType } from '@/types';
 import CustomerTable from '@/components/CustomerTable';
 import { getCustomerStats, getOrderStats, listCustomers } from '@/services/api';
 import { mapCustomerFromApi } from '@/utils/customerMapper';
 import Spinner from '@/components/Spinner';
+import { onDataSync, DATA_SYNC_EVENTS } from '@/utils/dataSync';
+
 
 type OrdersFilterValue = 'all' | 'yes' | 'no';
 type DateRangeFilter = { start: string; end: string };
@@ -49,6 +51,34 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
   const [totalCustomersInDB, setTotalCustomersInDB] = useState<number>(0);
   const [loadingCustomers, setLoadingCustomers] = useState<boolean>(false);
 
+  // Background sync trigger - increments when page becomes visible to trigger data refresh
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+
+  // Auto-refresh when page becomes visible (returning from other pages/details)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Silently trigger a data refresh
+        setRefreshTrigger((prev) => prev + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // Listen for data sync events (triggered after mutations in App.tsx)
+  useEffect(() => {
+    const unsubscribe = onDataSync(DATA_SYNC_EVENTS.CUSTOMERS_REFRESH, () => {
+      console.log('[ManageCustomersPage] Received CUSTOMERS_REFRESH event, refreshing data...');
+      setRefreshTrigger((prev) => prev + 1);
+    });
+
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     const fetchApiStats = async () => {
       if (!currentUser?.companyId) return;
@@ -67,7 +97,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
       }
     };
     fetchApiStats();
-  }, [currentUser.companyId]);
+  }, [currentUser.companyId, refreshTrigger]);
 
   // ... (existing state for filters: fName, fPhone, etc.)
   const [fName, setFName] = useState<string>('');
@@ -186,6 +216,7 @@ const ManageCustomersPage: React.FC<ManageCustomersPageProps> = ({
     apDateAssigned.end,
     apOwnership.start,
     apOwnership.end,
+    refreshTrigger, // Triggers silent background refresh when page becomes visible
   ]);
 
   // Use fetched customers for display

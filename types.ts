@@ -365,6 +365,7 @@ export enum PaymentStatus {
   PreApproved = "PreApproved", // Pre Approve (สำหรับ COD และ PayAfter)
   Approved = "Approved", // Approve โดย Finance (ตรวจสอบเงินโอนเข้าจริงแล้ว)
   Paid = "Paid",
+  Cancelled = "Cancelled", // ยกเลิก
 }
 
 export interface LineItem {

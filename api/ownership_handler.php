@@ -167,7 +167,7 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
                 return;
             }
             error_log("Updating customer_id={$updateId}: old_expiry={$currentExpiry->format('Y-m-d H:i:s')}, new_expiry={$newExpiry->format('Y-m-d H:i:s')}");
-            $upd = $pdo->prepare('UPDATE customers SET ownership_expires = ?, follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0) WHERE customer_id = ?');
+            $upd = $pdo->prepare('UPDATE customers SET ownership_expires = ?, follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0), lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
             $result = $upd->execute([$newExpiry->format('Y-m-d H:i:s'), $now->format('Y-m-d H:i:s'), $updateId]);
             $affectedRows = $upd->rowCount();
             error_log("Update result: success={$result}, affectedRows={$affectedRows}");
@@ -194,7 +194,7 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
                 json_response(['error' => 'INVALID_CUSTOMER_ID', 'message' => 'Customer ID not found in result'], 500);
                 return;
             }
-            $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0) WHERE customer_id = ?');
+            $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0), lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
             $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
             json_response([
                 'success' => true, 
@@ -213,7 +213,7 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
             json_response(['error' => 'INVALID_CUSTOMER_ID', 'message' => 'Customer ID not found in result'], 500);
             return;
         }
-        $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ? WHERE customer_id = ?');
+        $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
         $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
         json_response(['success' => true, 'message' => 'Follow-up recorded (no bonus)']);
     }

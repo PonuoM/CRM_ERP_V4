@@ -7,7 +7,6 @@ import { db } from '../db/db';
 import { syncCustomers } from '../services/syncService';
 import { listCustomers } from '../services/api';
 import { mapCustomerFromApi } from '../utils/customerMapper';
-import { SyncProgressModal, SyncProgress } from '../components/SyncProgressModal';
 import usePersistentState from "@/utils/usePersistentState";
 
 // Module-level flag to prevent auto-sync from triggering twice (React Strict Mode double-mount)
@@ -27,6 +26,7 @@ interface TelesaleDashboardProps {
   onUpsellClick?: (customer: Customer) => void;
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
   allUsers?: User[];
+  refreshTrigger?: number;
 }
 
 type SubMenu = 'do' | 'expiring' | 'updates' | 'all';
@@ -208,7 +208,7 @@ const SUB_MENU_VALUES: SubMenu[] = ['do', 'expiring', 'updates', 'all'];
 const ORDER_UPDATE_LOOKBACK_DAYS = 3;
 
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
-  const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick, onChangeOwner, allUsers } = props;
+  const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick, onChangeOwner, allUsers, refreshTrigger } = props;
 
   // Create a unique key for this user's filter state
   const filterStorageKey = `telesale_filters_${user.id}`;
@@ -337,95 +337,78 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     return () => document.removeEventListener('mousedown', onDown);
   }, [showAdvanced]);
   // Local state for DB customers
+  // Local state for DB customers
   const [localCustomers, setLocalCustomers] = useState<Customer[]>([]);
+  // Auto-Sync State
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<SyncProgress>({
-    message: '',
-    progress: 0,
-    totalCustomers: 0,
-    syncedCustomers: 0,
-    isComplete: false,
-    isError: false,
-  });
 
-  // Lock to prevent double-syncing (especially in React Strict Mode)
-  const syncLock = useRef(false);
+  // Auto-Sync Logic
+  useEffect(() => {
+    let active = true;
+    const AUTO_SYNC_INTERVAL = 60 * 1000; // 1 minute
 
-  const handleSyncCustomers = async () => {
-    if (syncLock.current || showSyncModal) return; // Also check if modal is already showing
-    syncLock.current = true;
+    const runSync = async () => {
+      if (!user || !user.id || isSyncing) return;
 
-    setIsSyncing(true);
-    setShowSyncModal(true);
+      try {
+        setIsSyncing(true);
+        // Silent sync (delta)
+        await syncCustomers(
+          user.companyId || 1,
+          undefined, // No progress callback needed for silent sync
+          Number(user.id),
+          { silent: true }
+        );
 
-    try {
-      await syncCustomers(
-        user.companyId || 1,
-        (progress) => setSyncProgress(progress),
-        Number(user.id) // Filter by user ID
-      );
-
-      // Reload local data
-      const userId = Number(user.id);
-      if (!isNaN(userId)) {
-        const myCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
-        setLocalCustomers(myCustomers);
+        if (active) {
+          setLastUpdated(new Date());
+          // Reload local data
+          const myCustomers = await db.customers.where('assignedTo').equals(Number(user.id)).toArray();
+          setLocalCustomers(myCustomers);
+        }
+      } catch (error) {
+        console.error("Auto-sync failed:", error);
+      } finally {
+        if (active) setIsSyncing(false);
       }
-    } catch (error) {
-      console.error("Sync failed:", error);
-    } finally {
-      setIsSyncing(false);
-      // Don't release lock immediately if you want to prevent rapid re-clicks? 
-      // But for safety, release it.
-      syncLock.current = false;
-    }
-  };
+    };
 
-  // Import DB and Sync
+    // Initial load & Sync loop
+    const init = async () => {
+      // Load initial data from DB strictly first for speed
+      if (user.id) {
+        const count = await db.customers.count();
+        if (count > 0) {
+          const myCustomers = await db.customers.where('assignedTo').equals(Number(user.id)).toArray();
+          if (active) setLocalCustomers(myCustomers);
+        }
+      }
+
+      // Then run sync immediately
+      await runSync();
+    };
+
+    init();
+
+    const intervalId = setInterval(runSync, AUTO_SYNC_INTERVAL);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [user.id, user.companyId]);
+
+  // Import DB: load from DB on mount/user change (Auto-sync handles updates)
   useEffect(() => {
     let active = true;
     const loadFromDB = async () => {
-      // If we have props.customers, maybe use them? But App.tsx sends [], so rely on DB.
-      // Load all customers assigned to this user
       if (!user || !user.id) return;
-
       try {
-        // Check if this is Telesale or Supervisor role that needs daily sync
-        const telesaleRoles = ['Telesale', 'Supervisor', 'TelesaleSupervisor', 'SupervisorTelesale'];
-        const needsDailySync = telesaleRoles.some(role =>
-          user.role?.toLowerCase().includes(role.toLowerCase())
-        );
-
-        if (needsDailySync && !hasTriggeredAutoSync) {
-          // Check if we already synced today
-          const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-          const lastSyncKey = `lastSyncDate_${user.id}`;
-          const lastSyncDate = localStorage.getItem(lastSyncKey);
-
-          if (lastSyncDate !== today) {
-            // First login of the day - sync now!
-            hasTriggeredAutoSync = true;
-            console.log(`Daily sync: First login of the day for user ${user.id}. Syncing...`);
-            await handleSyncCustomers();
-            localStorage.setItem(lastSyncKey, today);
-          } else {
-            console.log(`Daily sync: Already synced today for user ${user.id}. Skipping.`);
-          }
-        }
-
-        // Fallback: If DB is empty (regardless of role), sync
-        const count = await db.customers.count();
-        if (count === 0 && !hasTriggeredAutoSync) {
-          hasTriggeredAutoSync = true;
-          await handleSyncCustomers();
-        }
-
-        // Valid user ID check to prevent "Uncaught DataCloneError" if user.id is weird
         const userId = Number(user.id);
-        if (!isNaN(userId) && active) {
+        if (!isNaN(userId)) {
+          console.log(`Loading initial data for user ${userId}`);
           const myCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
-          setLocalCustomers(myCustomers);
+          if (active) setLocalCustomers(myCustomers);
         }
       } catch (error) {
         console.error("Failed to load local customers", error);
@@ -433,7 +416,19 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     };
     loadFromDB();
     return () => { active = false; };
-  }, [user.id, user.companyId, user.role]); // Added user.role to dependencies
+  }, [user.id]);
+
+  // Listen for external refresh triggers (Optimistic UI updates from App.tsx)
+  useEffect(() => {
+    if (refreshTrigger && user?.id) {
+      console.log(`[Dashboard] Refresh Triggered! (Count: ${refreshTrigger}) Reloading DB...`);
+      // Reload data from DB immediately
+      db.customers.where('assignedTo').equals(Number(user.id)).toArray().then(myCustomers => {
+        console.log(`[Dashboard] DB Reloaded. Count: ${myCustomers.length}. Sample Status:`, myCustomers.slice(0, 3).map(c => `${c.id}:${c.lifecycleStatus}`));
+        setLocalCustomers(myCustomers);
+      }).catch(err => console.error("[Dashboard] Refresh trigger failed", err));
+    }
+  }, [refreshTrigger, user?.id]);
 
   const userCustomers = useMemo(() => {
     // Merge props.customers (if any) with localCustomers, preferring local? 
@@ -1035,7 +1030,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
   const handleServerSearch = async () => {
     // Shared logic: Update applied term
+    // Shared logic: Update applied term
     setAppliedSearchTerm(searchTerm.trim());
+    setCurrentPage(1); // Reset to first page on search
 
     if (!searchTerm.trim()) {
       setServerSearchResults(null);
@@ -1134,14 +1131,15 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-800">จัดการลูกค้า</h2>
         <div className="flex">
-          <button
-            onClick={handleSyncCustomers}
-            disabled={isSyncing}
-            className={`mr-3 bg-blue-100 text-blue-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-blue-200 shadow-sm ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <RotateCcw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ข้อมูล'}
-          </button>
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            {lastUpdated && (
+              <span className="flex items-center">
+                <Clock size={14} className="mr-1" />
+                Last updated: {lastUpdated.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            {isSyncing && <span className="text-blue-500 animate-pulse">Syncing...</span>}
+          </div>
           <button onClick={() => setActivePage ? setActivePage('CreateOrder') : openModal('createOrder', undefined)} className="bg-green-100 text-green-700 font-semibold text-sm rounded-md py-2 px-4 flex items-center hover:bg-green-200 shadow-sm">
             <PlusCircle className="w-4 h-4 mr-2" />
             สร้างคำสั่งซื้อ
@@ -1459,14 +1457,8 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           </>
         )
       }
-      <SyncProgressModal
-        isOpen={showSyncModal}
-        progress={syncProgress}
-        onClose={() => setShowSyncModal(false)}
-      />
     </div >
   );
 };
 
 export default TelesaleDashboard;
-

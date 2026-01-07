@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
-import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText } from 'lucide-react';
+import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle } from 'lucide-react';
 import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
@@ -39,7 +39,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = usePersistentState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed'>('manageOrders:activeTab', 'waitingVerifySlip');
+  const [activeTab, setActiveTab] = usePersistentState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed' | 'cancelled'>('manageOrders:activeTab', 'waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
@@ -339,12 +339,16 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           setTotalOrders(response.pagination.total);
           setApiTotalPages(response.pagination.totalPages);
 
-          // Lazy load verified count if on completed tab (not returned by getOrderCounts)
+          // Lazy load count if on completed or cancelled tab (not returned by getOrderCounts for performance)
           if (activeTab === 'completed') {
             setTabCounts(prev => ({ ...prev, completed: response.pagination.total }));
+          } else if (activeTab === 'cancelled') {
+            setTabCounts(prev => ({ ...prev, cancelled: response.pagination.total }));
           }
         }
       } catch (error: any) {
+        // Skip logging AbortError (expected in React 18 StrictMode)
+        if (error.name === 'AbortError') return;
         console.error('Fetch orders failed:', error);
       } finally {
         if (!controller.signal.aborted) {
@@ -1612,6 +1616,21 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           {(
             <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
               {tabCounts['completed'] !== undefined ? tabCounts['completed'] : '....'}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('cancelled')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'cancelled'
+            ? 'border-b-2 border-red-600 text-red-600'
+            : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <XCircle size={16} />
+          <span>ยกเลิก</span>
+          {(
+            <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-600">
+              {tabCounts['cancelled'] !== undefined ? tabCounts['cancelled'] : '....'}
             </span>
           )}
         </button>

@@ -79,7 +79,9 @@ import {
   redistributeCustomer,
   retrieveCustomer,
 } from "@/ownershipApi";
+import { triggerCustomersRefresh } from "@/utils/dataSync";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
+import { db } from "./db/db";
 import Sidebar from "./components/Sidebar";
 import AdminDashboard from "./pages/AdminDashboard";
 import TelesaleDashboard from "./pages/TelesaleDashboard";
@@ -261,6 +263,7 @@ const App: React.FC = () => {
   };
 
   const [activePage, setActivePage] = useState<string>(getInitialPage);
+  const [customerRefreshTrigger, setCustomerRefreshTrigger] = useState<number>(0);
 
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -2107,11 +2110,21 @@ const App: React.FC = () => {
   }, [currentUser?.id, hasCheckedIn]);
 
   const viewingCustomer = useMemo(() => {
-    // Priority 1: Use explicitly set data (prevents lookup failure on lazy-loaded lists)
+    // Priority 1: Check if customer exists in the detailed 'customers' list (Live Data)
+    if (viewingCustomerId) {
+      const liveCustomer = customers.find((c) => c.id === viewingCustomerId);
+      // Only use live customer if we found it. 
+      // This ensures that updates to the global 'customers' state (like status changes) 
+      // are immediately reflected in CustomerDetailPage.
+      if (liveCustomer) return liveCustomer;
+    }
+
+    // Priority 2: Use explicitly set data (Fallback for search results or initial load)
     if (viewingCustomerData && viewingCustomerData.id === viewingCustomerId) {
       return viewingCustomerData;
     }
-    // Priority 2: Fallback to lookup (legacy support)
+
+    // Priority 3: Lookup by ID (redundant if Priority 1 covered it, but safe)
     if (!viewingCustomerId) return null;
     return customers.find((c) => c.id === viewingCustomerId);
   }, [viewingCustomerId, customers, viewingCustomerData]);
@@ -3802,6 +3815,7 @@ const App: React.FC = () => {
       setActivities((prev) => [...activitiesToAdd, ...prev]);
     }
 
+
     setCustomers((prev) =>
       prev.map((c) =>
         c.id === updatedCustomer.id
@@ -3809,7 +3823,16 @@ const App: React.FC = () => {
           : c,
       ),
     );
+
+    // Explicitly update viewingCustomerData if it matches (Immediate UI Fix)
+    if (viewingCustomerData && (viewingCustomerData.id === updatedCustomer.id || String(viewingCustomerData.id) === String(updatedCustomer.id))) {
+      setViewingCustomerData({ ...updatedCustomer, grade: resolvedGrade });
+    }
+
     closeModal();
+
+    // Notify ManageCustomersPage to refresh data
+    triggerCustomersRefresh(String(updatedCustomer.id), 'handleUpdateCustomer');
   };
 
   const handleChangeCustomerOwner = async (
@@ -3969,6 +3992,9 @@ const App: React.FC = () => {
     }
 
     setViewingCustomerId((prev) => (prev === customerId ? null : prev));
+
+    // Notify ManageCustomersPage to refresh data
+    triggerCustomersRefresh(customerId, 'handleChangeCustomerOwner');
   };
 
   const handleTakeCustomer = async (customerToTake: Customer) => {
@@ -4256,6 +4282,7 @@ const App: React.FC = () => {
   ) => {
     const newCallLog: CallHistory = {
       ...callLogData,
+      customerId: Number(customerId) || customerId, // Ensure customerId is included
       id: Math.max(...callHistory.map((c) => c.id), 0) + 1,
     };
     if (true) {
@@ -4407,6 +4434,52 @@ const App: React.FC = () => {
       }
     }
 
+    // ============== OPTIMISTIC UPDATE START ==============
+    // Update IndexedDB immediately so Dashboard reflects changes instantly (without waiting for sync)
+    // Safety check: Ensure customer object exists before accessing pk
+
+    // Robust Customer Lookup: Check state -> viewingData -> modalData
+    let currentCustomer = customer || customers.find(c => c.id === customerId);
+    if (!currentCustomer && viewingCustomerData && (viewingCustomerData.id === customerId || String(viewingCustomerData.id) === String(customerId))) {
+      currentCustomer = viewingCustomerData;
+    }
+    if (!currentCustomer && modalState.type === 'logCall' && modalState.data && (modalState.data.id === customerId || String(modalState.data.id) === String(customerId))) {
+      currentCustomer = modalState.data as Customer;
+    }
+
+    if (currentCustomer) {
+      const dbKey = currentCustomer.pk ?? (Number(customerId) || undefined);
+
+      // Calculate next values for update
+      const nextTotalCalls = (currentCustomer.totalCalls || 0) + 1;
+      const nextFollowUpDate = newFollowUpDate || currentCustomer.followUpDate;
+      // Logic matches lines 4306-4308: if newFollowUpDate is set, status becomes FollowUp
+      const nextStatus = newFollowUpDate ? CustomerLifecycleStatus.FollowUp : currentCustomer.lifecycleStatus;
+
+      if (dbKey && !isNaN(dbKey)) {
+        try {
+          console.log(`[Optimistic Update] Updating customer PK: ${dbKey}, Calls: ${nextTotalCalls}, Status: ${nextStatus}`);
+
+          // We only update fields that changed
+          await db.customers.update(dbKey, {
+            totalCalls: nextTotalCalls,
+            followUpDate: nextFollowUpDate,
+            lifecycleStatus: nextStatus
+          });
+
+          // Trigger Dashboard Refresh
+          setCustomerRefreshTrigger(prev => prev + 1);
+        } catch (err) {
+          console.error("[Optimistic Update] Failed to update IndexedDB:", err);
+        }
+      } else {
+        console.warn("[Optimistic Update] Skipped - Invalid PK:", currentCustomer);
+      }
+    } else {
+      console.warn("[Optimistic Update] Skipped - Customer not found in any State (Arrays/Viewing/Modal):", customerId);
+    }
+    // ============== OPTIMISTIC UPDATE END ================
+
     const customerIdForActivity = getCustomerIdForActivity(customerId);
     if (customerIdForActivity) {
       const newActivity: Activity = {
@@ -4479,14 +4552,24 @@ const App: React.FC = () => {
     );
   };
 
-  const handleAddCustomerTag = async (customerId: string, tagName: string) => {
-    const newTag: Tag = {
-      id: Date.now() + Math.random(),
-      name: tagName,
-      type: TagType.User,
-    };
+  const handleAddCustomerTag = async (customerId: string, tagOrName: string | Tag) => {
+    let newTag: Tag;
+
+    if (typeof tagOrName === 'string') {
+      // Legacy/Fallback for string input
+      newTag = {
+        id: Date.now() + Math.random(),
+        name: tagOrName,
+        type: TagType.User,
+      };
+    } else {
+      // Correct usage: Tag object passed
+      newTag = tagOrName;
+    }
+
     if (true) {
       try {
+        // Use the ID from the tag (either existing or new)
         await addCustomerTag(customerId, newTag.id);
       } catch (e) {
         console.error("add customer tag API failed", e);
@@ -4494,7 +4577,7 @@ const App: React.FC = () => {
     }
     setCustomers((prev) =>
       prev.map((c) =>
-        c.id === customerId ? { ...c, tags: [...c.tags, newTag] } : c,
+        String(c.id) === String(customerId) ? { ...c, tags: [...c.tags, newTag] } : c,
       ),
     );
   };
@@ -4580,16 +4663,53 @@ const App: React.FC = () => {
       ),
     );
 
-    // Update customer lifecycle status to FollowUp when creating an appointment
+
+    // Find customer for logic usage
+    let targetCustomer = customers.find(c => c.id === appointmentData.customerId);
+    if (!targetCustomer) {
+      // Fetch from API if not in local state
+      const resp = await listCustomers({ q: appointmentData.customerId });
+      // @ts-ignore
+      if (resp && resp.data && resp.data.length > 0) targetCustomer = resp.data[0];
+    }
+
+
+    // @ts-ignore
+    const originalStatus = targetCustomer?.lifecycleStatus || targetCustomer?.lifecycle_status;
+    // @ts-ignore
+    const existingPrevStatus = targetCustomer?.previousLifecycleStatus || targetCustomer?.previous_lifecycle_status;
+
+    // If already in FollowUp and has previous status, keep it. Otherwise use current status.
+    const statusToSave = existingPrevStatus ?? originalStatus;
+    console.log("Debug Create Appt: Customer", targetCustomer);
+    console.log("Debug Create Appt: Status to Save", statusToSave);
+    console.log("Debug Create Appt: Lifecycle (Camel)", targetCustomer?.lifecycleStatus); // DEBUG
+    console.log("Debug Create Appt: Lifecycle (Snake)", targetCustomer?.lifecycle_status); // DEBUG
+
+
+    // Calculate new ownership date (Optimistic: +90 days)
+    const newOwnershipDate = new Date();
+    newOwnershipDate.setDate(newOwnershipDate.getDate() + 90);
+    const newOwnershipStr = newOwnershipDate.toISOString().split('T')[0] + " 00:00:00";
+
+    // Optimistic Update
     setCustomers((prev) =>
       prev.map((c) => {
-        if (c.id === appointmentData.customerId) {
+        if (String(c.id) == String(appointmentData.customerId)) {
+          // If already in FollowUp, keep existing previous. If not, old status is previous.
+          // Note: This is an optimistic guess. The truthful backup happens on backend.
+          // @ts-ignore
+          const currentPrev = c.previousLifecycleStatus ?? c.previous_lifecycle_status;
+          // @ts-ignore
+          const currentStatus = c.lifecycleStatus ?? c.lifecycle_status;
+          const prevToSet = currentStatus === CustomerLifecycleStatus.FollowUp ? currentPrev : currentStatus;
+
           return {
             ...c,
             followUpDate: appointmentData.date,
-            previousLifecycleStatus:
-              c.previousLifecycleStatus ?? c.lifecycleStatus,
+            previousLifecycleStatus: prevToSet,
             lifecycleStatus: CustomerLifecycleStatus.FollowUp,
+            ownershipExpires: newOwnershipStr // Optimistic update
           };
         }
         return c;
@@ -4600,12 +4720,15 @@ const App: React.FC = () => {
       try {
         await updateCustomer(appointmentData.customerId, {
           followUpDate: appointmentData.date,
+          // We DO NOT send previousLifecycleStatus here. 
+          // The backend automatically backs it up when status -> FollowUp.
           lifecycleStatus: CustomerLifecycleStatus.FollowUp,
         });
 
-        // Record follow-up to update ownership days
+        // Record follow-up to update ownership days (Backend verification)
         await recordFollowUp(appointmentData.customerId);
         try {
+          // Double check with server
           const updated = await getCustomerOwnershipStatus(
             appointmentData.customerId,
           );
@@ -4653,17 +4776,100 @@ const App: React.FC = () => {
     }
 
     closeModal();
+
+    // Notify ManageCustomersPage to refresh data
+    triggerCustomersRefresh(appointmentData.customerId, 'handleAddAppointment');
   };
 
-  const handleCompleteAppointment = async (appointmentId: number) => {
+  const handleCompleteAppointment = async (appointmentId: number, customerId?: string) => {
     // Call API directly - the appointment may be from localAppointments (per-customer fetch)
     // and not exist in the global appointments state
     try {
+      console.log(`Debug Revert: complete appt=${appointmentId}, custId=${customerId}`); // DEBUG API
       await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
       // Update global state if the appointment exists there
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointmentId ? { ...a, status: "เสร็จสิ้น" } : a)),
       );
+
+      // Revert customer lifecycle status if possible
+      // Search for the appointment to find customerId if not provided
+      let targetCustomerId = customerId;
+      if (!targetCustomerId) {
+        // Try to find in global appointments
+        const appt = appointments.find(a => a.id === appointmentId);
+        if (appt) targetCustomerId = appt.customerId;
+      }
+
+      if (targetCustomerId) {
+        // Try precise match first, then loose match
+        let customer = customers.find(c => String(c.id) == String(targetCustomerId));
+
+        if (!customer) {
+          // If not found in memory, try fetching from API
+          const resp = await listCustomers({ q: targetCustomerId });
+          if (resp && resp.data && resp.data.length > 0) {
+            // If precise ID match fails, take the first result if it looks like a direct hit
+            customer = resp.data.find((c: Customer) => String(c.id) == String(targetCustomerId) || c.customerId === targetCustomerId);
+            if (!customer && resp.data.length === 1) {
+              customer = resp.data[0];
+            }
+          }
+        }
+
+        // Support both snake_case (from API) and camelCase (from local state)
+        // @ts-ignore
+        let prevStatus = customer?.previousLifecycleStatus || customer?.previous_lifecycle_status;
+
+        // Fallback: If local state has no backup, fetch fresh from API (Trust the backend backup logic)
+        if (!prevStatus) {
+          console.log("Debug Revert: Local missing previous status, fetching fresh...", targetCustomerId);
+          try {
+            const freshResp = await listCustomers({ q: targetCustomerId });
+            if (freshResp && freshResp.data && freshResp.data.length > 0) {
+              // Find exacting match
+              const freshCust = freshResp.data.find((c: Customer) => String(c.id) == String(targetCustomerId));
+              if (freshCust) {
+                // @ts-ignore
+                prevStatus = freshCust.previousLifecycleStatus || freshCust.previous_lifecycle_status;
+                console.log("Debug Revert: Fetched fresh previous status:", prevStatus);
+              }
+            }
+          } catch (e) {
+            console.error("Debug Revert: Failed to fetch fresh data", e);
+          }
+        }
+
+        console.log("Debug Revert: Resolved Previous Status", prevStatus); // DEBUG API
+
+        if (prevStatus) {
+          // Revert status
+          const newStatus = prevStatus;
+
+          // Update UI optimistcally
+          setCustomers(prev => prev.map(c => {
+            if (c.id === targetCustomerId) {
+              return {
+                ...c,
+                lifecycleStatus: newStatus,
+                previousLifecycleStatus: undefined // Clear previous status after revert
+              };
+            }
+            return c;
+          }));
+
+          // Update Backend
+          await updateCustomer(targetCustomerId, {
+            lifecycleStatus: newStatus,
+            // @ts-ignore - clear previous status
+            previousLifecycleStatus: null
+          });
+
+          // Notify ManageCustomersPage to refresh data
+          triggerCustomersRefresh(targetCustomerId, 'handleCompleteAppointment');
+        }
+      }
+
     } catch (e) {
       console.error("update appointment API failed", e);
     }
@@ -4712,7 +4918,7 @@ const App: React.FC = () => {
     }
     setCustomers((prev) =>
       prev.map((c) => {
-        if (c.id === customerId) {
+        if (String(c.id) === String(customerId)) {
           return { ...c, tags: c.tags.filter((t) => t.id !== tagId) };
         }
         return c;
@@ -6034,6 +6240,7 @@ const App: React.FC = () => {
             }}
             onChangeOwner={handleChangeCustomerOwner}
             systemTags={systemTags}
+            refreshTrigger={customerRefreshTrigger}
           />
         );
       }
@@ -7029,9 +7236,12 @@ const App: React.FC = () => {
           />
         );
       case "manageTags":
-        const currentCustomerState = customers.find(
-          (c) => c.id === (modalState.data as Customer).id,
+        let currentCustomerState = customers.find(
+          (c) => String(c.id) === String((modalState.data as Customer).id),
         );
+        if (!currentCustomerState) {
+          currentCustomerState = modalState.data as Customer;
+        }
         if (!currentCustomerState) return null;
 
         return (

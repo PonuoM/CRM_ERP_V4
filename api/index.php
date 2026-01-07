@@ -1047,6 +1047,19 @@ function handle_customers(PDO $pdo, ?string $id): void {
 
                         $where = ['1'];
                         $params = [];
+
+                        // DELTA SYNC IMPLEMENTATION
+                        $since = $_GET['since'] ?? null;
+                        if ($since && is_numeric($since)) {
+                            // Convert JS timestamp (ms) to MySQL datetime or compare as needed
+                            // Here we assume client sends ms timestamp, PHP handles it
+                            // MySQL updated_at is usually Y-m-d H:i:s
+                            $sinceSec = floor($since / 1000);
+                            $sinceDate = date('Y-m-d H:i:s', $sinceSec);
+                            $where[] = 'updated_at > ?';
+                            $params[] = $sinceDate;
+                        }
+
                         
                         if ($q !== '') { 
                             $where[] = '(first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR customer_id LIKE ?)'; 
@@ -1359,9 +1372,10 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         log_perf("handle_customers:list:TOTAL", $t_list_start);
 
                         if ($page) {
-                            json_response(['total' => $total, 'data' => $customers]);
+                            json_response(['total' => $total, 'data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
                         } else {
-                            json_response($customers);
+                            // Wrap list response to include server_timestamp for time sync
+                            json_response(['data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
                         }
 
                     }
@@ -1481,6 +1495,14 @@ function handle_customers(PDO $pdo, ?string $id): void {
                 // Disable FK checks to allow updating PK/FKs
                 $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 
+                // AUTO-BACKUP STATUS LOGIC: 
+                // If switching TO 'FollowUp', save current status to 'previous_lifecycle_status'
+                if (isset($in['lifecycleStatus']) && $in['lifecycleStatus'] === 'FollowUp') {
+                    $backupSql = "UPDATE customers SET previous_lifecycle_status = lifecycle_status WHERE customer_id = ? AND lifecycle_status != 'FollowUp'";
+                    $backupStmt = $pdo->prepare($backupSql);
+                    $backupStmt->execute([$id]);
+                }
+
                 $updateFields = [
                     'first_name=COALESCE(?, first_name)',
                     'last_name=COALESCE(?, last_name)',
@@ -1495,6 +1517,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     'follow_up_date=COALESCE(?, follow_up_date)',
                     'ownership_expires=COALESCE(?, ownership_expires)',
                     'lifecycle_status=COALESCE(?, lifecycle_status)',
+                    'previous_lifecycle_status=COALESCE(?, previous_lifecycle_status)',
                     'behavioral_status=COALESCE(?, behavioral_status)',
                     'grade=COALESCE(?, grade)',
                     'total_purchases=COALESCE(?, total_purchases)',
@@ -1524,6 +1547,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     $in['followUpDate'] ?? null,
                     $in['ownershipExpires'] ?? null,
                     $in['lifecycleStatus'] ?? null,
+                    $in['previousLifecycleStatus'] ?? null,
                     $in['behavioralStatus'] ?? null,
                     $in['grade'] ?? null,
                     $in['totalPurchases'] ?? null,
@@ -2528,6 +2552,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             // User Request: payment_status = Approved (ignore order_status)
                             $whereConditions[] = 'o.payment_status = "Approved"';
                             break;
+                            
+                        case 'cancelled':
+                            // Orders with order_status = Cancelled
+                            $whereConditions[] = 'o.order_status = "Cancelled"';
+                            break;
                     }
                 }
                 
@@ -2847,8 +2876,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $val = $parent[$jsonKey[1]];
                         }
                     } else {
+                        // Check both camelCase and snake_case versions
                         if (array_key_exists($jsonKey, $data)) {
                             $val = $data[$jsonKey];
+                        } elseif (array_key_exists($dbCol, $data)) {
+                            // Fallback: use snake_case key (e.g., 'order_status' instead of 'orderStatus')
+                            $val = $data[$dbCol];
                         }
                     }
                     
@@ -2870,6 +2903,23 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if (!empty($data['updatedBy'])) {
                      $updateFields[] = "updated_by = ?";
                      $params[] = $data['updatedBy'];
+                }
+                
+                // Auto-set payment_status to Cancelled when order_status is Cancelled
+                $incomingOrderStatus = $data['orderStatus'] ?? $data['order_status'] ?? null;
+                if ($incomingOrderStatus === 'Cancelled') {
+                    // Check if payment_status is not already in updateFields
+                    $hasPaymentStatus = false;
+                    foreach ($updateFields as $field) {
+                        if (strpos($field, 'payment_status') !== false) {
+                            $hasPaymentStatus = true;
+                            break;
+                        }
+                    }
+                    if (!$hasPaymentStatus) {
+                        $updateFields[] = "payment_status = ?";
+                        $params[] = 'Cancelled';
+                    }
                 }
                 
                 if (!empty($updateFields)) {
@@ -3709,8 +3759,10 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 }
                 $updateSql .= ' WHERE id=?';
                 $params[] = $id;
+                
                 $stmt = $pdo->prepare($updateSql);
                 $stmt->execute($params);
+                
 
                 $orderRowStmt = $pdo->prepare('SELECT order_status, payment_status, customer_id, warehouse_id, company_id, total_amount, payment_method, cod_amount FROM orders WHERE id=?');
                 $orderRowStmt->execute([$id]);

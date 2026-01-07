@@ -12,7 +12,7 @@ function handle_order_counts($pdo) {
     
     $tabCounts = [];
     // Exclude 'completed' from global counts for performance (loaded on demand)
-    $tabs = ['waitingVerifySlip', 'waitingExport', 'preparing', 'shipping', 'awaiting_account'];
+    $tabs = ['waitingVerifySlip', 'waitingExport', 'preparing', 'shipping', 'awaiting_account', 'cancelled'];
 
     foreach ($tabs as $t) {
         $conds = ["o.company_id = ?"];
@@ -54,6 +54,9 @@ function handle_order_counts($pdo) {
                 break;
                 case 'completed':
                 $conds[] = 'o.order_status = "Delivered"';
+                break;
+                case 'cancelled':
+                $conds[] = 'o.order_status = "Cancelled"';
                 break;
         }
         

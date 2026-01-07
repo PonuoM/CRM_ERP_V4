@@ -69,7 +69,7 @@ interface CustomerDetailPageProps {
   onAddTag: (customerId: string, tag: Tag) => void;
   onRemoveTag: (customerId: string, tagId: number) => void;
   onCreateUserTag: (tagName: string) => Tag | null;
-  onCompleteAppointment?: (appointmentId: number) => void;
+  onCompleteAppointment?: (appointmentId: number, customerId?: string) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
   onUpsellClick?: (customer: Customer) => void;
@@ -162,6 +162,47 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     notes: r.notes ?? undefined,
     duration: r.duration ?? undefined,
   });
+
+  // Sync local state with props (Optimistic Updates from Parent)
+  useEffect(() => {
+    if (callHistory.length > 0) {
+      setLocalCallHistory((prev) => {
+        const prevIds = new Set(prev.map((c) => c.id));
+        const newItems = callHistory.filter((c) => !prevIds.has(c.id));
+        if (newItems.length > 0) {
+          // Add new items from props to the beginning of local state
+          return [...newItems, ...prev];
+        }
+        return prev;
+      });
+    }
+  }, [callHistory]);
+
+  useEffect(() => {
+    if (appointments.length > 0) {
+      setLocalAppointments((prev) => {
+        const prevIds = new Set(prev.map((a) => a.id));
+        const newItems = appointments.filter((a) => !prevIds.has(a.id));
+        if (newItems.length > 0) {
+          return [...newItems, ...prev];
+        }
+        return prev;
+      });
+    }
+  }, [appointments]);
+
+  useEffect(() => {
+    if (orders.length > 0) {
+      setLocalOrders((prev) => {
+        const prevIds = new Set(prev.map((o) => o.id));
+        const newItems = orders.filter((o) => !prevIds.has(o.id));
+        if (newItems.length > 0) {
+          return [...newItems, ...prev];
+        }
+        return prev;
+      });
+    }
+  }, [orders]);
 
   const usersById = useMemo(() => {
     const map = new Map<number, User>();
@@ -971,7 +1012,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 value={`${customer.firstName} ${customer.lastName}`}
               />
               <InfoItem label="เบอร์โทร" value={customer.phone} />
-              <InfoItem label="อีเมล" value={customer.email || "-"} />
+              <InfoItem label="เบอร์โทรสำรอง" value={customer.backupPhone || "-"} />
               <InfoItem label="Facebook">
                 <div className="flex items-center space-x-2">
                   <Facebook size={16} className="text-blue-600" />
@@ -1238,7 +1279,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                                       <button
                                         onClick={() => {
                                           console.log('Complete appointment clicked, ID:', a.id, 'Type:', typeof a.id);
-                                          props.onCompleteAppointment!(Number(a.id));
+                                          props.onCompleteAppointment!(Number(a.id), props.customer.id);
                                           // Update local state immediately for instant UI feedback
                                           setLocalAppointments((prev) =>
                                             prev.map((apt) =>
