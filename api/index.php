@@ -2910,6 +2910,30 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     }
                 }
                 
+                // Force clear sales_channel_page_id when sales channel is "โทร" (phone) - it doesn't use pages
+                $salesChannelVal = $data['salesChannel'] ?? $data['sales_channel'] ?? null;
+                $salesChannelPageIdProvided = array_key_exists('salesChannelPageId', $data) || array_key_exists('sales_channel_page_id', $data);
+                $salesChannelPageIdVal = $data['salesChannelPageId'] ?? $data['sales_channel_page_id'] ?? null;
+                if ($salesChannelPageIdVal === '') $salesChannelPageIdVal = null;
+                
+                $shouldClearPageId = ($salesChannelVal === 'โทร') || ($salesChannelPageIdProvided && $salesChannelPageIdVal === null);
+                if ($shouldClearPageId) {
+                    // Remove any existing sales_channel_page_id update and add explicit NULL
+                    $newUpdateFields = [];
+                    $newParams = [];
+                    $fieldIndex = 0;
+                    foreach ($updateFields as $i => $field) {
+                        if (strpos($field, 'sales_channel_page_id') === false) {
+                            $newUpdateFields[] = $field;
+                            $newParams[] = $params[$i];
+                        }
+                    }
+                    $updateFields = $newUpdateFields;
+                    $params = $newParams;
+                    // Add explicit NULL for sales_channel_page_id
+                    $updateFields[] = "sales_channel_page_id = NULL";
+                }
+                
                 if (!empty($data['updatedBy'])) {
                      $updateFields[] = "updated_by = ?";
                      $params[] = $data['updatedBy'];
@@ -3681,7 +3705,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
             $shippingProvider = array_key_exists('shippingProvider', $in) ? trim((string)$in['shippingProvider']) : (array_key_exists('shipping_provider', $in) ? trim((string)$in['shipping_provider']) : null); if ($shippingProvider === '') $shippingProvider = null;
             $totalAmount  = array_key_exists('total_amount', $in) ? $in['total_amount'] : (array_key_exists('totalAmount', $in) ? $in['totalAmount'] : null); if ($totalAmount === '') $totalAmount = null;
             $deliveryDate  = array_key_exists('deliveryDate', $in) ? $in['deliveryDate'] : (array_key_exists('delivery_date', $in) ? $in['delivery_date'] : null); if ($deliveryDate === '') $deliveryDate = null;
-            $salesChannelPageId = array_key_exists('salesChannelPageId', $in) ? $in['salesChannelPageId'] : (array_key_exists('sales_channel_page_id', $in) ? $in['sales_channel_page_id'] : null); if ($salesChannelPageId === '') $salesChannelPageId = null;
+            // Handle salesChannelPageId: track if explicitly set to null/empty (should clear the field)
+            $salesChannelPageIdProvided = array_key_exists('salesChannelPageId', $in) || array_key_exists('sales_channel_page_id', $in);
+            $salesChannelPageId = array_key_exists('salesChannelPageId', $in) ? $in['salesChannelPageId'] : (array_key_exists('sales_channel_page_id', $in) ? $in['sales_channel_page_id'] : null); 
+            if ($salesChannelPageId === '') $salesChannelPageId = null;
+            // Force clear sales_channel_page_id when sales channel is "โทร" (phone) - it doesn't use pages
+            $forceClearPageId = ($salesChannel === 'โทร' || ($salesChannelPageIdProvided && $salesChannelPageId === null));
             $street        = array_key_exists('street', $in) ? $in['street'] : null; if ($street === '') $street = null;
             $subdistrict   = array_key_exists('subdistrict', $in) ? $in['subdistrict'] : (array_key_exists('sub_district', $in) ? $in['sub_district'] : null); if ($subdistrict === '') $subdistrict = null;
             $district      = array_key_exists('district', $in) ? $in['district'] : null; if ($district === '') $district = null;
@@ -3761,8 +3790,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $existingColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $existingColumns);
 
-                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), sales_channel_page_id=COALESCE(?, sales_channel_page_id), delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), customer_type=COALESCE(?, customer_type)';
-                $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
+                // Build UPDATE SQL - sales_channel_page_id is handled specially based on $forceClearPageId
+                $pageIdSql = $forceClearPageId ? 'sales_channel_page_id=NULL' : 'sales_channel_page_id=COALESCE(?, sales_channel_page_id)';
+                $updateSql = 'UPDATE orders SET slip_url=COALESCE(?, slip_url), order_status=COALESCE(?, order_status), payment_status=COALESCE(?, payment_status), amount_paid=COALESCE(?, amount_paid), cod_amount=COALESCE(?, cod_amount), notes=COALESCE(?, notes), sales_channel=COALESCE(?, sales_channel), ' . $pageIdSql . ', delivery_date=COALESCE(?, delivery_date), street=COALESCE(?, street), subdistrict=COALESCE(?, subdistrict), district=COALESCE(?, district), province=COALESCE(?, province), postal_code=COALESCE(?, postal_code), recipient_first_name=COALESCE(?, recipient_first_name), recipient_last_name=COALESCE(?, recipient_last_name), total_amount=COALESCE(?, total_amount), customer_type=COALESCE(?, customer_type)';
+                
+                // Build params - only include salesChannelPageId if not force clearing
+                if ($forceClearPageId) {
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
+                } else {
+                    $params = [$slipUrl, $orderStatus, $paymentStatus, $amountPaid, $codAmount, $notes, $salesChannel, $salesChannelPageId, $deliveryDate, $street, $subdistrict, $district, $province, $postalCode, $recipientFirstName, $recipientLastName, $totalAmount, $customerType];
+                }
                 if ($hasShippingProvider) {
                     $updateSql .= ', shipping_provider=COALESCE(?, shipping_provider)';
                     $params[] = $shippingProvider;
