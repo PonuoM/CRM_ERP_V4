@@ -44,26 +44,29 @@ try {
             if (isset($_GET['key'])) {
                 $key = $_GET['key'];
                 
-                // If company_id is present, try to find company specific value first
-                if ($currentCompanyId) {
-                    $stmt = $pdo->prepare("SELECT * FROM env WHERE `key` = :key AND company_id = :company_id");
-                    $stmt->bindParam(':key', $key);
-                    $stmt->bindParam(':company_id', $currentCompanyId);
-                    $stmt->execute();
-                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($result) {
-                        json_response($result);
-                        return; // Stop here if found
-                    }
-                }
-                
-                // Fallback to global (company_id IS NULL)
-                $stmt = $pdo->prepare("SELECT * FROM env WHERE `key` = :key AND company_id IS NULL");
+                // DIRECT LOOKUP: Ignore company_id constraints as requested
+                // "Just key matches value sent"
+                $stmt = $pdo->prepare("SELECT * FROM env WHERE `key` = :key LIMIT 1");
                 $stmt->bindParam(':key', $key);
                 $stmt->execute();
                 $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                json_response($result ?: ['error' => 'Environment variable not found']);
+                
+                if ($result) {
+                    json_response($result);
+                    return;
+                }
+                
+                // If strictly not found by key alone:
+                json_response(['error' => 'Environment variable not found']);
+                return;
+
+                /* 
+                   Legacy logic removed: 
+                   The previous logic checked company_id match or NULL. 
+                   New logic simply checks for key existence globally. 
+                */
+                
+                /* Fallback logic removed as we use direct key lookup now */
             } else {
                 // Get all and merge (Company overrides Global)
                 // Strategy: Fetch all global, then fetch all company specific, then merge in PHP
