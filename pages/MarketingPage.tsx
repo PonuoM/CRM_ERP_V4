@@ -56,7 +56,7 @@ async function listActivePages(companyId?: number) {
 
 interface MarketingPageProps {
   currentUser: User;
-  view?: "dashboard" | "adsInput" | "adsHistory" | "userManagement";
+  view?: "dashboard" | "adsInput" | "adsHistory" | "userManagement" | "ads";
 }
 
 // Types are now imported from @/services/api
