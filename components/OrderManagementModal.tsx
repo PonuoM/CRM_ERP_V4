@@ -467,10 +467,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
   const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
 
-  const canVerifySlip =
-    currentUser?.role === UserRole.Backoffice ||
-    currentUser?.role === UserRole.Admin ||
-    currentUser?.role === UserRole.SuperAdmin;
+  const canVerifySlip = !!currentUser;
   const canCancelVerification = canVerifySlip;
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;

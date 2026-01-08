@@ -26,6 +26,7 @@ import {
   updateUser,
   apiFetch,
 } from "@/services/api";
+import { listRoles, Role } from "@/services/roleApi";
 import MarketingDatePicker, {
   DateRange,
 } from "@/components/Dashboard/MarketingDatePicker";
@@ -191,6 +192,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [platforms, setPlatforms] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+
+  const hasSystemAccess = useMemo(() => {
+    const assignedRole = roles.find(r => r.name === currentUser.role);
+    // API might return boolean or 0/1, treating truthy as true
+    return !!assignedRole?.is_system;
+  }, [roles, currentUser.role]);
+
   // Pages user has access to for filters
   const [userAccessiblePages, setUserAccessiblePages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
@@ -368,7 +377,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         limit: productAdsHistoryPageSize.toString()
       });
 
-      if (currentUser.role !== "Super Admin" && currentUser.role !== "Admin Control") {
+      if (!hasSystemAccess) {
         queryParams.append("user_ids", currentUser.id.toString());
       } else if (dashboardSelectedUsers.length > 0) { // Changed this to dashboardSelectedUsers? No, adsHistorySelectedUsers logic was separate!
         // Wait, the original code used adsHistorySelectedUsers.
@@ -426,7 +435,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       // Prepare user filter
       let userFilter: number | number[] | undefined;
-      if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+      if (hasSystemAccess) {
         if (adsHistorySelectedUsers.length > 0) {
           userFilter = adsHistorySelectedUsers.map((u: any) => u.id);
         }
@@ -608,13 +617,22 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     async function load() {
       setLoading(true);
       try {
-        const [pg, plats, promo, userPages] = await Promise.all([
+        const [pg, plats, promo, userPages, rolesData] = await Promise.all([
           listActivePages(currentUser.companyId),
           listPlatforms(currentUser.companyId, true, currentUser.role),
           listPromotions(),
           loadPagesWithUserAccess(),
+          listRoles(),
         ]);
         if (cancelled) return;
+
+        const fetchedRoles = rolesData?.roles || [];
+        setRoles(fetchedRoles);
+
+        // Determine if current user has system access (is_system = 1)
+        const currentUserRole = fetchedRoles.find(r => r.name === currentUser.role);
+        const hasSystemAccess = currentUserRole?.is_system;
+
         setPages(
           Array.isArray(pg?.data)
             ? pg.data.map((r: any) => ({
@@ -655,7 +673,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
           }))
           : [];
 
-        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
+        // Logic check: if is_system (e.g. Super Admin, Admin Control) show all pages
+        if (hasSystemAccess) {
           setAdsHistorySelectedPages(
             allPages
               .filter((page: any) => page.active !== false)
@@ -3594,8 +3613,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 <div className="flex-1">
                   <label className={labelClass}>เลือกเพจ</label>
                   <MultiSelectPageFilter
-                    pages={(currentUser.role === "Super Admin" ||
-                      currentUser.role === "Admin Control"
+                    pages={(hasSystemAccess
                       ? pages
                       : userAccessiblePages
                     ).map((page) => ({
@@ -3611,8 +3629,8 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   />
                 </div>
 
-                {/* User Filter - Only for Super Admin and Admin Control */}
-                {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                {/* User Filter - Only for System Roles */}
+                {(hasSystemAccess) && (
                   <div className="flex-1">
                     <label className={labelClass}>เลือกผู้ใช้</label>
                     <MultiSelectUserFilter
@@ -3832,7 +3850,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                               <th className="px-3 py-1 text-right">Imp.</th>
                                               <th className="px-3 py-1 text-right">Reach</th>
                                               <th className="px-3 py-1 text-right">Clicks</th>
-                                              {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                                              {(hasSystemAccess) && (
                                                 <th className="px-3 py-1 text-center">จัดการ</th>
                                               )}
                                             </tr>
@@ -3848,7 +3866,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                   <td className="px-3 py-1 text-right">{Number(log.impressions).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(log.reach).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(log.clicks).toLocaleString()}</td>
-                                                  {(currentUser.role === "Super Admin" || currentUser.role === "Admin Control") && (
+                                                  {(hasSystemAccess) && (
                                                     <td className="px-3 py-1 text-center">
                                                       <button
                                                         className="p-1 hover:bg-gray-200 rounded"
