@@ -20,11 +20,11 @@ interface TabRule {
 
 const TABS = [
     { key: 'waitingVerifySlip', label: 'รอตรวจสอบสลิป' },
-    { key: 'waitingExport', label: 'รอแพ็คกิ้ง' },
-    { key: 'preparing', label: 'กำลังแพ็ค' },
-    { key: 'shipping', label: 'ที่ต้องจัดส่ง' },
-    { key: 'awaiting_account', label: 'รอปิดยอดบัญชี' },
-    { key: 'completed', label: 'สำเร็จ' },
+    { key: 'waitingExport', label: 'รอดึงข้อมูล' },
+    { key: 'preparing', label: 'กำลังเตรียมสินค้า' },
+    { key: 'shipping', label: 'กำลังจัดส่ง' },
+    { key: 'awaiting_account', label: 'รอตรวจสอบจากบัญชี' },
+    { key: 'completed', label: 'เสร็จสิ้น' },
     { key: 'cancelled', label: 'ยกเลิก' },
 ];
 
