@@ -632,6 +632,7 @@ export async function listOrders(params: {
   customerPhone?: string;
   creatorId?: number;
   orderStatus?: string | string[];
+  shop?: string;
   tab?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
@@ -661,24 +662,26 @@ export async function listOrders(params: {
   if (safeParams.paymentMethod) qs.set("paymentMethod", safeParams.paymentMethod);
   if (safeParams.paymentStatus) {
     if (Array.isArray(safeParams.paymentStatus)) {
-      params.paymentStatus.forEach(s => qs.append("paymentStatus[]", s));
+      (safeParams.paymentStatus as string[]).forEach(s => qs.append("paymentStatus[]", s));
     } else {
-      qs.set("paymentStatus", params.paymentStatus);
+      qs.set("paymentStatus", safeParams.paymentStatus as string);
     }
   }
-  if (params.customerName) qs.set("customerName", params.customerName);
-  if (params.customerPhone) qs.set("customerPhone", params.customerPhone);
-  if (params.creatorId) qs.set("creatorId", String(params.creatorId));
-  if (params.orderStatus) {
-    if (Array.isArray(params.orderStatus)) {
-      params.orderStatus.forEach(s => qs.append("orderStatus[]", s));
+  if (safeParams.customerName) qs.set("customerName", safeParams.customerName);
+  if (safeParams.customerPhone) qs.set("customerPhone", safeParams.customerPhone);
+  if (safeParams.creatorId) qs.set("creatorId", String(safeParams.creatorId));
+  if (safeParams.orderStatus) {
+    if (Array.isArray(safeParams.orderStatus)) {
+      (safeParams.orderStatus as string[]).forEach(s => qs.append("orderStatus[]", s));
     } else {
-      qs.set("orderStatus", params.orderStatus);
+      qs.set("orderStatus", safeParams.orderStatus as string);
     }
   }
-  if (params.tab) qs.set("tab", params.tab);
 
-  return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: params.signal });
+  if (safeParams.shop) qs.set("shop", safeParams.shop);
+  if (safeParams.tab) qs.set("tab", safeParams.tab);
+
+  return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }
 
 export async function getOrderCounts(companyId: number): Promise<{

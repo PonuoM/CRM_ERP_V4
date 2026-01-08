@@ -260,7 +260,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           paymentStatus: afPaymentStatus || undefined,
           customerName: afCustomerName || undefined,
           customerPhone: afCustomerPhone || undefined,
-          // shop: afShop || undefined, // Backend needs to support this
+          shop: afShop || undefined,
 
           // Send active tab to backend for specialized filtering logic
           tab: activeTab,
@@ -374,6 +374,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     afPaymentStatus,
     afCustomerName,
     afCustomerPhone,
+    afShop,
     refreshCounter,
     // Add dependencies for date filters logic
     activeDatePreset,
@@ -1382,52 +1383,37 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           <h2 className="text-2xl font-bold text-gray-800">จัดการออเดอร์</h2>
           <p className="text-gray-600">{`ทั้งหมด ${finalDisplayedOrders.length} รายการ`}</p>
         </div>
-        {activeTab !== 'pending' && activeTab !== 'verified' && (
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleExportAndProcessSelected}
+            disabled={selectedIds.length === 0}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={16} className="mr-2" />
+            {activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
+          </button>
+          {activeTab === 'waitingExport' && (
             <button
-              onClick={handleExportAndProcessSelected}
-              disabled={selectedIds.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={async () => {
+                setShowExportHistory(true);
+                setLoadingHistory(true);
+                try {
+                  const data = await listExports('export_shipping_provider');
+                  setExportHistory(Array.isArray(data) ? data : []);
+                } catch (e) {
+                  console.error('Failed to load export history', e);
+                  setExportHistory([]);
+                } finally {
+                  setLoadingHistory(false);
+                }
+              }}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <Send size={16} className="mr-2" />
-              {activeTab === 'verified' ? 'ส่งออกข้อมูลไปคลัง' : activeTab === 'waitingExport' ? `ส่งออกข้อมูล (${selectedIds.length})` : 'ส่งออกข้อมูล'}
+              <FileText size={16} className="mr-2" />
+              ประวัติการส่งออก
             </button>
-            {activeTab === 'waitingExport' && (
-              <button
-                onClick={async () => {
-                  setShowExportHistory(true);
-                  setLoadingHistory(true);
-                  try {
-                    const data = await listExports('export_shipping_provider');
-                    setExportHistory(Array.isArray(data) ? data : []);
-                  } catch (e) {
-                    console.error('Failed to load export history', e);
-                    setExportHistory([]);
-                  } finally {
-                    setLoadingHistory(false);
-                  }
-                }}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <FileText size={16} className="mr-2" />
-                ประวัติการส่งออก
-              </button>
-            )}
-          </div>
-        )}
-        {activeTab === 'verified' && (
-          <div className="flex items-center space-x-2">
-
-            <button
-              onClick={handleExportAndProcessSelected}
-              disabled={selectedIds.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Send size={16} className="mr-2" />
-              ส่งออกข้อมูลไปคลัง ({selectedIds.length})
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ตัวกรองขั้นสูง toggle and panel */}
@@ -1474,6 +1460,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <option value={PaymentMethod.Transfer}>โอนเงิน</option>
                 <option value={PaymentMethod.COD}>เก็บเงินปลายทาง (COD)</option>
                 <option value={PaymentMethod.PayAfter}>รับสินค้าก่อน</option>
+                <option value={PaymentMethod.Claim}>ส่งเคลม</option>
+                <option value={PaymentMethod.FreeGift}>ส่งของแถม</option>
               </select>
             </div>
             <div>
@@ -1483,8 +1471,8 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                 <option value={PaymentStatus.Unpaid}>ยังไม่ชำระ</option>
                 <option value={PaymentStatus.PendingVerification}>รอตรวจสอบ</option>
                 <option value={PaymentStatus.Verified}>ยืนยันแล้ว</option>
-                <option value={PaymentStatus.PreApproved}>Pre Approved</option>
-                <option value={PaymentStatus.Approved}>Approved</option>
+                <option value={PaymentStatus.PreApproved}>รอยืนยันจากบัญชี</option>
+                <option value={PaymentStatus.Approved}>ยืนยันจากบัญชีแล้ว</option>
                 <option value={PaymentStatus.Paid}>ชำระแล้ว</option>
               </select>
             </div>
