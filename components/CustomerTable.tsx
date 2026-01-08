@@ -55,7 +55,7 @@ const statusColorMap: { [key: string]: string } = {
   Old: "bg-gray-100 text-gray-800",
   FollowUp: "bg-yellow-100 text-yellow-800",
   Old3Months: "bg-green-100 text-green-800",
-  DailyDistribution: "bg-purple-100 text-purple-800",
+  DailyDistribution: "bg-orange-100 text-orange-800",
 };
 
 // Helper function to get contrasting text color (black or white)
@@ -349,7 +349,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
 
   // Compute dynamic column count for empty state colSpan
   const baseColumns = 5; // assigned date, name, province, ownership remaining, status
-  const dynamicColumns = showCallNotes ? 1 : !hideGrade ? 1 : 0;
+  const dynamicColumns = (showCallNotes ? 1 : 0) + (!hideGrade ? 1 : 0) + (currentCustomers.some(c => c.doReason) ? 1 : 0);
   const trailingColumns = 2; // TAG, actions
   const totalColumns = baseColumns + dynamicColumns + trailingColumns;
 
@@ -374,6 +374,11 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
               <th scope="col" className="px-6 py-3">
                 สถานะ
               </th>
+              {currentCustomers.some(c => c.doReason) && (
+                <th scope="col" className="px-6 py-3">
+                  สาเหตุ
+                </th>
+              )}
               {showCallNotes && (
                 <th scope="col" className="px-6 py-3">
                   หมายเหตุการโทร
@@ -442,34 +447,14 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                         >
                           {lifecycleLabel(customer.lifecycleStatus)}
                         </span>
-                        {customer.doReason && (
-                          <div
-                            className="absolute z-50 hidden group-hover:block"
-                            style={{
-                              // Smart positioning via CSS - prefer bottom, fallback to top
-                              bottom: index < 3 ? 'auto' : '100%',
-                              top: index < 3 ? '100%' : 'auto',
-                              left: '50%',
-                              transform: 'translateX(-50%)',
-                              marginTop: index < 3 ? '8px' : '0',
-                              marginBottom: index >= 3 ? '8px' : '0',
-                            }}
-                          >
-                            <div className="relative bg-gray-800 text-white text-sm rounded-lg px-4 py-2 shadow-lg whitespace-nowrap">
-                              {/* Arrow */}
-                              <div
-                                className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-transparent ${index < 3
-                                  ? 'bottom-full border-b-[6px] border-b-gray-800'
-                                  : 'top-full border-t-[6px] border-t-gray-800'
-                                  }`}
-                              />
-                              <div className="font-medium text-yellow-300 text-xs">สาเหตุที่อยู่ใน Do:</div>
-                              <div className="mt-0.5">{customer.doReason}</div>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </td>
+                    {/* Dynamic Do Reason Column */}
+                    {currentCustomers.some(c => c.doReason) && (
+                      <td className="px-6 py-4 text-xs text-orange-600 font-medium">
+                        {customer.doReason || "-"}
+                      </td>
+                    )}
                     {showCallNotes && (
                       <td
                         className="px-6 py-4 text-gray-700 max-w-[300px] truncate"

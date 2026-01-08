@@ -248,6 +248,8 @@ export interface Customer {
   lineId?: string;
   doReason?: string; // Reason why customer is in Do dashboard
   lastCallNote?: string; // Latest call note for display
+  last_call_date?: string; // Latest call date
+  last_call_id?: number | null; // Latest call IDnote for display
   // Ownership management fields
   hasSoldBefore?: boolean; // เคยซื้อสินค้ามาก่อนหรือไม่
   followUpCount?: number; // จำนวนครั้งที่ติดตาม

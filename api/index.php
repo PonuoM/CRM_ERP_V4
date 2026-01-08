@@ -1531,8 +1531,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     'postal_code=COALESCE(?, postal_code)',
                     'is_in_waiting_basket=COALESCE(?, is_in_waiting_basket)',
                     'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
-                    'is_blocked=COALESCE(?, is_blocked)',
-                    'bucket_type=COALESCE(?, bucket_type)'
+                    'is_blocked=COALESCE(?, is_blocked)'
                 ];
 
                 $params = [
@@ -1563,7 +1562,6 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
                     $in['waiting_basket_start_date'] ?? null,
                     array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
-                    $in['bucketType'] ?? null,
                 ];
 
                 if ($newCustomerRefId) {
