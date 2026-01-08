@@ -6621,9 +6621,21 @@ function handle_customer_tags(PDO $pdo): void {
         case 'POST':
             try {
                 $in = json_input();
-                $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
-                $stmt->execute([$in['customerId'] ?? '', $in['tagId'] ?? 0]);
-                json_response(['ok' => true]);
+                $cid = $in['customerId'] ?? '';
+                $tid = $in['tagId'] ?? 0;
+                
+                // Resolve customer_id if it's a ref_id
+                $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_id = ? OR customer_ref_id = ? LIMIT 1');
+                $findStmt->execute([$cid, $cid]);
+                $customer = $findStmt->fetch();
+                
+                if ($customer) {
+                    $stmt = $pdo->prepare('INSERT INTO customer_tags (customer_id, tag_id) VALUES (?, ?)');
+                    $stmt->execute([$customer['customer_id'], $tid]);
+                    json_response(['ok' => true]);
+                } else {
+                     json_response(['error' => 'CUSTOMER_NOT_FOUND', 'message' => "Customer not found: $cid"], 404);
+                }
             } catch (Throwable $e) {
                 json_response(['error' => 'INSERT_FAILED', 'message' => $e->getMessage()], 500);
             }

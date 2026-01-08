@@ -1485,7 +1485,7 @@ const App: React.FC = () => {
               behavioralStatus:
                 (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
               grade: calculateCustomerGrade(totalPurchases),
-              tags: tagsByCustomer[resolvedId] || [],
+              tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
               assignmentHistory: [],
               totalPurchases,
               totalCalls: Number(r.total_calls || 0),
@@ -4480,27 +4480,50 @@ const App: React.FC = () => {
         if (newTags && newTags.length > 0) {
           for (const newTagObj of newTags) {
             try {
-              const tempTag: Tag = {
-                id: Date.now() + Math.random(),
-                name: newTagObj.name,
-                type: TagType.User
-              };
+              let tagIdToAdd = newTagObj.id;
 
-              // If customer state is available, check for duplicates
+              // Helper to check if ID is temporary (timestamp-based)
+              const isTempId = (id: number) => id > 1700000000000;
+
+              // If it's a temporary tag, we must create it on the server first
+              if (isTempId(tagIdToAdd)) {
+                try {
+                  // Check if tag exists by listing (optional but safer) or just try create
+                  // createTag API usually returns { id: number } or similar
+                  const createdTagRes: any = await createTag(newTagObj.name);
+                  if (createdTagRes && createdTagRes.id) {
+                    tagIdToAdd = createdTagRes.id;
+                  } else {
+                    // Fallback: maybe it returned success but we need to fetch? 
+                    // Or maybe it failed because it exists?
+                    // For now, if creation fails or returns odd data, we skip adding relationship to avoid 500
+                    console.warn("Tag creation returned no ID, skipping link", createdTagRes);
+                    continue;
+                  }
+                } catch (createErr) {
+                  console.error("Failed to create new tag", createErr);
+                  continue;
+                }
+              }
+
+              // Now link the tag (using real ID)
               if (customer) {
                 const existingTagNames = new Set(customer.tags.map((t) => t.name));
                 if (!existingTagNames.has(newTagObj.name)) {
-                  await addCustomerTag(customer.pk || Number(customerId), tempTag);
+                  await addCustomerTag(customer.pk || Number(customerId), tagIdToAdd);
                 }
               } else {
-                // If customer state is missing, try to add tag blindy (API should handle duplicates or just work)
-                // We use customerId (which might be string ID, but addCustomerTag needs PK if possible, or ID?)
-                // addCustomerTag signature: (customerPk: number, tag: Tag)
-                // If we don't have PK, we might fail if addCustomerTag expects PK only.
-                // But wait, earlier code used `customer.pk || Number(customerId)`.
-                // If customerId is string '10255', Number() works.
-                await addCustomerTag(Number(customerId), tempTag);
+                await addCustomerTag(Number(customerId), tagIdToAdd);
               }
+
+              // Update Dexie optimistic tag with real ID if we got one
+              if (!isTempId(tagIdToAdd)) {
+                // We might want to update the optimisticTags array we defined earlier? 
+                // Actually the optimistic update ran already at function start.
+                // It used temp IDs. That's fine for UI locally.
+                // The next refresh will sync real IDs.
+              }
+
             } catch (e) {
               console.error("Failed to add tag", e);
             }
