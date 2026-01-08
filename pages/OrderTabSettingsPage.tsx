@@ -115,50 +115,67 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
         setMatrix(newMatrix);
     }, [rules, activeTabKey]);
 
-    const handleSaveCell = async (paymentMethod: string) => {
-        const cell = matrix[paymentMethod];
-        setSaving(prev => ({ ...prev, [paymentMethod]: true }));
-
+    const handleSaveAll = async () => {
+        setLoading(true);
         try {
-            // Case 1: Both empty -> Delete rule if exists
-            if (!cell.orderStatus && !cell.paymentStatus) {
-                if (cell.ruleId) {
-                    await apiFetch(`tab_rules?id=${cell.ruleId}`, { method: 'DELETE' });
-                }
-            }
-            // Case 2: Has values -> Create or Update
-            else {
-                const payload = {
-                    tab_key: activeTabKey,
-                    payment_method: paymentMethod,
-                    payment_status: cell.paymentStatus || null,
-                    order_status: cell.orderStatus || null,
-                    description: 'Matrix configured',
-                    display_order: 0,
-                    company_id: user?.companyId
-                };
+            const promises = PAYMENT_METHODS.map(async (pm) => {
+                const cell = matrix[pm];
+                const ruleInDb = rules.find(r => r.tab_key === activeTabKey && r.payment_method === pm);
+                const dbOrderStatus = ruleInDb?.order_status || '';
+                const dbPaymentStatus = ruleInDb?.payment_status || '';
+                const isDirty = cell.orderStatus !== dbOrderStatus || cell.paymentStatus !== dbPaymentStatus;
 
-                if (cell.ruleId) {
-                    // Update
-                    await apiFetch('tab_rules', {
-                        method: 'PUT',
-                        body: JSON.stringify({ ...payload, id: cell.ruleId })
-                    });
-                } else {
-                    // Create
-                    await apiFetch('tab_rules', {
-                        method: 'POST',
-                        body: JSON.stringify(payload)
-                    });
+                if (!isDirty) return;
+
+                setSaving(prev => ({ ...prev, [pm]: true }));
+
+                try {
+                    // Case 1: Both empty -> Delete rule if exists
+                    if (!cell.orderStatus && !cell.paymentStatus) {
+                        if (cell.ruleId) {
+                            await apiFetch(`tab_rules?id=${cell.ruleId}`, { method: 'DELETE' });
+                        }
+                    }
+                    // Case 2: Has values -> Create or Update
+                    else {
+                        const payload = {
+                            tab_key: activeTabKey,
+                            payment_method: pm,
+                            payment_status: cell.paymentStatus || null,
+                            order_status: cell.orderStatus || null,
+                            description: 'Matrix configured',
+                            display_order: 0,
+                            company_id: user?.companyId
+                        };
+
+                        if (cell.ruleId) {
+                            // Update
+                            await apiFetch('tab_rules', {
+                                method: 'PUT',
+                                body: JSON.stringify({ ...payload, id: cell.ruleId })
+                            });
+                        } else {
+                            // Create
+                            await apiFetch('tab_rules', {
+                                method: 'POST',
+                                body: JSON.stringify(payload)
+                            });
+                        }
+                    }
+                } finally {
+                    setSaving(prev => ({ ...prev, [pm]: false }));
                 }
-            }
+            });
+
+            await Promise.all(promises);
             // Refresh rules to get new IDs etc.
             await fetchRules();
+            alert('บันทึกข้อมูลเรียบร้อยแล้ว');
         } catch (error) {
-            console.error('Failed to save rule:', error);
+            console.error('Failed to save rules:', error);
             alert('Failed to save changes');
         } finally {
-            setSaving(prev => ({ ...prev, [paymentMethod]: false }));
+            setLoading(false);
         }
     };
 
@@ -171,6 +188,15 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
             }
         }));
     };
+
+    const hasAnyChanges = PAYMENT_METHODS.some(pm => {
+        const cell = matrix[pm];
+        if (!cell) return false;
+        const ruleInDb = rules.find(r => r.tab_key === activeTabKey && r.payment_method === pm);
+        const dbOrderStatus = ruleInDb?.order_status || '';
+        const dbPaymentStatus = ruleInDb?.payment_status || '';
+        return cell.orderStatus !== dbOrderStatus || cell.paymentStatus !== dbPaymentStatus;
+    });
 
     return (
         <div className="p-6">
@@ -205,6 +231,17 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                         <h2 className="text-lg font-semibold text-gray-800">
                             เงื่อนไขสำหรับ: <span className="text-blue-600">{TABS.find(t => t.key === activeTabKey)?.label}</span>
                         </h2>
+                        <button
+                            onClick={handleSaveAll}
+                            disabled={loading || Object.values(saving).some(Boolean) || !hasAnyChanges}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors ${hasAnyChanges && !loading
+                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                }`}
+                        >
+                            {loading || Object.values(saving).some(Boolean) ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                            บันทึกการเปลี่ยนแปลง
+                        </button>
                     </div>
 
                     {loading ? (
@@ -216,29 +253,40 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-600 font-medium">
                                     <tr>
-                                        <th className="px-4 py-3 w-1/4">Payment Method</th>
+                                        <th className="px-4 py-3 w-1/3">Payment Method</th>
                                         <th className="px-4 py-3 w-1/3">Order Status</th>
-                                        <th className="px-4 py-3 w-1/3">Payment Status</th>
-                                        <th className="px-4 py-3 text-right">Action</th>
+                                        <th className="px-4 py-3 w-1/3 hidden md:table-cell">Payment Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {PAYMENT_METHODS.map(pm => {
                                         const cell = matrix[pm] || { orderStatus: '', paymentStatus: '' };
                                         const ruleInDb = rules.find(r => r.tab_key === activeTabKey && r.payment_method === pm);
-                                        // A cell is "saved" (clean) if the local state matches the DB state
-                                        // DB state for a non-existent rule is empty strings
                                         const dbOrderStatus = ruleInDb?.order_status || '';
                                         const dbPaymentStatus = ruleInDb?.payment_status || '';
-
                                         const isDirty = cell.orderStatus !== dbOrderStatus || cell.paymentStatus !== dbPaymentStatus;
 
                                         return (
-                                            <tr key={pm} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 font-medium text-gray-700">
+                                            <tr key={pm} className={`hover:bg-gray-50 transition-colors ${isDirty ? 'bg-blue-50/30' : ''}`}>
+                                                <td className="px-4 py-3 font-medium text-gray-700 border-r md:border-r-0">
                                                     {pm}
+                                                    {isDirty && <span className="ml-2 inline-block w-2 h-2 rounded-full bg-blue-500" title="Changed"></span>}
+                                                    {/* Mobile View: PaymentStatus stacked */}
+                                                    <div className="md:hidden mt-2">
+                                                        <label className="text-xs text-gray-400 block mb-1">Payment Status</label>
+                                                        <select
+                                                            value={cell.paymentStatus}
+                                                            onChange={e => handleUpdateLocalMatrix(pm, 'paymentStatus', e.target.value)}
+                                                            className="w-full p-2 border rounded-md text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                        >
+                                                            <option value="" className="text-gray-400">- ไม่เลือก -</option>
+                                                            {PAYMENT_STATUSES.map(st => st && (
+                                                                <option key={st} value={st}>{st}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-4 py-3 align-top">
                                                     <select
                                                         value={cell.orderStatus}
                                                         onChange={e => handleUpdateLocalMatrix(pm, 'orderStatus', e.target.value)}
@@ -250,7 +298,7 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                                         ))}
                                                     </select>
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-4 py-3 hidden md:table-cell align-top">
                                                     <select
                                                         value={cell.paymentStatus}
                                                         onChange={e => handleUpdateLocalMatrix(pm, 'paymentStatus', e.target.value)}
@@ -261,18 +309,6 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                                             <option key={st} value={st}>{st}</option>
                                                         ))}
                                                     </select>
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <button
-                                                        onClick={() => handleSaveCell(pm)}
-                                                        disabled={saving[pm] || !isDirty}
-                                                        className={`p-2 rounded-md transition-colors ${saving[pm] ? 'bg-gray-100 text-gray-400' :
-                                                            isDirty ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' : 'text-gray-300 hover:text-gray-500 bg-gray-50'
-                                                            }`}
-                                                        title={isDirty ? "Save Changes" : "No Changes"}
-                                                    >
-                                                        {saving[pm] ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                                    </button>
                                                 </td>
                                             </tr>
                                         );
