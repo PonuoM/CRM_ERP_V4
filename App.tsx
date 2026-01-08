@@ -141,6 +141,7 @@ import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
+import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
 const FULL_THRESHOLD_SECONDS = 4 * 3600;
@@ -297,6 +298,7 @@ const App: React.FC = () => {
   const [productLots, setProductLots] = useState<any[]>([]);
   const [systemTags, setSystemTags] = useState<Tag[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([
     {
       id: 1,
@@ -1493,6 +1495,9 @@ const App: React.FC = () => {
               waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
               isBlocked: Boolean(r.is_blocked ?? false),
               isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
+              lastCallNote: r.lastCallNote ?? r.last_call_note ?? undefined,
+              last_call_date: r.last_call_date ?? undefined,
+              last_call_id: r.last_call_id ?? undefined,
             };
           };
 
@@ -4308,6 +4313,37 @@ const App: React.FC = () => {
     let newLifecycleStatus: CustomerLifecycleStatus | undefined;
 
     const customer = customers.find((c) => c.id === customerId);
+
+    // AUTO-COMPLETE APPOINTMENTS LOGIC
+    // When a call is logged, we should check if there are any pending appointments for this customer
+    // that are due today or in the past, and mark them as completed.
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const pendingAppointments = appointments.filter(a =>
+      (String(a.customerId) === String(customerId) || String(a.customerId) === String(customer?.pk)) &&
+      a.status !== 'เสร็จสิ้น' &&
+      new Date(a.date).getTime() <= (now.getTime() + 2 * 24 * 60 * 60 * 1000) // Look ahead 2 days like the Do tab does? Or just today/past?
+      // Let's match the "Do" logic: The "Do" tab shows appointments due <= 2 days.
+      // So if we call them, we should probably clear those "Do" items.
+    );
+
+    if (pendingAppointments.length > 0) {
+      // Optimistic update
+      setAppointments(prev => prev.map(a =>
+        pendingAppointments.some(pa => pa.id === a.id)
+          ? { ...a, status: 'เสร็จสิ้น' }
+          : a
+      ));
+
+      // API update
+      pendingAppointments.forEach(appt => {
+        updateAppointment(appt.id, { status: 'เสร็จสิ้น' })
+          .catch(e => console.error(`Failed to auto-complete appointment ${appt.id}`, e));
+      });
+    }
+
     if (customer) {
       // If there's a follow-up date, set status to FollowUp
       if (newFollowUpDate) {
@@ -4337,7 +4373,21 @@ const App: React.FC = () => {
               ? (c.previousLifecycleStatus ?? c.lifecycleStatus)
               : c.previousLifecycleStatus,
             tags: updatedCustomerTags,
+            lastCallNote: callLogData.notes, // Update last call note immediately
           };
+
+          // Sync to Dexie immediately
+          if (c.pk) {
+            db.customers.where('pk').equals(c.pk).modify({
+              totalCalls: c.totalCalls + 1,
+              followUpDate: newFollowUpDate || c.followUpDate,
+              lifecycleStatus: newLifecycleStatus || c.lifecycleStatus,
+              lastCallNote: callLogData.notes,
+              last_call_date: callLogData.date
+            }).catch(err => console.error("Failed to sync call update to Dexie", err));
+            // Trigger refresh for TelesaleDashboard
+            setTimeout(() => setRefreshTrigger(prev => prev + 1), 100);
+          }
 
           // Update lifecycle status if needed
           if (newLifecycleStatus) {
@@ -4698,18 +4748,29 @@ const App: React.FC = () => {
     let persistedTag: Tag = tag;
     if (true) {
       try {
-        const created = await createTag({
-          name: tag.name,
-          type: tag.type || TagType.User,
-        });
-        if (created && created.id) {
-          persistedTag = { ...tag, id: Number(created.id) };
+        // Resolve customer to get PK if possible
+        let currentCust = customers.find((c) => c.id === customerId);
+        if (!currentCust && modalState.type === 'manageTags' && (modalState.data as Customer)?.id === customerId) {
+          currentCust = modalState.data as Customer;
         }
-      } catch (e) {
-        console.error("create tag", e);
-      }
-      try {
-        await addCustomerTag(customerId, persistedTag.id);
+
+        // Use PK if available, otherwise fallback to ID string (phone)
+        const apiCustomerId = currentCust?.pk ? String(currentCust.pk) : customerId;
+
+        // Skip createTag logic here - tags selected from UI already exist. 
+        // If creating a new tag, TagManagementModal handles creation before calling this.
+        await addCustomerTag(apiCustomerId, tag.id);
+
+        // Update Dexie local DB immediately so TelesaleDashboard reflects changes
+        if (currentCust && currentCust.pk) {
+          await db.customers.where('pk').equals(currentCust.pk).modify(c => {
+            if (!c.tags) c.tags = [];
+            if (!c.tags.some(t => t.id === tag.id)) {
+              c.tags.push(tag);
+            }
+          });
+          setRefreshTrigger(prev => prev + 1);
+        }
       } catch (e) {
         console.error("add tag", e);
       }
@@ -4722,6 +4783,24 @@ const App: React.FC = () => {
         return c;
       }),
     );
+
+    // Also update modal state if we are currently viewing this customer
+    // This allows the UI to update even if the customer is not in the main customers list (fallback mode)
+    if (modalState.type === 'manageTags' && (modalState.data as Customer).id === customerId) {
+      setModalState((prev) => {
+        const currentData = prev.data as Customer;
+        // Avoid duplicates
+        if (currentData.tags.some((t) => t.id === persistedTag.id)) return prev;
+
+        return {
+          ...prev,
+          data: {
+            ...currentData,
+            tags: [...currentData.tags, persistedTag],
+          },
+        };
+      });
+    }
   };
 
   const handleRemoveTagFromCustomer = async (
@@ -4730,7 +4809,26 @@ const App: React.FC = () => {
   ) => {
     if (true) {
       try {
-        await removeCustomerTag(customerId, tagId);
+        // Resolve customer to get PK if possible
+        let currentCust = customers.find((c) => c.id === customerId);
+        if (!currentCust && modalState.type === 'manageTags' && (modalState.data as Customer)?.id === customerId) {
+          currentCust = modalState.data as Customer;
+        }
+
+        // Use PK if available, otherwise fallback to ID string (phone)
+        const apiCustomerId = currentCust?.pk ? String(currentCust.pk) : customerId;
+
+        await removeCustomerTag(apiCustomerId, tagId);
+
+        // Update Dexie local DB immediately so TelesaleDashboard reflects changes
+        if (currentCust && currentCust.pk) {
+          await db.customers.where('pk').equals(currentCust.pk).modify(c => {
+            if (c.tags) {
+              c.tags = c.tags.filter(t => t.id !== tagId);
+            }
+          });
+          setRefreshTrigger(prev => prev + 1);
+        }
       } catch (e) {
         console.error("remove tag", e);
       }
@@ -4743,6 +4841,20 @@ const App: React.FC = () => {
         return c;
       }),
     );
+
+    // Also update modal state if we are currently viewing this customer
+    if (modalState.type === 'manageTags' && (modalState.data as Customer).id === customerId) {
+      setModalState((prev) => {
+        const currentData = prev.data as Customer;
+        return {
+          ...prev,
+          data: {
+            ...currentData,
+            tags: currentData.tags.filter((t) => t.id !== tagId),
+          },
+        };
+      });
+    }
   };
 
   const handleUpdateUserTag = async (
@@ -6096,6 +6208,7 @@ const App: React.FC = () => {
             }}
             onChangeOwner={handleChangeCustomerOwner}
             systemTags={systemTags}
+            refreshTrigger={refreshTrigger}
           />
         );
       }
@@ -7091,9 +7204,13 @@ const App: React.FC = () => {
           />
         );
       case "manageTags":
-        const currentCustomerState = customers.find(
+        let currentCustomerState = customers.find(
           (c) => c.id === (modalState.data as Customer).id,
         );
+        // Fallback: If not found in global state (e.g. isolated search result), use the data passed in
+        if (!currentCustomerState && modalState.data) {
+          currentCustomerState = modalState.data as Customer;
+        }
         if (!currentCustomerState) return null;
 
         return (

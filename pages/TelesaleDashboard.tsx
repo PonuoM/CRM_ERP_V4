@@ -521,7 +521,11 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       if (customer.ownershipExpires) {
         const daysUntilExpiry = getDaysUntilExpiration(customer.ownershipExpires);
         if (daysUntilExpiry <= 5 && daysUntilExpiry >= 0) {
-          counts.expiring++;
+          // Check for recent call (last 5 days)
+          const fiveDaysAgo = now.getTime() - 5 * 24 * 60 * 60 * 1000;
+          if (!hasAnyActivity(customer, fiveDaysAgo)) { // hasAnyActivity checks calls too
+            counts.expiring++;
+          }
         }
       }
 
@@ -530,7 +534,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       const isNew = customer.lifecycleStatus === CustomerLifecycleStatus.New;
 
       if (isDaily || isNew) {
-        const assignedTime = new Date(customer.dateAssigned).getTime();
+        let assignedTime = new Date(customer.dateAssigned).getTime();
+        if (isNaN(assignedTime)) assignedTime = 0; // Fallback to 0 if invalid
+
         if (!hasAnyActivity(customer, assignedTime)) {
           counts.do++;
         }
@@ -639,6 +645,12 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     const hasAnyActivityEver = (customerId: string): boolean => {
       return callTimeMap.has(customerId) || activityTimeMap.has(customerId) || orderTimeMap.has(customerId);
     };
+
+    // Helper specific for "Hide Today Calls": Check ONLY for calls
+    const hasCallSince = (customerId: string, since: number): boolean => {
+      const callTime = callTimeMap.get(customerId) || 0;
+      return callTime >= since;
+    };
     // =========== END OPTIMIZATION ===========
 
     switch (activeSubMenu) {
@@ -652,7 +664,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
           if (isDaily || isNew) {
-            const assignedTime = new Date(c.dateAssigned).getTime();
+            let assignedTime = new Date(c.dateAssigned).getTime();
+            if (isNaN(assignedTime)) assignedTime = 0; // Fallback to 0 if invalid, so ANY activity counts
+
             // O(1) activity check
             if (hasAnyActivitySince(cid, assignedTime)) return false;
             return true;
@@ -680,7 +694,11 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
           const assignedDate = new Date(c.dateAssigned);
-          const daysSinceAssigned = Math.floor((nowTime - assignedDate.getTime()) / (1000 * 60 * 60 * 24));
+          // Check for valid date before calculating daysSinceAssigned
+          const assignedTime = assignedDate.getTime();
+          const daysSinceAssigned = !isNaN(assignedTime)
+            ? Math.floor((nowTime - assignedTime) / (1000 * 60 * 60 * 24))
+            : 0;
 
           if (isDaily) {
             if (daysSinceAssigned === 0) {
@@ -707,10 +725,19 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         break;
 
       case 'expiring':
+        const fiveDaysAgo = nowTime - 5 * 24 * 60 * 60 * 1000;
         baseFiltered = userCustomers.filter(c => {
           if (!c.ownershipExpires) return false;
           const daysUntil = getDaysUntilExpiration(c.ownershipExpires);
-          return daysUntil <= 5 && daysUntil >= 0;
+          // Condition 1: Expiring soon (0-5 days)
+          if (daysUntil > 5 || daysUntil < 0) return false;
+
+          // Condition 2: No recent call (> 5 days ago)
+          // Using hasCallSince helper which uses callTimeMap (Optimization)
+          const cid = String(c.id || c.pk);
+          if (hasCallSince(cid, fiveDaysAgo)) return false;
+
+          return true;
         });
         break;
 
@@ -784,13 +811,26 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     if (dateRange.start || dateRange.end) {
       filtered = filtered.filter(c => {
         if (!c.dateAssigned) return false;
-        const assignedDate = new Date(c.dateAssigned);
+        // Ensure robust parsing for dateAssigned
+        const assignedDateStr = c.dateAssigned;
+        // Try parsing string directly first
+        let assignedDate = new Date(assignedDateStr);
+        if (isNaN(assignedDate.getTime())) {
+          // Fallback for potential legacy formats if needed, but standard should be ISO or usable string
+          return false;
+        }
+
         assignedDate.setHours(0, 0, 0, 0);
 
         let start = dateRange.start ? new Date(dateRange.start) : null;
         let end = dateRange.end ? new Date(dateRange.end) : null;
+
         if (start) start.setHours(0, 0, 0, 0);
         if (end) end.setHours(23, 59, 59, 999);
+
+        // Check validity of start/end
+        if (start && isNaN(start.getTime())) start = null;
+        if (end && isNaN(end.getTime())) end = null;
 
         if (start && assignedDate < start) return false;
         if (end && assignedDate > end) return false;
@@ -846,7 +886,9 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       const todayStartTime = todayStart.getTime();
       filtered = filtered.filter(c => {
         const cid = String(c.id || c.pk);
-        return !hasAnyActivitySince(cid, todayStartTime);
+        // Use hasCallSince to only hide if they were CALLED today.
+        // Previously used hasAnyActivitySince which included Orders.
+        return !hasCallSince(cid, todayStartTime);
       });
     }
 
