@@ -467,10 +467,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // ตรวจสอบว่า order เสร็จสิ้นแล้วหรือไม่ (ไม่สามารถแก้ไขได้)
   const isOrderCompleted = currentOrder.orderStatus === OrderStatus.Delivered;
 
-  const canVerifySlip =
-    currentUser?.role === UserRole.Backoffice ||
-    currentUser?.role === UserRole.Admin ||
-    currentUser?.role === UserRole.SuperAdmin;
+  const canVerifySlip = !!currentUser;
   const canCancelVerification = canVerifySlip;
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;
@@ -3793,7 +3790,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               currentOrder.orderStatus === OrderStatus.Pending && (
                                 <button
                                   onClick={handleCancelVerification}
-                                  disabled={isLocked}
+                                  // disabled={isLocked} // Allow cancelling verification regardless of lock status
                                   className="ml-3 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                                 >
                                   <XCircle size={16} className="mr-2" />

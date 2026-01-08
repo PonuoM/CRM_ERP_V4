@@ -37,6 +37,7 @@ export interface User {
   supervisorId?: number;
   status?: UserStatus;
   customTags: Tag[];
+  isSystem?: boolean;
 }
 
 export interface Company {
@@ -343,7 +344,7 @@ export interface ImportLogEntry {
 export enum PaymentMethod {
   COD = "COD",
   Transfer = "Transfer",
-  PayAfter = "หลังจากรับสินค้า",
+  PayAfter = "PayAfter",
   Claim = "Claim",
   FreeGift = "FreeGift",
 }

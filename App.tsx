@@ -7078,6 +7078,9 @@ const App: React.FC = () => {
       case "Ads Input":
       case "กรอกค่า Ads":
         return <MarketingPage currentUser={currentUser} view="adsInput" />;
+      case "Page Management":
+      case "จัดการเพจ":
+        return <MarketingPage currentUser={currentUser} view="ads" />;
       case "Ads History":
       case "ประวัติการกรอก Ads":
         return <MarketingPage currentUser={currentUser} view="adsHistory" />;
