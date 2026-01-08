@@ -342,7 +342,7 @@ export interface ImportLogEntry {
 export enum PaymentMethod {
   COD = "COD",
   Transfer = "Transfer",
-  PayAfter = "หลังจากรับสินค้า",
+  PayAfter = "PayAfter",
   Claim = "Claim",
   FreeGift = "FreeGift",
 }
