@@ -2393,6 +2393,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $creatorId = $_GET['creatorId'] ?? null;
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
+                $shop = $_GET['shop'] ?? null;
                 
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
@@ -2587,6 +2588,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($creatorId) {
                     $whereConditions[] = 'o.creator_id = ?';
                     $params[] = $creatorId;
+                }
+
+                if ($shop) {
+                    $whereConditions[] = 'EXISTS (SELECT 1 FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.parent_order_id = o.id AND p.shop = ?)';
+                    $params[] = $shop;
                 }
                 
                 if (!empty($whereConditions)) {
