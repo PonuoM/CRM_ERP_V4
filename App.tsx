@@ -141,6 +141,7 @@ import RevenueRecognitionPage from "./pages/Accounting/RevenueRecognitionPage";
 import CommissionPage from "./pages/Finance/CommissionPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
+import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -496,6 +497,7 @@ const App: React.FC = () => {
       'Manage Customers': 'nav.manage_customers',
       'Orders': 'nav.orders',
       'Manage Orders': 'nav.manage_orders',
+      'Order Tab Settings': 'nav.order_tab_settings',
       'Search': 'nav.search',
       'Debt': 'nav.debt',
       'Bulk Tracking': 'nav.bulk_tracking',
@@ -6822,6 +6824,11 @@ const App: React.FC = () => {
             onUpdateShippingProvider={handleUpdateShippingProvider}
           />
         );
+
+      case "Order Tab Settings":
+      case "nav.order_tab_settings":
+      case "ตั้งค่าจัดการคำสั่งซื้อ":
+        return <OrderTabSettingsPage currentUser={currentUser} />;
 
       // PROCESSED: Customers
       case "Add Customer":

@@ -137,6 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Statement Management": "จัดการ Statement",
     "Orders & Customers": "คำสั่งซื้อและลูกค้า",
     "COD Management": "จัดการยอด COD",
+    "Order Tab Settings": "ตั้งค่าจัดการคำสั่งซื้อ",
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
@@ -199,6 +200,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         },
         { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
         { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
+        { label: "Order Tab Settings", icon: Settings, key: "nav.order_tab_settings" },
         { label: "Search", icon: Search, key: "nav.search" },
       ]
     },

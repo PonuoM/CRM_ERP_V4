@@ -100,6 +100,9 @@ try {
         require_once __DIR__ . '/roles.php';
         handle_roles($pdo, $id, $action);
         break;
+    case 'tab_rules':
+        require_once __DIR__ . '/Order_DB/tab_rules.php';
+        break;
     case 'user_permissions':
         handle_user_permissions($pdo, $id, $action);
         break;
@@ -2391,7 +2394,6 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $creatorId = $_GET['creatorId'] ?? null;
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
-                $shop = $_GET['shop'] ?? null;
                 
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
@@ -2495,77 +2497,120 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 // Tab-specific filters for ManageOrdersPage
                 if ($manageTab) {
-                    switch ($manageTab) {
-                        case 'waitingVerifySlip':
-                            // Transfer + Pending Status (Exclude Verified, include NULLs)
-                            $whereConditions[] = 'o.order_status = ?';
-                            $params[] = 'Pending';
-                            $whereConditions[] = 'o.payment_method = ?';
-                            $params[] = 'Transfer';
-                            $whereConditions[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
-                            $params[] = 'Verified';
-                            // COD orders must have payment_status = Unpaid
-                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
-                            $params[] = 'COD';
-                            $params[] = 'Unpaid';
-                            break;
+                    // Optimized: Try to fetch dynamic rules first
+                    $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules WHERE (company_id = ? OR company_id = 0) AND tab_key = ? AND is_active = 1");
+                    $ruleStmt->execute([$companyId ?? 0, $manageTab]);
+                    $rules = $ruleStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    if ($rules) {
+                        $ruleConditions = [];
+                        foreach ($rules as $r) {
+                            $conds = [];
                             
-                        case 'waitingExport':
-                            // Pending Status
-                            // For Transfer, must be Verified. For others (COD), just Pending.
-                            $whereConditions[] = 'o.order_status = ?';
-                            $params[] = 'Pending';
-                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
-                            $params[] = 'Transfer';
-                            $params[] = 'Verified';
-                            // COD orders must have payment_status = Unpaid
-                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
-                            $params[] = 'COD';
-                            $params[] = 'Unpaid';
-                            break;
+                            // payment_method
+                            if (!empty($r['payment_method'])) {
+                                $conds[] = "o.payment_method = " . $pdo->quote($r['payment_method']);
+                            }
                             
-                        case 'preparing':
-                            // Preparing OR Picking
-                            $whereConditions[] = 'o.order_status IN (?, ?)';
-                            $params[] = 'Preparing';
-                            $params[] = 'Picking';
-                            // And NO tracking number (handled by NOT having tracking numbers usually)
-                            // But status Preparing/Picking implies internal process
-                            // COD orders must have payment_status = Unpaid
-                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
-                            $params[] = 'COD';
-                            $params[] = 'Unpaid';
-                            break;
+                            // payment_status
+                            if (!empty($r['payment_status'])) {
+                                if ($r['payment_status'] === 'NULL') { // Special string for IS NULL if needed, or just handle empty
+                                     $conds[] = "o.payment_status IS NULL";
+                                } else {
+                                     $conds[] = "o.payment_status = " . $pdo->quote($r['payment_status']);
+                                }
+                            }
                             
-                        case 'shipping':
-                            // Shipping status OR (Pending/AwaitingVerification AND has tracking)
-                            // For simplicity and performance, let's rely on standard status flow or simple checks
-                            // Or use the exact logic: Status=Shipping OR (Status IN (Pending, Awaiting) AND t.tracking_number IS NOT NULL)
-                            // Getting checking tracking IS NOT NULL with left join can be tricky with Group By?
-                            // Actually we have tracking_numbers group concat. 
-                            $whereConditions[] = 'o.order_status = ?';
-                            $params[] = 'Shipping';
-                            // COD orders must have payment_status = Unpaid
-                            $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
-                            $params[] = 'COD';
-                            $params[] = 'Unpaid';
-                            break;
+                            // order_status
+                            if (!empty($r['order_status'])) {
+                                $conds[] = "o.order_status = " . $pdo->quote($r['order_status']);
+                            }
                             
-                        case 'awaiting_account':
-                            // Show orders where payment_status = PreApproved OR order_status = PreApproved
-                            $whereConditions[] = '(o.payment_status = "PreApproved" OR o.order_status = "PreApproved")';
-                            $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
-                            break;
-                            
-                        case 'completed':
-                            // User Request: payment_status = Approved (ignore order_status)
-                            $whereConditions[] = 'o.payment_status = "Approved"';
-                            break;
-                            
-                        case 'cancelled':
-                            // Orders with order_status = Cancelled
-                            $whereConditions[] = 'o.order_status = "Cancelled"';
-                            break;
+                            // If a rule exists, treat it as a valid valid condition set
+                            // If a rule is completely empty (no criteria), it would match everything (Logic: TRUE)
+                            // But usually our UI enforces at least one field.
+                            if (!empty($conds)) {
+                                $ruleConditions[] = "(" . implode(' AND ', $conds) . ")";
+                            }
+                        }
+                        
+                        if (!empty($ruleConditions)) {
+                            $whereConditions[] = "(" . implode(' OR ', $ruleConditions) . ")";
+                        }
+                    } else {
+                        // Fallback to legacy hardcoded logic if no dynamic rules found
+                        switch ($manageTab) {
+                            case 'waitingVerifySlip':
+                                // Transfer + Pending Status (Exclude Verified, include NULLs)
+                                $whereConditions[] = 'o.order_status = ?';
+                                $params[] = 'Pending';
+                                $whereConditions[] = 'o.payment_method = ?';
+                                $params[] = 'Transfer';
+                                $whereConditions[] = '(o.payment_status != ? OR o.payment_status IS NULL)';
+                                $params[] = 'Verified';
+                                // COD orders must have payment_status = Unpaid
+                                $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                                $params[] = 'COD';
+                                $params[] = 'Unpaid';
+                                break;
+                                
+                            case 'waitingExport':
+                                // Pending Status
+                                // For Transfer, must be Verified. For others (COD), just Pending.
+                                $whereConditions[] = 'o.order_status = ?';
+                                $params[] = 'Pending';
+                                $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                                $params[] = 'Transfer';
+                                $params[] = 'Verified';
+                                // COD orders must have payment_status = Unpaid
+                                $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                                $params[] = 'COD';
+                                $params[] = 'Unpaid';
+                                break;
+                                
+                            case 'preparing':
+                                // Preparing OR Picking
+                                $whereConditions[] = 'o.order_status IN (?, ?)';
+                                $params[] = 'Preparing';
+                                $params[] = 'Picking';
+                                // And NO tracking number (handled by NOT having tracking numbers usually)
+                                // But status Preparing/Picking implies internal process
+                                // COD orders must have payment_status = Unpaid
+                                $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                                $params[] = 'COD';
+                                $params[] = 'Unpaid';
+                                break;
+                                
+                            case 'shipping':
+                                // Shipping status OR (Pending/AwaitingVerification AND has tracking)
+                                // For simplicity and performance, let's rely on standard status flow or simple checks
+                                // Or use the exact logic: Status=Shipping OR (Status IN (Pending, Awaiting) AND t.tracking_number IS NOT NULL)
+                                // Getting checking tracking IS NOT NULL with left join can be tricky with Group By?
+                                // Actually we have tracking_numbers group concat. 
+                                $whereConditions[] = 'o.order_status = ?';
+                                $params[] = 'Shipping';
+                                // COD orders must have payment_status = Unpaid
+                                $whereConditions[] = '(o.payment_method != ? OR o.payment_status = ?)';
+                                $params[] = 'COD';
+                                $params[] = 'Unpaid';
+                                break;
+                                
+                            case 'awaiting_account':
+                                // Show orders where payment_status = PreApproved OR order_status = PreApproved
+                                $whereConditions[] = '(o.payment_status = "PreApproved" OR o.order_status = "PreApproved")';
+                                $whereConditions[] = 'o.payment_method NOT IN ("Claim", "FreeGift")';
+                                break;
+                                
+                            case 'completed':
+                                // User Request: payment_status = Approved (ignore order_status)
+                                $whereConditions[] = 'o.payment_status = "Approved"';
+                                break;
+                                
+                            case 'cancelled':
+                                // Orders with order_status = Cancelled
+                                $whereConditions[] = 'o.order_status = "Cancelled"';
+                                break;
+                        }
                     }
                 }
                 
@@ -2586,11 +2631,6 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 if ($creatorId) {
                     $whereConditions[] = 'o.creator_id = ?';
                     $params[] = $creatorId;
-                }
-
-                if ($shop) {
-                    $whereConditions[] = 'EXISTS (SELECT 1 FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.parent_order_id = o.id AND p.shop = ?)';
-                    $params[] = $shop;
                 }
                 
                 if (!empty($whereConditions)) {
@@ -7785,6 +7825,44 @@ function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
                             $userMap[$uid]['workDays'] += 0.5;
                         }
                         // <2h = 0, don't add anything
+                    }
+                }
+                if (!empty($rules)) {
+                    // Group rules by tab_key
+                    $tabRules = [];
+                    foreach ($rules as $r) {
+                        $tabRules[$r['tab_key']][] = $r;
+                    }
+
+                    if (isset($tabRules[$manageTab])) {
+                        // Build complex OR logic for the specific tab
+                        // (payment_method = 'A' AND order_status = 'X') OR (payment_method = 'B' AND ...)
+                        $ruleConditions = [];
+                        foreach ($tabRules[$manageTab] as $r) {
+                            $conds = [];
+                            if ($r['payment_method']) {
+                                // Map friendly names to DB values if needed, assumes DB stores 'COD', 'Transfer' etc. directly
+                                $conds[] = "payment_method = " . $pdo->quote($r['payment_method']);
+                            }
+                            if (!empty($r['payment_status'])) {
+                                $conds[] = "payment_status = " . $pdo->quote($r['payment_status']);
+                            }
+                            if ($r['order_status']) {
+                                $conds[] = "order_status = " . $pdo->quote($r['order_status']);
+                            }
+                            
+                            if (!empty($conds)) {
+                                $ruleConditions[] = "(" . implode(' AND ', $conds) . ")";
+                            }
+                        }
+                        
+                        if (!empty($ruleConditions)) {
+                            // If we have valid rules, combine them with OR
+                            // e.g. WHERE ... AND ( (rule1) OR (rule2) )
+                            $sql .= " AND (" . implode(' OR ', $ruleConditions) . ")";
+                            // Mark as handled
+                            $handledDynamic = true;
+                        }
                     }
                 }
                 
