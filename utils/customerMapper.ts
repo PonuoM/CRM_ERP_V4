@@ -69,7 +69,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         behavioralStatus:
             (r.behavioral_status ?? "Cold") as CustomerBehavioralStatus,
         grade: calculateCustomerGrade(totalPurchases),
-        tags: tagsByCustomer[resolvedId] || [],
+        tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
         assignmentHistory: [],
         totalPurchases,
         totalCalls: Number(r.total_calls || 0),
