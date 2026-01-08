@@ -37,6 +37,7 @@ export interface User {
   supervisorId?: number;
   status?: UserStatus;
   customTags: Tag[];
+  isSystem?: boolean;
 }
 
 export interface Company {
