@@ -424,7 +424,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       console.log(`[Dashboard] Refresh Triggered! (Count: ${refreshTrigger}) Reloading DB...`);
       // Reload data from DB immediately
       db.customers.where('assignedTo').equals(Number(user.id)).toArray().then(myCustomers => {
-        console.log(`[Dashboard] DB Reloaded. Count: ${myCustomers.length}. Sample Status:`, myCustomers.slice(0, 3).map(c => `${c.id}:${c.lifecycleStatus}`));
+        console.log(`[Dashboard] DB Reloaded. Count: ${myCustomers.length}. Sample Status:`, myCustomers.slice(0, 3).map(c => `${c.pk}:${c.lifecycleStatus}:${c.lastCallNote}`));
         setLocalCustomers(myCustomers);
       }).catch(err => console.error("[Dashboard] Refresh trigger failed", err));
     }

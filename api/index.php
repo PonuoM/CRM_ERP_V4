@@ -6009,7 +6009,14 @@ function handle_calls(PDO $pdo, ?string $id): void {
                     $findStmt->execute([$in['customerId'], is_numeric($in['customerId']) ? (int)$in['customerId'] : null]);
                     $customer = $findStmt->fetch();
                     if ($customer && $customer['customer_id']) {
-                        $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1 WHERE customer_id=?')->execute([$customer['customer_id']]);
+                        // FIX: Update last_call_note and last_call_date along with total_calls
+                        // This ensures the "Last Call Note" column in the dashboard is accurate without needing expensive joins.
+                        $updateStmt = $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1, last_call_note = ?, last_call_date = ? WHERE customer_id=?');
+                        $updateStmt->execute([
+                            $in['notes'] ?? null,
+                            $in['date'] ?? date('c'),
+                            $customer['customer_id']
+                        ]);
                     }
                 } catch (Throwable $e) { /* ignore */ }
             }

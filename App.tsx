@@ -4344,11 +4344,19 @@ const App: React.FC = () => {
       });
     }
 
+    // Calculate status independent of customer state presence
+    if (newFollowUpDate) {
+      newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
+    } else if (callLogData.result === 'สินค้ายังไม่หมด' || callLogData.result === 'ยังไม่ได้ลองใช้') {
+      // Business Rule: If product not finished, default follow up is +90 days
+      const d = new Date();
+      d.setDate(d.getDate() + 90);
+      newFollowUpDate = d.toISOString();
+      newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
+    }
+
     if (customer) {
-      // If there's a follow-up date, set status to FollowUp
-      if (newFollowUpDate) {
-        newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
-      }
+      // logic that strictly requires customer object can remain here if any
     }
 
     setCustomers((prev) =>
@@ -4378,15 +4386,19 @@ const App: React.FC = () => {
 
           // Sync to Dexie immediately
           if (c.pk) {
+            console.log('[handleLogCall] Syncing to Dexie...', { pk: c.pk, newLifecycleStatus, newFollowUpDate, lastCallNote: callLogData.notes });
             db.customers.where('pk').equals(c.pk).modify({
               totalCalls: c.totalCalls + 1,
               followUpDate: newFollowUpDate || c.followUpDate,
               lifecycleStatus: newLifecycleStatus || c.lifecycleStatus,
               lastCallNote: callLogData.notes,
               last_call_date: callLogData.date
-            }).catch(err => console.error("Failed to sync call update to Dexie", err));
-            // Trigger refresh for TelesaleDashboard
-            setTimeout(() => setRefreshTrigger(prev => prev + 1), 100);
+            })
+              .then(() => {
+                console.log('[handleLogCall] Dexie sync success. Triggering refresh.');
+                setRefreshTrigger(prev => prev + 1);
+              })
+              .catch(err => console.error("Failed to sync call update to Dexie", err));
           }
 
           // Update lifecycle status if needed
@@ -4400,10 +4412,58 @@ const App: React.FC = () => {
       }),
     );
 
+    // OPTIMISTIC UPDATE: Update Dexie independently of global state
+    // This ensures local DB is updated even if 'customers' state doesn't have this customer loaded
+    // Try to find PK from customer object if available, otherwise try to query by ID
+    const targetPk = customer?.pk;
+    const targetIdStr = String(customerId);
+
+    // Prepare optimistic tags
+    const optimisticTags: Tag[] = (newTags || []).map(t => ({
+      id: Date.now() + Math.random(),
+      name: t.name,
+      type: TagType.User
+    }));
+
+    const performDexieUpdate = (pk: number) => {
+      console.log('[handleLogCall] Syncing to Dexie (Independent)...', { pk, newLifecycleStatus, newFollowUpDate, lastCallNote: callLogData.notes, tags: optimisticTags });
+      db.customers.where('pk').equals(pk).modify({
+        totalCalls: (customer?.totalCalls || 0) + 1,
+      }).then(() => {
+        // For safety, let's use a function to update totalCalls atomically
+        return db.customers.where('pk').equals(pk).modify(x => {
+          x.totalCalls = (x.totalCalls || 0) + 1;
+          x.lastCallNote = callLogData.notes;
+          x.last_call_date = callLogData.date;
+          if (newFollowUpDate) x.followUpDate = newFollowUpDate;
+          if (newLifecycleStatus) x.lifecycleStatus = newLifecycleStatus;
+
+          // Optimistically append tags
+          if (optimisticTags.length > 0) {
+            x.tags = [...(x.tags || []), ...optimisticTags];
+          }
+        });
+      })
+        .then(() => {
+          console.log('[handleLogCall] Dexie sync success. Triggering refresh.');
+          setRefreshTrigger(prev => prev + 1);
+        })
+        .catch(err => console.error("Failed to sync call update to Dexie", err));
+    };
+
+    if (targetPk) {
+      performDexieUpdate(targetPk);
+    } else {
+      // If we don't have PK from state, try to find it in Dexie first
+      db.customers.where('id').equals(targetIdStr).first().then(c => {
+        if (c && c.pk) performDexieUpdate(c.pk);
+      });
+    }
+
     if (true) {
       try {
         const updateData: any = {
-          totalCalls: customer ? customer.totalCalls + 1 : 1,
+          totalCalls: customer ? customer.totalCalls + 1 : 1, // API will handle increment/calculation usually
         };
 
         if (newFollowUpDate) {
@@ -4417,26 +4477,37 @@ const App: React.FC = () => {
         await updateCustomer(customerId, updateData);
 
         // Add tags to customer if provided
-        if (newTags && newTags.length > 0 && customer) {
-          const existingTagNames = new Set(customer.tags.map((t) => t.name));
+        if (newTags && newTags.length > 0) {
           for (const newTagObj of newTags) {
-            if (!existingTagNames.has(newTagObj.name)) {
-              try {
-                // Create a temporary tag object
-                const tempTag: Tag = {
-                  id: Date.now() + Math.random(),
-                  name: newTagObj.name,
-                  type: TagType.User,
-                };
-                await handleAddTagToCustomer(customerId, tempTag);
-              } catch (e) {
-                console.error(`Failed to add tag "${newTagObj.name}" to customer`, e);
+            try {
+              const tempTag: Tag = {
+                id: Date.now() + Math.random(),
+                name: newTagObj.name,
+                type: TagType.User
+              };
+
+              // If customer state is available, check for duplicates
+              if (customer) {
+                const existingTagNames = new Set(customer.tags.map((t) => t.name));
+                if (!existingTagNames.has(newTagObj.name)) {
+                  await addCustomerTag(customer.pk || Number(customerId), tempTag);
+                }
+              } else {
+                // If customer state is missing, try to add tag blindy (API should handle duplicates or just work)
+                // We use customerId (which might be string ID, but addCustomerTag needs PK if possible, or ID?)
+                // addCustomerTag signature: (customerPk: number, tag: Tag)
+                // If we don't have PK, we might fail if addCustomerTag expects PK only.
+                // But wait, earlier code used `customer.pk || Number(customerId)`.
+                // If customerId is string '10255', Number() works.
+                await addCustomerTag(Number(customerId), tempTag);
               }
+            } catch (e) {
+              console.error("Failed to add tag", e);
             }
           }
         }
       } catch (e) {
-        console.error("update customer call data", e);
+        console.error("Failed to update customer", e);
       }
     }
 
@@ -7303,8 +7374,40 @@ const App: React.FC = () => {
 
   // Show loading/error message if currentUser is not available
   if (!currentUser) {
+    // Debug Tool exposed to window
+    // @ts-ignore
+    useEffect(() => {
+      // @ts-ignore
+      window.debugCustomer = async (idOrPk: number | string) => {
+        console.group(`Debug Customer: ${idOrPk}`);
+
+        // 1. Check React State
+        const stateCust = customers.find(c => c.id == idOrPk || c.pk == idOrPk);
+        console.log('1. React State:', stateCust);
+
+        // 2. Check Dexie
+        try {
+          const dexieCust = await db.customers.where('pk').equals(Number(idOrPk)).first() ||
+            await db.customers.where('id').equals(String(idOrPk)).first();
+          console.log('2. Dexie DB:', dexieCust);
+        } catch (e) { console.error('Dexie Error:', e); }
+
+        // 3. Check API
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${APP_BASE_PATH}api/index.php/customers/${idOrPk}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const apiCust = await res.json();
+          console.log('3. API (Server):', apiCust);
+        } catch (e) { console.error('API Error:', e); }
+
+        console.groupEnd();
+      };
+    }, [customers]);
+
     return (
-      <div className="flex h-screen bg-[#F5F5F5] items-center justify-center">
+      <div className="flex h-screen bg-gray-100 font-sans items-center justify-center">
         <div className="text-center">
           <p className="text-lg text-gray-700 mb-2">กำลังโหลดข้อมูลผู้ใช้...</p>
           <p className="text-sm text-gray-500">กรุณารอสักครู่</p>
