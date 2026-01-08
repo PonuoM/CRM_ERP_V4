@@ -446,8 +446,11 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       } else if (poolSource === "all") {
         // For 'All', we follow the same logic as 'waitingDistribute' stat (usually excludes basket)
         return !Boolean((c as any).isInWaitingBasket);
+      } else if (poolSource === "new_sale") {
+        // For 'New Sale', allow basket (User Request)
+        return true;
       } else {
-        // For 'Stock' and 'New Sale', exclude basket
+        // For 'Stock', exclude basket
         return !Boolean((c as any).isInWaitingBasket);
       }
     });
@@ -648,7 +651,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         });
 
         // Map API response to Customer objects
-        const fetchedCustomers = (response?.data || []).map(mapCustomerFromApi);
+        const fetchedCustomers = (response?.data || []).map((c: any) => mapCustomerFromApi(c));
 
         if (fetchedCustomers.length === 0) {
           alert("ไม่พบลูกค้าที่พร้อมแจก กรุณาตรวจสอบอีกครั้ง");
