@@ -2513,7 +2513,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             }
                             
                             // payment_status
-                            if (!empty($r['payment_status'])) {
+                            if (!empty($r['payment_status']) && $r['payment_status'] !== 'ALL') {
                                 if ($r['payment_status'] === 'NULL') { // Special string for IS NULL if needed, or just handle empty
                                      $conds[] = "o.payment_status IS NULL";
                                 } else {
@@ -2522,7 +2522,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             }
                             
                             // order_status
-                            if (!empty($r['order_status'])) {
+                            if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
                                 $conds[] = "o.order_status = " . $pdo->quote($r['order_status']);
                             }
                             
