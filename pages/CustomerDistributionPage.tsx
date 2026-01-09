@@ -798,6 +798,18 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           if (statsResponse?.ok && statsResponse?.stats) {
             setCustomerStats(statsResponse.stats);
           }
+
+          // Refresh list if using specific source
+          if (poolSource !== "all") {
+            setLoadingPool(true);
+            const poolRes = await listCustomersBySource(poolSource);
+            const rows = Array.isArray(poolRes) ? poolRes : (poolRes?.data || []);
+            const mapped = Array.isArray(rows)
+              ? rows.map((row: any) => normalizeApiCustomer(row))
+              : [];
+            setPoolCustomers(mapped);
+            setLoadingPool(false);
+          }
           setLoadingStats(false);
 
           // Refresh telesale stats

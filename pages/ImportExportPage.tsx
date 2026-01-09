@@ -14,6 +14,7 @@ import {
   X,
   AlertCircle,
 } from "lucide-react";
+import { apiFetch } from "../services/api";
 
 type TemplateKey = "sales" | "customers";
 type ImportKind = "sales" | "customers";
@@ -573,25 +574,19 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
           throw new Error("ไม่พบข้อมูลคำสั่งซื้อที่นำเข้าได้");
         }
 
-        if (onImportSales) {
-          const result = await onImportSales(salesRows);
+        // Use API instead of prop
+        // if (onImportSales) { ... }
+        try {
+          const result = await apiFetch('import/sales.php', {
+            method: 'POST',
+            body: JSON.stringify({ rows: salesRows })
+          }) as ImportResultSummary;
+
           if (result) {
             setReport({ type: "sales", summary: result });
           }
-        } else {
-          setReport({
-            type: "sales",
-            summary: {
-              totalRows: salesRows.length,
-              createdCustomers: 0,
-              updatedCustomers: 0,
-              createdOrders: 0,
-              updatedOrders: 0,
-              waitingBasket: 0,
-              caretakerConflicts: 0,
-              notes: ["ระบบยังไม่ได้กำหนดตัวจัดการสำหรับการนำเข้าข้อมูลการขาย"],
-            },
-          });
+        } catch (apiErr) {
+          throw new Error('นำเข้าล้มเหลว: ' + (apiErr as Error).message);
         }
       } else {
         const customerRows = toCustomerRows(table);
@@ -599,25 +594,19 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
           throw new Error("ไม่พบข้อมูลลูกค้าที่นำเข้าได้");
         }
 
-        if (onImportCustomers) {
-          const result = await onImportCustomers(customerRows);
+        // Use API instead of prop
+        // if (onImportCustomers) { ... }
+        try {
+          const result = await apiFetch('import/customers.php', {
+            method: 'POST',
+            body: JSON.stringify({ rows: customerRows })
+          }) as ImportResultSummary;
+
           if (result) {
             setReport({ type: "customers", summary: result });
           }
-        } else {
-          setReport({
-            type: "customers",
-            summary: {
-              totalRows: customerRows.length,
-              createdCustomers: 0,
-              updatedCustomers: 0,
-              createdOrders: 0,
-              updatedOrders: 0,
-              waitingBasket: 0,
-              caretakerConflicts: 0,
-              notes: ["ระบบยังไม่ได้กำหนดตัวจัดการสำหรับการนำเข้าข้อมูลลูกค้า"],
-            },
-          });
+        } catch (apiErr) {
+          throw new Error('นำเข้าล้มเหลว: ' + (apiErr as Error).message);
         }
       }
       succeeded = true;

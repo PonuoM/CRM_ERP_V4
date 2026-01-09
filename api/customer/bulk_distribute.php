@@ -53,7 +53,8 @@ try {
                 $from .= " LEFT JOIN users u ON u.id = o.creator_id";
                 
                 $where[] = "c.assigned_to IS NULL";
-                $where[] = "(c.is_in_waiting_basket IS NULL OR c.is_in_waiting_basket = 0)";
+                // Allow waiting basket for new sale (Admin orders might be on customers in basket)
+                // $where[] = "(c.is_in_waiting_basket IS NULL OR c.is_in_waiting_basket = 0)";
                 $where[] = "(u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)";
                 $where[] = "(o.order_status IS NULL OR o.order_status <> 'Cancelled')";
                 $where[] = "TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= 7"; // Recent 7 days

@@ -25,6 +25,7 @@ const PERMISSION_GROUPS_DEF = {
             { key: 'nav.manage_customers', label: 'เมนู Manage Customers (แจกรายชื่อ)' },
             { key: 'nav.orders', label: 'เมนู Orders (คำสั่งซื้อ)' },
             { key: 'nav.manage_orders', label: 'เมนู Manage Orders (จัดการคำสั่งซื้อ - ขนส่ง)' },
+            { key: 'nav.order_tab_settings', label: 'เมนู Order Tab Settings (ตั้งค่าจัดการคำสั่งซื้อ)' },
             { key: 'nav.search', label: 'เมนู Search (ค้นหาข้อมูล)' },
         ]
     },

@@ -364,7 +364,8 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                                             onChange={e => handleUpdateLocalMatrix(pm, index, 'orderStatus', e.target.value)}
                                                             className="w-full p-2 border rounded-md text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                         >
-                                                            <option value="" className="text-gray-400">ทั้งหมด</option>
+                                                            <option value="" className="text-gray-400">- เลือก -</option>
+                                                            <option value="ALL" className="text-gray-800">ทั้งหมด</option>
                                                             {ORDER_STATUSES.map(st => st && (
                                                                 <option key={st} value={st}>{st}</option>
                                                             ))}
@@ -377,7 +378,8 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                                                 onChange={e => handleUpdateLocalMatrix(pm, index, 'paymentStatus', e.target.value)}
                                                                 className="w-full p-2 border rounded-md text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                             >
-                                                                <option value="" className="text-gray-400">ทั้งหมด</option>
+                                                                <option value="" className="text-gray-400">- เลือก -</option>
+                                                                <option value="ALL" className="text-gray-800">ทั้งหมด</option>
                                                                 {PAYMENT_STATUSES.map(st => st && (
                                                                     <option key={st} value={st}>{st}</option>
                                                                 ))}

@@ -38,19 +38,21 @@ function handle_order_counts($pdo) {
              $ruleConditions = [];
              foreach ($tabRules[$t] as $r) {
                  $subConds = [];
-                 if (!empty($r['payment_method'])) {
-                     $subConds[] = "o.payment_method = " . $pdo->quote($r['payment_method']);
-                 }
-                 if (!empty($r['payment_status'])) {
-                     if ($r['payment_status'] === 'NULL') {
-                         $subConds[] = "o.payment_status IS NULL";
-                     } else {
-                         $subConds[] = "o.payment_status = " . $pdo->quote($r['payment_status']);
-                     }
-                 }
-                 if (!empty($r['order_status'])) {
-                     $subConds[] = "o.order_status = " . $pdo->quote($r['order_status']);
-                 }
+                // payment_status
+             if (!empty($r['payment_method'])) {
+                 $subConds[] = "o.payment_method = " . $pdo->quote($r['payment_method']);
+             }
+             
+             if (!empty($r['payment_status']) && $r['payment_status'] !== 'ALL') {
+                  if ($r['payment_status'] === 'NULL') {
+                      $subConds[] = "o.payment_status IS NULL";
+                  } else {
+                      $subConds[] = "o.payment_status = " . $pdo->quote($r['payment_status']);
+                  }
+             }
+             if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
+                 $subConds[] = "o.order_status = " . $pdo->quote($r['order_status']);
+             }    
                  
                  if (!empty($subConds)) {
                      $ruleConditions[] = "(" . implode(' AND ', $subConds) . ")";
