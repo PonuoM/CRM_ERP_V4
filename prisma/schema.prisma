@@ -356,6 +356,8 @@ model customers {
   ai_last_updated           DateTime?                    @db.DateTime(0)
   ai_reason_thai            String?                      @db.Text
   ai_score                  Int?
+  updated_at                DateTime                     @default(now()) @db.DateTime(0)
+  previous_lifecycle_status String?                      @db.VarChar(50)
 
   @@index([assigned_to], map: "idx_customers_assigned_to")
   @@index([is_blocked], map: "idx_customers_blocked")
@@ -721,6 +723,24 @@ model order_status_logs {
   @@index([order_id], map: "idx_order_log_order_id")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model order_tab_rules {
+  id             Int       @id @default(autoincrement())
+  tab_key        String    @db.VarChar(50)
+  payment_method String?   @db.VarChar(50)
+  payment_status String?   @db.VarChar(50)
+  order_status   String?   @db.VarChar(50)
+  description    String?   @db.Text
+  company_id     Int       @default(0)
+  display_order  Int?      @default(0)
+  is_active      Boolean?  @default(true)
+  created_at     DateTime? @default(now()) @db.DateTime(0)
+  updated_at     DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([company_id], map: "idx_company")
+  @@index([tab_key], map: "idx_tab_key")
+}
+
 model order_tracking_numbers {
   id              Int    @id @default(autoincrement())
   order_id        String @db.VarChar(32)
@@ -957,6 +977,7 @@ model products {
   company_id                Int
   shop                      String?                     @db.VarChar(128)
   status                    products_status             @default(Active)
+  deleted_at                DateTime?                   @db.DateTime(0)
   marketing_product_ads_log marketing_product_ads_log[]
   marketing_user_product    marketing_user_product[]
 
