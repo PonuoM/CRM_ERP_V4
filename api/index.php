@@ -11,18 +11,13 @@ if (!function_exists('str_starts_with')) {
 
 cors();
 
-// Performance Logging Helper
-function log_perf($marker, $start_time = null) {
-    global $perf_log_enabled;
-    $perf_log_enabled = true; // Force enable for debugging
-    if (!$perf_log_enabled) return;
-    
-    $msg = date('Y-m-d H:i:s') . " [PERF] $marker";
-    if ($start_time) {
-        $duration = microtime(true) - $start_time;
-        $msg .= " | Duration: " . number_format($duration, 4) . "s";
+// Helper to log performance
+function log_perf($msg, $startTime = null) {
+    if ($startTime) {
+        $duration = microtime(true) - $startTime;
+        $msg .= " (" . round($duration * 1000, 2) . "ms)";
     }
-    file_put_contents(__DIR__ . '/performance.log', $msg . "\n", FILE_APPEND);
+    // error_log("[PERF] " . $msg); // Uncomment to enable perf logging
 }
 function route_path(): array {
     $uri = $_SERVER['REQUEST_URI'] ?? '/';
@@ -1307,13 +1302,20 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $sql .= " LIMIT $limit OFFSET $offset";
                         }
 
-                        $stmt = $pdo->prepare($sql);
-                        $t_query_start = microtime(true);
-                        $stmt->execute($params);
-                        $customers = $stmt->fetchAll();
-                        log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
-                        
-                        error_log("listCustomers: Fetched " . count($customers) . " rows for company " . $companyId);
+                        try {
+                            $stmt = $pdo->prepare($sql);
+                            $t_query_start = microtime(true);
+                            $stmt->execute($params);
+                            $customers = $stmt->fetchAll();
+                            log_perf("handle_customers:list:EXECUTE_QUERY source=$source filter=$filterType count=" . count($customers), $t_query_start);
+                            
+                            error_log("listCustomers: Fetched " . count($customers) . " rows for company " . $companyId);
+                        } catch (PDOException $e) {
+                            error_log("listCustomers SQL Error: " . $e->getMessage() . " SQL: " . $sql);
+                            http_response_code(500);
+                            json_response(['error' => 'Database error', 'debug' => $e->getMessage()]);
+                            return;
+                        }
 
                         // BATCH FETCH: Upsell eligibility
                         $t_upsell_start = microtime(true);
