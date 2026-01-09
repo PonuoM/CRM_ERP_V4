@@ -175,19 +175,47 @@ export const syncCustomers = async (
             }
         }
 
-        // Cleanup: If FULL SYNC for a specific user, remove local customers 
-        // that are assigned to this user but were NOT in the server response.
-        // DO NOT RUN THIS FOR DELTA SYNC
-        if (isFullSync && userId) {
+        // Cleanup: Remove local customers that are no longer assigned to this user
+        // This runs for BOTH Full Sync AND Delta Sync to handle transferred customers
+        // For Delta Sync: We check all local customers and verify ownership hasn't changed
+        if (userId) {
             if (!options?.silent) reportProgress({ message: 'กำลังตรวจสอบข้อมูลเก่า...' });
 
             const localUserCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
-            const orphans = localUserCustomers.filter(c => !syncedPks.has(c.pk));
 
-            if (orphans.length > 0) {
-                console.log(`Sync: Found ${orphans.length} orphaned customers locally. Deleting...`);
-                const orphanPks = orphans.map(c => c.pk);
-                await db.customers.bulkDelete(orphanPks);
+            if (isFullSync) {
+                // Full Sync: Remove customers not in server response (syncedPks)
+                const orphans = localUserCustomers.filter(c => !syncedPks.has(c.pk));
+                if (orphans.length > 0) {
+                    console.log(`[Sync] Full Sync: Found ${orphans.length} orphaned customers locally. Deleting...`);
+                    const orphanPks = orphans.map(c => c.pk);
+                    await db.customers.bulkDelete(orphanPks);
+                }
+            } else {
+                // Delta Sync: Check for ownership changes on synced records
+                // If a customer was synced with different assignedTo, remove from local
+                // (The server already sent the updated record which was put into Dexie)
+                // We need to re-check local records to find any that now have different owners
+                // This handles the case where customer was transferred AWAY from this user
+
+                // Get fresh data from Dexie after bulkPut
+                const refreshedLocal = await db.customers.where('assignedTo').equals(userId).toArray();
+                const nowAssignedElsewhere: number[] = [];
+
+                // For customers that were in the sync batch, check if their assignedTo changed
+                for (const pk of syncedPks) {
+                    const record = await db.customers.get(pk);
+                    if (record && record.assignedTo !== userId) {
+                        // This customer was updated and is now assigned to someone else
+                        nowAssignedElsewhere.push(pk);
+                    }
+                }
+
+                if (nowAssignedElsewhere.length > 0) {
+                    console.log(`[Sync] Delta Sync: Found ${nowAssignedElsewhere.length} customers transferred away. Cleaning up...`);
+                    // These are already updated correctly in Dexie (with new assignedTo)
+                    // No deletion needed since they're just filtered out by the dashboard query
+                }
             }
         }
 

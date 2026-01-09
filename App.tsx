@@ -4004,6 +4004,24 @@ const App: React.FC = () => {
         }).catch(console.error);
       }
 
+      // CRITICAL FIX: Update Dexie immediately to prevent stale data from auto-sync
+      // This ensures the local IndexedDB reflects the ownership change right away
+      const customerPk = customer.pk ? Number(customer.pk) : null;
+      if (customerPk) {
+        db.customers.where('pk').equals(customerPk).modify({
+          assignedTo: newOwnerId,
+          dateAssigned,
+          isInWaitingBasket: false,
+          waitingBasketStartDate: null,
+          isBlocked: false,
+        }).then(() => {
+          console.log(`[handleChangeCustomerOwner] Dexie updated for customer ${customerPk}, new owner: ${newOwnerId}`);
+          setRefreshTrigger(prev => prev + 1);
+        }).catch(err => {
+          console.error('[handleChangeCustomerOwner] Dexie update failed:', err);
+        });
+      }
+
     } catch (error) {
       console.error("update customer owner failed", error);
       alert("ไม่สามารถเปลี่ยนผู้ดูแลได้ กรุณาลองใหม่อีกครั้ง");
@@ -4502,7 +4520,13 @@ const App: React.FC = () => {
           x.lastCallNote = callLogData.notes;
           x.last_call_date = callLogData.date;
           if (newFollowUpDate) x.followUpDate = newFollowUpDate;
-          if (newLifecycleStatus) x.lifecycleStatus = newLifecycleStatus;
+          if (newLifecycleStatus) {
+            // Save previous status before changing to FollowUp
+            if (newLifecycleStatus === CustomerLifecycleStatus.FollowUp && x.lifecycleStatus !== CustomerLifecycleStatus.FollowUp) {
+              x.previousLifecycleStatus = x.previousLifecycleStatus ?? x.lifecycleStatus;
+            }
+            x.lifecycleStatus = newLifecycleStatus;
+          }
 
           // Optimistically append tags
           if (optimisticTags.length > 0) {
@@ -4538,6 +4562,10 @@ const App: React.FC = () => {
 
         if (newLifecycleStatus) {
           updateData.lifecycleStatus = newLifecycleStatus;
+          // Save previous status when transitioning to FollowUp
+          if (newLifecycleStatus === CustomerLifecycleStatus.FollowUp && customer) {
+            updateData.previousLifecycleStatus = customer.previousLifecycleStatus ?? customer.lifecycleStatus;
+          }
         }
 
         await updateCustomer(customerId, updateData);
@@ -4831,12 +4859,35 @@ const App: React.FC = () => {
       }),
     );
 
+    // Get the customer to find their current status BEFORE changing to FollowUp
+    const targetCustomer = customers.find(c => c.id === appointmentData.customerId);
+    const previousStatus = targetCustomer?.previousLifecycleStatus ?? targetCustomer?.lifecycleStatus ?? CustomerLifecycleStatus.New;
+    const customerPk = targetCustomer?.pk ? Number(targetCustomer.pk) : null;
+
     if (true) {
       try {
+        // Send to backend API - include previousLifecycleStatus so it's saved in schema
         await updateCustomer(appointmentData.customerId, {
           followUpDate: appointmentData.date,
           lifecycleStatus: CustomerLifecycleStatus.FollowUp,
+          // Backend auto-handles previousLifecycleStatus via backup logic in index.php line 1503-1507
+          // But we send it explicitly as well for safety
+          previousLifecycleStatus: previousStatus,
         });
+
+        // Update Dexie immediately for real-time sync
+        if (customerPk) {
+          db.customers.where('pk').equals(customerPk).modify({
+            followUpDate: appointmentData.date,
+            lifecycleStatus: CustomerLifecycleStatus.FollowUp,
+            previousLifecycleStatus: previousStatus,
+          }).then(() => {
+            console.log(`[handleAddAppointment] Dexie updated: pk=${customerPk}, status=FollowUp, previousStatus=${previousStatus}`);
+            setRefreshTrigger(prev => prev + 1);
+          }).catch(err => {
+            console.error('[handleAddAppointment] Dexie update failed:', err);
+          });
+        }
 
         // Record follow-up to update ownership days
         await recordFollowUp(appointmentData.customerId);
@@ -4899,6 +4950,74 @@ const App: React.FC = () => {
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointmentId ? { ...a, status: "เสร็จสิ้น" } : a)),
       );
+
+      // Find the appointment to get the customerId
+      const completedAppointment = appointments.find(a => a.id === appointmentId);
+      if (completedAppointment) {
+        const customerId = completedAppointment.customerId;
+
+        // Check if customer has any other pending appointments
+        const otherPendingAppointments = appointments.filter(a =>
+          a.id !== appointmentId &&
+          (String(a.customerId) === String(customerId)) &&
+          a.status !== "เสร็จสิ้น"
+        );
+
+        // If no more pending appointments, revert customer status
+        if (otherPendingAppointments.length === 0) {
+          const targetCustomer = customers.find(c =>
+            c.id === customerId || String(c.pk) === String(customerId)
+          );
+
+          if (targetCustomer && targetCustomer.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
+            // Get the previous status to revert to
+            const previousStatus = targetCustomer.previousLifecycleStatus || CustomerLifecycleStatus.New;
+            const customerPk = targetCustomer.pk ? Number(targetCustomer.pk) : null;
+            const customerIdToUpdate = customerPk ? String(customerPk) : targetCustomer.id;
+
+            console.log(`[handleCompleteAppointment] Reverting customer ${customerId} from FollowUp to ${previousStatus}`);
+
+            // Update backend API
+            try {
+              await updateCustomer(customerIdToUpdate, {
+                lifecycleStatus: previousStatus,
+                previousLifecycleStatus: null, // Clear the backup
+                followUpDate: null, // Clear the follow-up date
+              });
+
+              // Update React state
+              setCustomers((prev) =>
+                prev.map((c) =>
+                  c.id === targetCustomer.id
+                    ? {
+                      ...c,
+                      lifecycleStatus: previousStatus,
+                      previousLifecycleStatus: undefined,
+                      followUpDate: undefined,
+                    }
+                    : c,
+                ),
+              );
+
+              // Update Dexie for real-time sync
+              if (customerPk) {
+                db.customers.where('pk').equals(customerPk).modify({
+                  lifecycleStatus: previousStatus,
+                  previousLifecycleStatus: null,
+                  followUpDate: null,
+                }).then(() => {
+                  console.log(`[handleCompleteAppointment] Dexie updated: pk=${customerPk}, status reverted to ${previousStatus}`);
+                  setRefreshTrigger(prev => prev + 1);
+                }).catch(err => {
+                  console.error('[handleCompleteAppointment] Dexie update failed:', err);
+                });
+              }
+            } catch (e) {
+              console.error("Failed to revert customer status", e);
+            }
+          }
+        }
+      }
     } catch (e) {
       console.error("update appointment API failed", e);
     }

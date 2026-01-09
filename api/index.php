@@ -154,9 +154,13 @@ try {
             $trackingsToCheck = array_keys($trackingMap);
             $placeholders = str_repeat('?,', count($trackingsToCheck) - 1) . '?';
             
+            // Debug: Log normalized tracking numbers we're searching for
+            error_log("[validate_cod_tracking] Input tracking numbers to search: " . json_encode($trackingsToCheck));
+            
             // 1. Find Tracking Records
             // We join with orders to get main order info immediately
             // We also select order_tracking_numbers info to help find boxes
+            // FIX: Use LOWER(REPLACE()) to normalize DB values for case-insensitive matching
             $sql = "SELECT 
                         t.tracking_number, 
                         t.parent_order_id, 
@@ -168,22 +172,30 @@ try {
                         o.payment_status
                     FROM order_tracking_numbers t
                     JOIN orders o ON t.parent_order_id = o.id
-                    WHERE t.tracking_number IN ($placeholders)";
+                    WHERE LOWER(REPLACE(REPLACE(t.tracking_number, ' ', ''), '\t', '')) IN ($placeholders)";
             
-            // Note: Normalized matching in SQL might need REPLACE/LOWER if DB isn't CI/AS or data is messy
-            // Usually DB is CI. For strict safety, we could use REPLACE(LOWER(...)) but index usage might drop.
-            // Let's assume the DB tracking_number is clean enough or matches case-insensitively.
-            // If the user pasted spaces, our $trackingsToCheck has no spaces. 
-            // So we might need WHERE REPLACE(t.tracking_number, ' ', '') IN ...
+            // Debug: Log the SQL query
+            error_log("[validate_cod_tracking] SQL: " . $sql);
             
-            // Let's try direct match first (assuming DB has clean data) 
-            // OR use multiple ORs if efficiency allows. 
-            // Optimally: Fetch by simple IN first. If empty, maybe try fuzzy.
-            // Given the requirement, let's assume standard match. 
+            // Note: This applies LOWER() and REPLACE() to normalize DB data for comparison
+            // The $trackingsToCheck array contains already-normalized (lowercase, no whitespace) values
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute($trackingsToCheck); 
             $trackingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Debug: Log raw result
+            error_log("[validate_cod_tracking] Raw SQL result count: " . count($trackingRows));
+            if (count($trackingRows) > 0) {
+                error_log("[validate_cod_tracking] First row: " . json_encode($trackingRows[0]));
+            }
+            
+            // Debug: Also try a simpler query without JOIN to see if the issue is the JOIN
+            $debugSql = "SELECT tracking_number, parent_order_id FROM order_tracking_numbers WHERE tracking_number = ? LIMIT 1";
+            $debugStmt = $pdo->prepare($debugSql);
+            $debugStmt->execute([reset($trackingMap)]); // Use first original tracking
+            $debugRow = $debugStmt->fetch(PDO::FETCH_ASSOC);
+            error_log("[validate_cod_tracking] Debug direct query result: " . json_encode($debugRow));
             
             // 2. Resolve sub-order / box details
             // We need to query order_boxes for the found parent_order_ids to find specific cod amounts
@@ -207,19 +219,27 @@ try {
             
             $results = [];
             
+            // Debug: Log what we're searching for
+            error_log("[validate_cod_tracking] Searching for " . count($trackingsToCheck) . " tracking numbers");
+            error_log("[validate_cod_tracking] Found " . count($trackingRows) . " matches in order_tracking_numbers");
+            
             // Map back to inputs
             // We iterate strict normalized inputs ensuring we cover all requested
             foreach ($trackingMap as $normalized => $original) {
                 // Find matching DB row (Case insensitive)
+                // FIX: Cast $normalized to string because PHP converts numeric string keys to integers
+                $normalizedStr = (string)$normalized;
                 $match = null;
                 foreach ($trackingRows as $tr) {
-                    if (preg_replace('/\s+/', '', strtolower($tr['tracking_number'])) === $normalized) {
+                    $dbNormalized = preg_replace('/\s+/', '', strtolower($tr['tracking_number']));
+                    if ($dbNormalized === $normalizedStr) {
                         $match = $tr;
                         break;
                     }
                 }
                 
                 if (!$match) {
+                    error_log("[validate_cod_tracking] Tracking '$original' NOT FOUND in order_tracking_numbers table");
                     $results[] = [
                         'trackingNumber' => $original,
                         'status' => 'pending',
