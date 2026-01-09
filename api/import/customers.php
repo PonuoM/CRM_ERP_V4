@@ -93,9 +93,9 @@ foreach ($rows as $index => $row) {
         $sql = "INSERT INTO customers (
             customer_ref_id, first_name, last_name, phone, email, 
             street, subdistrict, district, province, postal_code,
-            company_id, assigned_to, date_registered, 
-            lifecycle_status, behavioral_status, grade, total_purchases
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            company_id, assigned_to, date_assigned, date_registered, ownership_expires,
+            lifecycle_status, behavioral_status, grade, total_purchases, bucket_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         $assignedTo = sanitize_value($row['caretakerId'] ?? null); 
         if (!$assignedTo) {
@@ -103,10 +103,11 @@ foreach ($rows as $index => $row) {
         } else {
              if (!is_numeric($assignedTo)) $assignedTo = null; 
         }
+        $bucketType = $assignedTo ? 'assigned' : 'ready';
 
         // Dates
-        $regDate = sanitize_value($row['dateRegistered'] ?? null);
-        $regDate = $regDate ? date('Y-m-d H:i:s', strtotime($regDate)) : date('Y-m-d H:i:s');
+        $nowStr = date('Y-m-d H:i:s');
+        $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
         
         $email = sanitize_value($row['email'] ?? null);
         $addr = sanitize_value($row['address'] ?? null);
@@ -116,7 +117,6 @@ foreach ($rows as $index => $row) {
         $zip = sanitize_value($row['postalCode'] ?? null);
         
         // Statuses
-        $life = sanitize_value($row['lifecycleStatus'] ?? 'Customer');
         $behave = sanitize_value($row['behavioralStatus'] ?? 'Cold');
         $grade = sanitize_value($row['grade'] ?? 'Standard');
         $purchases = floatval($row['totalPurchases'] ?? 0);
@@ -125,8 +125,13 @@ foreach ($rows as $index => $row) {
         $stmtIns->execute([
             $customerId, $firstName, $lastName, $phone, $email,
             $addr, $sub, $dist, $prov, $zip,
-            $user['company_id'], $assignedTo, $regDate,
-            $life, $behave, $grade, $purchases
+            $user['company_id'], $assignedTo, 
+            $nowStr, // date_assigned
+            $nowStr, // date_registered (set to now as per request/logic, or keep existing logic? Request: "date_assigned = current datetime". Usually registered also means now for new.)
+            $expireDate, // ownership_expires
+            'New', // lifecycle_status (forced)
+            $behave, $grade, $purchases,
+            $bucketType
         ]);
         
         $summary['createdCustomers']++;

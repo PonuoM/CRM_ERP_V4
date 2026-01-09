@@ -109,20 +109,32 @@ foreach ($rows as $index => $row) {
         $currentAutoGroupCriteria = null;
     } else {
         $rowPhone = sanitize_value($row['customerPhone'] ?? null);
+        $normPhone = normalize_phone($rowPhone); // Use numbers only for grouping check
+        
         $rowDate = sanitize_value($row['saleDate'] ?? null);
+        // Normalize date to Ymd or similar for comparison
+        $normDate = null;
+        if ($rowDate) {
+            $safeDate = str_replace('/', '-', $rowDate);
+            $ts = strtotime($safeDate);
+            if ($ts) $normDate = date('Ymd', $ts);
+        }
+        if (!$normDate) $normDate = date('Ymd'); // Fallback or empty
 
+        // Check against current criteria
         if ($currentAutoOrderId && $currentAutoGroupCriteria && 
-            $currentAutoGroupCriteria['phone'] === $rowPhone && 
-            $currentAutoGroupCriteria['date'] === $rowDate) {
+            $currentAutoGroupCriteria['phone'] === $normPhone && 
+            $currentAutoGroupCriteria['date'] === $normDate) {
             $orderId = $currentAutoOrderId;
         } else {
-            $ts = $rowDate ? strtotime($rowDate) : time();
-            $datePart = date('Ymd', $ts);
+            // New Group
+            // ID Generation
+            $datePart = $normDate; 
             $seq = str_pad((string)($index + 1), 6, '0', STR_PAD_LEFT);
             $orderId = "{$datePart}-{$seq}EXTERNAL";
             
             $currentAutoOrderId = $orderId;
-            $currentAutoGroupCriteria = ['phone' => $rowPhone, 'date' => $rowDate];
+            $currentAutoGroupCriteria = ['phone' => $normPhone, 'date' => $normDate];
         }
     }
     
@@ -145,6 +157,27 @@ foreach ($grouped as $orderId => $group) {
     $orderRows = $group['rows'];
     $first = $orderRows[0];
     
+    // Resolve Salesperson / Assigned To
+    $assignedTo = $user['id']; 
+    $spId = sanitize_value($first['salespersonId'] ?? null);
+    $resolvedAssignedTo = $assignedTo;
+    
+    // Default bucket logic
+    $bucketType = 'assigned'; 
+
+    if ($spId) {
+        $uStmt = $pdo->prepare("SELECT id FROM users WHERE (username = ? OR id = ?) AND company_id = ?");
+        $uStmt->execute([$spId, $spId, $user['company_id']]);
+        $foundU = $uStmt->fetch();
+        if ($foundU) {
+            $resolvedAssignedTo = $foundU['id'];
+        }
+    } else {
+         // Fallback or leave as user default
+    }
+    
+    $bucketType = $resolvedAssignedTo ? 'assigned' : 'ready';
+
     // --- Step A: Customer ---
     $customerNameStr = (string)sanitize_value($first['customerName'] ?? '');
     $customerFirstName = sanitize_value($first['customerFirstName'] ?? null) ?: (explode(' ', $customerNameStr)[0] ?? 'Customer');
@@ -206,22 +239,13 @@ foreach ($grouped as $orderId => $group) {
             $insertSql = "INSERT INTO customers (
                 customer_ref_id, first_name, last_name, phone, email, 
                 street, subdistrict, district, province, postal_code,
-                company_id, assigned_to, date_registered, 
-                lifecycle_status, behavioral_status, grade, total_purchases
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                company_id, assigned_to, date_assigned, date_registered, ownership_expires,
+                lifecycle_status, behavioral_status, grade, total_purchases, bucket_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
-            $assignedTo = $user['id']; 
+            $nowStr = date('Y-m-d H:i:s');
+            $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
             
-            $spId = sanitize_value($first['salespersonId'] ?? null);
-            $resolvedAssignedTo = $assignedTo;
-            if ($spId) {
-                $uStmt = $pdo->prepare("SELECT id FROM users WHERE (username = ? OR id = ?) AND company_id = ?");
-                $uStmt->execute([$spId, $spId, $user['company_id']]);
-                $foundU = $uStmt->fetch();
-                if ($foundU) $resolvedAssignedTo = $foundU['id'];
-            }
-            
-            $now = date('Y-m-d H:i:s');
             // address parts
             $addr = sanitize_value($first['address'] ?? null);
             $sub = sanitize_value($first['subdistrict'] ?? null);
@@ -229,13 +253,18 @@ foreach ($grouped as $orderId => $group) {
             $prov = sanitize_value($first['province'] ?? null);
             $zip = sanitize_value($first['postalCode'] ?? null);
             $email = sanitize_value($first['customerEmail'] ?? null);
-            
+
             $stmtIns = $pdo->prepare($insertSql);
             $stmtIns->execute([
                 $customerRefId, $customerFirstName, $customerLastName, $phone, $email,
                 $addr, $sub, $dist, $prov, $zip,
-                $user['company_id'], $resolvedAssignedTo, $now,
-                'Customer', 'Cold', 'Standard', 0
+                $user['company_id'], $resolvedAssignedTo, 
+                $nowStr, // date_assigned (req: current datetime)
+                $nowStr, // date_registered (keep as now or from logic?) Logic says "date_assigned current", "ownership +90 matches date_assigned".
+                $expireDate, // ownership_expires
+                'New', // lifecycle_status
+                'Cold', 'Standard', 0,
+                $bucketType
             ]);
             $customerPk = $pdo->lastInsertId();
             $summary['createdCustomers']++;
@@ -256,9 +285,16 @@ foreach ($grouped as $orderId => $group) {
     }
     
     // --- Step C: Order Logic ---
-    $orderDate = sanitize_value($first['saleDate'] ?? null) ?: date('Y-m-d H:i:s');
-    // Ensure ISO format
-    $orderDate = date('Y-m-d H:i:s', strtotime($orderDate));
+    $rawDate = sanitize_value($first['saleDate'] ?? null);
+    if ($rawDate) {
+        // Fix potential DD/MM/YYYY format which fails with strtotime (assumes US MM/DD/YYYY)
+        // Convert to DD-MM-YYYY which strtotime handles as EUR
+        $rawDate = str_replace('/', '-', $rawDate);
+        $ts = strtotime($rawDate);
+        $orderDate = $ts ? date('Y-m-d H:i:s', $ts) : date('Y-m-d H:i:s');
+    } else {
+        $orderDate = date('Y-m-d H:i:s');
+    }
     
     $totalAmount = 0;
     $items = [];
@@ -305,7 +341,9 @@ foreach ($grouped as $orderId => $group) {
     }
     
     $paymentMethod = normalize_payment_method($first['paymentMethod'] ?? '');
-    $paymentStatus = normalize_payment_status($first['paymentStatus'] ?? '');
+    // $paymentStatus = normalize_payment_status($first['paymentStatus'] ?? ''); // Override to Approved
+    $paymentStatus = 'Approved'; 
+    $orderStatus = 'Delivered';
     
     $shippingCost = 0; // Import default
     // If imports have shipping cost, add it? App.tsx hardcoded 0.
@@ -320,17 +358,17 @@ foreach ($grouped as $orderId => $group) {
             recipient_first_name, recipient_last_name, 
             street, subdistrict, district, province, postal_code,
             total_amount, payment_method, payment_status, 
-            order_status, shipping_cost
+            order_status, shipping_cost, customer_type
         ) VALUES (
             ?, ?, ?, ?,
             ?, ?,
             ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?,
-            ?, ?
+            ?, ?, ?
         )";
         
-        $creatorId = $user['id']; // Or mapped salesperson
+        $creatorId = $resolvedAssignedTo ?: $user['id']; 
         $recipFirst = sanitize_value($first['recipientFirstName'] ?? null) ?: $customerFirstName;
         $recipLast = sanitize_value($first['recipientLastName'] ?? null) ?: $customerLastName;
         
@@ -343,7 +381,7 @@ foreach ($grouped as $orderId => $group) {
             $recipFirst, $recipLast,
             $addr, sanitize_value($first['subdistrict'] ?? null), sanitize_value($first['district'] ?? null), sanitize_value($first['province'] ?? null), sanitize_value($first['postalCode'] ?? null),
             $totalAmount, $paymentMethod, $paymentStatus,
-            'Pending', $shippingCost
+            $orderStatus, $shippingCost, 'New Customer'
         ]);
         
         // Items
