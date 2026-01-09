@@ -187,6 +187,14 @@ export const mapOrderFromApi = (r: any): Order => {
             else if (t.tracking_number) trackingNumbers.push(t.tracking_number);
         });
     }
+    // Fallback: extract tracking numbers from trackingDetails if tracking_numbers was empty
+    if (trackingNumbers.length === 0 && trackingDetails.length > 0) {
+        trackingDetails.forEach((td) => {
+            if (td.trackingNumber && !trackingNumbers.includes(td.trackingNumber)) {
+                trackingNumbers.push(td.trackingNumber);
+            }
+        });
+    }
 
     return {
         id: String(r.id),

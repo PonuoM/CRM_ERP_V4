@@ -80,6 +80,7 @@ import {
   retrieveCustomer,
 } from "@/ownershipApi";
 import { calculateCustomerGrade } from "@/utils/customerGrade";
+import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Sidebar from "./components/Sidebar";
 import AdminDashboard from "./pages/AdminDashboard";
 import TelesaleDashboard from "./pages/TelesaleDashboard";
@@ -353,13 +354,21 @@ const App: React.FC = () => {
     },
   ]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(
-    null,
-  );
+  const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("customerId") || null;
+  });
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
     useState(false);
   const [viewingCustomerData, setViewingCustomerData] = useState<Customer | null>(null);
+  const [isLoadingCustomerDetail, setIsLoadingCustomerDetail] = useState<boolean>(() => {
+    // If customerId in URL but no data yet, start in loading state
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return !!params.get("customerId");
+  });
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
@@ -427,6 +436,14 @@ const App: React.FC = () => {
       const shouldHide = params.get("nosidebar") === "true";
       setHideSidebar((prev) => (prev === shouldHide ? prev : shouldHide));
     }
+
+    // Restore customerId from URL for Customer Detail view persistence
+    if (params.has("customerId")) {
+      const customerId = params.get("customerId");
+      if (customerId) {
+        setViewingCustomerId(customerId);
+      }
+    }
   }, [resolvePageFromParam, setActivePage, setHideSidebar]);
 
   useEffect(() => {
@@ -467,6 +484,13 @@ const App: React.FC = () => {
       params.delete("nosidebar");
     }
 
+    // Sync viewingCustomerId to URL
+    if (viewingCustomerId) {
+      params.set("customerId", viewingCustomerId);
+    } else {
+      params.delete("customerId");
+    }
+
     const nextSearch = params.toString();
     const currentSearch = window.location.search.startsWith("?")
       ? window.location.search.slice(1)
@@ -477,7 +501,7 @@ const App: React.FC = () => {
         }${url.hash}`;
       window.history.replaceState({}, "", nextUrl);
     }
-  }, [activePage, hideSidebar]);
+  }, [activePage, hideSidebar, viewingCustomerId]);
 
   // Permission check: Redirect to permitted page if user doesn't have access to activePage
   useEffect(() => {
@@ -2146,6 +2170,46 @@ const App: React.FC = () => {
     if (!viewingCustomerId) return null;
     return customers.find((c) => c.id === viewingCustomerId);
   }, [viewingCustomerId, customers, viewingCustomerData]);
+
+  // Fetch customer data from API when customerId is in URL but data is not loaded yet
+  useEffect(() => {
+    if (!viewingCustomerId || viewingCustomer || viewingCustomerData) {
+      setIsLoadingCustomerDetail(false);
+      return;
+    }
+
+    // Fetch customer by ID from API
+    const fetchCustomerById = async () => {
+      setIsLoadingCustomerDetail(true);
+      try {
+        const response = await listCustomers({ q: viewingCustomerId });
+        if (response.data && response.data.length > 0) {
+          // Find exact match by id
+          const found = response.data.find((c: any) =>
+            String(c.customer_id) === String(viewingCustomerId) ||
+            String(c.id) === String(viewingCustomerId)
+          );
+          if (found) {
+            const mapped = mapCustomerFromApi(found);
+            setViewingCustomerData(mapped);
+          } else {
+            // No match found, clear the customerId from URL
+            setViewingCustomerId(null);
+          }
+        } else {
+          // Customer not found, clear from URL
+          setViewingCustomerId(null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch customer by ID:", error);
+        setViewingCustomerId(null);
+      } finally {
+        setIsLoadingCustomerDetail(false);
+      }
+    };
+
+    fetchCustomerById();
+  }, [viewingCustomerId, viewingCustomer, viewingCustomerData]);
 
   const isSuperAdmin = useMemo(
     () => currentUser?.role === UserRole.SuperAdmin,
@@ -7548,6 +7612,16 @@ const App: React.FC = () => {
       </div>
 
       {renderModal()}
+
+      {/* Loading overlay for Customer Detail page restore */}
+      {isLoadingCustomerDetail && !viewingCustomer && (
+        <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
+            <p className="text-gray-600 text-lg">กำลังโหลดข้อมูลลูกค้า...</p>
+          </div>
+        </div>
+      )}
 
       {/* CustomerDetailPage Overlay - renders ON TOP of current page without unmounting it */}
       {viewingCustomer && (
