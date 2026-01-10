@@ -327,7 +327,11 @@ foreach ($grouped as $orderId => $group) {
             }
         }
         
-        $linesTotal = ($price * $qty) - $discount;
+        $csvLineTotal = floatval($row['totalAmount'] ?? 0);
+        $calcLineTotal = ($price * $qty) - $discount;
+        // Function to prefer CSV total if non-zero, else calc
+        $linesTotal = $csvLineTotal != 0 ? $csvLineTotal : $calcLineTotal;
+
         $totalAmount += $linesTotal;
         
         $items[] = [
@@ -392,17 +396,25 @@ foreach ($grouped as $orderId => $group) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmtItem = $pdo->prepare($itemSql);
         
+        // Generate subOrderId (e.g. OrderID-1)
+        $subOrderId = $orderId . '-1';
+
         foreach ($items as $item) {
              // Defaulting to box 1 for imports
              $boxNum = 1;
              
              $stmtItem->execute([
-                 $orderId, $orderId, $creatorId,
+                 $subOrderId, $orderId, $creatorId,
                  $item['product_id'], $item['product_name'], 
                  $item['quantity'], $item['price_per_unit'], $item['discount'], $item['net_total'],
                  $boxNum
              ]);
         }
+        
+        // Insert order_boxes (Assuming 1 box)
+        $boxSql = "INSERT INTO order_boxes (order_id, sub_order_id, box_number, cod_amount, collection_amount, collected_amount) VALUES (?, ?, ?, ?, ?, ?)";
+        $stmtBox = $pdo->prepare($boxSql);
+        $stmtBox->execute([$orderId, $subOrderId, 1, $totalAmount, $totalAmount, $totalAmount]);
         
         $pdo->commit();
         $summary['createdOrders']++;

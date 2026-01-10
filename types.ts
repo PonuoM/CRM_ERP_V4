@@ -297,6 +297,7 @@ export interface SalesImportRow {
   recipientLastName?: string;
   recipient_first_name?: string;
   recipient_last_name?: string;
+  trackingNumber?: string;
 }
 
 export interface CustomerImportRow {
