@@ -877,7 +877,10 @@ const App: React.FC = () => {
           listPromotions(sessionUser?.company_id),
           listPages(sessionUser?.company_id, undefined, undefined, true),
           listPlatforms(sessionUser?.company_id, true, sessionUser?.role),
-          listCallHistory(),
+          listCallHistory({
+            companyId: sessionUser?.company_id,
+            pageSize: 5000
+          }),
           listAppointments({ assignedTo: sessionUser?.id, pageSize: 500 }),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
           listActivities(),
@@ -1724,8 +1727,13 @@ const App: React.FC = () => {
     // Wait for attendance info to be loaded
     if (attendanceLoading) return;
 
-    // If already checked in today (has firstLogin), do not prompt
+    // If already checked in today (has firstLogin or active session), do not prompt
     if (attendanceInfo?.firstLogin && attendanceInfo.firstLogin.startsWith(today)) {
+      return;
+    }
+
+    // Also check attendanceSession which updates immediately after check-in
+    if (attendanceSession?.date === today && attendanceSession?.loginTime) {
       return;
     }
 
@@ -1736,7 +1744,7 @@ const App: React.FC = () => {
     if (seenDate !== today) {
       setShowCheckInPrompt(true);
     }
-  }, [sessionUser?.id, sessionUser?.loginDate, currentUser?.id, attendanceInfo?.firstLogin, attendanceLoading]);
+  }, [sessionUser?.id, sessionUser?.loginDate, currentUser?.id, attendanceInfo?.firstLogin, attendanceLoading, attendanceSession?.date, attendanceSession?.loginTime]);
 
   // Reset landing page to Home when user changes (prevents showing previous role's page)
   useEffect(() => {
@@ -2548,6 +2556,16 @@ const App: React.FC = () => {
         description: `อัปเดตสถานะคำสั่งซื้อ ${updatedOrder.id} จาก '${originalOrder.orderStatus}' เป็น '${updatedOrder.orderStatus}'`,
         actorName: `${currentUser.firstName} ${currentUser.lastName}`,
       });
+
+      // When order status changes TO Picking, trigger sale recording
+      // This resets followup_bonus_remaining to 1 and extends ownership by 90 days
+      if (updatedOrder.orderStatus === OrderStatus.Picking) {
+        try {
+          await recordSale(String(updatedOrder.customerId));
+        } catch (e) {
+          console.error("Failed to record sale for customer", updatedOrder.customerId, e);
+        }
+      }
     }
 
     // Payment Status Change Activity
@@ -2817,14 +2835,15 @@ const App: React.FC = () => {
 
       Object.entries(customerUpdates).forEach(async ([customerId, data]) => {
         try {
-          // 1. API Update
+          // 1. API Update - also reset followup_bonus_remaining to 1 for this sale
           await updateCustomer(customerId, {
             assignedTo: data.creatorId,
             assigned_to: data.creatorId,
             lifecycleStatus: CustomerLifecycleStatus.Old3Months,
             lifecycle_status: CustomerLifecycleStatus.Old3Months,
             ownershipExpires: ownershipExpiresIso,
-            ownership_expires: ownershipExpiresIso
+            ownership_expires: ownershipExpiresIso,
+            followup_bonus_remaining: 1,
           });
 
           // 2. Local State Update
@@ -4431,13 +4450,8 @@ const App: React.FC = () => {
     // Calculate status independent of customer state presence
     if (newFollowUpDate) {
       newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
-    } else if (callLogData.result === 'สินค้ายังไม่หมด' || callLogData.result === 'ยังไม่ได้ลองใช้') {
-      // Business Rule: If product not finished, default follow up is +90 days
-      const d = new Date();
-      d.setDate(d.getDate() + 90);
-      newFollowUpDate = d.toISOString();
-      newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
     }
+
 
     if (customer) {
       // logic that strictly requires customer object can remain here if any
@@ -4470,7 +4484,6 @@ const App: React.FC = () => {
 
           // Sync to Dexie immediately
           if (c.pk) {
-            console.log('[handleLogCall] Syncing to Dexie...', { pk: c.pk, newLifecycleStatus, newFollowUpDate, lastCallNote: callLogData.notes });
             db.customers.where('pk').equals(c.pk).modify({
               totalCalls: c.totalCalls + 1,
               followUpDate: newFollowUpDate || c.followUpDate,
@@ -4479,7 +4492,6 @@ const App: React.FC = () => {
               last_call_date: callLogData.date
             })
               .then(() => {
-                console.log('[handleLogCall] Dexie sync success. Triggering refresh.');
                 setRefreshTrigger(prev => prev + 1);
               })
               .catch(err => console.error("Failed to sync call update to Dexie", err));
@@ -4510,7 +4522,6 @@ const App: React.FC = () => {
     }));
 
     const performDexieUpdate = (pk: number) => {
-      console.log('[handleLogCall] Syncing to Dexie (Independent)...', { pk, newLifecycleStatus, newFollowUpDate, lastCallNote: callLogData.notes, tags: optimisticTags });
       db.customers.where('pk').equals(pk).modify({
         totalCalls: (customer?.totalCalls || 0) + 1,
       }).then(() => {
@@ -4535,7 +4546,6 @@ const App: React.FC = () => {
         });
       })
         .then(() => {
-          console.log('[handleLogCall] Dexie sync success. Triggering refresh.');
           setRefreshTrigger(prev => prev + 1);
         })
         .catch(err => console.error("Failed to sync call update to Dexie", err));
@@ -4629,30 +4639,69 @@ const App: React.FC = () => {
     }
 
     if (newFollowUpDate) {
+      // Auto-complete any existing pending appointments for this customer
+      // This limits pending appointments to 1 per customer at a time
+      // Fetch from API directly since global state might not have customer-specific appointments
+      try {
+        const existingAppointments = await listAppointments({ customerId });
+        const pendingAppointments = (existingAppointments || []).filter(
+          (a: any) => a.status !== "เสร็จสิ้น"
+        );
+
+        for (const oldAppt of pendingAppointments) {
+          try {
+            await updateAppointment(oldAppt.id, { status: "เสร็จสิ้น" });
+          } catch (e) {
+            console.error("Failed to auto-complete old appointment", e);
+          }
+        }
+
+        // Update global state if any were completed
+        if (pendingAppointments.length > 0) {
+          setAppointments((prev) =>
+            prev.map((a) =>
+              String(a.customerId) === String(customerId) && a.status !== "เสร็จสิ้น"
+                ? { ...a, status: "เสร็จสิ้น" }
+                : a
+            )
+          );
+        }
+      } catch (e) {
+        console.error("Failed to fetch/complete existing appointments", e);
+      }
+
+      // Now create the new appointment
+      let realAppointmentId: number | undefined;
+      const appointmentTitle = `ติดตามลูกค้า (${callLogData.result})`;
+      const appointmentNotes = callLogData.notes || `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`;
+
+      try {
+        const response = await createAppointment({
+          customerId,
+          date: newFollowUpDate,
+          title: appointmentTitle,
+          status: "ใหม่",
+          notes: appointmentNotes,
+        });
+        // API returns { id: number }
+        realAppointmentId = response?.id;
+      } catch (e) {
+        console.error("create appointment API failed", e);
+      }
+
+      // Use the real ID from database, or fallback to local ID if API failed
       const newAppointment: Appointment = {
-        id: Math.max(...appointments.map((a) => a.id), 0) + 1,
+        id: realAppointmentId || (Math.max(...appointments.map((a) => a.id), 0) + 1),
         customerId: customerId,
         date: newFollowUpDate,
-        title: `ติดตามลูกค้า (${callLogData.result})`,
+        title: appointmentTitle,
         status: "ใหม่",
-        notes:
-          callLogData.notes ||
-          `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`,
+        notes: appointmentNotes,
       };
-      if (true) {
-        try {
-          await createAppointment({
-            customerId,
-            date: newFollowUpDate,
-            title: newAppointment.title,
-            status: "ใหม่",
-            notes: newAppointment.notes,
-          });
-        } catch (e) {
-          console.error("create appointment API failed", e);
-        }
-      }
+
       setAppointments((prev) => [newAppointment, ...prev]);
+      // Trigger refetch in CustomerDetailPage
+      setRefreshTrigger(prev => prev + 1);
       try {
         await recordFollowUp(customerId);
         const updated = await getCustomerOwnershipStatus(customerId);
@@ -4702,23 +4751,62 @@ const App: React.FC = () => {
   const handleCreateAppointment = async (
     appointmentData: Omit<Appointment, "id">,
   ) => {
+    const customerId = appointmentData.customerId;
+
+    // Auto-complete any existing pending appointments for this customer
+    // This limits pending appointments to 1 per customer at a time
+    // Fetch from API directly since global state might not have customer-specific appointments
+    try {
+      const existingAppointments = await listAppointments({ customerId: String(customerId) });
+      const pendingAppointments = (existingAppointments || []).filter(
+        (a: any) => a.status !== "เสร็จสิ้น"
+      );
+
+      for (const oldAppt of pendingAppointments) {
+        try {
+          await updateAppointment(oldAppt.id, { status: "เสร็จสิ้น" });
+        } catch (e) {
+          console.error("Failed to auto-complete old appointment", e);
+        }
+      }
+
+      // Update global state if any were completed
+      if (pendingAppointments.length > 0) {
+        setAppointments((prev) =>
+          prev.map((a) =>
+            String(a.customerId) === String(customerId) && a.status !== "เสร็จสิ้น"
+              ? { ...a, status: "เสร็จสิ้น" }
+              : a
+          )
+        );
+      }
+    } catch (e) {
+      console.error("Failed to fetch/complete existing appointments", e);
+    }
+
+    // Now create the new appointment - get the real ID from database
+    let realAppointmentId: number | undefined;
+
+    try {
+      const response = await createAppointment({
+        customerId: appointmentData.customerId,
+        date: appointmentData.date,
+        title: appointmentData.title,
+        status: "ใหม่",
+        notes: appointmentData.notes,
+      });
+      // API returns { id: number }
+      realAppointmentId = response?.id;
+    } catch (e) {
+      console.error("create appointment API failed", e);
+    }
+
+    // Use the real ID from database, or fallback to local ID if API failed
     const newAppointment: Appointment = {
       ...appointmentData,
-      id: Math.max(...appointments.map((a) => a.id), 0) + 1,
+      id: realAppointmentId || (Math.max(...appointments.map((a) => a.id), 0) + 1),
     };
-    if (true) {
-      try {
-        await createAppointment({
-          customerId: appointmentData.customerId,
-          date: appointmentData.date,
-          title: appointmentData.title,
-          status: "ใหม่",
-          notes: appointmentData.notes,
-        });
-      } catch (e) {
-        console.error("create appointment API failed", e);
-      }
-    }
+
     setAppointments((prev) => [newAppointment, ...prev]);
   };
 
@@ -4941,80 +5029,100 @@ const App: React.FC = () => {
     closeModal();
   };
 
-  const handleCompleteAppointment = async (appointmentId: number) => {
-    // Call API directly - the appointment may be from localAppointments (per-customer fetch)
-    // and not exist in the global appointments state
+  const handleCompleteAppointment = async (appointmentId: number, passedCustomerId?: string) => {
+    const appointmentIdStr = String(appointmentId);
+
     try {
       await updateAppointment(appointmentId, { status: "เสร็จสิ้น" });
-      // Update global state if the appointment exists there
       setAppointments((prev) =>
-        prev.map((a) => (a.id === appointmentId ? { ...a, status: "เสร็จสิ้น" } : a)),
+        prev.map((a) => (String(a.id) === appointmentIdStr ? { ...a, status: "เสร็จสิ้น" } : a)),
       );
 
-      // Find the appointment to get the customerId
-      const completedAppointment = appointments.find(a => a.id === appointmentId);
-      if (completedAppointment) {
-        const customerId = completedAppointment.customerId;
+      const completedAppointment = appointments.find(a => String(a.id) === appointmentIdStr);
+      const customerId = passedCustomerId || completedAppointment?.customerId;
 
-        // Check if customer has any other pending appointments
-        const otherPendingAppointments = appointments.filter(a =>
-          a.id !== appointmentId &&
-          (String(a.customerId) === String(customerId)) &&
-          a.status !== "เสร็จสิ้น"
+      if (!customerId) {
+        console.warn('[handleCompleteAppointment] No customerId available, cannot check for revert');
+        return;
+      }
+
+      // Check pending appointments from global state
+      const allCustomerAppointments = appointments.filter(a =>
+        String(a.customerId) === String(customerId)
+      );
+
+      // Filter out: the one we just completed + any that are already "เสร็จสิ้น"
+      const otherPendingAppointments = allCustomerAppointments.filter(a =>
+        String(a.id) !== appointmentIdStr && a.status !== "เสร็จสิ้น"
+      );
+
+      // If no more pending appointments, revert customer status
+      if (otherPendingAppointments.length === 0) {
+        const customerIdStr = String(customerId);
+        let targetCustomer = customers.find(c =>
+          c.id === customerIdStr ||
+          String(c.pk) === customerIdStr ||
+          String(c.customer_id) === customerIdStr ||
+          c.customerId === customerIdStr ||
+          c.customerRefId === customerIdStr
         );
 
-        // If no more pending appointments, revert customer status
-        if (otherPendingAppointments.length === 0) {
-          const targetCustomer = customers.find(c =>
-            c.id === customerId || String(c.pk) === String(customerId)
-          );
-
-          if (targetCustomer && targetCustomer.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
-            // Get the previous status to revert to
-            const previousStatus = targetCustomer.previousLifecycleStatus || CustomerLifecycleStatus.New;
-            const customerPk = targetCustomer.pk ? Number(targetCustomer.pk) : null;
-            const customerIdToUpdate = customerPk ? String(customerPk) : targetCustomer.id;
-
-            console.log(`[handleCompleteAppointment] Reverting customer ${customerId} from FollowUp to ${previousStatus}`);
-
-            // Update backend API
-            try {
-              await updateCustomer(customerIdToUpdate, {
-                lifecycleStatus: previousStatus,
-                previousLifecycleStatus: null, // Clear the backup
-                followUpDate: null, // Clear the follow-up date
-              });
-
-              // Update React state
-              setCustomers((prev) =>
-                prev.map((c) =>
-                  c.id === targetCustomer.id
-                    ? {
-                      ...c,
-                      lifecycleStatus: previousStatus,
-                      previousLifecycleStatus: undefined,
-                      followUpDate: undefined,
-                    }
-                    : c,
-                ),
-              );
-
-              // Update Dexie for real-time sync
-              if (customerPk) {
-                db.customers.where('pk').equals(customerPk).modify({
-                  lifecycleStatus: previousStatus,
-                  previousLifecycleStatus: null,
-                  followUpDate: null,
-                }).then(() => {
-                  console.log(`[handleCompleteAppointment] Dexie updated: pk=${customerPk}, status reverted to ${previousStatus}`);
-                  setRefreshTrigger(prev => prev + 1);
-                }).catch(err => {
-                  console.error('[handleCompleteAppointment] Dexie update failed:', err);
-                });
-              }
-            } catch (e) {
-              console.error("Failed to revert customer status", e);
+        // If customer not found in global state, try fetching from Dexie directly
+        if (!targetCustomer) {
+          try {
+            const dexieCustomer = await db.customers.where('pk').equals(Number(customerIdStr)).first();
+            if (dexieCustomer) {
+              targetCustomer = {
+                id: String(dexieCustomer.pk),
+                pk: dexieCustomer.pk,
+                customer_id: dexieCustomer.pk,
+                lifecycleStatus: dexieCustomer.lifecycleStatus as CustomerLifecycleStatus,
+                previousLifecycleStatus: dexieCustomer.previousLifecycleStatus as CustomerLifecycleStatus,
+              } as Customer;
             }
+          } catch (e) {
+            console.error('[handleCompleteAppointment] Failed to fetch customer from Dexie:', e);
+          }
+        }
+
+        if (targetCustomer && targetCustomer.lifecycleStatus === CustomerLifecycleStatus.FollowUp) {
+          const previousStatus = targetCustomer.previousLifecycleStatus || CustomerLifecycleStatus.New;
+          const customerPk = targetCustomer.pk ? Number(targetCustomer.pk) : null;
+          const customerIdToUpdate = customerPk ? String(customerPk) : targetCustomer.id;
+
+          try {
+            await updateCustomer(customerIdToUpdate, {
+              lifecycleStatus: previousStatus,
+              previousLifecycleStatus: null,
+              followUpDate: null,
+            });
+
+            setCustomers((prev) =>
+              prev.map((c) =>
+                c.id === targetCustomer!.id
+                  ? {
+                    ...c,
+                    lifecycleStatus: previousStatus,
+                    previousLifecycleStatus: undefined,
+                    followUpDate: undefined,
+                  }
+                  : c,
+              ),
+            );
+
+            if (customerPk) {
+              db.customers.where('pk').equals(customerPk).modify({
+                lifecycleStatus: previousStatus,
+                previousLifecycleStatus: null,
+                followUpDate: null,
+              }).then(() => {
+                setRefreshTrigger(prev => prev + 1);
+              }).catch(err => {
+                console.error('[handleCompleteAppointment] Dexie update failed:', err);
+              });
+            }
+          } catch (e) {
+            console.error("Failed to revert customer status", e);
           }
         }
       }
@@ -6706,6 +6814,9 @@ const App: React.FC = () => {
           warehouseStock={warehouseStocks}
           stockMovements={stockMovements}
           productLots={productLots}
+          currentUser={currentUser}
+          users={users}
+          pages={pages}
         />
       );
     }
@@ -7795,6 +7906,7 @@ const App: React.FC = () => {
               handleCloseCustomerDetail();
               setActivePage("CreateOrder");
             }}
+            refreshTrigger={refreshTrigger}
           />
         </div>
       )}

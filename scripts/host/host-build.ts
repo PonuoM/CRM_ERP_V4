@@ -117,52 +117,7 @@ function main(): void {
     console.log("Copying api/ to host/api (excluding uploads and vendor)...");
     copyDirectory(apiDir, path.join(hostDir, "api"), shouldExcludeApiPath);
 
-    // Handle api/vendor special case (Compress to zip)
-    const vendorSrc = path.join(apiDir, "vendor");
-    const vendorDestDir = path.join(hostDir, "api", "vendor");
-
-    // Create vendor dir
-    if (!fs.existsSync(vendorDestDir)) {
-      fs.mkdirSync(vendorDestDir, { recursive: true });
-    }
-
-    let vendorZipReady = false;
-
-    // 2. Restore preserved zip if available
-    if (preservedVendorZipPath && fs.existsSync(preservedVendorZipPath)) {
-      console.log("Restoring preserved vendor.zip...");
-      fs.copyFileSync(preservedVendorZipPath, vendorZipDest);
-      fs.unlinkSync(preservedVendorZipPath); // Clean up temp
-      vendorZipReady = true;
-    }
-
-    // 3. Create zip if not ready
-    if (!vendorZipReady && fs.existsSync(vendorSrc)) {
-      console.log("Processing api/vendor -> vendor.zip...");
-
-      // Use tar (available on Windows 10/11) to create zip with forward slashes
-      // -a: Auto-detect compression (zip) based on extension
-      // -c: Create
-      // -f: File
-      // -C: Change directory (so zip contents are relative to vendor root)
-      const cmd = `tar -a -c -f "${vendorZipDest}" -C "${vendorSrc}" .`;
-
-      try {
-        console.log("Compressing vendor folder using tar...");
-        execSync(cmd, { stdio: "inherit" });
-        console.log("Vendor zip created successfully.");
-      } catch (e) {
-        console.error("Failed to create vendor zip:", e);
-        if (fs.existsSync(vendorZipDest)) {
-          console.log("Removing partial/corrupt vendor.zip...");
-          fs.unlinkSync(vendorZipDest);
-        }
-        throw e;
-      }
-    } else if (vendorZipReady) {
-      console.log("Skipped vendor compression (using preserved file).");
-    }
-
+    // --- COPIED EARLY: .htaccess and config.php ---
     // Copy and update .htaccess
     console.log("Processing .htaccess...");
     if (fs.existsSync(htaccessFile)) {
@@ -209,6 +164,55 @@ function main(): void {
       path.join(hostDir, "api", "config.php"),
       "api/config.php",
     );
+    // ----------------------------------------------
+
+    // Handle api/vendor special case (Compress to zip)
+    const vendorSrc = path.join(apiDir, "vendor");
+    const vendorDestDir = path.join(hostDir, "api", "vendor");
+
+    // Create vendor dir
+    if (!fs.existsSync(vendorDestDir)) {
+      fs.mkdirSync(vendorDestDir, { recursive: true });
+    }
+
+    let vendorZipReady = false;
+
+    // 2. Restore preserved zip if available
+    if (preservedVendorZipPath && fs.existsSync(preservedVendorZipPath)) {
+      console.log("Restoring preserved vendor.zip...");
+      fs.copyFileSync(preservedVendorZipPath, vendorZipDest);
+      fs.unlinkSync(preservedVendorZipPath); // Clean up temp
+      vendorZipReady = true;
+    }
+
+    // 3. Create zip if not ready
+    if (!vendorZipReady && fs.existsSync(vendorSrc)) {
+      console.log("Processing api/vendor -> vendor.zip...");
+
+      // Use tar (available on Windows 10/11) to create zip with forward slashes
+      // -a: Auto-detect compression (zip) based on extension
+      // -c: Create
+      // -f: File
+      // -C: Change directory (so zip contents are relative to vendor root)
+      const cmd = `tar -a -c -f "${vendorZipDest}" -C "${vendorSrc}" .`;
+
+      try {
+        console.log("Compressing vendor folder using tar...");
+        execSync(cmd, { stdio: "inherit" });
+        console.log("Vendor zip created successfully.");
+      } catch (e) {
+        console.error("WARNING: Failed to create vendor zip:", (e as Error).message);
+        console.warn("Continuing build anyway. You may need to copy 'api/vendor' manually.");
+        if (fs.existsSync(vendorZipDest)) {
+          // Keep it if partially created, or delete? Usually delete if corrupt.
+          // But strict removal might be annoying if it's just a permission warning.
+          // fs.unlinkSync(vendorZipDest); 
+        }
+        // Do NOT throw e, so .htaccess (already copied) and other artifacts remain
+      }
+    } else if (vendorZipReady) {
+      console.log("Skipped vendor compression (using preserved file).");
+    }
 
     console.log("Host build completed successfully.");
     console.log(`Host folder ready at: ${hostDir}`);

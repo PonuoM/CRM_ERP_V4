@@ -1322,12 +1322,22 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         if (!empty($customerIds)) {
                             $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
                             $userId = isset($_GET['userId']) ? (int)$_GET['userId'] : null;
-                            $upsellSql = "SELECT DISTINCT customer_id FROM orders 
-                                          WHERE customer_id IN ($placeholders) 
-                                          AND order_status = 'Pending' 
-                                          AND order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+                            // Match logic from upsell/check API:
+                            // 1. Pending status
+                            // 2. Within 24 hours
+                            // 3. Not created by current user
+                            // 4. No upsell items added yet (NOT EXISTS)
+                            $upsellSql = "SELECT DISTINCT o.customer_id FROM orders o
+                                          WHERE o.customer_id IN ($placeholders) 
+                                          AND o.order_status = 'Pending' 
+                                          AND o.order_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                                          AND NOT EXISTS (
+                                              SELECT 1 FROM order_items oi 
+                                              WHERE oi.parent_order_id = o.id 
+                                              AND oi.creator_id != o.creator_id
+                                          )";
                             if ($userId) {
-                                $upsellSql .= " AND (creator_id IS NULL OR creator_id != $userId)";
+                                $upsellSql .= " AND (o.creator_id IS NULL OR o.creator_id != $userId)";
                             }
                             $upsellStmt = $pdo->prepare($upsellSql);
                             $upsellStmt->execute($customerIds);
@@ -1554,7 +1564,8 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     'postal_code=COALESCE(?, postal_code)',
                     'is_in_waiting_basket=COALESCE(?, is_in_waiting_basket)',
                     'waiting_basket_start_date=COALESCE(?, waiting_basket_start_date)',
-                    'is_blocked=COALESCE(?, is_blocked)'
+                    'is_blocked=COALESCE(?, is_blocked)',
+                    'followup_bonus_remaining=COALESCE(?, followup_bonus_remaining)'
                 ];
 
                 $params = [
@@ -1585,6 +1596,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     array_key_exists('is_in_waiting_basket', $in) ? (int)$in['is_in_waiting_basket'] : null,
                     $in['waiting_basket_start_date'] ?? null,
                     array_key_exists('is_blocked', $in) ? (int)$in['is_blocked'] : null,
+                    array_key_exists('followup_bonus_remaining', $in) ? (int)$in['followup_bonus_remaining'] : null,
                 ];
 
                 if ($newCustomerRefId) {
@@ -5983,7 +5995,7 @@ function handle_calls(PDO $pdo, ?string $id): void {
                 // Note: Using LEFT JOIN to include calls where customer might be deleted (optional)
                 // BUT for company scoping, we MUST join.
                 if ($companyId) {
-                    $sql .= " JOIN customers c ON ch.customer_id = c.id";
+                    $sql .= " JOIN customers c ON ch.customer_id = c.customer_id";
                     $wheres[] = "c.company_id = ?";
                     $params[] = $companyId;
                 }

@@ -75,6 +75,7 @@ interface CustomerDetailPageProps {
   onUpsellClick?: (customer: Customer) => void;
   onChangeOwner?: (customerId: string, newOwnerId: number) => Promise<void> | void;
   customerCounts?: Record<number, number>;
+  refreshTrigger?: number;
 }
 
 type ActiveTab = "calls" | "appointments" | "orders";
@@ -114,6 +115,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     onUpsellClick,
     onChangeOwner,
     customerCounts,
+    refreshTrigger,
   } = props;
   const [activeTab, setActiveTab] = useState<ActiveTab>("calls");
   const [newTagName, setNewTagName] = useState("");
@@ -181,10 +183,22 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   useEffect(() => {
     if (appointments.length > 0) {
       setLocalAppointments((prev) => {
-        const prevIds = new Set(prev.map((a) => a.id));
-        const newItems = appointments.filter((a) => !prevIds.has(a.id));
-        if (newItems.length > 0) {
-          return [...newItems, ...prev];
+        const prevMap = new Map(prev.map((a) => [a.id, a]));
+        let hasChanges = false;
+        const updated = prev.map((p) => {
+          const global = appointments.find((a) => a.id === p.id);
+          // Sync status changes from global state (e.g., auto-completed)
+          if (global && global.status !== p.status) {
+            hasChanges = true;
+            return { ...p, status: global.status };
+          }
+          return p;
+        });
+
+        // Also add new appointments that aren't in local yet
+        const newItems = appointments.filter((a) => !prevMap.has(a.id));
+        if (newItems.length > 0 || hasChanges) {
+          return [...newItems, ...updated];
         }
         return prev;
       });
@@ -274,7 +288,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk]);
+  }, [customer.id, customer.pk, refreshTrigger]);
 
   // Fetch orders for this customer
   useEffect(() => {
@@ -929,7 +943,10 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     callHistoryPage * ITEMS_PER_PAGE,
   );
 
-  const effectiveAppointments = localAppointments.length > 0 ? localAppointments : appointments;
+  // Sort appointments by ID descending (newest first, regardless of date)
+  const effectiveAppointments = (localAppointments.length > 0 ? localAppointments : appointments)
+    .slice()
+    .sort((a, b) => b.id - a.id);
   const totalAppointmentPages = Math.ceil(effectiveAppointments.length / ITEMS_PER_PAGE);
   const paginatedAppointments = effectiveAppointments.slice(
     (appointmentsPage - 1) * ITEMS_PER_PAGE,

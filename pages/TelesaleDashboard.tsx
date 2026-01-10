@@ -3,9 +3,19 @@ import { User, Customer, CustomerLifecycleStatus, CustomerBehavioralStatus, Moda
 import CustomerTable from '../components/CustomerTable';
 import { ListTodo, Users, Search, ChevronDown, Calendar, PlusCircle, Filter, Check, Clock, ShoppingCart, UserPlus, Star, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
+// Helper to safely parse dates that might be in SQL format "YYYY-MM-DD HH:MM:SS"
+const parseDateSafe = (dateStr: string | undefined | null | number): number => {
+  if (!dateStr) return 0;
+  if (typeof dateStr === 'number') return dateStr;
+  // Replace space with T for ISO compliance if it looks like SQL format
+  const safeStr = dateStr.replace(' ', 'T');
+  const time = new Date(safeStr).getTime();
+  return isNaN(time) ? 0 : time;
+};
+
 import { db } from '../db/db';
 import { syncCustomers } from '../services/syncService';
-import { listCustomers } from '../services/api';
+import { listCustomers, apiFetch } from '../services/api';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import usePersistentState from "@/utils/usePersistentState";
 
@@ -209,6 +219,58 @@ const ORDER_UPDATE_LOOKBACK_DAYS = 3;
 
 const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const { user, customers, appointments, activities, calls, orders, onViewCustomer, openModal, systemTags, setActivePage, onUpsellClick, onChangeOwner, allUsers, refreshTrigger } = props;
+
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [loadingRecentOrders, setLoadingRecentOrders] = useState(false);
+  const [recentOrdersError, setRecentOrdersError] = useState<string | null>(null);
+
+  // Fetch recent orders (last 7 days) to fix "Updates" tab since global orders are empty
+  useEffect(() => {
+    if (!user.companyId) return;
+
+    const fetchRecentOrders = async () => {
+      setLoadingRecentOrders(true);
+      setRecentOrdersError(null);
+      try {
+        const d = new Date();
+        d.setDate(d.getDate() - 10); // Look back 10 days to be safe
+        const startDate = d.toISOString().slice(0, 10);
+
+        // Use apiFetch to get orders directly
+        const response = await apiFetch(`orders?companyId=${user.companyId}&orderDateStart=${startDate}&pageSize=2000`);
+
+        if (response && response.orders && Array.isArray(response.orders)) {
+          // Map snake_case to camelCase matches Order type
+          const mapped = response.orders.map((r: any) => ({
+            id: r.id,
+            customerId: r.customer_id || r.customerId,
+            companyId: r.company_id,
+            creatorId: r.creator_id,
+            orderDate: r.order_date,
+            notes: r.notes,
+            totalAmount: Number(r.total_amount || 0),
+            orderStatus: r.order_status,
+            paymentStatus: r.payment_status,
+            // Add other fields if strictly required by types, but these are main ones for logic
+          })) as Order[];
+          setRecentOrders(mapped);
+          console.log('Recent orders fetched:', mapped.length);
+          // DEBUG: Show ALL order IDs with Customer IDs and Creators
+          console.log('[Orders Debug v3.4] All fetched orders:', mapped.map((o: any) => `${o.id}|Cust:${o.customerId}|Creator:${o.creatorId}`).join(' | '));
+        } else {
+          console.warn('Invalid recent orders response:', response);
+          setRecentOrdersError('Invalid response format');
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch recent orders:', err);
+        setRecentOrdersError(err.message || String(err));
+      } finally {
+        setLoadingRecentOrders(false);
+      }
+    };
+
+    fetchRecentOrders();
+  }, [user.companyId]);
 
   // Create a unique key for this user's filter state
   const filterStorageKey = `telesale_filters_${user.id}`;
@@ -421,10 +483,8 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   // Listen for external refresh triggers (Optimistic UI updates from App.tsx)
   useEffect(() => {
     if (refreshTrigger && user?.id) {
-      console.log(`[Dashboard] Refresh Triggered! (Count: ${refreshTrigger}) Reloading DB...`);
       // Reload data from DB immediately
       db.customers.where('assignedTo').equals(Number(user.id)).toArray().then(myCustomers => {
-        console.log(`[Dashboard] DB Reloaded. Count: ${myCustomers.length}. Sample Status:`, myCustomers.slice(0, 3).map(c => `${c.pk}:${c.lifecycleStatus}:${c.lastCallNote}`));
         setLocalCustomers(myCustomers);
       }).catch(err => console.error("[Dashboard] Refresh trigger failed", err));
     }
@@ -442,17 +502,37 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     [systemTags, user.customTags],
   );
 
+  // Filter tags to show only those relevant to current customers
+  const relevantTags = useMemo(() => {
+    const usedTagIds = new Set<number>();
+    userCustomers.forEach((c) => {
+      if (c.tags) {
+        c.tags.forEach((t) => usedTagIds.add(t.id));
+      }
+    });
+    return allAvailableTags.filter((tag) => usedTagIds.has(tag.id));
+  }, [userCustomers, allAvailableTags]);
+
   const allProvinces = useMemo(
     () =>
       [...new Set(userCustomers.map((c) => c.province).filter(Boolean))].sort(),
     [userCustomers],
   );
 
+  // Consolidate Orders: prefer props.orders if available, else use recentOrders
+  const safeOrders = useMemo(() => {
+    const propOrders = orders || [];
+    // If props.orders has data (length > 0), use it.
+    // Otherwise fall back to recentOrders which we fetched manually.
+    if (propOrders.length > 0) return propOrders;
+    return recentOrders;
+  }, [orders, recentOrders]);
+
   // Calculate Dashboard Counts
   const tabCounts = useMemo(() => {
     const safeAppointments = appointments || [];
     const safeCalls = calls || [];
-    const safeOrders = orders || [];
+    // safeOrders is now from outer scope
     const safeActivities = activities || [];
 
     const counts = {
@@ -470,7 +550,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const sevenDaysAgoTime = sevenDaysAgo.getTime();
 
-    // Helper to check if customer has ANY activity
+    // Helper to check if customer has ANY activity (by CURRENT USER only for orders)
     const hasAnyActivity = (c: Customer, since?: number) => {
       // Check calls
       const hasCall = safeCalls.some(ch => {
@@ -489,10 +569,14 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       });
       if (hasActivityLog) return true;
 
-      // Check orders
+      // Check orders - ONLY count orders from CURRENT USER
       const hasOrder = safeOrders.some(o => {
         const matches = String(o.customerId) === String(c.id) || String(o.customerId) === String(c.pk);
         if (!matches) return false;
+        // CRITICAL: Only count orders created by current user
+        if (o.creatorId && user.id) {
+          if (String(o.creatorId) !== String(user.id)) return false; // Skip orders from others
+        }
         if (since && o.orderDate) return new Date(o.orderDate).getTime() >= since;
         return true;
       });
@@ -530,30 +614,43 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       }
 
       // 3) New or Daily with no activity since assigned (Do)
+      // Also hide if they have a pending appointment after dateAssigned
       const isDaily = customer.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
       const isNew = customer.lifecycleStatus === CustomerLifecycleStatus.New;
+      const isFollowUp = customer.lifecycleStatus === CustomerLifecycleStatus.FollowUp;
 
       if (isDaily || isNew) {
         let assignedTime = new Date(customer.dateAssigned).getTime();
         if (isNaN(assignedTime)) assignedTime = 0; // Fallback to 0 if invalid
 
-        if (!hasAnyActivity(customer, assignedTime)) {
+        // Check for pending appointment after assignedTime (except for FollowUp)
+        const hasPendingApptAfterAssign = !isFollowUp && safeAppointments.some(appt => {
+          const matches = String(appt.customerId) === String(customer.id) ||
+            String(appt.customerId) === String(customer.pk);
+          if (!matches) return false;
+          if (appt.status === 'เสร็จสิ้น') return false;
+          const apptTime = new Date(appt.date).getTime();
+          return apptTime >= assignedTime;
+        });
+
+        // Hide if has activity OR has pending appointment after assign
+        if (!hasAnyActivity(customer, assignedTime) && !hasPendingApptAfterAssign) {
           counts.do++;
         }
       }
 
       // 4) Updates (Orders in last 7 days created by OTHERS)
       // Only count updates if not already in 'do' from daily/new or appointments
+      // AND STRICTLY enforce: Creator != Current User
       if (!hasPendingAppt && !(isDaily || isNew && !hasAnyActivity(customer, new Date(customer.dateAssigned).getTime()))) {
         const recentOrders = safeOrders.filter(o => {
           const matches = String(o.customerId) === String(customer.id) || String(o.customerId) === String(customer.pk);
           if (!matches) return false;
           if (!o.orderDate) return false;
 
-          if (o.creatorId && customer.assignedTo) {
-            if (String(o.creatorId) === String(customer.assignedTo)) {
-              return false; // Same person, skip
-            }
+          // STRICT CHECK: Exclude own orders
+          if (o.creatorId && user.id) {
+            if (String(o.creatorId) === String(user.id)) return false;
           }
 
           const oDate = new Date(o.orderDate).getTime();
@@ -562,6 +659,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
         if (recentOrders.length > 0) {
           const latestOrderTime = Math.max(...recentOrders.map(o => new Date(o.orderDate!).getTime()));
+          // Check if any activity performed AFTER the order
           if (!hasAnyActivity(customer, latestOrderTime + 1000)) {
             counts.updates++;
           }
@@ -570,13 +668,13 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     });
 
     return counts;
-  }, [userCustomers, appointments, calls, orders, activities]);
+  }, [userCustomers, appointments, calls, orders, activities, recentOrders, user.id]);
 
   const filteredCustomers = useMemo(() => {
     const safeAppointments = appointments || [];
     const safeActivities = activities || [];
     const safeCalls = calls || [];
-    const safeOrders = orders || [];
+    // safeOrders is now from outer scope
 
     // Prioritize server-side search results
     if (serverSearchResults !== null) {
@@ -590,32 +688,50 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     // =========== OPTIMIZATION: Pre-calculate activity indices ===========
     // Instead of O(N*M) nested loops, build Maps once (O(M)) then do O(1) lookups
 
-    // Build: customerId -> latestCallTime
+    // Helper to parse SQL date strings safely across browsers (Safari/Edge/Chrome)
+    const safeDate = (dateStr: string | number | Date): number => {
+      if (!dateStr) return 0;
+      if (dateStr instanceof Date) return dateStr.getTime();
+      if (typeof dateStr === 'number') return dateStr;
+      // Handle SQL format "YYYY-MM-DD HH:mm:ss" -> "YYYY-MM-DDTHH:mm:ss"
+      return new Date(String(dateStr).replace(' ', 'T')).getTime();
+    };
+
+    // Build calls map using safeDate
     const callTimeMap = new Map<string, number>();
     for (const ch of safeCalls) {
       const cid = String(ch.customerId);
-      const time = new Date(ch.date).getTime();
+      const time = safeDate(ch.date); // Use safe parser
       const existing = callTimeMap.get(cid) || 0;
       if (time > existing) callTimeMap.set(cid, time);
     }
 
-    // Build: customerId -> latestActivityTime
+    // Build activity map using safeDate
     const activityTimeMap = new Map<string, number>();
     for (const act of safeActivities) {
       const cid = String(act.customerId);
-      const time = new Date(act.timestamp).getTime();
+      const time = safeDate(act.timestamp);
       const existing = activityTimeMap.get(cid) || 0;
       if (time > existing) activityTimeMap.set(cid, time);
     }
 
-    // Build: customerId -> latestOrderTime
+    // Build order map using safeDate - IMPORTANT: Only include CURRENT USER's orders for activity check
+    // Orders from OTHER users should NOT count as "activity" that hides the customer
     const orderTimeMap = new Map<string, number>();
+    const myOrdersDebug: string[] = [];
     for (const o of safeOrders) {
       if (!o.orderDate) continue;
+      // CRITICAL FIX: Only count orders from the CURRENT USER as "activity"
+      if (o.creatorId && user.id) {
+        if (String(o.creatorId) !== String(user.id)) continue; // Skip orders from others
+      }
       const cid = String(o.customerId);
-      const time = new Date(o.orderDate).getTime();
+      const time = safeDate(o.orderDate);
       const existing = orderTimeMap.get(cid) || 0;
-      if (time > existing) orderTimeMap.set(cid, time);
+      if (time > existing) {
+        orderTimeMap.set(cid, time);
+        myOrdersDebug.push(`OrderID:${o.id} CustID:${cid} Creator:${o.creatorId} Date:${o.orderDate}`);
+      }
     }
 
     // Build: customerId -> list of upcoming appointments
@@ -663,12 +779,25 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
           const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
+          const isFollowUp = c.lifecycleStatus === CustomerLifecycleStatus.FollowUp;
+
           if (isDaily || isNew) {
             let assignedTime = new Date(c.dateAssigned).getTime();
             if (isNaN(assignedTime)) assignedTime = 0; // Fallback to 0 if invalid, so ANY activity counts
 
             // O(1) activity check
             if (hasAnyActivitySince(cid, assignedTime)) return false;
+
+            // Check for pending appointment after assignedTime (except for FollowUp)
+            const hasPendingApptAfterAssign = !isFollowUp && safeAppointments.some(appt => {
+              const matches = String(appt.customerId) === cid;
+              if (!matches) return false;
+              if (appt.status === 'เสร็จสิ้น') return false;
+              const apptTime = new Date(appt.date).getTime();
+              return apptTime >= assignedTime;
+            });
+
+            if (hasPendingApptAfterAssign) return false;
             return true;
           }
           return false;
@@ -747,28 +876,77 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         const sevenDaysAgoTime = sevenDaysAgo.getTime();
 
         // OPTIMIZATION: Pre-filter orders by date first
+        // Helper to parse SQL date strings safely across browsers (Safari/Edge/Chrome)
+        const safeDate = (dateStr: string | number | Date): number => {
+          if (!dateStr) return 0;
+          if (dateStr instanceof Date) return dateStr.getTime();
+          if (typeof dateStr === 'number') return dateStr;
+          // Handle SQL format "YYYY-MM-DD HH:mm:ss" -> "YYYY-MM-DDTHH:mm:ss"
+          return new Date(String(dateStr).replace(' ', 'T')).getTime();
+        };
+
         const recentOrdersMap = new Map<string, number>(); // customerId -> latestOrderTime
+        let skipCount = 0, addCount = 0;
         for (const o of safeOrders) {
           if (!o.orderDate) continue;
-          const oTime = new Date(o.orderDate).getTime();
+          const oTime = safeDate(o.orderDate);
           if (oTime < sevenDaysAgoTime) continue;
+
+          // STRICT CHECK: Exclude own orders - Show only orders from OTHER people
+          if (o.creatorId && user.id) {
+            if (String(o.creatorId) === String(user.id)) {
+              skipCount++;
+              continue; // Skip my own orders
+            }
+          }
+
           const cid = String(o.customerId);
           const existing = recentOrdersMap.get(cid) || 0;
-          if (oTime > existing) recentOrdersMap.set(cid, oTime);
+          if (oTime > existing) {
+            recentOrdersMap.set(cid, oTime);
+            addCount++;
+          }
         }
 
         baseFiltered = userCustomers.filter(c => {
-          if (c.dateRegistered) {
-            const registeredDate = new Date(c.dateRegistered).getTime();
-            if (registeredDate >= sevenDaysAgoTime) return false;
-          }
+          // REMOVED: Registration date check as requested
+          // if (c.dateRegistered) {
+          //   const registeredDate = new Date(c.dateRegistered).getTime();
+          //   if (registeredDate >= sevenDaysAgoTime) return false;
+          // }
+
           const cid = String(c.id || c.pk);
           const latestOrderTime = recentOrdersMap.get(cid);
-          if (!latestOrderTime) return false; // No recent orders
-          // O(1) activity check
-          if (hasAnyActivitySince(cid, latestOrderTime + 1000)) return false;
+
+          // DEBUG: Check if customer 300080 is even in userCustomers
+          if (cid === '300080') {
+            console.log(`[Debug 300080] Found in userCustomers, latestOrderTime=${latestOrderTime ? new Date(latestOrderTime).toLocaleString() : 'NONE'}`);
+          }
+
+          if (!latestOrderTime) return false; // No recent orders from others
+
+          // O(1) activity check - Must be AFTER the order
+          const checkTime = latestOrderTime + 1000;
+          const hasActivity = hasAnyActivitySince(cid, checkTime);
+
+          if (hasActivity) {
+            // Log detailed reason but FILTER OUT
+            // Deep dive: WHAT activity triggered it?
+            const callTime = callTimeMap.get(cid) || 0;
+            const actTime = activityTimeMap.get(cid) || 0;
+            const orderTime = orderTimeMap.get(cid) || 0;
+
+            let reason = [];
+            if (callTime >= checkTime) reason.push(`Call at ${new Date(callTime).toLocaleString()}`);
+            if (actTime >= checkTime) reason.push(`Activity at ${new Date(actTime).toLocaleString()}`);
+            if (orderTime >= checkTime) reason.push(`Order at ${new Date(orderTime).toLocaleString()}`);
+
+            console.warn(`[Updates Filtered] Customer ${c.firstName} (ID:${cid}) hidden due to recent activity: ${reason.join(', ')}`);
+            return false;
+          }
+
           return true;
-        }).map(c => ({ ...c, doReason: 'มีคำสั่งซื้อใหม่' } as Customer));
+        }).map(c => ({ ...c, doReason: 'มีคำสั่งซื้อใหม่ (ไม่ใช่จากคุณ)' } as Customer));
         break;
 
       case 'all':
@@ -808,22 +986,45 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     let filtered = baseFiltered;
 
     // Filter by Date Range (assigned date)
-    if (dateRange.start || dateRange.end) {
+    // Filter by Date Range (assigned date)
+    if (activeDatePreset !== 'all' || dateRange.start || dateRange.end) {
       filtered = filtered.filter(c => {
         if (!c.dateAssigned) return false;
         // Ensure robust parsing for dateAssigned
         const assignedDateStr = c.dateAssigned;
-        // Try parsing string directly first
         let assignedDate = new Date(assignedDateStr);
-        if (isNaN(assignedDate.getTime())) {
-          // Fallback for potential legacy formats if needed, but standard should be ISO or usable string
-          return false;
-        }
+        if (isNaN(assignedDate.getTime())) return false;
 
         assignedDate.setHours(0, 0, 0, 0);
 
-        let start = dateRange.start ? new Date(dateRange.start) : null;
-        let end = dateRange.end ? new Date(dateRange.end) : null;
+        let start: Date | null = null;
+        let end: Date | null = null;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (activeDatePreset === 'today') {
+          start = today;
+          end = today;
+        } else if (activeDatePreset === 'yesterday') {
+          const y = new Date(today);
+          y.setDate(y.getDate() - 1);
+          start = y;
+          end = y;
+        } else if (activeDatePreset === '7days') {
+          const d7 = new Date(today);
+          d7.setDate(d7.getDate() - 7);
+          start = d7;
+          end = today;
+        } else if (activeDatePreset === '30days') {
+          const d30 = new Date(today);
+          d30.setDate(d30.getDate() - 30);
+          start = d30;
+          end = today;
+        } else if (activeDatePreset === 'range' || (dateRange.start || dateRange.end)) {
+          if (dateRange.start) start = new Date(dateRange.start);
+          if (dateRange.end) end = new Date(dateRange.end);
+        }
 
         if (start) start.setHours(0, 0, 0, 0);
         if (end) end.setHours(23, 59, 59, 999);
@@ -855,10 +1056,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       );
     }
 
-    // Filter by Grade
-    if (selectedGrades.length > 0) {
-      filtered = filtered.filter(c => selectedGrades.includes(c.grade));
-    }
+
 
     // Filter by Province
     if (selectedProvinces.length > 0) {
@@ -902,7 +1100,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       const activeCustomerIds = new Set<string>();
 
       for (const ch of safeCalls) {
-        const time = new Date(ch.date).getTime();
+        const time = parseDateSafe(ch.date); // Use safe parser
         if (time >= start && time < end) {
           activeCustomerIds.add(String(ch.customerId));
         }
@@ -938,7 +1136,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     });
 
     return filtered;
-  }, [userCustomers, activeSubMenu, appointments, activities, calls, orders, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
+  }, [userCustomers, activeSubMenu, appointments, activities, calls, safeOrders, dateRange, appliedSearchTerm, selectedTagIds, selectedGrades, selectedProvinces, selectedLifecycleStatuses, selectedExpiryDays, sortBy, sortByExpiry, hideTodayCalls, hideTodayCallsRangeEnabled, hideTodayCallsRange]);
 
   const [persistentTabPages, setPersistentTabPages] = usePersistentState<Record<string, number>>(
     `telesale_tab_pages_v2_${user.id}`,
@@ -969,6 +1167,7 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     hideTodayCalls,
     hideTodayCallsRangeEnabled,
     hideTodayCallsRange,
+    safeOrders, // Add safeOrders dependency
     setPersistentTabPages // Check if this stable
   ]);
 
@@ -1298,30 +1497,18 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
         {/* Advanced Filters Panel */}
         <div className={`bg-white p-4 rounded-lg shadow mb-6 ${showAdvanced ? 'block' : 'hidden'}`}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ช่องค้นหา */}
-
-
-            {/* ตัวกรองแถวแรก */}
+            {/* Tag Filter */}
+            {/* Tag Filter */}
             <div>
-              <label className="block text-xs text-gray-500 mb-1">เกรด</label>
-              <select
-                value={selectedGrades.length > 0 ? selectedGrades[0] : ""}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedGrades([e.target.value as CustomerGrade]);
-                  } else {
-                    setSelectedGrades([]);
-                  }
-                  setCurrentPage(1);
-                }}
-                className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">ทั้งหมด</option>
-                {Object.values(CustomerGrade).map((grade) => (
-                  <option key={grade} value={grade}>{grade}</option>
-                ))}
-              </select>
-            </div>
+              <label className="block text-xs text-gray-500 mb-1">Tags (แท็ก)</label>
+              <FilterDropdown
+                title="เลือก Tags"
+                options={relevantTags}
+                selected={selectedTagIds}
+                onSelect={(id) => handleFilterSelect(setSelectedTagIds, selectedTagIds, id)}
+              />
+            </div>            {/* ตัวกรองแถวแรก */}
+
 
             <div>
               <label className="block text-xs text-gray-500 mb-1">จังหวัด</label>
@@ -1546,6 +1733,21 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           </>
         )
       }
+
+      {/* VISUAL TRACER: Remove after verification */}
+      {/* VISUAL TRACER: Remove after verification */}
+      <div className="mt-8 p-4 bg-gray-100 rounded text-xs text-gray-500 font-mono border-t border-gray-300">
+        <p><strong>System Diagnostics (v3.5 300080 Debug):</strong></p>
+        <p>User ID: {user?.id} | Company: {user?.companyId}</p>
+        <p>Recent Orders Fetched: {recentOrders.length}</p>
+        <p>Loading Status: LoadingRecent={loadingRecentOrders ? 'Yes' : 'No'}</p>
+        <p>Fetch Error: <span className="text-red-500">{recentOrdersError || 'None'}</span></p>
+        {filteredCustomers && (
+          <p>Displayed Customers: {filteredCustomers.length}</p>
+        )}
+        <p>Browser User Agent: {navigator.userAgent}</p>
+      </div>
+
     </div >
   );
 };

@@ -77,14 +77,18 @@ function handleSale(PDO $pdo, string $customerId): void {
             json_response(['error' => 'INVALID_CUSTOMER_ID', 'message' => 'Customer ID not found in result'], 500);
             return;
         }
-        $orderStmt = $pdo->prepare("SELECT delivery_date FROM orders WHERE customer_id = ? AND order_status = 'Picking' ORDER BY order_date DESC LIMIT 1");
+        // Try to get delivery_date first, then order_date as fallback
+        $orderStmt = $pdo->prepare("SELECT delivery_date, order_date FROM orders WHERE customer_id = ? AND order_status = 'Picking' ORDER BY order_date DESC LIMIT 1");
         $orderStmt->execute([$orderCustomerId]);
-        $deliveryDateStr = $orderStmt->fetchColumn();
+        $orderRow = $orderStmt->fetch();
         
-        if (!$deliveryDateStr) {
-            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'Sale grants only when order status is Picking and delivery_date exists'], 400);
+        if (!$orderRow) {
+            json_response(['error' => 'SALE_NOT_COMPLETED', 'message' => 'No order with Picking status found'], 400);
             return;
         }
+        
+        // Use delivery_date if available, otherwise use order_date (one of these should always exist)
+        $deliveryDateStr = $orderRow['delivery_date'] ?? $orderRow['order_date'];
     } catch (Throwable $e) {
         json_response(['error' => 'SALE_CHECK_FAILED'], 500);
         return;

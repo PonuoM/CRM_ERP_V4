@@ -130,7 +130,6 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             case 'Exact': return 'text-green-600 bg-green-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Over': return 'text-blue-600 bg-blue-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Short': return 'text-red-600 bg-red-100 px-2 py-1 rounded-full text-xs font-bold';
-            case 'Short': return 'text-red-600 bg-red-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Suspense': return 'text-orange-600 bg-orange-100 px-2 py-1 rounded-full text-xs font-bold';
             case 'Deposit': return 'text-purple-600 bg-purple-100 px-2 py-1 rounded-full text-xs font-bold';
             default: return 'text-gray-500 bg-gray-100 px-2 py-1 rounded-full text-xs';
