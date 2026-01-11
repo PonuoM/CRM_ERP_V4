@@ -96,8 +96,8 @@ foreach ($rows as $index => $row) {
             customer_ref_id, first_name, last_name, phone, email, 
             street, subdistrict, district, province, postal_code,
             company_id, assigned_to, date_assigned, date_registered, ownership_expires,
-            lifecycle_status, behavioral_status, grade, total_purchases, bucket_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            lifecycle_status, behavioral_status, grade, total_purchases
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         $assignedTo = sanitize_value($row['caretakerId'] ?? null); 
         if (!$assignedTo) {
@@ -129,11 +129,10 @@ foreach ($rows as $index => $row) {
             $addr, $sub, $dist, $prov, $zip,
             $user['company_id'], $assignedTo, 
             $nowStr, // date_assigned
-            $nowStr, // date_registered (set to now as per request/logic, or keep existing logic? Request: "date_assigned = current datetime". Usually registered also means now for new.)
+            $nowStr, // date_registered
             $expireDate, // ownership_expires
             'New', // lifecycle_status (forced)
-            $behave, $grade, $purchases,
-            $bucketType
+            $behave, $grade, $purchases
         ]);
         
         $summary['createdCustomers']++;

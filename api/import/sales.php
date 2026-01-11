@@ -240,8 +240,8 @@ foreach ($grouped as $orderId => $group) {
                 customer_ref_id, first_name, last_name, phone, email, 
                 street, subdistrict, district, province, postal_code,
                 company_id, assigned_to, date_assigned, date_registered, ownership_expires,
-                lifecycle_status, behavioral_status, grade, total_purchases, bucket_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                lifecycle_status, behavioral_status, grade, total_purchases
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $nowStr = date('Y-m-d H:i:s');
             $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
@@ -260,11 +260,10 @@ foreach ($grouped as $orderId => $group) {
                 $addr, $sub, $dist, $prov, $zip,
                 $user['company_id'], $resolvedAssignedTo, 
                 $nowStr, // date_assigned (req: current datetime)
-                $nowStr, // date_registered (keep as now or from logic?) Logic says "date_assigned current", "ownership +90 matches date_assigned".
+                $nowStr, // date_registered
                 $expireDate, // ownership_expires
                 'New', // lifecycle_status
-                'Cold', 'Standard', 0,
-                $bucketType
+                'Cold', 'Standard', 0
             ]);
             $customerPk = $pdo->lastInsertId();
             $summary['createdCustomers']++;
