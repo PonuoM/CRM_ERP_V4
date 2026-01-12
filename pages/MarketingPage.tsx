@@ -304,9 +304,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
   const [adsInputData, setAdsInputData] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [selectedDate, setSelectedDate] = useState<string>("");
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   // Ads history list
@@ -326,9 +324,25 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [adsHistoryPage, setAdsHistoryPage] = useState(1);
   const [adsHistoryPageSize, setAdsHistoryPageSize] = useState(10);
   // Filters for Ads History - default to show all data
-  const [adsHistoryDateRange, setAdsHistoryDateRange] = useState({
-    start: "",
-    end: "",
+  const [adsHistoryDateRange, setAdsHistoryDateRange] = useState(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const firstDay = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0);
+
+    // Manually format to YYYY-MM-DD using local time
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    return {
+      start: formatDate(firstDay),
+      end: formatDate(lastDay),
+    };
   });
   const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
     number[]
@@ -683,7 +697,21 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         setUserAccessiblePages(userPages);
         // Set default filters for ads history to show all data (active pages only)
         // Set default filters for ads history to show all data (active pages only)
-        setAdsHistoryDateRange({ start: "", end: "" });
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const firstDay = new Date(y, m, 1);
+        const lastDay = new Date(y, m + 1, 0);
+        const formatDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        setAdsHistoryDateRange({
+          start: formatDate(firstDay),
+          end: formatDate(lastDay),
+        });
 
         // Setup pages list for logic usage
         const allPages = Array.isArray(pg?.data)
@@ -1385,18 +1413,112 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
   };
 
+  const handleDeleteCurrentLog = async () => {
+    if (!editingLog) return;
+    if (!confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return;
+
+    const isProductMode = adsHistoryMode === 'product' || !!editingLog.product_id;
+    let res;
+
+    if (isProductMode) {
+      res = await deleteProductAdsLog(editingLog.id);
+    } else {
+      res = await deleteAdsLog(editingLog.id);
+    }
+
+    if (res && res.success) {
+      alert("ลบข้อมูลเรียบร้อยแล้ว");
+      setIsEditModalOpen(false);
+      setEditingLog(null);
+      if (isProductMode) loadProductAdsLogs();
+      else loadPageAdsLogs();
+    } else {
+      alert("ลบข้อมูลไม่สำเร็จ: " + (res?.error || "Unknown error"));
+    }
+  };
+
+  const deleteProductAdsLog = async (id: number) => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_delete.php`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ id, user_id: currentUser.id }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error("Failed to delete product ads log:", e);
+      return { success: false, error: "Failed to delete" };
+    }
+  };
+
+  const checkAdsLogExists = async (date: string, pageId?: number, productId?: number) => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      if (productId) {
+        const res = await fetch(`${API_BASE}/Marketing_DB/product_ads_log_get_history.php?product_ids=${productId}&start_date=${date}&end_date=${date}`, { headers });
+        const json = await res.json();
+        return json.success && json.data && json.data.length > 0 ? json.data[0] : null;
+      } else if (pageId) {
+        const res = await fetch(`${API_BASE}/Marketing_DB/ads_log_get.php?page_ids=${pageId}&date_from=${date}&date_to=${date}`, { headers });
+        const json = await res.json();
+        return json.success && json.data && json.data.length > 0 ? json.data[0] : null;
+      }
+    } catch (e) {
+      console.error("Check exists failed", e);
+    }
+    return null;
+  };
+
   // Handle edit log save
   const handleEditLogSave = async (updatedLog: any) => {
+    const isProductMode = adsHistoryMode === 'product' || !!updatedLog.product_id;
+    const newDate = updatedLog.date;
+    const oldDate = updatedLog.originalDate || updatedLog.log_date;
+
+    // Check for date change
+    if (newDate && newDate !== oldDate) {
+      const existing = await checkAdsLogExists(newDate, updatedLog.page_id, updatedLog.product_id);
+      if (existing) {
+        if (!confirm(`วันที่ ${newDate} มีข้อมูลอยู่แล้ว ต้องการเขียนทับหรือไม่? (ข้อมูลเก่าจะถูกลบ)`)) {
+          return; // Cancelled
+        }
+        // Delete existing log
+        let delRes;
+        if (isProductMode) {
+          delRes = await deleteProductAdsLog(existing.id);
+        } else {
+          delRes = await deleteAdsLog(existing.id);
+        }
+
+        if (!delRes || !delRes.success) {
+          alert("ไม่สามารถลบข้อมูลเก่าได้: " + (delRes?.error || "Unknown error"));
+          return;
+        }
+      }
+    }
+
     // Only send fields that are allowed to be updated
-    const updates = {
+    const updates: any = {
       ads_cost: Number(updatedLog.ads_cost),
       impressions: Number(updatedLog.impressions),
       reach: Number(updatedLog.reach),
       clicks: Number(updatedLog.clicks),
     };
 
+    if (newDate && newDate !== oldDate) {
+      updates.date = newDate;
+    }
+
     let res;
-    if (adsHistoryMode === 'product' || updatedLog.product_id) {
+    if (isProductMode) {
       res = await updateProductAdsLog(updatedLog.id, updates);
     } else {
       res = await updateAdsLog(updatedLog.id, updates);
@@ -1408,7 +1530,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setEditingLog(null);
 
       // Refresh data based on mode
-      if (adsHistoryMode === 'product' || updatedLog.product_id) {
+      if (isProductMode) {
         loadProductAdsLogs();
       } else {
         loadPageAdsLogs();
@@ -1420,29 +1542,25 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
   // Delete ads log
   const deleteAdsLog = async (id: number) => {
-    if (!confirm("คุณต้องการลบข้อมูลนี้ใช่หรือไม่?")) return false;
+    // Confirmation moved to caller
 
     try {
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`${API_BASE}/Marketing_DB/ads_log_delete.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers, // Use headers with token
         body: JSON.stringify({
           id,
-          user_id: currentUser.id, // เพิ่ม user_id สำหรับตรวจสอบสิทธิ์
+          user_id: currentUser.id,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        alert("ลบข้อมูลสำเร็จ");
-        return true;
-      } else {
-        alert("ลบข้อมูลไม่สำเร็จ: " + data.error);
-        return false;
-      }
+      return await res.json();
     } catch (e) {
       console.error("Failed to delete ads log:", e);
-      alert("ลบข้อมูลไม่สำเร็จ");
-      return false;
+      return { success: false, error: "Failed to delete" };
     }
   };
 
@@ -2623,10 +2741,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={getInputValue(page.id, "adsCost")}
-                                  disabled={!!getInputValue(page.id, "id")}
+                                  disabled={!!getInputValue(page.id, "id") || !selectedDate}
                                   onChange={(e) =>
                                     handleUserPageInputChange(
                                       page.id,
@@ -2639,10 +2757,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={getInputValue(page.id, "impressions")}
-                                  disabled={!!getInputValue(page.id, "id")}
+                                  disabled={!!getInputValue(page.id, "id") || !selectedDate}
                                   onChange={(e) =>
                                     handleUserPageInputChange(
                                       page.id,
@@ -2655,10 +2773,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={getInputValue(page.id, "reach")}
-                                  disabled={!!getInputValue(page.id, "id")}
+                                  disabled={!!getInputValue(page.id, "id") || !selectedDate}
                                   onChange={(e) =>
                                     handleUserPageInputChange(
                                       page.id,
@@ -2671,10 +2789,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${getInputValue(page.id, "id") || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={getInputValue(page.id, "clicks")}
-                                  disabled={!!getInputValue(page.id, "id")}
+                                  disabled={!!getInputValue(page.id, "id") || !selectedDate}
                                   onChange={(e) =>
                                     handleUserPageInputChange(
                                       page.id,
@@ -2720,40 +2838,40 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.adsCost}
-                                  disabled={!!item.id}
+                                  disabled={!!item.id || !selectedDate}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'adsCost', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.impressions}
-                                  disabled={!!item.id}
+                                  disabled={!!item.id || !selectedDate}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'impressions', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.reach}
-                                  disabled={!!item.id}
+                                  disabled={!!item.id || !selectedDate}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'reach', e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2">
                                 <input
                                   type="number"
-                                  className={`w-full p-2 border border-gray-300 rounded ${item.id ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
+                                  className={`w-full p-2 border border-gray-300 rounded ${item.id || !selectedDate ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                                   placeholder="0"
                                   value={item.clicks}
-                                  disabled={!!item.id}
+                                  disabled={!!item.id || !selectedDate}
                                   onChange={(e) => handleProductAdsInputChange(item.productId, 'clicks', e.target.value)}
                                 />
                               </td>
@@ -3911,7 +4029,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                         className="p-1 hover:bg-gray-200 rounded"
                                                         onClick={(e) => {
                                                           e.stopPropagation();
-                                                          setEditingLog({ ...log });
+                                                          setEditingLog({ ...log, originalDate: log.date || log.log_date });
                                                           setIsEditModalOpen(true);
                                                         }}
                                                       >
@@ -4103,7 +4221,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                 <th className="px-3 py-1 text-right">Imp.</th>
                                                 <th className="px-3 py-1 text-right">Reach</th>
                                                 <th className="px-3 py-1 text-right">Clicks</th>
-                                                {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin Control') && <th className="px-3 py-1 text-center">จัดการ</th>}
+                                                {hasSystemAccess && <th className="px-3 py-1 text-center">จัดการ</th>}
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -4116,10 +4234,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                   <td className="px-3 py-1 text-right">{Number(l.impressions).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.reach).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.clicks).toLocaleString()}</td>
-                                                  {(currentUser.role === 'Super Admin' || currentUser.role === 'Admin Control') && (
+                                                  {hasSystemAccess && (
                                                     <td className="px-3 py-1 text-center">
                                                       <button
-                                                        onClick={() => { setEditingLog(l); setIsEditModalOpen(true); }}
+                                                        onClick={() => { setEditingLog({ ...l, originalDate: l.date || l.log_date }); setIsEditModalOpen(true); }}
                                                         className="text-blue-600 hover:text-blue-800"
                                                         title="แก้ไข"
                                                       >
@@ -4295,10 +4413,10 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       วันที่
                     </label>
                     <input
-                      type="text"
+                      type="date"
                       value={editingLog.date || ""}
-                      disabled
-                      className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm"
+                      onChange={(e) => setEditingLog({ ...editingLog, date: e.target.value })}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"
                     />
                   </div>
                   <div>
@@ -4390,19 +4508,27 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   </div>
                 </div>
               </div>
-              <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+              <div className="px-6 py-4 bg-gray-50 border-t flex justify-between items-center">
                 <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  onClick={handleDeleteCurrentLog}
+                  className="px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                 >
-                  ยกเลิก
+                  ลบข้อมูล
                 </button>
-                <button
-                  onClick={() => handleEditLogSave(editingLog)}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  บันทึก
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={() => handleEditLogSave(editingLog)}
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    บันทึก
+                  </button>
+                </div>
               </div>
             </div>
           </div>

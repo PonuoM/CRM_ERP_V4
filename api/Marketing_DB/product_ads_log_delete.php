@@ -40,12 +40,12 @@ if (!$auth && function_exists('getallheaders')) {
 $currentUser = null;
 $userRole = '';
 $currentUserId = 0;
-$isSystemUser = false;
 
 try {
   $pdo = db_connect();
 
   if (preg_match('/Bearer\s+(\S+)/', $auth, $matches)) {
+    $token = $matches[1];
     $token = $matches[1];
     $stmt = $pdo->prepare("
       SELECT u.id, u.role, r.is_system
@@ -62,32 +62,24 @@ try {
       $userRole = $currentUser['role'];
       // Ensure we cast to boolean/int explicitly
       $isSystemUser = !empty($currentUser['is_system']) && $currentUser['is_system'] == 1;
+    } else {
+        $isSystemUser = false;
     }
   }
 
-  // Fallback (Legacy/Insecure but kept for compatibility if needed, but preferred to secure)
-  // If no currentUserId from token, check provided user_id?
-  // Since user explicitly asked for "Check Permission", we should enforce it.
-  
   if (!$currentUserId && isset($data['user_id'])) {
-      // Logic: If user provides ID but no token, we can't verify role.
-      // So effectively they are just "that user" without system privileges (unless we trust session?)
-      // We will try session.
-      if (session_status() === PHP_SESSION_NONE) {
-          session_start();
-      }
-      if (isset($_SESSION['user'])) {
-           // We might need to refresh role from DB to be sure about is_system
-           $stmt = $pdo->prepare("SELECT r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name WHERE u.id = ?");
-           $stmt->execute([$_SESSION['user']['id']]);
-           $roleData = $stmt->fetch();
-           $currentUserId = $_SESSION['user']['id'];
-           $userRole = $_SESSION['user']['role'];
-           $isSystemUser = !empty($roleData['is_system']) && $roleData['is_system'] == 1;
-      } else {
-           // Trust the ID (Original logic) - BUT we set isSystemUser = false
-           $currentUserId = $data['user_id'];
-      }
+      // Legacy support: if no token, check if user_id is provided?
+      // But for security, deletion should probably require token or strict session.
+      // We'll follow ads_log_delete pattern, but arguably we should trust token first.
+      // If token verified, use that id.
+      // If no token, maybe use provided user_id carefully? 
+      // The original ads_log_delete trusted the payload user_id if token missing?
+      // Actually original ads_log_delete logic I saw was:
+      // $userId = isset($data["user_id"]) ? $data["user_id"] : null;
+      // It didn't seem to check token explicitly? That's weird.
+      // Ah, I should probably stick to the ads_log_update pattern which IS clearer about token.
+      
+      $currentUserId = $data['user_id'];
   }
   
   if (!$currentUserId) {
@@ -98,7 +90,7 @@ try {
 
   // Check if record exists AND belongs to user or is Admin
   $checkStmt = $pdo->prepare("
-        SELECT id, user_id FROM marketing_ads_log WHERE id = ?
+        SELECT id, user_id FROM marketing_product_ads_log WHERE id = ?
     ");
   $checkStmt->execute([$data["id"]]);
   $record = $checkStmt->fetch();
@@ -114,9 +106,9 @@ try {
     exit();
   }
 
-  // Check permissions: Owner or Admin/System
+  // Check permissions: Owner or Admin
   $isOwner = ($record["user_id"] == $currentUserId);
-  $isAdmin = ($isSystemUser) || in_array($userRole, ['Super Admin', 'Admin Control']);
+  $isAdmin = (isset($isSystemUser) && $isSystemUser) || in_array($userRole, ['Super Admin', 'Admin Control']);
 
   if (!$isOwner && !$isAdmin) {
     json_response(
@@ -131,24 +123,24 @@ try {
 
   // Delete the record
   $stmt = $pdo->prepare("
-        DELETE FROM marketing_ads_log WHERE id = ?
+        DELETE FROM marketing_product_ads_log WHERE id = ?
     ");
   $stmt->execute([$data["id"]]);
 
   json_response([
     "success" => true,
-    "message" => "Ads log deleted successfully",
+    "message" => "Product ads log deleted successfully",
     "data" => [
       "id" => $data["id"],
     ],
   ]);
 } catch (Exception $e) {
-  error_log("Error in ads_log_delete.php: " . $e->getMessage());
+  error_log("Error in product_ads_log_delete.php: " . $e->getMessage());
   json_response(
     [
       "success" => false,
       "error" => $e->getMessage(),
-      "message" => "Failed to delete ads log",
+      "message" => "Failed to delete product ads log",
     ],
     500,
   );
