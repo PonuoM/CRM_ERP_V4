@@ -25,6 +25,7 @@ import {
   listUsers,
   updateUser,
   apiFetch,
+  listProducts,
 } from "@/services/api";
 import { listRoles, Role } from "@/services/roleApi";
 import MarketingDatePicker, {
@@ -34,6 +35,7 @@ import MultiSelectPageFilter from "@/components/Dashboard/MultiSelectPageFilter"
 import MultiSelectProductFilter from "@/components/Dashboard/MultiSelectProductFilter";
 import MultiSelectUserFilter from "@/components/Dashboard/MultiSelectUserFilter";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import { isSystemCheck } from "@/utils/isSystemCheck";
 
 const API_BASE = resolveApiBasePath();
 
@@ -194,10 +196,16 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [adSpend, setAdSpend] = useState<AdSpend[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
 
+  /*
   const hasSystemAccess = useMemo(() => {
     const assignedRole = roles.find(r => r.name === currentUser.role);
     // API might return boolean or 0/1, treating truthy as true
     return !!assignedRole?.is_system;
+  }, [roles, currentUser.role]);
+  */
+  // Use utility function for consistent checking
+  const hasSystemAccess = useMemo(() => {
+    return isSystemCheck(currentUser.role, roles);
   }, [roles, currentUser.role]);
 
   // Pages user has access to for filters
@@ -325,6 +333,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const [adsHistorySelectedPages, setAdsHistorySelectedPages] = useState<
     number[]
   >([]);
+  const [adsHistorySelectedProducts, setAdsHistorySelectedProducts] = useState<
+    number[]
+  >([]);
   const [showInactivePagesAdsHistory, setShowInactivePagesAdsHistory] =
     useState(false);
   const [adsHistorySelectedUsers, setAdsHistorySelectedUsers] = useState<number[]>([]);
@@ -379,25 +390,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       if (!hasSystemAccess) {
         queryParams.append("user_ids", currentUser.id.toString());
-      } else if (dashboardSelectedUsers.length > 0) { // Changed this to dashboardSelectedUsers? No, adsHistorySelectedUsers logic was separate!
-        // Wait, the original code used adsHistorySelectedUsers.
-        // But I should use the correct variable.  I haven't defined separate adsHistorySelectedUsers?
-        // In step 2393 lines 1690: "else if (adsHistorySelectedUsers.length > 0) {"
-        // I need to check if adsHistorySelectedUsers IS defined.
-        // If not, I should define it or use dashboardSelectedUsers.
-        // But "adsHistory" tab is separate.
-        // If adsHistorySelectedUsers is missing, I should check where it was.
-        // I will assume it exists since I only deleted lines 1640-1760.
-        // Wait, where is adsHistorySelectedUsers defined?
-        // Not seen in 1-200.
-        // Not seen in 1450-1650.
-        // If it was defined in the block I deleted, then I deleted it!
-        // But lines 1656-1676 only had adsHistoryMode etc.
-        // Let's assume it exists or I failed to copy it.
-        // I will restore it if missing.
+      } else if (dashboardSelectedUsers.length > 0) {
         if (adsHistorySelectedUsers.length > 0) {
           queryParams.append("user_ids", adsHistorySelectedUsers.map((u: any) => u.id).join(','));
         }
+      }
+
+      if (adsHistorySelectedProducts.length > 0) {
+        queryParams.append("product_ids", adsHistorySelectedProducts.join(','));
       }
 
       /*
@@ -477,7 +477,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         loadPageAdsLogs();
       }
     }
-  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize]);
+  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize, adsHistorySelectedProducts]);
 
   // No longer need client-side pagination since we're using server-side pagination
   // const paginatedAdsLogs = useMemo(() => {
@@ -617,12 +617,14 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     async function load() {
       setLoading(true);
       try {
+        // Remove prodData from destructuring since we removed listProducts from Promise.all
         const [pg, plats, promo, userPages, rolesData] = await Promise.all([
           listActivePages(currentUser.companyId),
           listPlatforms(currentUser.companyId, true, currentUser.role),
           listPromotions(),
           loadPagesWithUserAccess(),
           listRoles(),
+          // listProducts(), // Moved to conditional loading below
         ]);
         if (cancelled) return;
 
@@ -630,8 +632,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         setRoles(fetchedRoles);
 
         // Determine if current user has system access (is_system = 1)
-        const currentUserRole = fetchedRoles.find(r => r.name === currentUser.role);
-        const hasSystemAccess = currentUserRole?.is_system;
+        const hasSystemAccess = isSystemCheck(currentUser.role, fetchedRoles);
 
         setPages(
           Array.isArray(pg?.data)
@@ -659,6 +660,26 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             : [],
         );
         setPromotions(Array.isArray(promo) ? promo : []);
+
+        // Conditional Product Loading
+        let loadedProducts: any[] = [];
+        if (hasSystemAccess) {
+          loadedProducts = await listProducts();
+          if (!Array.isArray(loadedProducts)) loadedProducts = [];
+        } else {
+          // Fetch only assigned products
+          try {
+            const res = await fetch(`${API_BASE}/Marketing_DB/get_user_products.php?user_id=${currentUser.id}`);
+            const d = await res.json();
+            if (d.success && Array.isArray(d.data)) {
+              loadedProducts = d.data;
+            }
+          } catch (err) {
+            console.error("Failed to load user products:", err);
+          }
+        }
+        setProducts(loadedProducts);
+
         setUserAccessiblePages(userPages);
         // Set default filters for ads history to show all data (active pages only)
         // Set default filters for ads history to show all data (active pages only)
@@ -3611,22 +3632,40 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                 </div>
 
                 <div className="flex-1">
-                  <label className={labelClass}>เลือกเพจ</label>
-                  <MultiSelectPageFilter
-                    pages={(hasSystemAccess
-                      ? pages
-                      : userAccessiblePages
-                    ).map((page) => ({
-                      id: page.id,
-                      name: page.name,
-                      platform: page.platform,
-                      active: page.active,
-                    }))}
-                    selectedPages={adsHistorySelectedPages}
-                    onChange={setAdsHistorySelectedPages}
-                    showInactivePages={showInactivePagesAdsHistory}
-                    onToggleInactivePages={setShowInactivePagesAdsHistory}
-                  />
+                  {/* Page Filter OR Product Filter */}
+                  {adsHistoryMode === 'page' ? (
+                    <>
+                      <label className={labelClass}>เลือกเพจ</label>
+                      <MultiSelectPageFilter
+                        pages={(hasSystemAccess
+                          ? pages
+                          : userAccessiblePages
+                        ).map((page) => ({
+                          id: page.id,
+                          name: page.name,
+                          platform: page.platform,
+                          active: page.active,
+                        }))}
+                        selectedPages={adsHistorySelectedPages}
+                        onChange={setAdsHistorySelectedPages}
+                        showInactivePages={showInactivePagesAdsHistory}
+                        onToggleInactivePages={setShowInactivePagesAdsHistory}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label className={labelClass}>เลือกสินค้า</label>
+                      <MultiSelectProductFilter
+                        products={products.map((p) => ({
+                          id: p.id,
+                          name: p.name,
+                          sku: p.sku
+                        }))}
+                        selectedProducts={adsHistorySelectedProducts}
+                        onChange={setAdsHistorySelectedProducts}
+                      />
+                    </>
+                  )}
                 </div>
 
                 {/* User Filter - Only for System Roles */}
