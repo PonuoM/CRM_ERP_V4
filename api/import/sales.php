@@ -90,13 +90,52 @@ $rows = $input['rows'];
 $summary = [
     'totalRows' => count($rows),
     'createdCustomers' => 0,
-    'updatedCustomers' => 0, // We generally don't update in import unless specified
+    'updatedCustomers' => 0,
     'createdOrders' => 0,
+    'updatedOrders' => 0,
+    'waitingBasket' => 0,
+    'caretakerConflicts' => 0,
     'notes' => []
 ];
 
-// 1. Group Rows
-$grouped = []; // orderId => { rows: [], firstIndex: int }
+// ========================================
+// PRE-VALIDATION: ตรวจสอบ salespersonId ก่อน Process
+// ========================================
+$allSalespersonIds = [];
+foreach ($rows as $index => $row) {
+    $spId = sanitize_value($row['salespersonId'] ?? null);
+    $rowNum = $index + 2; // +2 for header row and 0-index
+    
+    if (!$spId) {
+        json_response([
+            'error' => 'VALIDATION_ERROR',
+            'message' => "แถวที่ $rowNum: กรุณาระบุรหัสพนักงานขาย ห้ามปล่อยว่าง"
+        ], 400);
+    }
+    $allSalespersonIds[$spId] = $rowNum;
+}
+
+// ตรวจสอบว่า salesperson IDs ทั้งหมดมีในบริษัทหรือไม่
+$validSalespersons = [];
+foreach (array_keys($allSalespersonIds) as $spId) {
+    $uStmt = $pdo->prepare("SELECT id, username, role FROM users WHERE (username = ? OR id = ?) AND company_id = ?");
+    $uStmt->execute([$spId, $spId, $user['company_id']]);
+    $foundUser = $uStmt->fetch();
+    
+    if (!$foundUser) {
+        $rowNum = $allSalespersonIds[$spId];
+        json_response([
+            'error' => 'VALIDATION_ERROR',
+            'message' => "ไม่พบรหัสพนักงาน '$spId' (แถวที่ $rowNum) ในบริษัทท่าน โปรดตรวจสอบแล้วอัพโหลดใหม่อีกครั้ง"
+        ], 400);
+    }
+    $validSalespersons[$spId] = $foundUser;
+}
+
+// ========================================
+// 1. Group Rows by Order
+// ========================================
+$grouped = [];
 $currentAutoOrderId = null;
 $currentAutoGroupCriteria = null;
 
@@ -109,26 +148,22 @@ foreach ($rows as $index => $row) {
         $currentAutoGroupCriteria = null;
     } else {
         $rowPhone = sanitize_value($row['customerPhone'] ?? null);
-        $normPhone = normalize_phone($rowPhone); // Use numbers only for grouping check
+        $normPhone = normalize_phone($rowPhone);
         
         $rowDate = sanitize_value($row['saleDate'] ?? null);
-        // Normalize date to Ymd or similar for comparison
         $normDate = null;
         if ($rowDate) {
             $safeDate = str_replace('/', '-', $rowDate);
             $ts = strtotime($safeDate);
             if ($ts) $normDate = date('Ymd', $ts);
         }
-        if (!$normDate) $normDate = date('Ymd'); // Fallback or empty
+        if (!$normDate) $normDate = date('Ymd');
 
-        // Check against current criteria
         if ($currentAutoOrderId && $currentAutoGroupCriteria && 
             $currentAutoGroupCriteria['phone'] === $normPhone && 
             $currentAutoGroupCriteria['date'] === $normDate) {
             $orderId = $currentAutoOrderId;
         } else {
-            // New Group
-            // ID Generation
             $datePart = $normDate; 
             $seq = str_pad((string)($index + 1), 6, '0', STR_PAD_LEFT);
             $orderId = "{$datePart}-{$seq}EXTERNAL";
@@ -152,31 +187,45 @@ while ($p = $stmt->fetch()) {
     $products[] = $p;
 }
 
+// ========================================
 // 2. Process Groups
+// ========================================
 foreach ($grouped as $orderId => $group) {
     $orderRows = $group['rows'];
     $first = $orderRows[0];
     
-    // Resolve Salesperson / Assigned To
-    $assignedTo = $user['id']; 
+    // Get salesperson info (already validated)
     $spId = sanitize_value($first['salespersonId'] ?? null);
-    $resolvedAssignedTo = $assignedTo;
+    $salesperson = $validSalespersons[$spId];
+    $salespersonId = $salesperson['id'];
+    $salespersonRole = $salesperson['role'];
     
-    // Default bucket logic
-    $bucketType = 'assigned'; 
-
-    if ($spId) {
-        $uStmt = $pdo->prepare("SELECT id FROM users WHERE (username = ? OR id = ?) AND company_id = ?");
-        $uStmt->execute([$spId, $spId, $user['company_id']]);
-        $foundU = $uStmt->fetch();
-        if ($foundU) {
-            $resolvedAssignedTo = $foundU['id'];
+    // Check if Telesale role
+    $isTelesaleRole = in_array($salespersonRole, ['Telesale', 'Supervisor Telesale']);
+    
+    // Get caretaker ID if specified - MUST be Telesale role to accept
+    $caretakerId = sanitize_value($first['caretakerId'] ?? null);
+    $caretakerIsTelesale = false;
+    
+    if ($caretakerId) {
+        // Find caretaker and check role
+        $cStmt = $pdo->prepare("SELECT id, role FROM users WHERE (username = ? OR id = ?) AND company_id = ?");
+        $cStmt->execute([$caretakerId, $caretakerId, $user['company_id']]);
+        $foundC = $cStmt->fetch();
+        
+        if ($foundC) {
+            // Only accept if caretaker is Telesale/Supervisor Telesale
+            if (in_array($foundC['role'], ['Telesale', 'Supervisor Telesale'])) {
+                $caretakerId = $foundC['id'];
+                $caretakerIsTelesale = true;
+            } else {
+                // Not Telesale - ignore caretaker field
+                $caretakerId = null;
+            }
+        } else {
+            $caretakerId = null;
         }
-    } else {
-         // Fallback or leave as user default
     }
-    
-    $bucketType = $resolvedAssignedTo ? 'assigned' : 'ready';
 
     // --- Step A: Customer ---
     $customerNameStr = (string)sanitize_value($first['customerName'] ?? '');
@@ -226,16 +275,95 @@ foreach ($grouped as $orderId => $group) {
     }
     
     // Ensure Customer Exists
-    // Check again
-    $stmt = $pdo->prepare("SELECT * FROM customers WHERE customer_ref_id = ? AND company_id = ?");
-    $stmt->execute([$customerRefId, $user['company_id']]);
+    // Check by phone first
+    $stmt = $pdo->prepare("SELECT * FROM customers WHERE phone = ? AND company_id = ?");
+    $stmt->execute([$phone, $user['company_id']]);
     $existingCustomer = $stmt->fetch();
     
-    $customerPk = null;
+    // If not found, check by ref ID
+    if (!$existingCustomer && $customerRefId) {
+        $stmt = $pdo->prepare("SELECT * FROM customers WHERE customer_ref_id = ? AND company_id = ?");
+        $stmt->execute([$customerRefId, $user['company_id']]);
+        $existingCustomer = $stmt->fetch();
+    }
     
-    if (!$existingCustomer) {
-        // Create
+    $customerPk = null;
+    $nowStr = date('Y-m-d H:i:s');
+    $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
+    
+    // ========================================
+    // ROLE-BASED ASSIGNMENT LOGIC
+    // ========================================
+    $finalAssignedTo = null;
+    
+    if ($existingCustomer) {
+        // ลูกค้ามีอยู่แล้ว
+        $customerPk = $existingCustomer['customer_id'];
+        $currentAssignedTo = $existingCustomer['assigned_to'];
+        $currentBucketType = $existingCustomer['bucket_type'];
+        
+        if ($isTelesaleRole) {
+            // Telesale: ตรวจสอบสถานะลูกค้า
+            if ($currentAssignedTo && $currentBucketType === 'assigned') {
+                // มีผู้ดูแลแล้ว → ไม่ย้าย (รักษาสิทธิ์คนเดิม)
+                $finalAssignedTo = $currentAssignedTo;
+                // ไม่ต้องอัพเดท customer
+            } else if (in_array($currentBucketType, ['ready', 'waiting'])) {
+                // อยู่ในตะกร้า → ดึงออก + assign ให้พนักงานขาย
+                $finalAssignedTo = $salespersonId;
+                $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
+                $pdo->prepare($updateSql)->execute([$salespersonId, $nowStr, $expireDate, $customerPk]);
+                $summary['updatedCustomers']++;
+            } else {
+                // สถานะอื่นๆ หรือ null → assign ให้พนักงานขาย
+                $finalAssignedTo = $salespersonId;
+                $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
+                $pdo->prepare($updateSql)->execute([$salespersonId, $nowStr, $expireDate, $customerPk]);
+                $summary['updatedCustomers']++;
+            }
+        } else {
+            // Role อื่นๆ
+            if ($caretakerId) {
+                // มีผู้ดูแลระบุมา → assign ตาม
+                $finalAssignedTo = $caretakerId;
+                if ($currentAssignedTo != $caretakerId) {
+                    $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
+                    $pdo->prepare($updateSql)->execute([$caretakerId, $nowStr, $expireDate, $customerPk]);
+                    $summary['updatedCustomers']++;
+                }
+            } else {
+                // ไม่มีผู้ดูแล → ส่งเข้าตะกร้าพร้อมแจก (ถ้ายังไม่มีผู้ดูแล)
+                if (!$currentAssignedTo) {
+                    $finalAssignedTo = null;
+                    $summary['waitingBasket']++;
+                } else {
+                    $finalAssignedTo = $currentAssignedTo;
+                }
+            }
+        }
+    } else {
+        // ลูกค้าใหม่ → สร้าง
         try {
+            // Determine assigned_to for new customer
+            if ($isTelesaleRole) {
+                $finalAssignedTo = $salespersonId;
+            } else if ($caretakerId) {
+                $finalAssignedTo = $caretakerId;
+            } else {
+                $finalAssignedTo = null; // ตะกร้าพร้อมแจก
+                $summary['waitingBasket']++;
+            }
+            
+            // Generate ref ID if not set
+            if (!$customerRefId) {
+                $customerRefId = "CUS-{$phone}-{$user['company_id']}";
+                $chk = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE customer_ref_id = ?");
+                $chk->execute([$customerRefId]);
+                if ($chk->fetchColumn() > 0) {
+                    $customerRefId = "CUS-{$phone}-{$user['company_id']}-" . time();
+                }
+            }
+            
             $insertSql = "INSERT INTO customers (
                 customer_ref_id, first_name, last_name, phone, email, 
                 street, subdistrict, district, province, postal_code,
@@ -243,10 +371,6 @@ foreach ($grouped as $orderId => $group) {
                 lifecycle_status, behavioral_status, grade, total_purchases
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
-            $nowStr = date('Y-m-d H:i:s');
-            $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
-            
-            // address parts
             $addr = sanitize_value($first['address'] ?? null);
             $sub = sanitize_value($first['subdistrict'] ?? null);
             $dist = sanitize_value($first['district'] ?? null);
@@ -258,10 +382,10 @@ foreach ($grouped as $orderId => $group) {
             $stmtIns->execute([
                 $customerRefId, $customerFirstName, $customerLastName, $phone, $email,
                 $addr, $sub, $dist, $prov, $zip,
-                $user['company_id'], $resolvedAssignedTo, 
-                $nowStr, // date_assigned (req: current datetime)
+                $user['company_id'], $finalAssignedTo, 
+                $nowStr, // date_assigned - always set (DB requires NOT NULL)
                 $nowStr, // date_registered
-                $expireDate, // ownership_expires
+                $finalAssignedTo ? $expireDate : null, // ownership_expires only if assigned
                 'New', // lifecycle_status
                 'Cold', 'Standard', 0
             ]);
@@ -271,8 +395,6 @@ foreach ($grouped as $orderId => $group) {
             $summary['notes'][] = "Order $orderId: Failed to create customer $customerRefId: " . $e->getMessage();
             continue;
         }
-    } else {
-        $customerPk = $existingCustomer['customer_id'];
     }
     
     // --- Step B: Check Order ---
@@ -371,7 +493,7 @@ foreach ($grouped as $orderId => $group) {
             ?, ?, ?
         )";
         
-        $creatorId = $resolvedAssignedTo ?: $user['id']; 
+        $creatorId = $salespersonId; 
         $recipFirst = sanitize_value($first['recipientFirstName'] ?? null) ?: $customerFirstName;
         $recipLast = sanitize_value($first['recipientLastName'] ?? null) ?: $customerLastName;
         

@@ -29,7 +29,7 @@ api/vendor/*
 api/google-credentials.json
 /src/generated/prisma
 uploads/*
-# exemple_import/*
+exemple_import/*
 host
 host_old
 !scripts/host

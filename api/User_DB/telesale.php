@@ -48,17 +48,10 @@ try {
         $stmtTotal->execute([$companyId, $userId]);
         $totalCustomers = (int)$stmtTotal->fetchColumn();
         
-        // Get grade distribution
+        // Get grade distribution - use actual grade column from database
         $stmtGrades = $pdo->prepare("
             SELECT 
-                CASE 
-                    WHEN total_purchases >= 100000 THEN 'A+'
-                    WHEN total_purchases >= 50000 THEN 'A'
-                    WHEN total_purchases >= 20000 THEN 'B'
-                    WHEN total_purchases >= 5000 THEN 'C'
-                    WHEN total_purchases > 0 THEN 'D'
-                    ELSE 'Unknown'
-                END as grade,
+                COALESCE(NULLIF(TRIM(grade), ''), 'Unknown') as grade,
                 COUNT(*) as count
             FROM customers
             WHERE company_id = ?
@@ -80,7 +73,13 @@ try {
         
         // Fill in actual counts
         foreach ($gradeRows as $row) {
-            $gradeDistribution[$row['grade']] = (int)$row['count'];
+            $grade = $row['grade'];
+            if (isset($gradeDistribution[$grade])) {
+                $gradeDistribution[$grade] = (int)$row['count'];
+            } else {
+                // Handle any unexpected grades by adding to Unknown
+                $gradeDistribution['Unknown'] += (int)$row['count'];
+            }
         }
         
         $result[] = [

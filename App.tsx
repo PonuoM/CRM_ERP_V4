@@ -3924,6 +3924,14 @@ const App: React.FC = () => {
           : c,
       ),
     );
+
+    // Also update viewingCustomerData to reflect changes immediately in CustomerDetailPage
+    setViewingCustomerData((prev) =>
+      prev && prev.id === updatedCustomer.id
+        ? { ...updatedCustomer, grade: resolvedGrade }
+        : prev
+    );
+
     closeModal();
   };
 

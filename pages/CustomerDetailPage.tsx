@@ -431,10 +431,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     ? customerCounts?.[currentOwnerUser.id] ?? 0
     : null;
 
-  const currentOwnerName =
-    currentOwnerCustomerCount != null && currentOwnerBaseName !== "-"
-      ? `${currentOwnerBaseName} (${currentOwnerCustomerCount} ลูกค้า)`
-      : currentOwnerBaseName;
+  const currentOwnerName = currentOwnerBaseName;
 
   const canChangeOwner =
     Boolean(onChangeOwner) && filteredEligibleOwners.length > 0;
@@ -473,8 +470,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
 
   const formatOwnerOption = (candidate: User) => {
     const fullName = `${candidate.firstName} ${candidate.lastName}`.trim();
-    const count = customerCounts?.[candidate.id] ?? 0;
-    return `${fullName} (${count} ลูกค้า)`;
+    return fullName;
   };
 
   useEffect(() => {

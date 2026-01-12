@@ -423,7 +423,7 @@ const CustomerTable: React.FC<CustomerTableProps> = (props) => {
                   >
                     <td className="px-6 py-4">
                       {new Date(customer.dateAssigned).toLocaleDateString(
-                        "th-TH",
+                        "en-GB",
                       )}
                     </td>
                     <td className="px-6 py-4">

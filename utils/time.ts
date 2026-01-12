@@ -21,9 +21,10 @@ export function getRemainingTimeRounded(expiryDate: string): { text: string; col
 
 /**
  * Format date and time string for Thailand timezone (UTC+7 / Asia/Bangkok)
+ * Uses CE year format (ค.ศ.) for consistency
  * @param dateString - ISO date string or date string from API
  * @param options - Intl.DateTimeFormatOptions
- * @returns Formatted date/time string in Thai locale with Asia/Bangkok timezone
+ * @returns Formatted date/time string with Asia/Bangkok timezone in CE year format
  */
 export function formatThaiDateTime(
   dateString: string | Date | null | undefined,
@@ -35,10 +36,14 @@ export function formatThaiDateTime(
     const date = dateString instanceof Date ? dateString : new Date(dateString);
     if (Number.isNaN(date.getTime())) return "-";
 
-    return date.toLocaleString("th-TH", {
+    // Use en-GB locale for CE year format (dd/mm/yyyy)
+    return date.toLocaleString("en-GB", {
       timeZone: "Asia/Bangkok",
-      dateStyle: options?.dateStyle || "short",
-      timeStyle: options?.timeStyle || "medium",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: options?.timeStyle ? "2-digit" : undefined,
+      minute: options?.timeStyle ? "2-digit" : undefined,
       ...options,
     });
   } catch {

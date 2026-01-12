@@ -97,13 +97,44 @@ const FilterDropdown: React.FC<{ title: string; options: { id: string | number, 
   );
 };
 
+// Format date/time in Thailand timezone with CE year (ค.ศ.)
 const formatThaiDateTime = (date: Date | undefined | null) => {
   if (!date || Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('th-TH', {
+  // Use en-GB locale with Thailand timezone to get CE year format
+  return date.toLocaleString('en-GB', {
     timeZone: 'Asia/Bangkok',
-    dateStyle: 'medium',
-    timeStyle: 'short'
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   });
+};
+
+// Format date only in Thailand timezone with CE year (ค.ศ.)
+const formatThaiDate = (date: Date | undefined | null) => {
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+};
+
+// Get current time in Thailand timezone (UTC+7)
+const getThailandNow = (): Date => {
+  return new Date();
+};
+
+// Get midnight (00:00) of today in Thailand timezone
+const getThailandMidnight = (): Date => {
+  const now = new Date();
+  // Create a date string in Thailand timezone, then parse it back
+  const thaiDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }); // YYYY-MM-DD format
+  // Parse as midnight in local time (which for server might differ, but we use the date)
+  const midnight = new Date(thaiDateStr + 'T00:00:00+07:00');
+  return midnight;
 };
 
 // Helper function to calculate days until expiration
@@ -184,7 +215,7 @@ const getDoReason = (customer: Customer, appointments: Appointment[] = [], activ
     const nextAppointment = upcomingAppointments[0];
     const appointmentDate = new Date(nextAppointment.date);
     const daysUntil = Math.ceil((appointmentDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return `มีนัดหมายใน ${daysUntil} วัน (${appointmentDate.toLocaleDateString('th-TH')})`;
+    return `มีนัดหมายใน ${daysUntil} วัน (${formatThaiDate(appointmentDate)})`;
   }
 
   // Check for expiring ownership (within 5 days)
@@ -586,15 +617,18 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     };
 
     userCustomers.forEach((customer) => {
-      // 1) Pending appointments (Do)
+      // 1) Pending appointments (Do) - Use Thailand midnight for accurate filtering
+      const todayMidnight = getThailandMidnight();
+      const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
       const hasPendingAppt = safeAppointments.some(
         (appt) => {
           const matches = String(appt.customerId) === String(customer.id) ||
             String(appt.customerId) === String(customer.pk);
+          const apptDate = new Date(appt.date);
           return matches &&
             appt.status !== 'เสร็จสิ้น' &&
-            new Date(appt.date) <= new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000) &&
-            new Date(appt.date) >= new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            apptDate <= twoDaysFromNow &&
+            apptDate >= todayMidnight;
         },
       );
       if (hasPendingAppt) {
@@ -618,6 +652,14 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
       const isDaily = customer.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
       const isNew = customer.lifecycleStatus === CustomerLifecycleStatus.New;
       const isFollowUp = customer.lifecycleStatus === CustomerLifecycleStatus.FollowUp;
+
+      // NEW: Count FollowUp customers with followUpDate in range
+      if (isFollowUp && customer.followUpDate && !hasPendingAppt) {
+        const followUpTime = new Date(customer.followUpDate).getTime();
+        if (followUpTime >= todayMidnight.getTime() && followUpTime <= twoDaysFromNow.getTime()) {
+          counts.do++;
+        }
+      }
 
       if (isDaily || isNew) {
         let assignedTime = new Date(customer.dateAssigned).getTime();
@@ -737,15 +779,18 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
     // Build: customerId -> list of upcoming appointments
     const upcomingAppointmentMap = new Map<string, typeof safeAppointments>();
     const twoDaysFromNow = nowTime + 2 * 24 * 60 * 60 * 1000;
-    const oneDayAgo = nowTime - 24 * 60 * 60 * 1000;
+    // Use Thailand midnight (UTC+7) instead of 24 hours ago for more accurate filtering
+    const todayMidnightTime = getThailandMidnight().getTime();
     for (const appt of safeAppointments) {
       if (appt.status === 'เสร็จสิ้น') continue;
       const apptTime = new Date(appt.date).getTime();
-      if (apptTime > twoDaysFromNow || apptTime < oneDayAgo) continue;
+      // Include appointments from today midnight to 2 days from now
+      if (apptTime > twoDaysFromNow || apptTime < todayMidnightTime) continue;
       const cid = String(appt.customerId);
       if (!upcomingAppointmentMap.has(cid)) upcomingAppointmentMap.set(cid, []);
       upcomingAppointmentMap.get(cid)!.push(appt);
     }
+
 
     // O(1) lookup function
     const hasAnyActivitySince = (customerId: string, since: number): boolean => {
@@ -781,6 +826,14 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
           const isFollowUp = c.lifecycleStatus === CustomerLifecycleStatus.FollowUp;
 
+          // NEW: Include FollowUp customers with followUpDate in range (today to 2 days from now)
+          if (isFollowUp && c.followUpDate) {
+            const followUpTime = new Date(c.followUpDate).getTime();
+            if (followUpTime >= todayMidnightTime && followUpTime <= twoDaysFromNow) {
+              return true;
+            }
+          }
+
           if (isDaily || isNew) {
             let assignedTime = new Date(c.dateAssigned).getTime();
             if (isNaN(assignedTime)) assignedTime = 0; // Fallback to 0 if invalid, so ANY activity counts
@@ -812,22 +865,36 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
             const daysUntil = Math.ceil((apptDate.getTime() - nowTime) / (1000 * 60 * 60 * 24));
 
             if (daysUntil <= 0) {
-              return { ...c, doReason: `📅 นัดหมายวันนี้ (${apptDate.toLocaleDateString('th-TH')})` };
+              return { ...c, doReason: `📅 นัดหมายวันนี้ (${formatThaiDate(apptDate)})` };
             } else if (daysUntil === 1) {
-              return { ...c, doReason: `📅 นัดหมายพรุ่งนี้ (${apptDate.toLocaleDateString('th-TH')})` };
+              return { ...c, doReason: `📅 นัดหมายพรุ่งนี้ (${formatThaiDate(apptDate)})` };
             } else {
-              return { ...c, doReason: `📅 มีนัดหมายอีก ${daysUntil} วัน (${apptDate.toLocaleDateString('th-TH')})` };
+              return { ...c, doReason: `📅 มีนัดหมายอีก ${daysUntil} วัน (${formatThaiDate(apptDate)})` };
             }
           }
 
           const isDaily = c.lifecycleStatus === CustomerLifecycleStatus.DailyDistribution;
           const isNew = c.lifecycleStatus === CustomerLifecycleStatus.New;
+          const isFollowUp = c.lifecycleStatus === CustomerLifecycleStatus.FollowUp;
           const assignedDate = new Date(c.dateAssigned);
           // Check for valid date before calculating daysSinceAssigned
           const assignedTime = assignedDate.getTime();
           const daysSinceAssigned = !isNaN(assignedTime)
             ? Math.floor((nowTime - assignedTime) / (1000 * 60 * 60 * 24))
             : 0;
+
+          // Handle FollowUp customers with followUpDate
+          if (isFollowUp && c.followUpDate) {
+            const followUpDate = new Date(c.followUpDate);
+            const daysUntilFollowUp = Math.ceil((followUpDate.getTime() - nowTime) / (1000 * 60 * 60 * 24));
+            if (daysUntilFollowUp <= 0) {
+              return { ...c, doReason: `📞 ติดตามวันนี้ (${formatThaiDate(followUpDate)})` };
+            } else if (daysUntilFollowUp === 1) {
+              return { ...c, doReason: `📞 ติดตามพรุ่งนี้ (${formatThaiDate(followUpDate)})` };
+            } else {
+              return { ...c, doReason: `📞 ติดตามอีก ${daysUntilFollowUp} วัน (${formatThaiDate(followUpDate)})` };
+            }
+          }
 
           if (isDaily) {
             if (daysSinceAssigned === 0) {

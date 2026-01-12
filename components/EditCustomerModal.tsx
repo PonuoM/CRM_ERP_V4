@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Customer } from '../types';
 import Modal from './Modal';
 import { Facebook, MessageSquare, Phone } from 'lucide-react';
+import resolveApiBasePath from '../utils/apiBasePath';
 
 interface EditCustomerModalProps {
   customer: Customer;
@@ -46,7 +47,7 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
     const loadProvinces = async () => {
       setAddressLoading(true);
       try {
-        const response = await fetch('/api/Address_DB/get_address_data.php?endpoint=provinces');
+        const response = await fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=provinces`);
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
@@ -81,7 +82,7 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   // Load districts when province is selected
   useEffect(() => {
     if (selectedProvince) {
-      fetch(`/api/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
+      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=districts&id=${selectedProvince}`)
         .then(response => response.json())
         .then(data => {
           if (data.success) {
@@ -110,7 +111,7 @@ const EditCustomerModal: React.FC<EditCustomerModalProps> = ({ customer, onSave,
   // Load sub-districts when district is selected
   useEffect(() => {
     if (selectedDistrict) {
-      fetch(`/api/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
+      fetch(`${resolveApiBasePath()}/Address_DB/get_address_data.php?endpoint=sub_districts&id=${selectedDistrict}`)
         .then(response => response.json())
         .then(data => {
           if (data.success) {

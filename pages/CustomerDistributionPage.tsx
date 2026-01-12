@@ -62,6 +62,7 @@ const DateFilterButton: React.FC<{
 );
 
 const gradeOrder = [
+  CustomerGrade.APlus,
   CustomerGrade.A,
   CustomerGrade.B,
   CustomerGrade.C,
@@ -1422,17 +1423,59 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
                     {customerStats.totalCustomers.toLocaleString()}
                   </p>
                 </div>
-                {["A", "B", "C", "D"].map((grade) => (
-                  <div
-                    key={grade}
-                    className="bg-gray-50 border border-gray-200 rounded-lg p-4"
-                  >
-                    <p className="text-sm text-gray-600 font-medium">เกรด {grade}</p>
-                    <p className="text-2xl font-bold text-gray-700 mt-1">
-                      {(customerStats.grades[grade] ?? 0).toLocaleString()}
-                    </p>
-                  </div>
-                ))}
+                {[
+                  { grade: "A", criteria: "ยอดซื้อ ≥ 50,000 บาท", color: "from-amber-500 to-orange-500" },
+                  { grade: "B", criteria: "ยอดซื้อ 20,000 - 49,999 บาท", color: "from-blue-500 to-cyan-500" },
+                  { grade: "C", criteria: "ยอดซื้อ 5,000 - 19,999 บาท", color: "from-green-500 to-emerald-500" },
+                  { grade: "D", criteria: "ยอดซื้อ < 5,000 บาท หรือยังไม่ซื้อ", color: "from-gray-400 to-gray-500" }
+                ].map(({ grade, criteria, color }) => {
+                  // For grade A, combine A and A+ counts
+                  const gradeCount = grade === "A"
+                    ? (customerStats.grades["A"] ?? 0) + (customerStats.grades["A+"] ?? 0)
+                    : (customerStats.grades[grade] ?? 0);
+                  const aPlusCount = grade === "A" ? (customerStats.grades["A+"] ?? 0) : 0;
+
+                  return (
+                    <div
+                      key={grade}
+                      className="bg-gray-50 border border-gray-200 rounded-lg p-4 relative group"
+                    >
+                      <p className="text-sm text-gray-600 font-medium flex items-center">
+                        เกรด {grade}
+                        {grade === "A" && aPlusCount > 0 && (
+                          <span className="text-xs text-amber-600 ml-1">(A+ {aPlusCount})</span>
+                        )}
+                        <span className="ml-1 text-gray-400 cursor-help relative">
+                          <svg className="w-3.5 h-3.5 inline hover:text-blue-500 transition-colors" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                          {/* Beautiful tooltip popup */}
+                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-56">
+                            <div className={`bg-gradient-to-r ${color} rounded-lg shadow-lg p-3 text-white`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="bg-white/20 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">{grade}</span>
+                                <span className="font-semibold">เกรด {grade}</span>
+                              </div>
+                              {grade === "A" && (
+                                <div className="text-xs mb-1 bg-white/10 rounded px-2 py-1">
+                                  <span className="font-semibold">A+:</span> ≥ 100,000 บาท
+                                </div>
+                              )}
+                              <div className="text-xs">
+                                <span className="font-semibold">{grade === "A" ? "A:" : "เงื่อนไข:"}</span> {criteria}
+                              </div>
+                            </div>
+                            {/* Arrow */}
+                            <div className={`absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent bg-gradient-to-r ${color}`} style={{ borderTopColor: grade === "A" ? "#f59e0b" : grade === "B" ? "#3b82f6" : grade === "C" ? "#22c55e" : "#9ca3af" }}></div>
+                          </div>
+                        </span>
+                      </p>
+                      <p className="text-2xl font-bold text-gray-700 mt-1">
+                        {gradeCount.toLocaleString()}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
               {/* Basket Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
