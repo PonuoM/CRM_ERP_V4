@@ -487,15 +487,29 @@ function ensure_user_pancake_mapping_table(PDO $pdo): void {
 
 function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
     ensure_user_pancake_mapping_table($pdo);
+    
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM user_pancake_mapping WHERE id = ?');
-                $stmt->execute([$id]);
+                // Ensure the mapping belongs to a user in the same company
+                $stmt = $pdo->prepare('SELECT m.* FROM user_pancake_mapping m 
+                                       JOIN users u ON m.id_user = u.id 
+                                       WHERE m.id = ? AND u.company_id = ?');
+                $stmt->execute([$id, $user['company_id']]);
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $stmt = $pdo->query('SELECT * FROM user_pancake_mapping ORDER BY created_at DESC');
+                $stmt = $pdo->prepare('SELECT m.* FROM user_pancake_mapping m 
+                                       JOIN users u ON m.id_user = u.id 
+                                       WHERE u.company_id = ? 
+                                       ORDER BY m.created_at DESC');
+                $stmt->execute([$user['company_id']]);
                 json_response($stmt->fetchAll());
             }
             break;
@@ -506,6 +520,16 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
             if (!$idUser || $idPanake === null || $idPanake === '') {
                 json_response(['error' => 'VALIDATION_FAILED', 'message' => 'id_user and id_panake are required'], 400);
             }
+            
+            // Validate target user belongs to same company
+            $checkUser = $pdo->prepare('SELECT company_id FROM users WHERE id = ?');
+            $checkUser->execute([$idUser]);
+            $targetUserCompany = $checkUser->fetchColumn();
+            
+            if ($targetUserCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Cannot assign mapping to user from another company'], 403);
+            }
+            
             try {
                 $sql = 'INSERT INTO user_pancake_mapping (id_user, id_panake) VALUES (?, ?) 
                         ON DUPLICATE KEY UPDATE id_panake = VALUES(id_panake), created_at = NOW()';
@@ -521,10 +545,32 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
         case 'PUT':
         case 'PATCH':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            
+            // Verify ownership of the mapping to be updated
+            $checkMapping = $pdo->prepare('SELECT u.company_id FROM user_pancake_mapping m JOIN users u ON m.id_user = u.id WHERE m.id = ?');
+            $checkMapping->execute([$id]);
+            $mappingCompany = $checkMapping->fetchColumn();
+            
+            if (!$mappingCompany || $mappingCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Mapping not found or access denied'], 403);
+            }
+            
             $in = json_input();
             $fields = [];
             $params = [];
-            if (array_key_exists('id_user', $in)) { $fields[] = 'id_user = ?'; $params[] = (int)$in['id_user']; }
+            
+            // If updating id_user, ensure new user is in same company
+            if (array_key_exists('id_user', $in)) { 
+                $newIdUser = (int)$in['id_user'];
+                $checkNewUser = $pdo->prepare('SELECT company_id FROM users WHERE id = ?');
+                $checkNewUser->execute([$newIdUser]);
+                if ($checkNewUser->fetchColumn() != $user['company_id']) {
+                    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Target user is not in your company'], 403);
+                }
+                $fields[] = 'id_user = ?'; 
+                $params[] = $newIdUser; 
+            }
+            
             if (array_key_exists('id_panake', $in)) { $fields[] = 'id_panake = ?'; $params[] = (string)$in['id_panake']; }
             if (empty($fields)) json_response(['ok' => true]);
             $sql = 'UPDATE user_pancake_mapping SET ' . implode(', ', $fields) . ', created_at = created_at WHERE id = ?';
@@ -539,6 +585,16 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
             break;
         case 'DELETE':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            
+            // Verify ownership
+            $checkMapping = $pdo->prepare('SELECT u.company_id FROM user_pancake_mapping m JOIN users u ON m.id_user = u.id WHERE m.id = ?');
+            $checkMapping->execute([$id]);
+            $mappingCompany = $checkMapping->fetchColumn();
+            
+            if (!$mappingCompany || $mappingCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Mapping not found or access denied'], 403);
+            }
+            
             $stmt = $pdo->prepare('DELETE FROM user_pancake_mapping WHERE id = ?');
             $stmt->execute([(int)$id]);
             json_response(['ok' => true]);
