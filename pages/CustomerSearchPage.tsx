@@ -66,6 +66,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     try {
       // Fetch specifically for this customer by phone (most reliable unique key exposed)
       const res = await listOrders({
+        companyId: currentUser?.companyId,
         customerPhone: customer.phone,
         pageSize: 100 // Reasonable limit for history
       });
@@ -85,7 +86,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
     } finally {
       setLoadingOrders(false);
     }
-  }, []);
+  }, [currentUser?.companyId]);
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -125,7 +126,7 @@ const CustomerSearchPage: React.FC<CustomerSearchPageProps> = ({
       } else {
         // No customer found by name/phone, try searching by Order ID
         try {
-          const res = await listOrders({ orderId: searchTerm.trim() });
+          const res = await listOrders({ orderId: searchTerm.trim(), companyId: companyId });
           if (res.ok && Array.isArray(res.orders) && res.orders.length > 0) {
             const order = res.orders[0]; // Assuming unique order ID matches or taking first
             // Search for the customer by phone from the order

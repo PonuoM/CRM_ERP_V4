@@ -2405,9 +2405,17 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $o = get_order($pdo, $id);
                 $o ? json_response($o) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $companyId = $_GET['companyId'] ?? null;
+                // Security: Enforce company_id from authenticated user for non-SuperAdmin
+                $user = get_authenticated_user($pdo);
+                $authCompanyId = $user['company_id'] ?? null;
+                $isSuperAdmin = ($user['role'] ?? '') === 'SuperAdmin';
                 
-                // Pagination parameters
+                if (!$isSuperAdmin && $authCompanyId) {
+                    // Override any user-supplied companyId with authenticated user's company
+                    $companyId = $authCompanyId;
+                } else {
+                    $companyId = $_GET['companyId'] ?? null;
+                }
                 $page = max(1, (int)($_GET['page'] ?? 1));
                 $pageSize = max(1, (int)($_GET['pageSize'] ?? 50));
                 $offset = ($page - 1) * $pageSize;
