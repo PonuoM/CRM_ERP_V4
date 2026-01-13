@@ -53,30 +53,24 @@ try {
         $grades[$key] = (int)$row['count'];
     }
 
+    require_once __DIR__ . '/distribution_helper.php';
+
     // 3. Get Basket Statistics
     
     // 3.1 ตะกร้ารอแจกทั่วไป (General Pool)
-    // Logic matches 'all' mode in bulk_distribute.php
-    $stmtWaitingDistribute = $pdo->prepare("
-        SELECT COUNT(*) 
-        FROM customers c
-        WHERE c.company_id = ? 
-        AND c.assigned_to IS NULL 
-        AND (c.is_blocked IS NULL OR c.is_blocked = 0)
-        AND (c.is_in_waiting_basket IS NULL OR c.is_in_waiting_basket = 0)
-        AND (c.last_follow_up_date IS NULL OR DATEDIFF(NOW(), c.last_follow_up_date) > 7)
-    ");
-    $stmtWaitingDistribute->execute([$companyId]);
+    $generalPoolParts = DistributionHelper::getGeneralPoolParts($companyId);
+    $stmtWaitingDistribute = $pdo->prepare("SELECT COUNT(*) FROM customers c {$generalPoolParts['join']} WHERE {$generalPoolParts['where']}");
+    $stmtWaitingDistribute->execute($generalPoolParts['params']);
     $waitingDistributeCount = (int)$stmtWaitingDistribute->fetchColumn();
 
     // 3.2 ตะกร้าพักรายชื่อ (Waiting Basket) - Total currently in basket
     // This is just a raw count of people in basket, regardless of time
     $stmtWaitingBasket = $pdo->prepare("
         SELECT COUNT(*) 
-        FROM customers 
-        WHERE company_id = ? 
-        AND is_in_waiting_basket = 1
-        AND (is_blocked IS NULL OR is_blocked = 0)
+        FROM customers c
+        WHERE c.company_id = ? 
+        AND c.is_in_waiting_basket = 1
+        AND (c.is_blocked IS NULL OR c.is_blocked = 0)
     ");
     $stmtWaitingBasket->execute([$companyId]);
     $waitingBasketCount = (int)$stmtWaitingBasket->fetchColumn();
@@ -84,66 +78,40 @@ try {
     // 3.3 ตะกร้าบล็อค (Blocked)
     $stmtBlocked = $pdo->prepare("
         SELECT COUNT(*) 
-        FROM customers 
-        WHERE company_id = ? 
-        AND is_blocked = 1
+        FROM customers c
+        WHERE c.company_id = ? 
+        AND c.is_blocked = 1
     ");
     $stmtBlocked->execute([$companyId]);
     $blockedCount = (int)$stmtBlocked->fetchColumn();
 
     // 4. Get New Sale Count
-    // Logic matches 'new_sale' mode in bulk_distribute.php
     $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7;
-    $stmtNewSale = $pdo->prepare("
-        SELECT COUNT(DISTINCT c.customer_id)
-        FROM customers c
-        JOIN orders o ON o.customer_id = c.customer_id
-        LEFT JOIN users u ON u.id = o.creator_id
-        WHERE c.company_id = ?
-          AND COALESCE(c.is_blocked,0) = 0
-          AND c.assigned_to IS NULL
-          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)
-          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')
-          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?
-    ");
-    $stmtNewSale->execute([$companyId, max(0, $freshDays)]);
+    $newSaleParts = DistributionHelper::getNewSaleParts($companyId, $freshDays);
+    // Note: new_sale query has GROUP BY, so we need COUNT(DISTINCT ...) or wrap in subquery. 
+    // Helper has groupBy 'GROUP BY c.customer_id'.
+    // Better to use COUNT(DISTINCT c.customer_id) and ignore Group By for the count query if possible, 
+    // OR use the helper's full query structure.
+    // The helper constructs for SELECT *, so it includes GROUP BY.
+    // Use simple COUNT(DISTINCT c.customer_id) is safer here as per original logic.
+    // BUT the helper returns specific joins.
+    // Let's use the parts.
+    // Original: SELECT COUNT(DISTINCT c.customer_id) ...
+    $sqlNewSale = "SELECT COUNT(DISTINCT c.customer_id) FROM customers c {$newSaleParts['join']} WHERE {$newSaleParts['where']}";
+    $stmtNewSale = $pdo->prepare($sqlNewSale);
+    $stmtNewSale->execute($newSaleParts['params']);
     $newSaleCount = (int)$stmtNewSale->fetchColumn();
 
     // 5. Get Waiting Return Count (Ready to return from basket)
-    // Logic matches 'waiting_return' mode in bulk_distribute.php
-    $stmtWaitingReturn = $pdo->prepare("
-        SELECT COUNT(*)
-        FROM customers c
-        WHERE c.company_id = ?
-        AND COALESCE(c.is_blocked,0) = 0
-        AND c.is_in_waiting_basket = 1
-        AND c.waiting_basket_start_date IS NOT NULL
-        AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30
-        AND c.assigned_to IS NULL
-        AND (c.last_follow_up_date IS NULL OR DATEDIFF(NOW(), c.last_follow_up_date) > 7)
-    ");
-    $stmtWaitingReturn->execute([$companyId]);
+    $waitingReturnParts = DistributionHelper::getWaitingReturnParts($companyId);
+    $stmtWaitingReturn = $pdo->prepare("SELECT COUNT(*) FROM customers c {$waitingReturnParts['join']} WHERE {$waitingReturnParts['where']}");
+    $stmtWaitingReturn->execute($waitingReturnParts['params']);
     $waitingReturnCount = (int)$stmtWaitingReturn->fetchColumn();
 
     // 6. Get Stock Count
-    // Logic matches 'stock' mode in bulk_distribute.php
-    $stmtStock = $pdo->prepare("
-        SELECT COUNT(*)
-        FROM customers c
-        WHERE c.company_id = ?
-        AND c.assigned_to IS NULL
-        AND COALESCE(c.is_blocked,0) = 0
-        AND (c.is_in_waiting_basket = 0 OR (c.is_in_waiting_basket = 1 AND DATEDIFF(NOW(), c.waiting_basket_start_date) >= 30))
-        AND NOT EXISTS (
-            SELECT 1 FROM orders o
-            LEFT JOIN users u ON u.id = o.creator_id
-            WHERE o.customer_id = c.customer_id
-              AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)
-              AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')
-              AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= 7
-        )
-    ");
-    $stmtStock->execute([$companyId]);
+    $stockParts = DistributionHelper::getStockParts($companyId, $freshDays);
+    $stmtStock = $pdo->prepare("SELECT COUNT(*) FROM customers c {$stockParts['join']} WHERE {$stockParts['where']}");
+    $stmtStock->execute($stockParts['params']);
     $stockCount = (int)$stmtStock->fetchColumn();
 
     json_response([

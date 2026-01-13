@@ -1001,6 +1001,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     } else {
                         $t_list_start = microtime(true);
                         log_perf("handle_customers:list:START");
+                        require_once __DIR__ . '/customer/distribution_helper.php';
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
                     $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
@@ -1042,59 +1043,37 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         }
 
                         json_response($customers);
-                    } elseif (in_array($source, ['new_sale','waiting_return','stock'], true)) {
-                        // Source-specific pools
-                        $params = [];
+                    } elseif (in_array($source, ['new_sale','waiting_return','stock', 'all'], true)) {
+                        // Source-specific pools using shared helper
+                        $parts = [];
                         if ($source === 'new_sale') {
-                            $sql = "SELECT DISTINCT c.*\n"
-                                 . "FROM customers c\n"
-                                 . "JOIN orders o ON o.customer_id = c.customer_id\n"
-                                 . "LEFT JOIN users u ON u.id = o.creator_id\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.assigned_to IS NULL\n"
-                                 . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                                 . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                                 . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
-                            $params[] = max(0, $freshDays);
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC";
+                            $parts = DistributionHelper::getNewSaleParts($companyId, $freshDays, $q);
                         } elseif ($source === 'waiting_return') {
-                            $sql = "SELECT c.* FROM customers c\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.is_in_waiting_basket = 1\n"
-                                 . "  AND c.waiting_basket_start_date IS NOT NULL\n"
-                                 . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30\n"
-                                 . "  AND c.assigned_to IS NULL";
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY c.waiting_basket_start_date ASC";
-                        } else { // stock
-                            $sql = "SELECT c.* FROM customers c\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.assigned_to IS NULL\n"
-                                 . "  AND COALESCE(c.is_in_waiting_basket,0) = 0\n"
-                                 . "  AND NOT EXISTS (\n"
-                                 . "        SELECT 1 FROM orders o\n"
-                                 . "        LEFT JOIN users u ON u.id = o.creator_id\n"
-                                 . "        WHERE o.customer_id = c.customer_id\n"
-                                 . "          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                                 . "          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                                 . "          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?\n"
-                                 . "  )";
-                            $params[] = max(0, $freshDays);
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY c.date_assigned DESC";
+                            $parts = DistributionHelper::getWaitingReturnParts($companyId, $q);
+                        } elseif ($source === 'stock') {
+                            $parts = DistributionHelper::getStockParts($companyId, $freshDays, $q);
+                        } else { // all
+                            $parts = DistributionHelper::getGeneralPoolParts($companyId, $q);
+                        }
+
+                        $sql = "SELECT c.* FROM customers c " . $parts['join'] . " WHERE " . $parts['where'];
+                        if (!empty($parts['groupBy'])) {
+                            $sql .= " " . $parts['groupBy'];
+                        }
+                        $sql .= " " . $parts['orderBy'];
+                        
+                        $page = isset($_GET['page']) ? (int)$_GET['page'] : null;
+                        $limit = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 50);
+                        if ($limit <= 0) $limit = 50;
+                        
+                        $params = $parts['params'];
+
+                        // Apply pagination if requested
+                        if ($page !== null) {
+                            $offset = ($page - 1) * $limit;
+                            $sql .= " LIMIT ? OFFSET ?";
+                            $params[] = $limit;
+                            $params[] = $offset;
                         }
 
                         $stmt = $pdo->prepare($sql);

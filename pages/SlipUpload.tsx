@@ -1227,15 +1227,6 @@ const SlipUpload: React.FC = () => {
         {/* Tabs */}
         <div className="flex space-x-1 mb-4 border-b border-gray-200">
           <button
-            onClick={() => { setActiveTab("PayAfter"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
-            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "PayAfter"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            PayAfter (ชำระทีหลัง)
-          </button>
-          <button
             onClick={() => { setActiveTab("Transfer"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
             className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "Transfer"
               ? "text-blue-600 border-b-2 border-blue-600"
@@ -1252,6 +1243,15 @@ const SlipUpload: React.FC = () => {
               }`}
           >
             COD (เก็บเงินปลายทาง)
+          </button>
+          <button
+            onClick={() => { setActiveTab("PayAfter"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "PayAfter"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            PayAfter (รับสินค้าก่อนโอน)
           </button>
         </div>
         {/* Orders Table */}
