@@ -205,6 +205,27 @@ try {
   }
   */
 
+
+  // Check COD status and update if first slip
+  try {
+      $checkOrdStmt = $conn->prepare("SELECT payment_method FROM orders WHERE id = ?");
+      $checkOrdStmt->execute([$order_id]);
+      $pm = $checkOrdStmt->fetchColumn();
+
+      if ($pm === 'COD') {
+          $countSlipStmt = $conn->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+          $countSlipStmt->execute([$order_id]);
+          $existingSlips = (int)$countSlipStmt->fetchColumn();
+
+          if ($existingSlips === 0) {
+              $updOrdStmt = $conn->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
+              $updOrdStmt->execute([$order_id]);
+          }
+      }
+  } catch (Exception $e) {
+      // error_log("Error updating COD status: " . $e->getMessage());
+  }
+
   // Insert new order slip
   $amount = (int) $data["amount"];
   $transfer_date = $data["transfer_date"];
