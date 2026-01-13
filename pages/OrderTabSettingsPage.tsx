@@ -1,7 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../services/api';
-import { Save, Loader2, Settings, AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { Save, Loader2, Settings, AlertCircle, Plus, Trash2, X, CheckCircle } from 'lucide-react';
 import { User } from '../types';
+
+// MultiSelect Component
+const MultiSelect: React.FC<{
+    options: string[];
+    value: string[]; // Array of selected values
+    onChange: (selected: string[]) => void;
+    placeholder?: string;
+}> = ({ options, value, onChange, placeholder = "Select..." }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const toggleOption = (option: string) => {
+        const newValue = value.includes(option)
+            ? value.filter(v => v !== option)
+            : [...value, option];
+        onChange(newValue);
+    };
+
+    return (
+        <div className="relative w-full" ref={containerRef}>
+            <div
+                className="w-full min-h-[38px] p-2 border rounded-md text-sm bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 cursor-pointer flex flex-wrap gap-1 items-center"
+                onClick={() => setIsOpen(!isOpen)}
+            >
+                {value.length === 0 && <span className="text-gray-400">{placeholder}</span>}
+                {value.map(v => (
+                    <span key={v} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs flex items-center gap-1">
+                        {v}
+                        <X size={12} className="cursor-pointer hover:text-blue-900" onClick={(e) => { e.stopPropagation(); toggleOption(v); }} />
+                    </span>
+                ))}
+            </div>
+            {isOpen && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
+                    {options.map(opt => (
+                        <div
+                            key={opt}
+                            className={`px-3 py-2 cursor-pointer text-sm flex items-center gap-2 hover:bg-gray-50 ${value.includes(opt) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                            onClick={() => toggleOption(opt)}
+                        >
+                            <div className={`w-4 h-4 border rounded flex items-center justify-center ${value.includes(opt) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
+                                {value.includes(opt) && <CheckCircle size={12} className="text-white" />}
+                            </div>
+                            {opt}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 interface OrderTabSettingsPageProps {
     currentUser?: User | null;
@@ -29,7 +90,7 @@ const TABS = [
 ];
 
 const ORDER_STATUSES = [
-    '',
+    'ALL',
     'Pending',
     'AwaitingVerification',
     'Confirmed',
@@ -53,7 +114,7 @@ const PAYMENT_METHODS = [
 ];
 
 const PAYMENT_STATUSES = [
-    '',
+    'ALL',
     'Unpaid',
     'PendingVerification',
     'Verified',
@@ -66,10 +127,10 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
     const user = currentUser;
     const [rules, setRules] = useState<TabRule[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTabKey, setActiveTabKey] = useState(TABS[0].key);
+    const [activeTabKey, setActiveTabKey] = useState<string>(TABS[0].key);
 
-    // Matrix State: paymentMethod -> Array of { orderStatus, paymentStatus, ruleId }
-    const [matrix, setMatrix] = useState<Record<string, { orderStatus: string; paymentStatus: string; ruleId?: number }[]>>({});
+    // Matrix State: paymentMethod -> Array of { orderStatus: string[]; paymentStatus: string[] }
+    const [matrix, setMatrix] = useState<Record<string, { orderStatus: string[]; paymentStatus: string[] }[]>>({});
     const [saving, setSaving] = useState<boolean>(false);
 
     const fetchRules = async () => {
@@ -92,30 +153,60 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
 
     // Rebuild matrix when rules or activeTab changes
     useEffect(() => {
-        const newMatrix: Record<string, { orderStatus: string; paymentStatus: string; ruleId?: number }[]> = {};
+        const newMatrix: Record<string, { orderStatus: string[]; paymentStatus: string[] }[]> = {};
 
-        // Initialize with empry arrays
+        // Initialize with empty arrays
         PAYMENT_METHODS.forEach(pm => {
             newMatrix[pm] = [];
         });
 
-        // Fill from rules
-        if (rules) {
-            rules.filter(r => r.tab_key === activeTabKey).forEach(r => {
-                if (r.payment_method && PAYMENT_METHODS.includes(r.payment_method)) {
-                    newMatrix[r.payment_method].push({
-                        orderStatus: r.order_status || '',
-                        paymentStatus: r.payment_status || '',
-                        ruleId: r.id
-                    });
-                }
+        // Compression Logic:
+        // 1. Filter rules for this Tab
+        const tabRules = rules.filter(r => r.tab_key === activeTabKey);
+
+        // 2. Group by Payment Method
+        PAYMENT_METHODS.forEach(pm => {
+            const pmRules = tabRules.filter(r => r.payment_method === pm);
+            if (pmRules.length === 0) return;
+
+            // Normalize 'ALL' or null values for consistent grouping
+            const normalize = (val: string | null) => (!val || val === 'ALL') ? 'ALL' : val;
+
+            // Map: normalized OS -> Set of normalized PS values
+            const mapOsToPs = new Map<string, Set<string>>();
+
+            pmRules.forEach(r => {
+                const os = normalize(r.order_status);
+                const ps = normalize(r.payment_status);
+
+                if (!mapOsToPs.has(os)) mapOsToPs.set(os, new Set());
+                mapOsToPs.get(os)!.add(ps);
             });
-        }
+
+            // Invert: sorted PS values CSV -> List of OS values
+            const mapPsSetToOsList = new Map<string, string[]>();
+
+            mapOsToPs.forEach((psSet, os) => {
+                const psKey = Array.from(psSet).sort().join(',');
+                if (!mapPsSetToOsList.has(psKey)) mapPsSetToOsList.set(psKey, []);
+                mapPsSetToOsList.get(psKey)!.push(os);
+            });
+
+            // Build Matrix Rows
+            mapPsSetToOsList.forEach((osList, psKey) => {
+                const psArray = psKey ? psKey.split(',') : [];
+
+                newMatrix[pm].push({
+                    orderStatus: osList,
+                    paymentStatus: psArray
+                });
+            });
+        });
 
         // Ensure at least one row per Payment Method for easy editing
         PAYMENT_METHODS.forEach(pm => {
             if (newMatrix[pm].length === 0) {
-                newMatrix[pm].push({ orderStatus: '', paymentStatus: '', ruleId: undefined });
+                newMatrix[pm].push({ orderStatus: [], paymentStatus: [] });
             }
         });
 
@@ -126,80 +217,43 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
         setLoading(true);
         setSaving(true);
         try {
-            // Logic to calculate diffs
             const promises: Promise<any>[] = [];
 
+            // Identify rules to delete (ALL rules for displayed Payment Methods in this Tab)
+            const currentTabRules = rules.filter(r => r.tab_key === activeTabKey && PAYMENT_METHODS.includes(r.payment_method || ''));
+            currentTabRules.forEach(r => {
+                promises.push(apiFetch(`tab_rules?id=${r.id}`, { method: 'DELETE' }));
+            });
+
+            // Create New Rules
             PAYMENT_METHODS.forEach(pm => {
-                const currentConditions = matrix[pm] || [];
-                // Original rules in DB for this PM
-                const dbRules = rules.filter(r => r.tab_key === activeTabKey && r.payment_method === pm);
+                const conditions = matrix[pm] || [];
+                conditions.forEach(cond => {
+                    // Filter empty conditions (both empty array)
+                    if (cond.orderStatus.length === 0 && cond.paymentStatus.length === 0) return;
 
-                // 1. Identify DELETE (In DB but not in current matrix list of ruleIds)
-                const currentRuleIds = new Set(currentConditions.map(c => c.ruleId).filter(Boolean));
-                const toDelete = dbRules.filter(dbR => !currentRuleIds.has(dbR.id));
+                    // Explode
+                    // If an array is empty, it means 'ALL'. We represent this as an empty string for DB.
+                    // If 'ALL' is explicitly selected, we save 'ALL'.
+                    const osList = cond.orderStatus.length > 0 ? cond.orderStatus : [''];
+                    const psList = cond.paymentStatus.length > 0 ? cond.paymentStatus : [''];
 
-                toDelete.forEach(dbR => {
-                    promises.push(apiFetch(`tab_rules?id=${dbR.id}`, { method: 'DELETE' }));
-                });
-
-                // 2. Identify UPSERT (Update existing or Create new)
-                currentConditions.forEach(cond => {
-                    // Check if it's completely empty? 
-                    // If it has no ruleId and is empty, skip create.
-                    // If it has ruleId and is empty, we keep it (update to empty) OR delete?
-                    // Previous logic: both empty -> delete. 
-                    // Current logic: We have explicit remove button. So if it's in the list, we save it.
-                    // EXCEPT if it's a NEW row (no ruleId) and completely empty, we typically ignore it to prevent spamming empty rules.
-                    const isEmpty = !cond.orderStatus && !cond.paymentStatus;
-
-                    if (!cond.ruleId && isEmpty) {
-                        return; // Skip creating empty rules
-                    }
-
-                    // Note: If an existing rule (cond.ruleId) becomes empty, we UPDATE it to empty values 
-                    // (which effectively means "ANY" in some logic, or "NONE" depending on implementation).
-                    // In previous implementation: "Case 1: Both empty -> Delete rule if exists".
-                    // Let's stick to that for consistency?
-                    // " หากไม่เลือกทั้ง Order Status และ Payment Status ระบบจะไม่แสดงออเดอร์ของช่องทางชำระเงินนั้นในแท็บนี้"
-                    // So effectively it deletes the logic.
-                    // If user manually removed content but didn't click trash, maybe we should delete it?
-                    // Let's enforce the "Delete if both empty" rule for existing as well, to keep DB clean.
-
-                    if (cond.ruleId && isEmpty) {
-                        // It was already added to delete list above? NO, because ruleId is IN currentConditions.
-                        // So we need to explicitly delete it here.
-                        promises.push(apiFetch(`tab_rules?id=${cond.ruleId}`, { method: 'DELETE' }));
-                        return;
-                    }
-
-                    const payload = {
-                        tab_key: activeTabKey,
-                        payment_method: pm,
-                        payment_status: cond.paymentStatus || null,
-                        order_status: cond.orderStatus || null,
-                        description: 'Matrix configured',
-                        display_order: 0,
-                        company_id: user?.companyId
-                    };
-
-                    if (cond.ruleId) {
-                        // Update
-                        // Check if actually changed
-                        const dbR = dbRules.find(r => r.id === cond.ruleId);
-                        const isDirty = dbR && (dbR.order_status !== (cond.orderStatus || null) || dbR.payment_status !== (cond.paymentStatus || null));
-                        if (isDirty) {
+                    osList.forEach(os => {
+                        psList.forEach(ps => {
                             promises.push(apiFetch('tab_rules', {
-                                method: 'PUT',
-                                body: JSON.stringify({ ...payload, id: cond.ruleId })
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    tab_key: activeTabKey,
+                                    payment_method: pm,
+                                    payment_status: ps === 'ALL' ? 'ALL' : (ps || null), // If ps is '', it becomes null. If 'ALL', it's 'ALL'.
+                                    order_status: os === 'ALL' ? 'ALL' : (os || null), // If os is '', it becomes null. If 'ALL', it's 'ALL'.
+                                    description: 'Exploded rule',
+                                    display_order: 0,
+                                    company_id: user?.companyId
+                                })
                             }));
-                        }
-                    } else {
-                        // Create
-                        promises.push(apiFetch('tab_rules', {
-                            method: 'POST',
-                            body: JSON.stringify(payload)
-                        }));
-                    }
+                        });
+                    });
                 });
             });
 
@@ -215,11 +269,23 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
         }
     };
 
-    const handleUpdateLocalMatrix = (paymentMethod: string, index: number, field: 'orderStatus' | 'paymentStatus', value: string) => {
+    const handleUpdateLocalMatrix = (paymentMethod: string, index: number, field: 'orderStatus' | 'paymentStatus', value: string[]) => {
         setMatrix(prev => {
             const newList = [...(prev[paymentMethod] || [])];
             if (newList[index]) {
-                newList[index] = { ...newList[index], [field]: value };
+                let newValue = value;
+                const prevArr = newList[index][field] || [];
+                const hasAll = value.includes('ALL');
+
+                if (hasAll && !prevArr.includes('ALL')) {
+                    // Just clicked ALL, clear others
+                    newValue = ['ALL'];
+                } else if (prevArr.includes('ALL') && value.length > 1) {
+                    // Had ALL, clicked something else, remove ALL
+                    newValue = value.filter(v => v !== 'ALL');
+                }
+
+                newList[index] = { ...newList[index], [field]: newValue };
             }
             return { ...prev, [paymentMethod]: newList };
         });
@@ -228,7 +294,7 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
     const handleAddCondition = (paymentMethod: string) => {
         setMatrix(prev => ({
             ...prev,
-            [paymentMethod]: [...(prev[paymentMethod] || []), { orderStatus: '', paymentStatus: '', ruleId: undefined }]
+            [paymentMethod]: [...(prev[paymentMethod] || []), { orderStatus: [], paymentStatus: [] }]
         }));
     };
 
@@ -240,29 +306,11 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
         });
     };
 
-    // Calculate changes
-    const hasAnyChanges = PAYMENT_METHODS.some(pm => {
-        const currentConditions = matrix[pm] || [];
-        const dbRules = rules.filter(r => r.tab_key === activeTabKey && r.payment_method === pm);
-
-        // Check count mismatch (indicates add or remove)
-        // Note: We might have added empty defaults that don't exist in DB.
-        // So we filter currentConditions that are NOT (new AND empty).
-        const effectiveCurrent = currentConditions.filter(c => c.ruleId || c.orderStatus || c.paymentStatus);
-
-        if (effectiveCurrent.length !== dbRules.length) return true;
-
-        // Check content mismatch
-        for (const cond of effectiveCurrent) {
-            if (!cond.ruleId) return true; // New non-empty rule
-            const dbR = dbRules.find(r => r.id === cond.ruleId);
-            if (!dbR) return true; // Should not happen if logic matches
-            if ((dbR.order_status || '') !== cond.orderStatus) return true;
-            if ((dbR.payment_status || '') !== cond.paymentStatus) return true;
-        }
-
-        return false;
-    });
+    // Calculate changes (Simplistic check: Just always allow save if matrix !empty?)
+    // Hard to check diff with exploded views without fetching fresh.
+    // Let's assume always dirty if matrix has content, or implementation is stateless.
+    // Allow save always for simplicity in this refactor.
+    const hasAnyChanges = true;
 
     return (
         <div className="p-6">
@@ -299,8 +347,8 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                         </h2>
                         <button
                             onClick={handleSaveAll}
-                            disabled={loading || saving || !hasAnyChanges}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors ${hasAnyChanges && !loading && !saving
+                            disabled={loading || saving}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors ${!loading && !saving
                                 ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
                                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 }`}
@@ -315,13 +363,14 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                             <Loader2 className="animate-spin text-gray-400" size={32} />
                         </div>
                     ) : (
-                        <div className="border rounded-lg overflow-hidden">
+                        <div className="border rounded-lg overflow-visible pb-20">
+                            {/* Increased pb to handle dropdown overflow, overflow-hidden removed */}
                             <table className="w-full text-sm text-left border-collapse">
                                 <thead className="bg-gray-50 text-gray-600 font-medium">
                                     <tr>
                                         <th className="px-4 py-3 w-1/4 border-b">Payment Method</th>
-                                        <th className="px-4 py-3 w-1/3 border-b">Order Status</th>
-                                        <th className="px-4 py-3 w-1/3 border-b hidden md:table-cell">Payment Status</th>
+                                        <th className="px-4 py-3 w-1/3 border-b">Order Status (Multi-Select)</th>
+                                        <th className="px-4 py-3 w-1/3 border-b hidden md:table-cell">Payment Status (Multi-Select)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -329,17 +378,17 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                         const conditions = matrix[pm] || [];
                                         const isEmpty = conditions.length === 0;
 
-                                        // Should not happen due to useEffect, but handle gracefully
                                         if (isEmpty) return null;
 
                                         return conditions.map((cond, index) => {
-                                            const ruleInDb = rules.find(r => r.id === cond.ruleId);
-                                            const isDirty = cond.ruleId
-                                                ? (ruleInDb && (ruleInDb.order_status !== (cond.orderStatus || null) || ruleInDb.payment_status !== (cond.paymentStatus || null)))
-                                                : (cond.orderStatus || cond.paymentStatus);
+                                            // Dirty check logic removed as we rebuild rows
+
+                                            // Ensure default values for components if undefined
+                                            const osVal = cond.orderStatus || [];
+                                            const psVal = cond.paymentStatus || [];
 
                                             return (
-                                                <tr key={`${pm}-${index}`} className={`hover:bg-gray-50 transition-colors ${isDirty ? 'bg-blue-50/30' : ''}`}>
+                                                <tr key={`${pm}-${index}`} className="hover:bg-gray-50 transition-colors">
                                                     {index === 0 && (
                                                         <td
                                                             rowSpan={conditions.length}
@@ -359,47 +408,33 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                                                     )}
 
                                                     <td className="px-4 py-2 align-top border-b">
-                                                        <select
-                                                            value={cond.orderStatus}
-                                                            onChange={e => handleUpdateLocalMatrix(pm, index, 'orderStatus', e.target.value)}
-                                                            className="w-full p-2 border rounded-md text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                        >
-                                                            <option value="" className="text-gray-400">- เลือก -</option>
-                                                            <option value="ALL" className="text-gray-800">ทั้งหมด</option>
-                                                            {ORDER_STATUSES.map(st => st && (
-                                                                <option key={st} value={st}>{st}</option>
-                                                            ))}
-                                                        </select>
+                                                        <MultiSelect
+                                                            options={ORDER_STATUSES}
+                                                            value={osVal}
+                                                            onChange={val => handleUpdateLocalMatrix(pm, index, 'orderStatus', val)}
+                                                            placeholder="เลือกสถานะออเดอร์ (ว่าง=ทั้งหมด)"
+                                                        />
                                                     </td>
                                                     <td className="px-4 py-2 hidden md:table-cell align-top border-b">
-                                                        <div className="flex items-center gap-2">
-                                                            <select
-                                                                value={cond.paymentStatus}
-                                                                onChange={e => handleUpdateLocalMatrix(pm, index, 'paymentStatus', e.target.value)}
-                                                                className="w-full p-2 border rounded-md text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                                            >
-                                                                <option value="" className="text-gray-400">- เลือก -</option>
-                                                                <option value="ALL" className="text-gray-800">ทั้งหมด</option>
-                                                                {PAYMENT_STATUSES.map(st => st && (
-                                                                    <option key={st} value={st}>{st}</option>
-                                                                ))}
-                                                            </select>
+                                                        <div className="flex items-start gap-2">
+                                                            <div className="flex-grow">
+                                                                <MultiSelect
+                                                                    options={PAYMENT_STATUSES}
+                                                                    value={psVal}
+                                                                    onChange={val => handleUpdateLocalMatrix(pm, index, 'paymentStatus', val)}
+                                                                    placeholder="เลือกสถานะการเงิน (ว่าง=ทั้งหมด)"
+                                                                />
+                                                            </div>
 
                                                             {conditions.length > 1 && (
                                                                 <button
                                                                     onClick={() => handleRemoveCondition(pm, index)}
-                                                                    className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
+                                                                    className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors mt-1"
                                                                     title="Remove condition"
                                                                 >
                                                                     <Trash2 size={16} />
                                                                 </button>
                                                             )}
-                                                        </div>
-
-                                                        {/* Mobile View: PaymentStatus stacked (if needed, but hidden md:table-cell handles it) */}
-                                                        {/* Actually for mobile we might need to rethink, but fitting current structure */}
-                                                        <div className="md:hidden mt-2">
-                                                            {/* Duplicate Select for Mobile if hidden above? No, the TH is hidden too. */}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -410,7 +445,7 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                             </table>
                             <div className="bg-blue-50 p-3 text-xs text-blue-800 flex items-start gap-2">
                                 <AlertCircle size={14} className="mt-0.5" />
-                                <p>สามารถเพิ่มเงื่อนไขได้มากกว่า 1 ข้อต่อช่องทางชำระเงิน หากเงื่อนไขใดเงื่อนไขหนึ่งเป็นจริง ออเดอร์จะแสดงในแท็บนี้</p>
+                                <p>สามารถเพิ่มเงื่อนไขได้มากกว่า 1 ข้อต่อช่องทางชำระเงิน และสามารถเลือกสถานะได้หลายค่า (ระบบจะบันทึกแยกเป็นรายการย่อยอัตโนมัติ)</p>
                             </div>
                         </div>
                     )}

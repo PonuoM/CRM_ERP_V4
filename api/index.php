@@ -2591,16 +2591,28 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             
                             // payment_status
                             if (!empty($r['payment_status']) && $r['payment_status'] !== 'ALL') {
-                                if ($r['payment_status'] === 'NULL') { // Special string for IS NULL if needed, or just handle empty
+                                if ($r['payment_status'] === 'NULL') {
                                      $conds[] = "o.payment_status IS NULL";
                                 } else {
-                                     $conds[] = "o.payment_status = " . $pdo->quote($r['payment_status']);
+                                     $statuses = explode(',', $r['payment_status']);
+                                     if (count($statuses) > 1) {
+                                         $quoted = array_map(function($s) use ($pdo) { return $pdo->quote(trim($s)); }, $statuses);
+                                         $conds[] = "o.payment_status IN (" . implode(',', $quoted) . ")";
+                                     } else {
+                                         $conds[] = "o.payment_status = " . $pdo->quote(trim($statuses[0]));
+                                     }
                                 }
                             }
                             
                             // order_status
                             if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
-                                $conds[] = "o.order_status = " . $pdo->quote($r['order_status']);
+                                 $statuses = explode(',', $r['order_status']);
+                                 if (count($statuses) > 1) {
+                                     $quoted = array_map(function($s) use ($pdo) { return $pdo->quote(trim($s)); }, $statuses);
+                                     $conds[] = "o.order_status IN (" . implode(',', $quoted) . ")";
+                                 } else {
+                                     $conds[] = "o.order_status = " . $pdo->quote(trim($statuses[0]));
+                                 }
                             }
                             
                             // If a rule exists, treat it as a valid valid condition set

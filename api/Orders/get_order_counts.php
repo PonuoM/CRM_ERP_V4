@@ -47,11 +47,23 @@ function handle_order_counts($pdo) {
                   if ($r['payment_status'] === 'NULL') {
                       $subConds[] = "o.payment_status IS NULL";
                   } else {
-                      $subConds[] = "o.payment_status = " . $pdo->quote($r['payment_status']);
+                      $statuses = explode(',', $r['payment_status']);
+                      if (count($statuses) > 1) {
+                          $quoted = array_map(function($s) use ($pdo) { return $pdo->quote(trim($s)); }, $statuses);
+                          $subConds[] = "o.payment_status IN (" . implode(',', $quoted) . ")";
+                      } else {
+                          $subConds[] = "o.payment_status = " . $pdo->quote(trim($statuses[0]));
+                      }
                   }
              }
              if (!empty($r['order_status']) && $r['order_status'] !== 'ALL') {
-                 $subConds[] = "o.order_status = " . $pdo->quote($r['order_status']);
+                 $statuses = explode(',', $r['order_status']);
+                 if (count($statuses) > 1) {
+                     $quoted = array_map(function($s) use ($pdo) { return $pdo->quote(trim($s)); }, $statuses);
+                     $subConds[] = "o.order_status IN (" . implode(',', $quoted) . ")";
+                 } else {
+                     $subConds[] = "o.order_status = " . $pdo->quote(trim($statuses[0]));
+                 }
              }    
                  
                  if (!empty($subConds)) {
