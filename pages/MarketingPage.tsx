@@ -3217,7 +3217,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       })()}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-2 text-gray-600">{row.page_type || "-"}</td>
+                                  <td className="px-3 py-2 text-gray-600">{row.sell_product_type || "-"}</td>
                                   <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]" title={row.staff_names}>{row.staff_names || "-"}</td>
                                   <td className="px-3 py-2 text-right">
                                     {Number(row.ads_cost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
