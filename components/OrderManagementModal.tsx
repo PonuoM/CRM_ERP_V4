@@ -234,6 +234,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [fetchedCustomer, setFetchedCustomer] = useState<Customer | null>(null);
   const [fetchedActivities, setFetchedActivities] = useState<Activity[]>([]);
+  const [hasSlipChanges, setHasSlipChanges] = useState(false);
 
   const [provinces, setProvinces] = useState<any[]>([]);
 
@@ -1778,6 +1779,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
               setSlips((prev) => [uploaded, ...prev]);
 
               setSlipPreview((prev) => prev ?? uploaded.url);
+
+              setHasSlipChanges(true);
             }
           } catch (err) {
             console.error("upload slip", err);
@@ -1834,6 +1837,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
         return next;
       });
+
+      setHasSlipChanges(true);
     } catch (e) {
       console.error("delete slip", e);
     }
@@ -1957,7 +1962,11 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     // สำหรับ Backoffice: อัปเดตสถานะเป็น Verified แทน Paid
     // สำหรับ Telesale: อัปเดตสถานะเป็น Paid ตามเดิม
-    const newPaymentStatus = PaymentStatus.Verified;
+    // [MODIFIED] If COD, set to PreApproved (Waiting for Account)
+    const newPaymentStatus =
+      currentOrder.paymentMethod === PaymentMethod.COD
+        ? PaymentStatus.PreApproved
+        : PaymentStatus.Verified;
 
     // เพิ่มข้อมูลผู้ตรวจสอบและเวลา
     const verificationInfo = {
@@ -2374,11 +2383,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     setCurrentOrder((prev) => ({ ...prev, items: updatedItems }));
   };
 
+  const handleCloseWrapper = () => {
+    if (hasSlipChanges) {
+      // Dispatch event to trigger refresh in parent (ManageOrdersPage)
+      window.dispatchEvent(new CustomEvent('orderModalClosed', { detail: { saved: true } }));
+    }
+    onClose();
+  };
+
   return (
     <>
       <Modal
         title={`จัดการออเดอร์: ${order.id} `}
-        onClose={onClose}
+        onClose={handleCloseWrapper}
         size="xl"
         backdropClassName={backdropClassName}
       >
@@ -3738,9 +3755,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                       </div>
 
                       {canVerifySlip &&
-                        (currentOrder.paymentMethod === PaymentMethod.Transfer ||
-                          currentOrder.paymentMethod === PaymentMethod.PayAfter) &&
-                        hasTransferSlip &&
+                        ((currentOrder.paymentMethod === PaymentMethod.Transfer ||
+                          currentOrder.paymentMethod === PaymentMethod.PayAfter) || (order as any).isWaitingVerifySlipTab) &&
+                        (hasTransferSlip || (order as any).isWaitingVerifySlipTab) &&
                         !isOrderCompleted && (
                           <div className="flex justify-end mt-4">
                             {(() => {
@@ -4306,7 +4323,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
           <div className="flex justify-end space-x-3 pt-4 border-t">
             <button
-              onClick={onClose}
+              onClick={handleCloseWrapper}
               className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
             >
               ยกเลิก

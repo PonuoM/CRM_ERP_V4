@@ -5255,6 +5255,33 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
             $uploadedByName = $in['uploadedByName'] ?? $in['uploadByName'] ?? $in['upload_by_name'] ?? null;
             
             if ($orderId === '' || $content === '') { json_response(['error' => 'INVALID_INPUT'], 400); }
+
+            /**
+             * [MODIFIED] Logic per user request:
+             * 1. Check if order.payment_method is 'COD'
+             * 2. Check current order_slips count for this order
+             * 3. If COD and count == 0, update orders.payment_status = 'PendingVerification'
+             */
+            try {
+                $checkOrdStmt = $pdo->prepare("SELECT payment_method FROM orders WHERE id = ?");
+                $checkOrdStmt->execute([$orderId]);
+                $pm = $checkOrdStmt->fetchColumn();
+
+                if ($pm === 'COD') {
+                    $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+                    $countSlipStmt->execute([$orderId]);
+                    $existingSlips = (int)$countSlipStmt->fetchColumn();
+
+                    if ($existingSlips === 0) {
+                        $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
+                        $updOrdStmt->execute([$orderId]);
+                    }
+                }
+            } catch (Throwable $e) {
+                // Log but do not block the slip upload? Or fail? 
+                // User said "don't error" for data check, but for logic usually best to proceed or log.
+                error_log("Error updating COD status: " . $e->getMessage());
+            }
             $url = null;
             // Handle both data URL format (data:image/...) and raw base64
             if (preg_match('/^data:(image\/(png|jpeg|jpg|gif));base64,(.*)$/', $content, $m)) {
@@ -5387,11 +5414,13 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
             break;
         case 'DELETE':
             if (!$id) { json_response(['error' => 'ID_REQUIRED'], 400); }
-            $st = $pdo->prepare('SELECT url FROM order_slips WHERE id=?');
+            $st = $pdo->prepare('SELECT url, order_id FROM order_slips WHERE id=?');
             $st->execute([$id]);
             $row = $st->fetch();
             if (!$row) { json_response(['error' => 'NOT_FOUND'], 404); }
             $url = $row['url'];
+            $orderId = $row['order_id']; // Capture orderId for post-delete check
+
             if ($url) {
                 $prefix = 'api/uploads/slips/';
                 if (strpos($url, $prefix) === 0) {
@@ -5400,6 +5429,31 @@ function handle_order_slips(PDO $pdo, ?string $id): void {
                 }
             }
             $pdo->prepare('DELETE FROM order_slips WHERE id=?')->execute([$id]);
+
+            /**
+             * [MODIFIED] Logic per request:
+             * After delete, if order is COD and slips count == 0, revert status to 'Unpaid'
+             */
+            if ($orderId) {
+                try {
+                    $checkOrdStmt = $pdo->prepare("SELECT payment_method FROM orders WHERE id = ?");
+                    $checkOrdStmt->execute([$orderId]);
+                    $pm = $checkOrdStmt->fetchColumn();
+
+                    if ($pm === 'COD') {
+                        $countSlipStmt = $pdo->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+                        $countSlipStmt->execute([$orderId]);
+                        $remainingSlips = (int)$countSlipStmt->fetchColumn();
+
+                        if ($remainingSlips === 0) {
+                            $updOrdStmt = $pdo->prepare("UPDATE orders SET payment_status = 'Unpaid' WHERE id = ?");
+                            $updOrdStmt->execute([$orderId]);
+                        }
+                    }
+                } catch (Throwable $e) {
+                    error_log("Error reverting COD status: " . $e->getMessage());
+                }
+            }
             json_response(['ok' => true]);
             break;
         default:

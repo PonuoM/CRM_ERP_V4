@@ -521,7 +521,7 @@ const OrderTable: React.FC<OrderTableProps> = ({
                   <td className="px-6 py-4 font-mono text-xs">{order.trackingNumbers?.join(', ') || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {/* Always allow managing (e.g., upload slip) */}
-                    <button onClick={() => openModal('manageOrder', order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>
+                    <button onClick={() => openModal('manageOrder', isWaitingVerifySlipTab ? { ...order, isWaitingVerifySlipTab: true } as any : order)} className="font-medium text-blue-600 hover:underline">จัดการ</button>
                     {order.orderStatus === OrderStatus.Pending && (
                       <span className="text-gray-400 text-sm ml-2">รอ Export</span>
                     )}
