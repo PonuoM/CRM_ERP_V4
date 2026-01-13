@@ -54,19 +54,23 @@ try {
     }
 
     // 3. Get Basket Statistics
-    // ตะกร้ารอแจก (waiting basket) - customers with assigned_to = NULL and not blocked and not in waiting basket
+    
+    // 3.1 ตะกร้ารอแจกทั่วไป (General Pool)
+    // Logic matches 'all' mode in bulk_distribute.php
     $stmtWaitingDistribute = $pdo->prepare("
         SELECT COUNT(*) 
-        FROM customers 
-        WHERE company_id = ? 
-        AND assigned_to IS NULL 
-        AND (is_blocked IS NULL OR is_blocked = 0)
-        AND (is_in_waiting_basket IS NULL OR is_in_waiting_basket = 0)
+        FROM customers c
+        WHERE c.company_id = ? 
+        AND c.assigned_to IS NULL 
+        AND (c.is_blocked IS NULL OR c.is_blocked = 0)
+        AND (c.is_in_waiting_basket IS NULL OR c.is_in_waiting_basket = 0)
+        AND (c.last_follow_up_date IS NULL OR DATEDIFF(NOW(), c.last_follow_up_date) > 7)
     ");
     $stmtWaitingDistribute->execute([$companyId]);
     $waitingDistributeCount = (int)$stmtWaitingDistribute->fetchColumn();
 
-    // ตะกร้าพักรายชื่อ (waiting basket) - customers in waiting basket
+    // 3.2 ตะกร้าพักรายชื่อ (Waiting Basket) - Total currently in basket
+    // This is just a raw count of people in basket, regardless of time
     $stmtWaitingBasket = $pdo->prepare("
         SELECT COUNT(*) 
         FROM customers 
@@ -77,7 +81,7 @@ try {
     $stmtWaitingBasket->execute([$companyId]);
     $waitingBasketCount = (int)$stmtWaitingBasket->fetchColumn();
 
-    // ตะกร้าบล็อค (blocked basket) - blocked customers
+    // 3.3 ตะกร้าบล็อค (Blocked)
     $stmtBlocked = $pdo->prepare("
         SELECT COUNT(*) 
         FROM customers 
@@ -87,8 +91,8 @@ try {
     $stmtBlocked->execute([$companyId]);
     $blockedCount = (int)$stmtBlocked->fetchColumn();
 
-    // 4. Get New Sale Count (Customers from Admin/Platform orders within freshDays)
-    // Defined as: Not blocked, Unassigned, Has Order from Admin/Platform within freshDays
+    // 4. Get New Sale Count
+    // Logic matches 'new_sale' mode in bulk_distribute.php
     $freshDays = isset($_GET['freshDays']) ? (int)$_GET['freshDays'] : 7;
     $stmtNewSale = $pdo->prepare("
         SELECT COUNT(DISTINCT c.customer_id)
@@ -105,7 +109,8 @@ try {
     $stmtNewSale->execute([$companyId, max(0, $freshDays)]);
     $newSaleCount = (int)$stmtNewSale->fetchColumn();
 
-    // 5. Get Waiting Return Count (In basket > 30 days)
+    // 5. Get Waiting Return Count (Ready to return from basket)
+    // Logic matches 'waiting_return' mode in bulk_distribute.php
     $stmtWaitingReturn = $pdo->prepare("
         SELECT COUNT(*)
         FROM customers c
@@ -115,9 +120,31 @@ try {
         AND c.waiting_basket_start_date IS NOT NULL
         AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30
         AND c.assigned_to IS NULL
+        AND (c.last_follow_up_date IS NULL OR DATEDIFF(NOW(), c.last_follow_up_date) > 7)
     ");
     $stmtWaitingReturn->execute([$companyId]);
     $waitingReturnCount = (int)$stmtWaitingReturn->fetchColumn();
+
+    // 6. Get Stock Count
+    // Logic matches 'stock' mode in bulk_distribute.php
+    $stmtStock = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM customers c
+        WHERE c.company_id = ?
+        AND c.assigned_to IS NULL
+        AND COALESCE(c.is_blocked,0) = 0
+        AND (c.is_in_waiting_basket = 0 OR (c.is_in_waiting_basket = 1 AND DATEDIFF(NOW(), c.waiting_basket_start_date) >= 30))
+        AND NOT EXISTS (
+            SELECT 1 FROM orders o
+            LEFT JOIN users u ON u.id = o.creator_id
+            WHERE o.customer_id = c.customer_id
+              AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)
+              AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')
+              AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= 7
+        )
+    ");
+    $stmtStock->execute([$companyId]);
+    $stockCount = (int)$stmtStock->fetchColumn();
 
     json_response([
         'ok' => true,
@@ -132,6 +159,7 @@ try {
                 // Additional counts for Distribution Page optimization
                 'newSale' => $newSaleCount,
                 'waitingReturn' => $waitingReturnCount,
+                'stock' => $stockCount,
             ]
         ]
     ]);

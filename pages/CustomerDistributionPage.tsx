@@ -241,6 +241,9 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       waitingDistribute: number;
       waitingBasket: number;
       blocked: number;
+      newSale?: number;
+      waitingReturn?: number;
+      stock?: number;
     };
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -545,18 +548,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   ]);
 
   // Sync displayCount when loading finishes or source changes
-  // Defined here so it can safely access availableCustomers
   useEffect(() => {
     if (!loadingPool && !loadingStats) {
       let actualCount = 0;
       if (poolSource === "all") {
         actualCount = (customerStats?.baskets?.waitingDistribute ?? availableCustomers.length);
       } else if (poolSource === "stock") {
-        actualCount = (customerStats?.baskets?.waitingDistribute ?? 0);
+        actualCount = (customerStats?.baskets?.stock ?? 0);
       } else if (poolSource === "new_sale") {
-        actualCount = ((customerStats?.baskets as any)?.newSale ?? 0);
+        actualCount = (customerStats?.baskets?.newSale ?? 0);
       } else if (poolSource === "waiting_return") {
-        actualCount = ((customerStats?.baskets as any)?.waitingReturn ?? 0);
+        actualCount = (customerStats?.baskets?.waitingReturn ?? 0);
       } else {
         actualCount = availableCustomers.length;
       }
@@ -579,7 +581,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     const count = parseInt(countStr, 10);
     // Use API data if available, fallback to client-side calculation
-    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    let actualAvailableCount = availableCustomers.length;
+    if (poolSource === "all") {
+      actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    } else if (poolSource === "stock") {
+      actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+    } else if (poolSource === "new_sale") {
+      actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+    } else if (poolSource === "waiting_return") {
+      actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+    }
 
     if (!isNaN(count) && count > actualAvailableCount) {
       setDistributionCountError(
@@ -592,9 +603,18 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
   // Re-validate distribution count when API data loads
   useEffect(() => {
-    if (distributionCount && customerStats?.baskets?.waitingDistribute) {
+    if (distributionCount) {
       const count = parseInt(distributionCount, 10);
-      const actualAvailableCount = customerStats.baskets.waitingDistribute;
+      let actualAvailableCount = 0;
+      if (poolSource === "all") {
+        actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? 0;
+      } else if (poolSource === "stock") {
+        actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+      } else if (poolSource === "new_sale") {
+        actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+      } else if (poolSource === "waiting_return") {
+        actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+      }
 
       if (!isNaN(count) && count > actualAvailableCount) {
         setDistributionCountError(
@@ -604,7 +624,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         setDistributionCountError("");
       }
     }
-  }, [customerStats?.baskets?.waitingDistribute, distributionCount]);
+  }, [customerStats, distributionCount, poolSource]);
 
   const handleAgentSelection = (agentId: number) => {
     setSelectedAgentIds((prev) =>
@@ -712,7 +732,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     // Use API data for validation
-    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    let actualAvailableCount = availableCustomers.length;
+    if (poolSource === "all") {
+      actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    } else if (poolSource === "stock") {
+      actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+    } else if (poolSource === "new_sale") {
+      actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+    } else if (poolSource === "waiting_return") {
+      actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+    }
     if (count > actualAvailableCount) {
       alert(`จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`);
       return;
