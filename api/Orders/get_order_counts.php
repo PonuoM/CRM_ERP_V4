@@ -17,8 +17,8 @@ function handle_order_counts($pdo) {
     // Fetch active tab rules
     $tabRules = [];
     try {
-        $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules WHERE (company_id = ? OR company_id = 0) AND is_active = 1 ORDER BY display_order");
-        $ruleStmt->execute([$companyId]);
+        $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules WHERE is_active = 1 ORDER BY display_order");
+        $ruleStmt->execute();
         $allRules = $ruleStmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($allRules as $r) {
             $tabRules[$r['tab_key']][] = $r;

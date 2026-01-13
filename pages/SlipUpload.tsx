@@ -25,7 +25,10 @@ import {
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
 import Modal from "../components/Modal";
+
 import { getPaymentStatusChip } from "../components/OrderTable";
+import { Role, listRoles } from "@/services/roleApi";
+import { isSystemCheck } from "@/utils/isSystemCheck";
 
 
 const InfoCard: React.FC<{
@@ -432,11 +435,61 @@ const SlipUpload: React.FC = () => {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const hasSystemAccess = useMemo(() => {
+    if (!currentUser || !roles || roles.length === 0) return false;
+    // Assuming currentUser.role is the role name
+    const result = isSystemCheck(currentUser.role, roles);
+    console.log('Permission Check:', {
+      userRole: currentUser.role,
+      isSystem: result,
+      rolesLoaded: roles.length
+    });
+    return result;
+  }, [currentUser, roles]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          setCurrentUser(user);
+        } catch (e) {
+          console.error("Failed to parse user", e);
+        }
+      }
+
+      try {
+        const res = await listRoles();
+        if (res && res.roles) {
+          setRoles(res.roles);
+        }
+      } catch (error) {
+        console.error("Failed to fetch roles", error);
+      }
+    };
+    loadData();
+  }, []);
+
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [slipStatusFilter, setSlipStatusFilter] = useState<
     "no_slip" | "partial" | "all"
   >("no_slip");
   const [activeTab, setActiveTab] = useState<"PayAfter" | "Transfer" | "COD">("PayAfter");
+
+  // Force PayAfter if no system access and trying to access restricted tabs
+  useEffect(() => {
+    if (roles.length > 0 && currentUser && !hasSystemAccess) {
+      if (activeTab === 'Transfer' || activeTab === 'COD') {
+        setActiveTab('PayAfter');
+      }
+    }
+  }, [hasSystemAccess, activeTab, roles.length, currentUser]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [pagination, setPagination] = useState<PaginationInfo>({
     totalCount: 0,
@@ -1226,24 +1279,28 @@ const SlipUpload: React.FC = () => {
       <div className="w-full">
         {/* Tabs */}
         <div className="flex space-x-1 mb-4 border-b border-gray-200">
-          <button
-            onClick={() => { setActiveTab("Transfer"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
-            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "Transfer"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            Transfer (โอนเงิน)
-          </button>
-          <button
-            onClick={() => { setActiveTab("COD"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
-            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "COD"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            COD (เก็บเงินปลายทาง)
-          </button>
+          {hasSystemAccess && (
+            <button
+              onClick={() => { setActiveTab("Transfer"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+              className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "Transfer"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+            >
+              Transfer (โอนเงิน)
+            </button>
+          )}
+          {hasSystemAccess && (
+            <button
+              onClick={() => { setActiveTab("COD"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+              className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "COD"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+            >
+              COD (เก็บเงินปลายทาง)
+            </button>
+          )}
           <button
             onClick={() => { setActiveTab("PayAfter"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
             className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "PayAfter"

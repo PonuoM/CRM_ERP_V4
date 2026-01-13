@@ -25,8 +25,8 @@ switch ($method) {
         // Optional filter by tab_key
         $tabKey = $_GET['tab_key'] ?? null;
         
-        $sql = "SELECT * FROM order_tab_rules WHERE company_id = ? OR company_id = 0"; // Include global rules (0) + company specific
-        $params = [$companyId];
+        $sql = "SELECT * FROM order_tab_rules WHERE 1=1"; // Global rules for everyone
+        $params = [];
 
         if ($tabKey) {
             $sql .= " AND tab_key = ?";
@@ -55,8 +55,8 @@ switch ($method) {
         $description = $input['description'] ?? null;
         $displayOrder = (int)($input['display_order'] ?? 0);
         
-        // Scope to current company unless SuperAdmin specifies otherwise
-        $targetCompanyId = getTargetCompanyId($user, $input['company_id'] ?? null);
+        // Global scope for everyone
+        $targetCompanyId = 0;
 
         $stmt = $pdo->prepare("INSERT INTO order_tab_rules (tab_key, payment_method, payment_status, order_status, description, company_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$tabKey, $paymentMethod, $paymentStatus, $orderStatus, $description, $targetCompanyId, $displayOrder]);
@@ -77,10 +77,9 @@ switch ($method) {
         $rule = $check->fetch();
         
         if (!$rule) json_response(['ok' => false, 'error' => 'Rule not found'], 404);
-        if (!$isSuperAdmin && $rule['company_id'] != $companyId && $rule['company_id'] != 0) {
-             if ($rule['company_id'] == 0) json_response(['ok' => false, 'error' => 'Cannot edit system rules'], 403);
-             json_response(['ok' => false, 'error' => 'Unauthorized'], 403);
-        }
+        if (!$rule) json_response(['ok' => false, 'error' => 'Rule not found'], 404);
+        // Authorization check logic removed for global rules - access controlled by role/auth only
+
 
         $updates = [];
         $params = [];
@@ -110,10 +109,8 @@ switch ($method) {
         $rule = $check->fetch();
 
         if (!$rule) json_response(['ok' => false, 'error' => 'Rule not found'], 404);
-        if (!$isSuperAdmin && $rule['company_id'] != $companyId) {
-             if ($rule['company_id'] == 0) json_response(['ok' => false, 'error' => 'Cannot delete system rules'], 403);
-             json_response(['ok' => false, 'error' => 'Unauthorized'], 403);
-        }
+        if (!$rule) json_response(['ok' => false, 'error' => 'Rule not found'], 404);
+        // Authorization check logic removed for global rules
 
         $pdo->prepare("DELETE FROM order_tab_rules WHERE id = ?")->execute([$id]);
         json_response(['ok' => true]);

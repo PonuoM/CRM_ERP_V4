@@ -2574,9 +2574,9 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 
                 // Tab-specific filters for ManageOrdersPage
                 if ($manageTab) {
-                    // Optimized: Try to fetch dynamic rules first
-                    $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules WHERE (company_id = ? OR company_id = 0) AND tab_key = ? AND is_active = 1");
-                    $ruleStmt->execute([$companyId ?? 0, $manageTab]);
+                    // Optimized: Try to fetch dynamic rules first (Global rules, ignoring company_id)
+                    $ruleStmt = $pdo->prepare("SELECT * FROM order_tab_rules WHERE tab_key = ? AND is_active = 1");
+                    $ruleStmt->execute([$manageTab]);
                     $rules = $ruleStmt->fetchAll(PDO::FETCH_ASSOC);
 
                     if ($rules) {
