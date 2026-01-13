@@ -66,11 +66,12 @@ if (!empty($_GET["end_date"])) {
 }
 
 // Payment method selector (default Transfer for backward compatibility)
-// ถ้าไม่ส่ง payment_method หรือส่ง "all" จะแสดงทั้ง Transfer และ PayAfter
-$allowedPaymentMethods = ["Transfer", "PayAfter"];
+// ถ้าไม่ส่ง payment_method หรือส่ง "all" จะแสดงทั้ง Transfer, PayAfter และ COD
+$allowedPaymentMethods = ["Transfer", "PayAfter", "COD"];
 $paymentMethodAliases = [
   "Transfer" => ["Transfer", "โอน", "โอนเงิน", "transfer"],
   "PayAfter" => ["PayAfter", "หลังจากรับสินค้า", "รับสินค้าก่อน"],
+  "COD" => ["COD", "เก็บเงินปลายทาง"],
 ];
 $paymentMethodInput = isset($_GET["payment_method"])
   ? trim($_GET["payment_method"])
@@ -79,7 +80,7 @@ $paymentMethodToken = strtolower($paymentMethodInput);
 $showAllPaymentMethods = false;
 
 if ($paymentMethodToken === "all" || $paymentMethodToken === "") {
-  // แสดงทั้ง Transfer และ PayAfter
+  // แสดงทั้งหมด
   $showAllPaymentMethods = true;
   $selectedPaymentValues = $allowedPaymentMethods;
 } elseif (
@@ -96,6 +97,11 @@ if ($paymentMethodToken === "all" || $paymentMethodToken === "") {
   $paymentMethodToken === "transfer_bank"
 ) {
   $paymentMethod = "Transfer";
+  $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [
+    $paymentMethod,
+  ];
+} elseif ($paymentMethodToken === "cod") {
+  $paymentMethod = "COD";
   $selectedPaymentValues = $paymentMethodAliases[$paymentMethod] ?? [
     $paymentMethod,
   ];
@@ -153,6 +159,8 @@ try {
   $whereClause = "o.company_id = ? AND {$methodPlaceholder}";
   $allParams = array_merge([$company_id], $selectedPaymentValues);
 
+  /* Role-based filtering removed as per request */
+  /*
   // Add role-based order visibility filtering
   if ($user_id !== null && $user_role !== null) {
     if ($user_role === "Admin Page") {
@@ -194,6 +202,7 @@ try {
     }
     // Backoffice, Finance, และ roles อื่นๆ แสดงออเดอร์ทั้งหมดของ company (ไม่ต้อง filter)
   }
+  */
 
   if (!empty($conditions)) {
     $whereClause .= " AND " . implode(" AND ", $conditions);
@@ -245,7 +254,7 @@ try {
                    LEFT JOIN order_slips os ON os.order_id = o.id
                    WHERE {$whereClause}
                    AND o.id NOT REGEXP '^.+-[0-9]+$'
-                   AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
+                   AND o.payment_status IN ('Unpaid', 'PendingVerification')
                    GROUP BY o.id, o.total_amount, o.payment_status";
 
   // Only add HAVING clause if amount column exists
@@ -299,7 +308,7 @@ try {
             LEFT JOIN order_slips os ON os.order_id = o.id
             WHERE {$whereClause}
             AND o.id NOT REGEXP '^.+-[0-9]+$'
-            AND o.payment_status NOT IN ('Verified', 'PreApproved', 'Approved', 'Paid')
+            AND o.payment_status IN ('Unpaid', 'PendingVerification')
             GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, c.first_name, c.last_name, c.phone";
 
   // Only add HAVING clause if amount column exists

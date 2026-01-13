@@ -143,7 +143,7 @@ export async function listCustomers(params?: {
   companyId?: number;
   bucket?: string;
   userId?: number;
-  source?: "new_sale" | "waiting_return" | "stock";
+  source?: "new_sale" | "waiting_return" | "stock" | "all" | string;
   freshDays?: number; // only for source=new_sale
   province?: string;
   lifecycle?: string;
@@ -216,7 +216,7 @@ export async function getCustomerCounts(params: {
 
 
 export async function listCustomersBySource(
-  source: "new_sale" | "waiting_return" | "stock",
+  source: "new_sale" | "waiting_return" | "stock" | "all" | string,
   opts?: { q?: string; companyId?: number; freshDays?: number },
 ) {
   return listCustomers({

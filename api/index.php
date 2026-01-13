@@ -487,15 +487,29 @@ function ensure_user_pancake_mapping_table(PDO $pdo): void {
 
 function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
     ensure_user_pancake_mapping_table($pdo);
+    
+    // Authenticate
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        json_response(['error' => 'UNAUTHORIZED'], 401);
+    }
+    
     switch (method()) {
         case 'GET':
             if ($id) {
-                $stmt = $pdo->prepare('SELECT * FROM user_pancake_mapping WHERE id = ?');
-                $stmt->execute([$id]);
+                // Ensure the mapping belongs to a user in the same company
+                $stmt = $pdo->prepare('SELECT m.* FROM user_pancake_mapping m 
+                                       JOIN users u ON m.id_user = u.id 
+                                       WHERE m.id = ? AND u.company_id = ?');
+                $stmt->execute([$id, $user['company_id']]);
                 $row = $stmt->fetch();
                 $row ? json_response($row) : json_response(['error' => 'NOT_FOUND'], 404);
             } else {
-                $stmt = $pdo->query('SELECT * FROM user_pancake_mapping ORDER BY created_at DESC');
+                $stmt = $pdo->prepare('SELECT m.* FROM user_pancake_mapping m 
+                                       JOIN users u ON m.id_user = u.id 
+                                       WHERE u.company_id = ? 
+                                       ORDER BY m.created_at DESC');
+                $stmt->execute([$user['company_id']]);
                 json_response($stmt->fetchAll());
             }
             break;
@@ -506,6 +520,16 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
             if (!$idUser || $idPanake === null || $idPanake === '') {
                 json_response(['error' => 'VALIDATION_FAILED', 'message' => 'id_user and id_panake are required'], 400);
             }
+            
+            // Validate target user belongs to same company
+            $checkUser = $pdo->prepare('SELECT company_id FROM users WHERE id = ?');
+            $checkUser->execute([$idUser]);
+            $targetUserCompany = $checkUser->fetchColumn();
+            
+            if ($targetUserCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Cannot assign mapping to user from another company'], 403);
+            }
+            
             try {
                 $sql = 'INSERT INTO user_pancake_mapping (id_user, id_panake) VALUES (?, ?) 
                         ON DUPLICATE KEY UPDATE id_panake = VALUES(id_panake), created_at = NOW()';
@@ -521,10 +545,32 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
         case 'PUT':
         case 'PATCH':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            
+            // Verify ownership of the mapping to be updated
+            $checkMapping = $pdo->prepare('SELECT u.company_id FROM user_pancake_mapping m JOIN users u ON m.id_user = u.id WHERE m.id = ?');
+            $checkMapping->execute([$id]);
+            $mappingCompany = $checkMapping->fetchColumn();
+            
+            if (!$mappingCompany || $mappingCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Mapping not found or access denied'], 403);
+            }
+            
             $in = json_input();
             $fields = [];
             $params = [];
-            if (array_key_exists('id_user', $in)) { $fields[] = 'id_user = ?'; $params[] = (int)$in['id_user']; }
+            
+            // If updating id_user, ensure new user is in same company
+            if (array_key_exists('id_user', $in)) { 
+                $newIdUser = (int)$in['id_user'];
+                $checkNewUser = $pdo->prepare('SELECT company_id FROM users WHERE id = ?');
+                $checkNewUser->execute([$newIdUser]);
+                if ($checkNewUser->fetchColumn() != $user['company_id']) {
+                    json_response(['error' => 'UNAUTHORIZED', 'message' => 'Target user is not in your company'], 403);
+                }
+                $fields[] = 'id_user = ?'; 
+                $params[] = $newIdUser; 
+            }
+            
             if (array_key_exists('id_panake', $in)) { $fields[] = 'id_panake = ?'; $params[] = (string)$in['id_panake']; }
             if (empty($fields)) json_response(['ok' => true]);
             $sql = 'UPDATE user_pancake_mapping SET ' . implode(', ', $fields) . ', created_at = created_at WHERE id = ?';
@@ -539,6 +585,16 @@ function handle_user_pancake_mappings(PDO $pdo, ?string $id): void {
             break;
         case 'DELETE':
             if (!$id) json_response(['error' => 'ID_REQUIRED'], 400);
+            
+            // Verify ownership
+            $checkMapping = $pdo->prepare('SELECT u.company_id FROM user_pancake_mapping m JOIN users u ON m.id_user = u.id WHERE m.id = ?');
+            $checkMapping->execute([$id]);
+            $mappingCompany = $checkMapping->fetchColumn();
+            
+            if (!$mappingCompany || $mappingCompany != $user['company_id']) {
+                json_response(['error' => 'UNAUTHORIZED', 'message' => 'Mapping not found or access denied'], 403);
+            }
+            
             $stmt = $pdo->prepare('DELETE FROM user_pancake_mapping WHERE id = ?');
             $stmt->execute([(int)$id]);
             json_response(['ok' => true]);
@@ -945,6 +1001,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     } else {
                         $t_list_start = microtime(true);
                         log_perf("handle_customers:list:START");
+                        require_once __DIR__ . '/customer/distribution_helper.php';
                     $q = $_GET['q'] ?? '';
                     $companyId = $_GET['companyId'] ?? null;
                     $bucket = $_REQUEST['bucket'] ?? $_GET['bucket'] ?? null;
@@ -986,59 +1043,37 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         }
 
                         json_response($customers);
-                    } elseif (in_array($source, ['new_sale','waiting_return','stock'], true)) {
-                        // Source-specific pools
-                        $params = [];
+                    } elseif (in_array($source, ['new_sale','waiting_return','stock', 'all'], true)) {
+                        // Source-specific pools using shared helper
+                        $parts = [];
                         if ($source === 'new_sale') {
-                            $sql = "SELECT DISTINCT c.*\n"
-                                 . "FROM customers c\n"
-                                 . "JOIN orders o ON o.customer_id = c.customer_id\n"
-                                 . "LEFT JOIN users u ON u.id = o.creator_id\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.assigned_to IS NULL\n"
-                                 . "  AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                                 . "  AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                                 . "  AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?";
-                            $params[] = max(0, $freshDays);
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY o.order_date DESC, c.date_assigned DESC";
+                            $parts = DistributionHelper::getNewSaleParts($companyId, $freshDays, $q);
                         } elseif ($source === 'waiting_return') {
-                            $sql = "SELECT c.* FROM customers c\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.is_in_waiting_basket = 1\n"
-                                 . "  AND c.waiting_basket_start_date IS NOT NULL\n"
-                                 . "  AND TIMESTAMPDIFF(DAY, c.waiting_basket_start_date, NOW()) >= 30\n"
-                                 . "  AND c.assigned_to IS NULL";
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY c.waiting_basket_start_date ASC";
-                        } else { // stock
-                            $sql = "SELECT c.* FROM customers c\n"
-                                 . "WHERE COALESCE(c.is_blocked,0) = 0\n"
-                                 . "  AND c.assigned_to IS NULL\n"
-                                 . "  AND COALESCE(c.is_in_waiting_basket,0) = 0\n"
-                                 . "  AND NOT EXISTS (\n"
-                                 . "        SELECT 1 FROM orders o\n"
-                                 . "        LEFT JOIN users u ON u.id = o.creator_id\n"
-                                 . "        WHERE o.customer_id = c.customer_id\n"
-                                 . "          AND (u.role = 'Admin Page' OR o.sales_channel IS NOT NULL OR o.sales_channel_page_id IS NOT NULL)\n"
-                                 . "          AND (o.order_status IS NULL OR o.order_status <> 'Cancelled')\n"
-                                 . "          AND TIMESTAMPDIFF(DAY, o.order_date, NOW()) <= ?\n"
-                                 . "  )";
-                            $params[] = max(0, $freshDays);
-                            if ($companyId) { $sql .= " AND c.company_id = ?"; $params[] = $companyId; }
-                            if ($q !== '') {
-                                $sql .= " AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.phone LIKE ? OR c.customer_id LIKE ?)";
-                                $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
-                            }
-                            $sql .= " ORDER BY c.date_assigned DESC";
+                            $parts = DistributionHelper::getWaitingReturnParts($companyId, $q);
+                        } elseif ($source === 'stock') {
+                            $parts = DistributionHelper::getStockParts($companyId, $freshDays, $q);
+                        } else { // all
+                            $parts = DistributionHelper::getGeneralPoolParts($companyId, $q);
+                        }
+
+                        $sql = "SELECT c.* FROM customers c " . $parts['join'] . " WHERE " . $parts['where'];
+                        if (!empty($parts['groupBy'])) {
+                            $sql .= " " . $parts['groupBy'];
+                        }
+                        $sql .= " " . $parts['orderBy'];
+                        
+                        $page = isset($_GET['page']) ? (int)$_GET['page'] : null;
+                        $limit = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 50);
+                        if ($limit <= 0) $limit = 50;
+                        
+                        $params = $parts['params'];
+
+                        // Apply pagination if requested
+                        if ($page !== null) {
+                            $offset = ($page - 1) * $limit;
+                            $sql .= " LIMIT ? OFFSET ?";
+                            $params[] = $limit;
+                            $params[] = $offset;
                         }
 
                         $stmt = $pdo->prepare($sql);

@@ -436,6 +436,7 @@ const SlipUpload: React.FC = () => {
   const [slipStatusFilter, setSlipStatusFilter] = useState<
     "no_slip" | "partial" | "all"
   >("no_slip");
+  const [activeTab, setActiveTab] = useState<"PayAfter" | "Transfer" | "COD">("PayAfter");
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [pagination, setPagination] = useState<PaginationInfo>({
     totalCount: 0,
@@ -918,11 +919,11 @@ const SlipUpload: React.FC = () => {
         pageSize: pagination.pageSize.toString(),
       });
 
-      // Payment method: แสดงเฉพาะ PayAfter เท่านั้น
-      queryParams.append("payment_method", "PayAfter");
+      // Payment method: Use activeTab
+      queryParams.append("payment_method", activeTab);
 
-      // Add user info for role-based filtering
-      // Backoffice และ Finance เห็นสลิปทั้งหมดของทุกคน (ไม่ต้องส่ง user_id, role, team_id)
+      // Role-based filtering removed as per request
+      /*
       if (user.role && user.role !== "Backoffice" && user.role !== "Finance") {
         if (user.id) {
           queryParams.append("user_id", user.id.toString());
@@ -932,6 +933,7 @@ const SlipUpload: React.FC = () => {
           queryParams.append("team_id", user.team_id.toString());
         }
       }
+      */
 
       // Add active filters to query if they have values
       if (activeFilters.order_id)
@@ -1009,7 +1011,7 @@ const SlipUpload: React.FC = () => {
   // Fetch orders on component mount and when pagination or activeFilters change
   useEffect(() => {
     fetchOrders();
-  }, [pagination.currentPage, pagination.pageSize, activeFilters]); // Re-fetch when pagination or activeFilters change
+  }, [pagination.currentPage, pagination.pageSize, activeFilters, activeTab]); // Re-fetch when pagination, activeFilters or activeTab change
 
   const handleFilterChange = (field: keyof FilterOptions, value: string) => {
     const newFilters = { ...inputFilters, [field]: value };
@@ -1222,11 +1224,41 @@ const SlipUpload: React.FC = () => {
       )}
 
       <div className="w-full">
+        {/* Tabs */}
+        <div className="flex space-x-1 mb-4 border-b border-gray-200">
+          <button
+            onClick={() => { setActiveTab("Transfer"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "Transfer"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            Transfer (โอนเงิน)
+          </button>
+          <button
+            onClick={() => { setActiveTab("COD"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "COD"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            COD (เก็บเงินปลายทาง)
+          </button>
+          <button
+            onClick={() => { setActiveTab("PayAfter"); setPagination(prev => ({ ...prev, currentPage: 1 })); }}
+            className={`px-6 py-2 text-sm font-medium transition-colors relative ${activeTab === "PayAfter"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            PayAfter (รับสินค้าก่อนโอน)
+          </button>
+        </div>
         {/* Orders Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <h2 className="text-lg font-semibold text-gray-900">
-              รายการคำสั่งซื้อ
+              รายการคำสั่งซื้อ ({activeTab})
             </h2>
             <button
               onClick={fetchOrders}

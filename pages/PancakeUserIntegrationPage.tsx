@@ -120,15 +120,6 @@ const PancakeUserIntegrationPage: React.FC<{ currentUser?: any }> = ({
     loadPageUsers();
     loadPagesWithUsers();
     loadUserMappings();
-    loadAdminPageUsers();
-    loadPageUsers();
-    loadPagesWithUsers();
-    loadUserMappings();
-
-    loadAdminPageUsers();
-    loadPageUsers();
-    loadPagesWithUsers();
-    loadUserMappings();
   }, [currentUser]);
 
 

@@ -241,6 +241,9 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
       waitingDistribute: number;
       waitingBasket: number;
       blocked: number;
+      newSale?: number;
+      waitingReturn?: number;
+      stock?: number;
     };
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -545,18 +548,17 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
   ]);
 
   // Sync displayCount when loading finishes or source changes
-  // Defined here so it can safely access availableCustomers
   useEffect(() => {
     if (!loadingPool && !loadingStats) {
       let actualCount = 0;
       if (poolSource === "all") {
         actualCount = (customerStats?.baskets?.waitingDistribute ?? availableCustomers.length);
       } else if (poolSource === "stock") {
-        actualCount = (customerStats?.baskets?.waitingDistribute ?? 0);
+        actualCount = (customerStats?.baskets?.stock ?? 0);
       } else if (poolSource === "new_sale") {
-        actualCount = ((customerStats?.baskets as any)?.newSale ?? 0);
+        actualCount = (customerStats?.baskets?.newSale ?? 0);
       } else if (poolSource === "waiting_return") {
-        actualCount = ((customerStats?.baskets as any)?.waitingReturn ?? 0);
+        actualCount = (customerStats?.baskets?.waitingReturn ?? 0);
       } else {
         actualCount = availableCustomers.length;
       }
@@ -579,7 +581,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
     const count = parseInt(countStr, 10);
     // Use API data if available, fallback to client-side calculation
-    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    let actualAvailableCount = availableCustomers.length;
+    if (poolSource === "all") {
+      actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    } else if (poolSource === "stock") {
+      actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+    } else if (poolSource === "new_sale") {
+      actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+    } else if (poolSource === "waiting_return") {
+      actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+    }
 
     if (!isNaN(count) && count > actualAvailableCount) {
       setDistributionCountError(
@@ -592,9 +603,18 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
 
   // Re-validate distribution count when API data loads
   useEffect(() => {
-    if (distributionCount && customerStats?.baskets?.waitingDistribute) {
+    if (distributionCount) {
       const count = parseInt(distributionCount, 10);
-      const actualAvailableCount = customerStats.baskets.waitingDistribute;
+      let actualAvailableCount = 0;
+      if (poolSource === "all") {
+        actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? 0;
+      } else if (poolSource === "stock") {
+        actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+      } else if (poolSource === "new_sale") {
+        actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+      } else if (poolSource === "waiting_return") {
+        actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+      }
 
       if (!isNaN(count) && count > actualAvailableCount) {
         setDistributionCountError(
@@ -604,7 +624,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
         setDistributionCountError("");
       }
     }
-  }, [customerStats?.baskets?.waitingDistribute, distributionCount]);
+  }, [customerStats, distributionCount, poolSource]);
 
   const handleAgentSelection = (agentId: number) => {
     setSelectedAgentIds((prev) =>
@@ -624,74 +644,46 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     const countPerAgent = Math.floor(count / selectedAgentIds.length);
     const remainder = count % selectedAgentIds.length;
 
-    // For 'stock' or 'waiting_return', fetch samples from API to avoid loading all data
-    if (poolSource === "stock" || poolSource === "waiting_return") {
-      setLoadingPool(true); // Re-use loading state or add a specific one
-      const assignments: PreviewAssignments = {};
+    // Always use API to fetch samples for preview to ensure consistency with backend logic
+    // For 'stock', 'waiting_return', 'new_sale', 'all', we fetch samples from API
+    setLoadingPool(true);
+    const assignments: PreviewAssignments = {};
 
-      try {
-        // Fetch samples for each agent
-        // We use page=index+1 and pageSize=10 to get unique chunks for preview
-        const promises = selectedAgentIds.map(async (agentId, index) => {
-          // Let's call listCustomers directly to support page/pageSize
-          // We assume page 1 is agents[0], page 2 is agents[1] etc.
-          // This ensures unique sets for the preview.
-          const page = index + 1;
-          const pageSize = 10; // Preview size
+    try {
+      // Fetch samples for each agent
+      // We use page=index+1 and pageSize=10 to get unique chunks for preview
+      const promises = selectedAgentIds.map(async (agentId, index) => {
+        // Let's call listCustomers directly to support page/pageSize
+        // We assume page 1 is agents[0], page 2 is agents[1] etc.
+        // This ensures unique sets for the preview.
+        const page = index + 1;
+        const pageSize = 10; // Preview size
 
-          const res = await listCustomers({
-            companyId: currentUser?.companyId,
-            source: poolSource,
-            page,
-            pageSize,
-            // Add other filters if compatible (e.g. province, etc from availableCandidates logic?)
-            // For now, keep it simple as per request
-          });
-
-          const rows = Array.isArray(res) ? res : (res?.data || []);
-          const customers = Array.isArray(rows)
-            ? rows.map((row: any) => normalizeApiCustomer(row))
-            : [];
-
-          assignments[agentId] = customers;
+        const res = await listCustomers({
+          companyId: currentUser?.companyId,
+          source: poolSource,
+          page,
+          pageSize,
         });
 
-        await Promise.all(promises);
+        const rows = Array.isArray(res) ? res : (res?.data || []);
+        const customers = Array.isArray(rows)
+          ? rows.map((row: any) => normalizeApiCustomer(row))
+          : [];
 
-        setPreviewAssignments(assignments);
-        setShowPreviewModal(true);
-      } catch (err) {
-        console.error("Failed to fetch preview:", err);
-        alert("เกิดข้อผิดพลาดในการโหลดตัวอย่างข้อมูล");
-      } finally {
-        setLoadingPool(false);
-      }
-      return;
+        assignments[agentId] = customers;
+      });
+
+      await Promise.all(promises);
+
+      setPreviewAssignments(assignments);
+      setShowPreviewModal(true);
+    } catch (err) {
+      console.error("Failed to fetch preview:", err);
+      alert("เกิดข้อผิดพลาดในการโหลดตัวอย่างข้อมูล");
+    } finally {
+      setLoadingPool(false);
     }
-
-    // Existing logic for 'all' / 'new_sale' (client-side)
-    const assignments: PreviewAssignments = {};
-    let currentIndex = 0;
-
-    // Create a copy to shuffle/slice
-    const candidates = [...availableCustomers];
-    // Ideally we should shuffle here if we want random distribution, 
-    // but usually existing order is fine or preserved.
-
-    selectedAgentIds.forEach((agentId, index) => {
-      // Logic for client-side distribution preview
-      // Just take 10 items for preview
-      const previewItems = candidates.slice(currentIndex, currentIndex + 10);
-      assignments[agentId] = previewItems;
-
-      // Move index forward by the *actual* count they would receive
-      // so the next agent gets the next chunk in the list (simulating real distribution)
-      const agentExactCount = countPerAgent + (index < remainder ? 1 : 0);
-      currentIndex += agentExactCount;
-    });
-
-    setPreviewAssignments(assignments);
-    setShowPreviewModal(true);
   };
 
   const handleSelectAllAgents = () => {
@@ -712,7 +704,16 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
     }
 
     // Use API data for validation
-    const actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    let actualAvailableCount = availableCustomers.length;
+    if (poolSource === "all") {
+      actualAvailableCount = customerStats?.baskets?.waitingDistribute ?? availableCustomers.length;
+    } else if (poolSource === "stock") {
+      actualAvailableCount = customerStats?.baskets?.stock ?? 0;
+    } else if (poolSource === "new_sale") {
+      actualAvailableCount = customerStats?.baskets?.newSale ?? 0;
+    } else if (poolSource === "waiting_return") {
+      actualAvailableCount = customerStats?.baskets?.waitingReturn ?? 0;
+    }
     if (count > actualAvailableCount) {
       alert(`จำนวนที่ต้องการแจก(${count.toLocaleString()}) มากกว่าลูกค้าที่พร้อมแจก(${actualAvailableCount.toLocaleString()})`);
       return;
@@ -739,6 +740,7 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
           companyId: currentUser.companyId,
           page: 1,
           pageSize: count, // Fetch exactly the number we need
+          source: poolSource,
           // Filter for customers ready to distribute
           assignedTo: null, // Not assigned
           // Note: API should filter out blocked and in_waiting_basket automatically

@@ -422,6 +422,12 @@ foreach ($grouped as $orderId => $group) {
     
     foreach ($orderRows as $idx => $row) {
         $sku = sanitize_value($row['productCode'] ?? null);
+        
+        // Clean SKU: Remove suffix e.g. -1, -2 if present at the end
+        if ($sku && preg_match('/-[0-9]+$/', $sku)) {
+            $sku = preg_replace('/-[0-9]+$/', '', $sku);
+        }
+
         $pName = sanitize_value($row['productName'] ?? null) ?: ($sku ?: "Item " . ($idx+1));
         $qty = floatval($row['quantity'] ?? 1);
         $price = floatval($row['unitPrice'] ?? 0);

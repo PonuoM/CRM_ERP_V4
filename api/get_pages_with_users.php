@@ -29,16 +29,19 @@ try {
     // Get JSON input
     $input = json_decode(file_get_contents('php://input'), true);
     
-    $companyId = $input['companyId'] ?? null;
-    
-    if (!$companyId) {
-        http_response_code(400);
-        echo json_encode(['error' => 'companyId is required', 'input' => $input]);
+    // Authenticate
+    validate_auth($pdo);
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'UNAUTHORIZED']);
         exit;
     }
     
+    $companyId = $user['company_id'];
+    
     // Debug: Log the company ID
-    error_log("Company ID: " . $companyId);
+    error_log("[get_pages_with_users] User ID: {$user['id']}, Company ID: " . $companyId);
     
     // Check if pages table exists and has the expected structure
     $tableCheck = $pdo->query("DESCRIBE pages");

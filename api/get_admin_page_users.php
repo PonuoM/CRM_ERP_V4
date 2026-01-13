@@ -21,10 +21,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 try {
     // Connect to database
     $pdo = db_connect();
+
+    // Authenticate
+    validate_auth($pdo);
+    $user = get_authenticated_user($pdo);
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'UNAUTHORIZED']);
+        exit;
+    }
     
-    // Query to get users with role = 'Admin Page'
-    $stmt = $pdo->prepare('SELECT id, first_name, last_name, email, phone, role FROM users WHERE role = ? OR role LIKE ?');
-    $stmt->execute(['Admin Page', '%Admin Page%']);
+    // Query to get users with role = 'Admin Page' AND same company_id
+    $stmt = $pdo->prepare('SELECT id, first_name, last_name, email, phone, role FROM users WHERE (role = ? OR role LIKE ?) AND company_id = ?');
+    $stmt->execute(['Admin Page', '%Admin Page%', $user['company_id']]);
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Format the response
