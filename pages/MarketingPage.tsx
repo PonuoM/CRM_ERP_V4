@@ -2179,7 +2179,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                   ค่าโฆษณารายวัน
                 </h3>
                 <div className="text-sm text-gray-600">
-                  รวม: ฿{totalSpend.toFixed(2)}
+                  รวม: {totalSpend.toFixed(2)}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
@@ -2273,7 +2273,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2">฿{row.amount.toFixed(2)}</td>
+                          <td className="px-3 py-2">{row.amount.toFixed(2)}</td>
                           <td className="px-3 py-2">{row.notes || "-"}</td>
                         </tr>
                       );
@@ -3989,7 +3989,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                     })()}
                                   </td>
                                   <td className="px-3 py-2 text-right text-gray-500">{groupLogs.length}</td>
-                                  <td className="px-3 py-2 text-right font-medium">฿{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                  <td className="px-3 py-2 text-right font-medium">{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                   <td className="px-3 py-2 text-right">{totalImp.toLocaleString()}</td>
                                   <td className="px-3 py-2 text-right">{totalReach.toLocaleString()}</td>
                                   <td className="px-3 py-2 text-right">{totalClicks.toLocaleString()}</td>
@@ -4019,7 +4019,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                 <tr key={log.id} className="border-b border-gray-100 bg-white">
                                                   <td className="px-3 py-1">{d}</td>
                                                   <td className="px-3 py-1 text-gray-600">{log.user_fullname || log.user_username || "-"}</td>
-                                                  <td className="px-3 py-1 text-right">฿{Number(log.ads_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(log.ads_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                   <td className="px-3 py-1 text-right">{Number(log.impressions).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(log.reach).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(log.clicks).toLocaleString()}</td>
@@ -4202,7 +4202,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                       <div className="text-xs text-gray-500">{firstLog.product_name}</div>
                                     </td>
                                     <td className="px-3 py-2 text-right text-gray-500">{groupLogs.length}</td>
-                                    <td className="px-3 py-2 text-right font-medium">฿{totalCost.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right font-medium">{totalCost.toLocaleString()}</td>
                                     <td className="px-3 py-2 text-right">{totalImp.toLocaleString()}</td>
                                     <td className="px-3 py-2 text-right">{totalReach.toLocaleString()}</td>
                                     <td className="px-3 py-2 text-right">{totalClicks.toLocaleString()}</td>
@@ -4230,7 +4230,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                                                   <td className="px-3 py-1">{l.date}</td>
                                                   <td className="px-3 py-1">{l.page_name}</td>
                                                   <td className="px-3 py-1 text-gray-600">{l.user_fullname}</td>
-                                                  <td className="px-3 py-1 text-right">฿{Number(l.ads_cost).toLocaleString()}</td>
+                                                  <td className="px-3 py-1 text-right">{Number(l.ads_cost).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.impressions).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.reach).toLocaleString()}</td>
                                                   <td className="px-3 py-1 text-right">{Number(l.clicks).toLocaleString()}</td>
