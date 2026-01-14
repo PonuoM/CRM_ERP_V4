@@ -86,42 +86,69 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       setValidationModal({
         isOpen: true,
         valid: ordersToExport,
-        invalid: [] // No invalid ones to show
+        invalid: []
       });
     }
 
+    // Lazy Fetch Logic: Fetch details for ONE by ONE (or sequentially)
+    const finalExportList: Order[] = [];
+    const failedIds: string[] = [];
+    const payloadForProcess: { id: string; customerId?: string; creatorId?: number }[] = [];
+
+    // Loop through *each* selected order to fetch full details
+    // We do this sequentially to handle errors granularly
+    for (const liteOrder of ordersToExport) {
+      try {
+        // 1. Fetch Full Details
+        const response = await apiFetch(`orders/${encodeURIComponent(liteOrder.id)}`);
+        if (!response || !response.id) {
+          throw new Error("Invalid response");
+        }
+
+        // 2. Map to Model
+        const fullOrder = mapApiOrderToModel(response);
+
+        // 3. Add to Success Lists
+        finalExportList.push(fullOrder);
+        payloadForProcess.push({
+          id: fullOrder.id,
+          customerId: fullOrder.customerId,
+          creatorId: fullOrder.creatorId
+        });
+
+      } catch (err) {
+        console.error(`Failed to fetch details for export: ${liteOrder.id}`, err);
+        failedIds.push(liteOrder.id);
+      }
+    }
+
     try {
-      const payload = ordersToExport.map(o => ({
-        id: o.id,
-        customerId: o.customerId,
-        creatorId: o.creatorId
-      }));
-
-      // 1. Call Backend Batch Process (Await it!)
-      // This will invoke the updated handleProcessOrders in App.tsx which calls batchProcessExport
-      await onProcessOrders(payload);
-
-      // 2. Determine Filename
-      const todayStr = new Date().toISOString().split('T')[0];
-      let filename = `Orders_${todayStr}.csv`;
-      if (activeTab === 'waitingExport') {
-        filename = `Export_Store_${todayStr}.csv`;
+      if (finalExportList.length === 0) {
+        throw new Error("No orders could be retrieved for export.");
       }
 
-      // 3. Download CSV ONLY if backend success
-      generateAndDownloadCsv(ordersToExport);
+      // 4. Call Process (Status Update Loop) - ONLY for successful fetches
+      await onProcessOrders(payloadForProcess);
 
-      // 4. Cleanup
+      // 5. Download CSV - ONLY for successful fetches
+      generateAndDownloadCsv(finalExportList);
+
+      // 6. Cleanup
       setSelectedIds([]);
       setRefreshCounter(prev => prev + 1);
 
-      // 5. Success UI
-      alert("ส่งออกและอัปเดตสถานะออเดอร์เรียบร้อยแล้ว");
+      // 7. Success UI with Summary
+      let msg = `ส่งออกและอัปเดตสำเร็จ ${finalExportList.length} รายการ`;
+      if (failedIds.length > 0) {
+        msg += `\n\n❌ ล้มเหลว ${failedIds.length} รายการ (ไม่ถูกดำเนินการ):\n${failedIds.join(', ')}`;
+      }
+      alert(msg);
+
       setValidationModal(prev => ({ ...prev, isOpen: false }));
 
     } catch (error) {
       console.error('An error occurred during the export process:', error);
-      alert('เกิดข้อผิดพลาดในการส่งออกหรืออัปเดตข้อมูล กรุณาลองใหม่อีกครั้ง');
+      alert(`เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : "Undefined error"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -645,103 +672,72 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     }
   };
 
-  // Prefetch full order details (with items/boxes/address) for selected orders
-  useEffect(() => {
-    if (selectedIds.length === 0) return;
-    const missing = selectedIds.filter(id => !fullOrdersById[id] || (fullOrdersById[id].items?.length ?? 0) === 0);
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const results = await Promise.allSettled(missing.map(id => apiFetch(`orders/${encodeURIComponent(id)}`)));
-        if (cancelled) return;
-        const updates: Record<string, Order> = {};
-        results.forEach((res, idx) => {
-          if (res.status !== 'fulfilled') return;
-          const r: any = res.value || {};
-          const mapped: Order = {
-            id: String(r.id),
-            customerId: String(r.customer_id ?? ''),
-            companyId: Number(r.company_id ?? 0),
-            creatorId: Number(r.creator_id ?? 0),
-            orderDate: r.order_date ?? '',
-            deliveryDate: r.delivery_date ?? '',
-            shippingAddress: {
-              recipientFirstName: r.recipient_first_name || '',
-              recipientLastName: r.recipient_last_name || '',
-              street: r.street || '',
-              subdistrict: r.subdistrict || '',
-              district: r.district || '',
-              province: r.province || '',
-              postalCode: r.postal_code || '',
-            },
-            customerInfo: {
-              firstName: r.customer?.first_name || r.customer_first_name || '',
-              lastName: r.customer?.last_name || r.customer_last_name || '',
-              phone: r.phone || r.customer_phone || r.customer?.phone || '',
-              street: r.customer?.street || r.customer_street || '',
-              subdistrict: r.customer?.subdistrict || r.customer_subdistrict || '',
-              district: r.customer?.district || r.customer_district || '',
-              province: r.customer?.province || r.customer_province || '',
-              postalCode: r.customer?.postal_code || r.customer_postal_code || '',
-            },
-            items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
-              id: Number(it.id ?? i + 1),
-              productName: String(it.product_name ?? ''),
-              quantity: Number(it.quantity ?? 0),
-              pricePerUnit: Number(it.price_per_unit ?? 0),
-              discount: Number(it.discount ?? 0),
-              isFreebie: !!(it.is_freebie ?? 0),
-              boxNumber: Number(it.box_number ?? 0),
-              productId: it.product_id ? Number(it.product_id) : undefined,
-              // Preserve raw order_items IDs so CSV export can use them
-              orderId:
-                typeof it.order_id !== 'undefined' && it.order_id !== null
-                  ? String(it.order_id)
-                  : undefined,
-              parentOrderId:
-                typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null
-                  ? String(it.parent_order_id)
-                  : undefined,
-              netTotal: Number(it.net_total ?? 0),
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-            })) : [],
-            shippingCost: Number(r.shipping_cost ?? 0),
-            billDiscount: Number(r.bill_discount ?? 0),
-            totalAmount: Number(r.total_amount ?? 0),
-            paymentMethod: fromApiPaymentMethod(r.payment_method),
-            paymentStatus: fromApiPaymentStatus(r.payment_status ?? 'Unpaid'),
-            orderStatus: fromApiOrderStatus(r.order_status ?? 'Pending'),
-            trackingNumbers: Array.isArray(r.trackingNumbers)
-              ? r.trackingNumbers
-              : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
-            boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
-              boxNumber: Number(b.box_number ?? 0),
-              codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
-              collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
-              collectedAmount: Number(b.collected_amount ?? 0),
-              waivedAmount: Number(b.waived_amount ?? 0),
-              paymentMethod: b.payment_method ?? undefined,
-              status: b.status ?? undefined,
-              subOrderId: b.sub_order_id ?? undefined,
-            })) : [],
-            notes: r.notes ?? undefined,
-            reconcileAction: r.reconcile_action || undefined,
-          };
-          updates[missing[idx]] = mapped;
-        });
-        if (Object.keys(updates).length > 0) {
-          setFullOrdersById(prev => ({ ...prev, ...updates }));
-        }
-      } catch (e) {
-        // ignore prefetch errors; export will fallback
-        console.error('Prefetch orders failed', e);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [selectedIds, fullOrdersById]);
-
+  // Lazy Fetch Implementation:
+  // Instead of pre-fetching, we define a helper to map single API response to Order model
+  const mapApiOrderToModel = (r: any): Order => {
+    return {
+      id: String(r.id),
+      customerId: String(r.customer_id ?? ''),
+      companyId: Number(r.company_id ?? 0),
+      creatorId: Number(r.creator_id ?? 0),
+      orderDate: r.order_date ?? '',
+      deliveryDate: r.delivery_date ?? '',
+      shippingAddress: {
+        recipientFirstName: r.recipient_first_name || '',
+        recipientLastName: r.recipient_last_name || '',
+        street: r.street || '',
+        subdistrict: r.subdistrict || '',
+        district: r.district || '',
+        province: r.province || '',
+        postalCode: r.postal_code || '',
+      },
+      customerInfo: {
+        firstName: r.customer?.first_name || r.customer_first_name || '',
+        lastName: r.customer?.last_name || r.customer_last_name || '',
+        phone: r.phone || r.customer_phone || r.customer?.phone || '',
+        street: r.customer?.street || r.customer_street || '',
+        subdistrict: r.customer?.subdistrict || r.customer_subdistrict || '',
+        district: r.customer?.district || r.customer_district || '',
+        province: r.customer?.province || r.customer_province || '',
+        postalCode: r.customer?.postal_code || r.customer_postal_code || '',
+      },
+      items: Array.isArray(r.items) ? r.items.map((it: any, i: number) => ({
+        id: Number(it.id ?? i + 1),
+        productName: String(it.product_name ?? ''),
+        quantity: Number(it.quantity ?? 0),
+        pricePerUnit: Number(it.price_per_unit ?? 0),
+        discount: Number(it.discount ?? 0),
+        isFreebie: !!(it.is_freebie ?? 0),
+        boxNumber: Number(it.box_number ?? 0),
+        productId: it.product_id ? Number(it.product_id) : undefined,
+        orderId: typeof it.order_id !== 'undefined' && it.order_id !== null ? String(it.order_id) : undefined,
+        parentOrderId: typeof it.parent_order_id !== 'undefined' && it.parent_order_id !== null ? String(it.parent_order_id) : undefined,
+        netTotal: Number(it.net_total ?? 0),
+        isPromotionParent: !!(it.is_promotion_parent ?? 0),
+      })) : [],
+      shippingCost: Number(r.shipping_cost ?? 0),
+      billDiscount: Number(r.bill_discount ?? 0),
+      totalAmount: Number(r.total_amount ?? 0),
+      paymentMethod: fromApiPaymentMethod(r.payment_method),
+      paymentStatus: fromApiPaymentStatus(r.payment_status ?? 'Unpaid'),
+      orderStatus: fromApiOrderStatus(r.order_status ?? 'Pending'),
+      trackingNumbers: Array.isArray(r.trackingNumbers)
+        ? r.trackingNumbers
+        : (typeof r.tracking_numbers === 'string' ? String(r.tracking_numbers).split(',').filter(Boolean) : []),
+      boxes: Array.isArray(r.boxes) ? r.boxes.map((b: any) => ({
+        boxNumber: Number(b.box_number ?? 0),
+        codAmount: Number(b.cod_amount ?? b.collection_amount ?? 0),
+        collectionAmount: Number(b.collection_amount ?? b.cod_amount ?? 0),
+        collectedAmount: Number(b.collected_amount ?? 0),
+        waivedAmount: Number(b.waived_amount ?? 0),
+        paymentMethod: b.payment_method ?? undefined,
+        status: b.status ?? undefined,
+        subOrderId: b.sub_order_id ?? undefined,
+      })) : [],
+      notes: r.notes ?? undefined,
+      reconcileAction: r.reconcile_action || undefined,
+    };
+  };
 
   const generateAndDownloadCsv = async (selectedOrders: Order[]) => {
     // Generate HTML Table for XLS export to support Text formatting (mso-number-format)
@@ -1114,7 +1110,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
     if (activeTab === 'waitingExport') {
       try {
-        const { invalid } = await validateOrdersForExport(selectedIds);
+        const { invalid } = await validateOrdersForExport(selectedIds, 'waitingExport', user.companyId);
 
         const invalidIds = new Set(invalid.map((inv: any) => String(inv.id)));
         const validFrontendOrders = selectedOrders.filter(o => !invalidIds.has(o.id));

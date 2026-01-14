@@ -13,6 +13,7 @@ try {
     $input = json_decode(file_get_contents('php://input'), true);
     $orderIds = $input['orderIds'] ?? [];
     $tabKey = $input['tabKey'] ?? 'waitingExport';
+    $companyId = $input['companyId'] ?? null;
 
     if (empty($orderIds)) {
         json_response(['valid' => [], 'invalid' => []]);
@@ -25,32 +26,46 @@ try {
     $stmt->execute([$tabKey]);
     $rules = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. Fetch Orders
-    // Create placeholders for IN clause
+    // 2. Fetch Orders (with Company ID Check)
     $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $stmt = $pdo->prepare("SELECT id, payment_method, payment_status, order_status FROM orders WHERE id IN ($placeholders)");
-    $stmt->execute($orderIds);
-    $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $sql = "SELECT id, payment_method, payment_status, order_status FROM orders WHERE id IN ($placeholders)";
+    $params = $orderIds;
+
+    if ($companyId) {
+        $sql .= " AND company_id = ?";
+        $params[] = $companyId;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $fetchedOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Index by ID for easier lookup
+    $ordersById = [];
+    foreach ($fetchedOrders as $o) {
+        $ordersById[$o['id']] = $o;
+    }
 
     $validOrders = [];
     $invalidOrders = [];
 
-    // If no rules exist for this tab, generic logic (or pass all? or fail all?)
-    // Assuming if rules exist, we enforce them. If no rules, maybe pass all or fail all.
-    // Frontend logic was: `const tabRules = ...; if (tabRules.length > 0) { ... }`
-    // So if no rules, it skipped validation (effectively valid).
-    
-    if (empty($rules)) {
-         // Return all as valid if no rules? Or return as is?
-         // Frontend behavior: "if (tabRules.length > 0) { check... }" -> implies if 0, do nothing (pass).
-         // So we just return everything as valid.
-         foreach ($orders as $order) {
-             $validOrders[] = $order;
-         }
-         json_response(['valid' => $validOrders, 'invalid' => []]);
-    }
+    // Verify each requested ID
+    foreach ($orderIds as $reqId) {
+        // A. Check existence & company (if not in fetched, it's invalid)
+        if (!isset($ordersById[$reqId])) {
+            $invalidOrders[] = ['id' => $reqId, 'error' => 'Not found or wrong company'];
+            continue;
+        }
 
-    foreach ($orders as $order) {
+        $order = $ordersById[$reqId];
+
+        // B. Check Tab Rules
+        if (empty($rules)) {
+             // No rules = pass
+             $validOrders[] = $order;
+             continue;
+        }
+
         $isMatch = false;
         foreach ($rules as $rule) {
             $r_pm = trim($rule['payment_method'] ?? '');
@@ -74,7 +89,6 @@ try {
         if ($isMatch) {
             $validOrders[] = $order;
         } else {
-            // Include reason or just the order
             $invalidOrders[] = $order;
         }
     }

@@ -619,10 +619,10 @@ export const getTabRules = async (): Promise<any> => {
   return await apiFetch('tab_rules/get');
 };
 
-export const validateOrdersForExport = async (orderIds: string[], tabKey: string = 'waitingExport'): Promise<{ valid: any[], invalid: any[] }> => {
+export const validateOrdersForExport = async (orderIds: string[], tabKey: string = 'waitingExport', companyId?: number): Promise<{ valid: any[], invalid: any[] }> => {
   const response = await apiFetch('Order_DB/validate_for_export.php', {
     method: 'POST',
-    body: JSON.stringify({ orderIds, tabKey })
+    body: JSON.stringify({ orderIds, tabKey, companyId })
   });
   return response ? response : { valid: [], invalid: [] };
 };
