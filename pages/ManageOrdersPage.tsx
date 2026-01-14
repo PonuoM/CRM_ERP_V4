@@ -1083,23 +1083,25 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       try {
         const { invalid } = await validateOrdersForExport(selectedIds);
 
-        if (invalid.length > 0) {
-          const invalidIds = new Set(invalid.map((inv: any) => String(inv.id)));
-          const validFrontendOrders = selectedOrders.filter(o => !invalidIds.has(o.id));
-          const invalidFrontendOrders = selectedOrders.filter(o => invalidIds.has(o.id));
+        const invalidIds = new Set(invalid.map((inv: any) => String(inv.id)));
+        const validFrontendOrders = selectedOrders.filter(o => !invalidIds.has(o.id));
+        const invalidFrontendOrders = selectedOrders.filter(o => invalidIds.has(o.id));
 
-          setValidationModal({
-            isOpen: true,
-            valid: validFrontendOrders,
-            invalid: invalidFrontendOrders
-          });
-          return;
-        }
+        setValidationModal({
+          isOpen: true,
+          valid: validFrontendOrders,
+          invalid: invalidFrontendOrders
+        });
+        return;
+
       } catch (e) {
         console.error('Failed to validate tab rules', e);
+        alert('เกิดข้อผิดพลาดในการตรวจสอบเงื่อนไขการส่งออก');
+        return;
       }
     }
 
+    // For other tabs or fallback (original logic for non-waitingExport)
     if (window.confirm(`คุณต้องการส่งออกและส่งออเดอร์ ${validOrders.length} รายการให้คลังสินค้าใช่หรือไม่? สถานะจะถูกเปลี่ยนเป็น "กำลังจัดสินค้า"`)) {
       runExport(validOrders);
     }
@@ -1825,6 +1827,10 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               ) : (
                 <p className="text-red-600 text-center font-medium">ไม่มีออเดอร์ที่สามารถส่งออกได้ในขณะนี้</p>
               )}
+
+              {validationModal.invalid.length > 0 && (
+                <p className="text-amber-600 text-center font-medium mt-2">กรุณารีเฟรชเพื่ออัพเดทข้อมูล</p>
+              )}
             </div>
 
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
@@ -1834,6 +1840,19 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               >
                 ปิด
               </button>
+
+              {validationModal.invalid.length > 0 && (
+                <button
+                  onClick={() => {
+                    setRefreshCounter(prev => prev + 1);
+                    setValidationModal(prev => ({ ...prev, isOpen: false }));
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4" /> รีเฟรชข้อมูล
+                </button>
+              )}
+
               {validationModal.valid.length > 0 && (
                 <button
                   onClick={() => {
