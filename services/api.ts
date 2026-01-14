@@ -708,6 +708,23 @@ export async function getOrder(id: string) {
   return apiFetch(`orders/${encodeURIComponent(id)}`);
 }
 
+export async function batchProcessExport(
+  orderIds: string[],
+  targetStatus: string = 'Picking',
+  actorId?: number,
+  actorName?: string
+) {
+  return apiFetch('Order_DB/batch_process_export.php', {
+    method: 'POST',
+    body: JSON.stringify({
+      orderIds,
+      targetStatus,
+      actorId,
+      actorName
+    })
+  });
+}
+
 export async function listAppointments(params?: { customerId?: string; pageSize?: number }) {
   const qs = new URLSearchParams();
   if (params?.customerId) qs.set("customerId", params.customerId);

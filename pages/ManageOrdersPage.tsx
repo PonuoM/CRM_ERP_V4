@@ -78,23 +78,56 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   });
 
   const runExport = async (ordersToExport: Order[]) => {
+    // Show loading
+    setIsProcessing(true);
+
+    // Force open modal if not already open (e.g. for non-waitingExport tabs)
+    if (!validationModal.isOpen) {
+      setValidationModal({
+        isOpen: true,
+        valid: ordersToExport,
+        invalid: [] // No invalid ones to show
+      });
+    }
+
     try {
+      const payload = ordersToExport.map(o => ({
+        id: o.id,
+        customerId: o.customerId,
+        creatorId: o.creatorId
+      }));
+
+      // 1. Call Backend Batch Process (Await it!)
+      // This will invoke the updated handleProcessOrders in App.tsx which calls batchProcessExport
+      await onProcessOrders(payload);
+
+      // 2. Determine Filename
+      const todayStr = new Date().toISOString().split('T')[0];
+      let filename = `Orders_${todayStr}.csv`;
+      if (activeTab === 'waitingExport') {
+        filename = `Export_Store_${todayStr}.csv`;
+      }
+
+      // 3. Download CSV ONLY if backend success
       generateAndDownloadCsv(ordersToExport);
-      setTimeout(async () => {
-        const ordersToProcess = ordersToExport.map(o => ({
-          id: o.id,
-          customerId: o.customerId,
-          creatorId: o.creatorId
-        }));
-        await onProcessOrders(ordersToProcess);
-        setSelectedIds([]);
-        setRefreshCounter(prev => prev + 1);
-      }, 0);
+
+      // 4. Cleanup
+      setSelectedIds([]);
+      setRefreshCounter(prev => prev + 1);
+
+      // 5. Success UI
+      alert("ส่งออกและอัปเดตสถานะออเดอร์เรียบร้อยแล้ว");
+      setValidationModal(prev => ({ ...prev, isOpen: false }));
+
     } catch (error) {
       console.error('An error occurred during the export process:', error);
-      alert('เกิดข้อผิดพลาดในการสร้างไฟล์ CSV กรุณาตรวจสอบ Console log และลองใหม่อีกครั้ง');
+      alert('เกิดข้อผิดพลาดในการส่งออกหรืออัปเดตข้อมูล กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsProcessing(false);
     }
   };
+
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
@@ -1794,74 +1827,70 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
               <button
                 onClick={() => setValidationModal(prev => ({ ...prev, isOpen: false }))}
                 className="text-gray-400 hover:text-gray-600"
+                disabled={isProcessing}
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="flex gap-4 mb-6">
-                <div className="flex-1 bg-green-50 p-4 rounded-lg border border-green-100 text-center">
-                  <div className="text-2xl font-bold text-green-600">{validationModal.valid.length}</div>
-                  <div className="text-sm text-green-800">ออเดอร์ที่พร้อมส่งออก</div>
-                </div>
-                <div className="flex-1 bg-red-50 p-4 rounded-lg border border-red-100 text-center">
-                  <div className="text-2xl font-bold text-red-600">{validationModal.invalid.length}</div>
-                  <div className="text-sm text-red-800">ออเดอร์ที่ไม่ผ่านเงื่อนไข</div>
-                </div>
+            {isProcessing ? (
+              <div className="flex flex-col items-center justify-center p-12 space-y-4">
+                <Spinner />
+                <p className="text-gray-600 font-medium text-lg">กำลังประมวลผลและอัปเดตออเดอร์...</p>
+                <p className="text-sm text-gray-400">ระบบกำลังเปลี่ยนสถานะเป็น "กำลังจัดสินค้า" และส่งออกไฟล์ CSV</p>
+                <p className="text-xs text-red-400 mt-2">ห้ามปิดหน้าต่างนี้จนกว่าจะเสร็จสิ้น</p>
               </div>
-
-              {validationModal.invalid.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-                  <p className="text-red-700 font-medium mb-2">สาเหตุ: ออเดอร์เหล่านี้มีสถานะหรือวิธีการชำระเงินไม่ตรงกับเงื่อนไข "รอส่งออก"</p>
-                  <div className="text-sm text-red-600 max-h-40 overflow-y-auto font-mono bg-white p-2 rounded border border-red-100">
-                    {validationModal.invalid.map(o => (
-                      <div key={o.id}>{o.id} ({o.paymentMethod} - {o.paymentStatus} - {o.orderStatus})</div>
-                    ))}
+            ) : (
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="flex gap-4 mb-6">
+                  <div className="flex-1 bg-green-50 p-4 rounded-lg border border-green-100 text-center">
+                    <div className="text-2xl font-bold text-green-600">{validationModal.valid.length}</div>
+                    <div className="text-sm text-green-800">ออเดอร์ที่พร้อมส่งออก</div>
+                  </div>
+                  <div className="flex-1 bg-red-50 p-4 rounded-lg border border-red-100 text-center">
+                    <div className="text-2xl font-bold text-red-600">{validationModal.invalid.length}</div>
+                    <div className="text-sm text-red-800">ออเดอร์ที่ไม่ผ่านเงื่อนไข</div>
                   </div>
                 </div>
-              )}
 
-              {validationModal.valid.length > 0 ? (
-                <p className="text-gray-600 text-center">คุณต้องการดำเนินการส่งออกเฉพาะออเดอร์ที่ตรวจสอบผ่าน {validationModal.valid.length} รายการหรือไม่?</p>
-              ) : (
-                <p className="text-red-600 text-center font-medium">ไม่มีออเดอร์ที่สามารถส่งออกได้ในขณะนี้</p>
-              )}
+                {validationModal.invalid.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+                    <p className="text-red-700 font-medium mb-2">สาเหตุ: ออเดอร์เหล่านี้มีสถานะหรือวิธีการชำระเงินไม่ตรงกับเงื่อนไข "รอส่งออก"</p>
+                    <div className="text-sm text-red-600 max-h-40 overflow-y-auto font-mono bg-white p-2 rounded border border-red-100">
+                      {validationModal.invalid.map(o => (
+                        <div key={o.id}>{o.id} ({o.paymentMethod} - {o.paymentStatus} - {o.orderStatus})</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {validationModal.invalid.length > 0 && (
-                <p className="text-amber-600 text-center font-medium mt-2">กรุณารีเฟรชเพื่ออัพเดทข้อมูล</p>
-              )}
-            </div>
+                {validationModal.valid.length > 0 ? (
+                  <p className="text-gray-600 text-center">คุณต้องการดำเนินการส่งออกเฉพาะออเดอร์ที่ตรวจสอบผ่าน {validationModal.valid.length} รายการหรือไม่?</p>
+                ) : (
+                  <p className="text-red-600 text-center font-medium">ไม่มีออเดอร์ที่สามารถส่งออกได้ในขณะนี้</p>
+                )}
+
+                {validationModal.invalid.length > 0 && (
+                  <p className="text-amber-600 text-center font-medium mt-2">กรุณารีเฟรชเพื่ออัพเดทข้อมูล</p>
+                )}
+              </div>
+            )}
 
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
               <button
                 onClick={() => setValidationModal(prev => ({ ...prev, isOpen: false }))}
-                className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 font-medium"
+                className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isProcessing}
               >
                 ปิด
               </button>
 
-              {validationModal.invalid.length > 0 && (
+              {validationModal.valid.length > 0 && !isProcessing && (
                 <button
-                  onClick={() => {
-                    setRefreshCounter(prev => prev + 1);
-                    setValidationModal(prev => ({ ...prev, isOpen: false }));
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm flex items-center gap-2"
+                  onClick={() => runExport(validationModal.valid)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm transition-colors"
                 >
-                  <Clock className="w-4 h-4" /> รีเฟรชข้อมูล
-                </button>
-              )}
-
-              {validationModal.valid.length > 0 && (
-                <button
-                  onClick={() => {
-                    runExport(validationModal.valid);
-                    setValidationModal(prev => ({ ...prev, isOpen: false }));
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium shadow-sm"
-                >
-                  ยืนยันส่งออก ({validationModal.valid.length} รายการ)
+                  ยืนยันส่งออก
                 </button>
               )}
             </div>
@@ -1871,5 +1900,6 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
     </div>
   );
 };
+
 
 export default ManageOrdersPage;
