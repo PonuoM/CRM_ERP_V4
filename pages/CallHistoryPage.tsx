@@ -133,28 +133,38 @@ const getOnecallCredentialsFromDB = async () => {
       throw new Error("Access denied - insufficient permissions");
     }
 
-    company_id: user.company_id,
-      role: user.role,
+    // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
+    const apiBase = resolveApiBasePath();
+    const response = await fetch(`${apiBase}/Onecall_DB/get_credentials.php`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user: {
+          id: user.id,
+          company_id: user.company_id,
+          role: user.role,
         },
-}),
+      }),
     });
 
-if (!response.ok) {
-  const errorData = await response.json();
-  throw new Error(errorData.error || "Failed to retrieve credentials");
-}
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to retrieve credentials");
+    }
 
-const result = await response.json();
+    const result = await response.json();
 
-if (!result.success) {
-  throw new Error(result.error || "Credentials not found");
-}
+    if (!result.success) {
+      throw new Error(result.error || "Credentials not found");
+    }
 
-return result.data;
+    return result.data;
   } catch (error) {
-  console.error("Error retrieving Onecall credentials from database:", error);
-  throw error;
-}
+    console.error("Error retrieving Onecall credentials from database:", error);
+    throw error;
+  }
 };
 
 // JavaScript version of authenticateOneCall function
