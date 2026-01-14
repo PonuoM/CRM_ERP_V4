@@ -2476,7 +2476,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
                 $hasShippingProvider = in_array('shipping_provider', $ordersColumns);
 
-                $selectCols = 'o.id, o.customer_id, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
+                $selectCols = 'o.id, o.customer_id, o.customer_type, o.company_id, o.creator_id, o.order_date, o.delivery_date, 
                                o.street, o.subdistrict, o.district, o.province, o.postal_code, o.recipient_first_name, o.recipient_last_name';
                 if ($hasShippingProvider) {
                     $selectCols .= ', o.shipping_provider';
@@ -2484,6 +2484,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
+                               GROUP_CONCAT(DISTINCT gss.delivery_status ORDER BY gss.id SEPARATOR ",") AS airport_delivery_status,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
                                MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,
@@ -2494,6 +2495,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $sql = "SELECT $selectCols
                         FROM orders o
                         LEFT JOIN order_tracking_numbers t ON t.parent_order_id = o.id
+                        LEFT JOIN google_sheet_shipping gss ON gss.order_number = t.tracking_number
                         LEFT JOIN statement_reconcile_logs srl ON (
                             srl.order_id COLLATE utf8mb4_unicode_ci = o.id 
                             OR srl.confirmed_order_id COLLATE utf8mb4_unicode_ci = o.id
@@ -8090,20 +8092,9 @@ function handle_attendance(PDO $pdo, ?string $id, ?string $action): void {
                 $user = $uStmt->fetch();
                 if (!$user) { json_response(['error' => 'NOT_FOUND'], 404); }
                 if ($user['status'] !== 'active') {
-                    json_response(['error' => 'FORBIDDEN_ROLE'], 403);
+                    json_response(['error' => 'USER_INACTIVE'], 403);
                 }
-                $allowedRoles = [
-                    'Admin Page',
-                    'Telesale',
-                    'Supervisor Telesale',
-                    'Backoffice',
-                    'Admin Control',
-                    'Super Admin',
-                    'Marketing',
-                ];
-                if (!in_array($user['role'], $allowedRoles, true)) {
-                    json_response(['error' => 'FORBIDDEN_ROLE'], 403);
-                }
+                // All active users can check in (no role restriction)
 
                 $today = (new DateTime('now'))->format('Y-m-d');
 

@@ -135,6 +135,7 @@ import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
 import SalesDashboard from "./pages/SalesDashboard";
 import CallsDashboard from "./pages/CallsDashboard";
+import TalkTimeDashboard from "./pages/TalkTimeDashboard";
 import PermissionsPage from "./pages/PermissionsPage";
 import RoleManagementPage from "./pages/RoleManagementPage";
 import BankAccountAuditPage from "./pages/Accounting/BankAccountAuditPage";
@@ -6512,6 +6513,13 @@ const App: React.FC = () => {
     }
 
     // New, neutral sidebar labels mapping with role guard
+    if (activePage === "Dashboard Talk Time") {
+      return (
+        <TalkTimeDashboard
+          user={currentUser}
+        />
+      );
+    }
     if (activePage === "Dashboard" || activePage === "Home") {
       if (currentUser.role === UserRole.Backoffice) {
         return (

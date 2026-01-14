@@ -48,6 +48,7 @@ function previewGoogleSheetData(PDO $pdo, ?string $startDate = null, ?string $en
         $changedRecords = [];
         $unchangedRecords = [];
         $errors = [];
+        $dbCache = []; // Initialize cache for database records
 
         // ข้ามแถวแรก (header)
         for ($i = 1; $i < count($values); $i++) {

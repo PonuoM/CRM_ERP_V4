@@ -226,13 +226,41 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             notes: r.notes,
             salesChannel: r.sales_channel,
             salesChannelPageId: r.sales_channel_page_id,
+            customerType: r.customer_type,
           }));
+
+        console.log('📊 Sample order with customer_type:', mappedOrders[0]);
 
         setFetchedOrders(mappedOrders);
 
-        // We don't need customers for display, only for export
-        // So we'll skip fetching customers here
-        setFetchedCustomers(customers);
+        // Fetch customers for display (phone, customer type)
+        try {
+          const customersResponse = await apiFetch(`customers?pageSize=5000${companyFilter}`);
+          const customersData = Array.isArray(customersResponse)
+            ? customersResponse
+            : (customersResponse?.customers || customersResponse?.data || []);
+
+          const mappedCustomers: Customer[] = customersData.map((c: any) => ({
+            id: String(c.id),
+            pk: c.id,
+            firstName: c.first_name || '',
+            lastName: c.last_name || '',
+            phone: c.phone || '',
+            lifecycleStatus: c.lifecycle_status || '',
+            address: c.address ? {
+              street: c.address.street || '',
+              subdistrict: c.address.subdistrict || '',
+              district: c.address.district || '',
+              province: c.address.province || '',
+              postalCode: c.address.postal_code || '',
+            } : undefined,
+          }));
+
+          setFetchedCustomers(mappedCustomers);
+        } catch (error) {
+          console.warn('Could not fetch customers:', error);
+          setFetchedCustomers(customers);
+        }
       } catch (error) {
         console.error('Failed to fetch orders:', error);
       } finally {
@@ -437,19 +465,95 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
       const getRegion = (province: string): string => {
         const regionMap: { [key: string]: string } = {
+          // ภาคกลาง (Central)
           'กรุงเทพมหานคร': 'ภาคกลาง',
           'นนทบุรี': 'ภาคกลาง',
           'ปทุมธานี': 'ภาคกลาง',
           'สมุทรปราการ': 'ภาคกลาง',
           'สมุทรสาคร': 'ภาคกลาง',
           'นครปฐม': 'ภาคกลาง',
+          'อยุธยา': 'ภาคกลาง',
+          'พระนครศรีอยุธยา': 'ภาคกลาง',
+          'อ่างทอง': 'ภาคกลาง',
+          'ลพบุรี': 'ภาคกลาง',
+          'สิงห์บุรี': 'ภาคกลาง',
+          'ชัยนาท': 'ภาคกลาง',
+          'สระบุรี': 'ภาคกลาง',
+          'นครนายก': 'ภาคกลาง',
+          'สุพรรณบุรี': 'ภาคกลาง',
+          'สมุทรสงคราม': 'ภาคกลาง',
+
+          // ภาคเหนือ (North)
           'เชียงใหม่': 'ภาคเหนือ',
           'เชียงราย': 'ภาคเหนือ',
+          'ลำปาง': 'ภาคเหนือ',
+          'ลำพูน': 'ภาคเหนือ',
+          'แม่ฮ่องสอน': 'ภาคเหนือ',
+          'แพร่': 'ภาคเหนือ',
+          'น่าน': 'ภาคเหนือ',
+          'พะเยา': 'ภาคเหนือ',
+          'อุตรดิตถ์': 'ภาคเหนือ',
+          'ตาก': 'ภาคเหนือ',
+          'สุโขทัย': 'ภาคเหนือ',
+          'พิษณุโลก': 'ภาคเหนือ',
+          'พิจิตร': 'ภาคเหนือ',
+          'กำแพงเพชร': 'ภาคเหนือ',
+          'เพชรบูรณ์': 'ภาคเหนือ',
+          'นครสวรรค์': 'ภาคเหนือ',
+          'อุทัยธานี': 'ภาคเหนือ',
+
+          // ภาคตะวันออกเฉียงเหนือ (Northeast/Isan)
+          'ขอนแก่น': 'ภาคตะวันออกเฉียงเหนือ',
+          'อุดรธานี': 'ภาคตะวันออกเฉียงเหนือ',
+          'นครราชสีมา': 'ภาคตะวันออกเฉียงเหนือ',
+          'อุบลราชธานี': 'ภาคตะวันออกเฉียงเหนือ',
+          'ศรีสะเกษ': 'ภาคตะวันออกเฉียงเหนือ',
+          'สุรินทร์': 'ภาคตะวันออกเฉียงเหนือ',
+          'บุรีรัมย์': 'ภาคตะวันออกเฉียงเหนือ',
+          'ร้อยเอ็ด': 'ภาคตะวันออกเฉียงเหนือ',
+          'มหาสารคาม': 'ภาคตะวันออกเฉียงเหนือ',
+          'กาฬสินธุ์': 'ภาคตะวันออกเฉียงเหนือ',
+          'สกลนคร': 'ภาคตะวันออกเฉียงเหนือ',
+          'นครพนม': 'ภาคตะวันออกเฉียงเหนือ',
+          'มุกดาหาร': 'ภาคตะวันออกเฉียงเหนือ',
+          'เลย': 'ภาคตะวันออกเฉียงเหนือ',
+          'หนองคาย': 'ภาคตะวันออกเฉียงเหนือ',
+          'หนองบัวลำภู': 'ภาคตะวันออกเฉียงเหนือ',
+          'ยโสธร': 'ภาคตะวันออกเฉียงเหนือ',
+          'อำนาจเจริญ': 'ภาคตะวันออกเฉียงเหนือ',
+          'ชัยภูมิ': 'ภาคตะวันออกเฉียงเหนือ',
+          'บึงกาฬ': 'ภาคตะวันออกเฉียงเหนือ',
+
+          // ภาคตะวันออก (East)
+          'ชลบุรี': 'ภาคตะวันออก',
+          'ระยอง': 'ภาคตะวันออก',
+          'จันทบุรี': 'ภาคตะวันออก',
+          'ตราด': 'ภาคตะวันออก',
+          'ปราจีนบุรี': 'ภาคตะวันออก',
+          'สระแก้ว': 'ภาคตะวันออก',
+          'ฉะเชิงเทรา': 'ภาคตะวันออก',
+
+          // ภาคตะวันตก (West)
+          'ราชบุรี': 'ภาคตะวันตก',
+          'กาญจนบุรี': 'ภาคตะวันตก',
+          'เพชรบุรี': 'ภาคตะวันตก',
+          'ประจวบคีรีขันธ์': 'ภาคตะวันตก',
+
+          // ภาคใต้ (South)
           'ภูเก็ต': 'ภาคใต้',
           'สุราษฎร์ธานี': 'ภาคใต้',
           'กระบี่': 'ภาคใต้',
-          'ขอนแก่น': 'ภาคตะวันออกเฉียงเหนือ',
-          'อุดรธานี': 'ภาคตะวันออกเฉียงเหนือ',
+          'นครศรีธรรมราช': 'ภาคใต้',
+          'สงขลา': 'ภาคใต้',
+          'ตรัง': 'ภาคใต้',
+          'พัทลุง': 'ภาคใต้',
+          'สตูล': 'ภาคใต้',
+          'ชุมพร': 'ภาคใต้',
+          'ระนอง': 'ภาคใต้',
+          'พังงา': 'ภาคใต้',
+          'ปัตตานี': 'ภาคใต้',
+          'ยะลา': 'ภาคใต้',
+          'นราธิวาส': 'ภาคใต้',
         };
         return regionMap[province] || 'ไม่ทราบภาค';
       };
@@ -515,6 +619,20 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         return customer?.phone || order.customerInfo?.phone || order.shippingAddress?.phone || '-';
       };
 
+      const getCustomerType = () => {
+        // Get the customer type value
+        let customerType = order.customerType || customer?.lifecycleStatus || '-';
+
+        // Translate to Thai
+        const customerTypeTranslations: { [key: string]: string } = {
+          'New Customer': 'ลูกค้าใหม่',
+          'Reorder Customer': 'ลูกค้ารีออเดอร์',
+          'Reorder': 'ลูกค้ารีออเดอร์'
+        };
+
+        return customerTypeTranslations[customerType] || customerType;
+      };
+
       if (order.items && order.items.length > 0) {
         // มี items - แสดงแต่ละรายการ
         order.items.forEach(item => {
@@ -560,6 +678,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'แผนก': getSellerRole(),
             'ชื่อลูกค้า': getCustomerName(),
             'เบอร์โทรลูกค้า': getCustomerPhone(),
+            'ประเภทลูกค้า': getCustomerType(),
             'วันที่จัดส่ง': getDeliveryDate(),
             'ช่องทางสั่งซื้อ': getSalesChannel(),
             'เพจ': getPageName(),
@@ -579,6 +698,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ยอดรวมรายการ': `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'หมายเลขกล่อง': String(item.boxNumber || 1),
             'หมายเลขติดตาม': getTrackingNumber(),
+            'สถานะจาก Airport': order.airportDeliveryStatus || '-',
             'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
           });
@@ -592,6 +712,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'แผนก': getSellerRole(),
           'ชื่อลูกค้า': getCustomerName(),
           'เบอร์โทรลูกค้า': getCustomerPhone(),
+          'ประเภทลูกค้า': getCustomerType(),
           'วันที่จัดส่ง': getDeliveryDate(),
           'ช่องทางสั่งซื้อ': getSalesChannel(),
           'เพจ': getPageName(),
@@ -611,6 +732,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'ยอดรวมรายการ': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           'หมายเลขกล่อง': '0',
           'หมายเลขติดตาม': getTrackingNumber(),
+          'สถานะจาก Airport': order.airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
         });
@@ -873,14 +995,92 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
               const effectiveDiscount = isClaimOrGift ? (qty * originalPrice) : originalDiscount;
               const itemTotal = (qty * originalPrice) - effectiveDiscount;
 
+              // Helper function to translate customer type to Thai
+              const getCustomerTypeThai = (customerType: string) => {
+                const translations: { [key: string]: string } = {
+                  'New Customer': 'ลูกค้าใหม่',
+                  'Reorder Customer': 'ลูกค้ารีออเดอร์',
+                  'Reorder': 'ลูกค้ารีออเดอร์'
+                };
+                return translations[customerType] || customerType || '-';
+              };
+
+              // Helper function to get product/promo code
+              const getProductCode = (item: any) => {
+                if (item.is_promotion_parent) {
+                  return item.promotion_id ? `PROMO-${String(item.promotion_id).padStart(3, '0')}` : '-';
+                } else if (item.promotion_id) {
+                  return `PROMO-${String(item.promotion_id).padStart(3, '0')}`;
+                } else if (item.product_sku) {
+                  return item.product_sku;
+                } else if (item.product_id) {
+                  const product = products.find(p => p.id === item.product_id);
+                  return product?.sku || '-';
+                }
+                return '-';
+              };
+
+              // Helper function to get promo name
+              const getPromoName = (item: any, allItems: any[]) => {
+                if (item.is_promotion_parent) {
+                  return item.product_name || '-';
+                } else if (item.promotion_id && item.parent_item_id) {
+                  const parentItem = allItems.find(i => i.id === item.parent_item_id);
+                  return parentItem?.product_name || '-';
+                }
+                return '-';
+              };
+
+              // Helper function to get tracking number for a specific box
+              const getTrackingForBox = (order: any, boxNumber: number) => {
+                if (order.tracking_numbers) {
+                  const trackings = order.tracking_numbers.split(',');
+                  // For now, return all tracking numbers (could be enhanced to match by box)
+                  return trackings.join(', ') || '-';
+                }
+                return '-';
+              };
+
+              // Helper function to get slip status
+              const getSlipStatus = (order: any) => {
+                if (order.slips && order.slips.length > 0) {
+                  return `อัปโหลดแล้ว (${order.slips.length})`;
+                } else if (order.slip_url) {
+                  return 'อัปโหลดแล้ว';
+                }
+                return 'ยังไม่อัปโหลด';
+              };
+
+              // Helper function to translate order status
+              const getOrderStatusThai = (status: string) => {
+                const statusMap: { [key: string]: string } = {
+                  'Pending': 'รอดำเนินการ',
+                  'Confirmed': 'ยืนยันแล้ว',
+                  'Picking': 'กำลังจัดเตรียม',
+                  'Shipping': 'กำลังจัดส่ง',
+                  'Delivered': 'จัดส่งสำเร็จ',
+                  'Cancelled': 'ยกเลิก',
+                  'Returned': 'ตีกลับ'
+                };
+                return statusMap[status] || status;
+              };
+
+              // Get product name with freebie indicator
+              let productName = item.product_name || '-';
+              if (item.is_promotion_parent) {
+                productName = `📦 ${item.product_name}` || '-';
+              } else if (item.is_freebie) {
+                productName = `${item.product_name} (ของแถม)`;
+              }
+
               exportRows.push({
                 'วันที่สั่งซื้อ': order.order_date ? new Date(order.order_date).toLocaleDateString('th-TH') : '-',
                 'เลขคำสั่งซื้อ': order.id || '-',
                 'ผู้ขาย': creator ? `${creator.firstName || ''} ${creator.lastName || ''}`.trim() || creator.username : '-',
                 'แผนก': creator?.role || '-',
-                'ภาค': region,
                 'ชื่อลูกค้า': customerName,
                 'เบอร์โทรลูกค้า': customerPhone,
+                'ประเภทลูกค้า': getCustomerTypeThai(order.customer_type || customer?.lifecycleStatus),
                 'วันที่จัดส่ง': order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('th-TH') : '-',
                 'ช่องทางสั่งซื้อ': order.sales_channel || '-',
                 'เพจ': page?.name || '-',
@@ -890,16 +1090,19 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'อำเภอ': order.district || '-',
                 'จังหวัด': order.province || '-',
                 'รหัสไปรษณีย์': order.postal_code || '-',
-                'สินค้า': item.product_name || '-',
-                'จำนวน': qty,
+                'ภาค': region,
+                'รหัสสินค้า/โปร': getProductCode(item),
+                'สินค้า': productName,
+                'ชื่อโปร': getPromoName(item, order.items || []),
+                'จำนวน (ชิ้น)': qty,
                 'ราคาต่อหน่วย': originalPrice,
-                'ส่วนลดสินค้า': effectiveDiscount,
+                'ส่วนลด': effectiveDiscount,
                 'ยอดรวมรายการ': itemTotal,
-                'ส่วนลดท้ายบิล': isFirstItem ? (Number(order.bill_discount) || 0) : '',
-                'ค่าส่ง': isFirstItem ? (Number(order.shipping_cost) || 0) : '',
-                'ยอดรวมออเดอร์': isFirstItem ? (Number(order.total_amount) || 0) : '',
-                'สถานะออเดอร์': order.order_status || '-',
-                'สถานะการชำระ': order.payment_status || '-',
+                'หมายเลขกล่อง': String(item.box_number || 1),
+                'หมายเลขติดตาม': getTrackingForBox(order, item.box_number),
+                'สถานะจาก Airport': order.airport_delivery_status || '-',
+                'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
+                'สถานะสลิป': getSlipStatus(order)
               });
             });
           });

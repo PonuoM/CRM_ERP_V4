@@ -458,6 +458,7 @@ export interface Order {
   warehouseId?: number;
   salesChannel?: string;
   salesChannelPageId?: number;
+  customerType?: string;
   bankAccountId?: number;
   transferDate?: string;
   reconcileAction?: string;

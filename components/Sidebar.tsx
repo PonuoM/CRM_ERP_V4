@@ -163,6 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Home,
       children: [
         { label: "Dashboard", icon: LayoutDashboard, key: "home.dashboard" },
+        { label: "Dashboard Talk Time", icon: Phone, key: "home.talktime_dashboard" },
         { label: "Sales Overview", icon: LayoutDashboard, key: "home.sales_overview" },
         { label: "Attendance Report", icon: Clock, key: "home.attendance_report" },
         { label: "Orders Report", icon: ShoppingCart, key: "home.orders_report" },
@@ -327,9 +328,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       // 3. Handle Group/Children
       if (item.children) {
         const visibleChildren = item.children.filter(child => {
+          // Check allowRule first (code-level override)
+          if (child.allowRule && !child.allowRule(user)) return false;
+          // Then check permission key
           if (child.key && !canView(child.key)) return false;
-          // Additional check for legacy specific roles not having keys mapped yet? 
-          // For now, rely on keys.
           return true;
         });
 
