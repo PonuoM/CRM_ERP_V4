@@ -60,7 +60,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
     const fetchBanks = async () => {
         try {
-            const res = await apiFetch(`bank_accounts?companyId=${currentUser.companyId || currentUser.company_id}`, {
+            const res = await apiFetch(`bank_accounts?companyId=${currentUser.companyId || (currentUser as any).company_id}`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -94,7 +94,8 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     company_id: currentUser.company_id ?? (currentUser as any).companyId,
                     bank_account_id: parseInt(selectedBankId),
                     start_date: startDate,
-                    end_date: endDate
+                    end_date: endDate,
+                    matchStatement: true // Request auto-matching suggestions
                 })
             });
 
@@ -140,6 +141,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
         if (!action) return;
 
         const label = action === 'Suspense' ? 'พักรับ (Suspense)' : 'มัดจำรับ (Deposit)';
+
+        // If it's a "Confirm Match" action (custom value likely just the orderId, but here action is select value)
+        // Wait, action here comes from the dropdown. For suggestions we might use a button.
+
         // Prompt for note
         const note = window.prompt(`ระบุหมายเหตุสำหรับการ${label}:`);
         if (note === null) return; // Cancelled
@@ -158,6 +163,38 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                         reconcile_type: action, // Suspense or Deposit
                         confirmed_amount: log.statement_amount,
                         note: note
+                    }]
+                })
+            });
+
+            if (res.ok) {
+                fetchAuditLogs();
+            } else {
+                alert('บันทึกไม่สำเร็จ: ' + (res.error || 'Server error'));
+            }
+        } catch (e: any) {
+            alert('Error: ' + e.message);
+        }
+    };
+
+    const handleConfirmMatch = async (log: AuditLog, suggestedOrderId: string) => {
+        if (!window.confirm(`ยืนยันการจับคู่กับออเดอร์ ${suggestedOrderId}?`)) {
+            return;
+        }
+
+        try {
+            const res = await apiFetch('Statement_DB/reconcile_save.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    company_id: currentUser.company_id || (currentUser as any).companyId,
+                    user_id: currentUser.id,
+                    bank_account_id: parseInt(selectedBankId),
+                    start_date: startDate,
+                    end_date: endDate,
+                    items: [{
+                        statement_id: log.id,
+                        order_id: suggestedOrderId,
+                        confirmed_amount: log.statement_amount
                     }]
                 })
             });
@@ -463,15 +500,36 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!)}>
                                                             {log.order_display || log.order_id}
                                                         </span>
+                                                    ) : (log as any).suggested_order_id ? (
+                                                        <div className="flex flex-col">
+                                                            <span className="text-gray-400 italic">Unmatched</span>
+                                                            <span
+                                                                className="text-xs text-green-600 font-medium cursor-pointer hover:underline mt-0.5"
+                                                                onClick={() => openOrderModal((log as any).suggested_order_id)}
+                                                                title={(log as any).suggested_order_info}
+                                                            >
+                                                                แนะนำ: {(log as any).suggested_order_id}
+                                                            </span>
+                                                        </div>
                                                     ) : (
                                                         <span className="text-gray-400 italic">Unmatched</span>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
-                                                    {log.order_amount ? formatCurrency(log.order_amount) : '-'}
+                                                    {log.order_amount
+                                                        ? formatCurrency(log.order_amount)
+                                                        : (log as any).suggested_order_amount
+                                                            ? <span className="text-gray-400 italic" title="ยอดที่แนะนำ">{formatCurrency((log as any).suggested_order_amount)}</span>
+                                                            : '-'
+                                                    }
                                                 </td>
                                                 <td className="px-4 py-3 text-gray-600">
-                                                    {log.payment_method || '-'}
+                                                    {log.payment_method
+                                                        ? log.payment_method
+                                                        : (log as any).suggested_payment_method
+                                                            ? <span className="text-gray-400 italic" title="วิธีชำระที่แนะนำ">{(log as any).suggested_payment_method}</span>
+                                                            : '-'
+                                                    }
                                                 </td>
 
                                                 {/* Status */}
@@ -489,20 +547,22 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         )}
 
                                                         {log.status === 'Unmatched' && (
-                                                            <div className="relative">
-                                                                <select
-                                                                    className="text-xs border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none pr-8 cursor-pointer hover:bg-gray-50 transition-colors"
-                                                                    style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.2rem center`, backgroundSize: `1.2em 1.2em`, backgroundRepeat: 'no-repeat' }}
-                                                                    onChange={(e) => {
-                                                                        handleActionChange(log, e.target.value);
-                                                                        e.target.value = ""; // Reset
-                                                                    }}
-                                                                    defaultValue=""
-                                                                >
-                                                                    <option value="" disabled>เลือกสถานะ...</option>
-                                                                    <option value="Suspense">พักรับ</option>
-                                                                    <option value="Deposit">มัดจำรับ</option>
-                                                                </select>
+                                                            <div className="flex flex-col gap-1 items-center">
+                                                                <div className="relative">
+                                                                    <select
+                                                                        className="text-xs border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:border-blue-500 bg-white shadow-sm appearance-none pr-8 cursor-pointer hover:bg-gray-50 transition-colors"
+                                                                        style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.2rem center`, backgroundSize: `1.2em 1.2em`, backgroundRepeat: 'no-repeat' }}
+                                                                        onChange={(e) => {
+                                                                            handleActionChange(log, e.target.value);
+                                                                            e.target.value = ""; // Reset
+                                                                        }}
+                                                                        defaultValue=""
+                                                                    >
+                                                                        <option value="" disabled>เลือกสถานะ...</option>
+                                                                        <option value="Suspense">พักรับ</option>
+                                                                        <option value="Deposit">มัดจำรับ</option>
+                                                                    </select>
+                                                                </div>
                                                             </div>
                                                         )}
                                                         {(log.status === 'Suspense' || log.status === 'Deposit') && (
@@ -522,7 +582,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                             <i className="fa-solid fa-square-check" style={{ color: '#63E6BE', fontSize: '16px' }}></i>
                                                         </div>
                                                     ) : (
-                                                        log.order_id && (
+                                                        log.order_id ? (
                                                             <div className="flex justify-center">
                                                                 <input
                                                                     type="checkbox"
@@ -531,7 +591,14 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                                     onChange={() => handleToggleSelect(log.id)}
                                                                 />
                                                             </div>
-                                                        )
+                                                        ) : (log as any).suggested_order_id ? (
+                                                            <button
+                                                                onClick={() => handleConfirmMatch(log, (log as any).suggested_order_id)}
+                                                                className="text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-md hover:bg-green-100 transition-colors shadow-sm whitespace-nowrap"
+                                                            >
+                                                                ยืนยันจับคู่
+                                                            </button>
+                                                        ) : null
                                                     )}
                                                 </td>
                                             </tr>

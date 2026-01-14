@@ -71,8 +71,98 @@ try {
   
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   
+  // Check if auto-matching is requested
+  $matchStatement = isset($input['matchStatement']) && $input['matchStatement'] === true;
+
   // Process Rows to calculate Status
   $results = [];
+  
+  // If matching is requested, fetch candidate orders first
+  $candidateOrders = [];
+  if ($matchStatement) {
+      // Logic adapted from reconcile_list.php
+      $rangeStart = date("Y-m-d H:i:s", strtotime($startDateRaw . " -1 day"));
+      $rangeEnd = date("Y-m-d H:i:s", strtotime($endDateRaw . " +1 day"));
+      
+      $orderParams = [
+          ':companyId' => $companyId,
+          ':rangeStart' => $rangeStart,
+          ':rangeEnd' => $rangeEnd,
+          ':companyRecon' => $companyId
+      ];
+      
+      $orderBankFilter = "";
+      if ($bankAccountId > 0) {
+          $orderBankFilter = " AND (o.bank_account_id = :obankId OR o.bank_account_id IS NULL)";
+          $orderParams[":obankId"] = $bankAccountId;
+      }
+
+      $orderSql = "
+        SELECT
+          o.id,
+          o.total_amount,
+          o.amount_paid,
+          COALESCE(r.reconciled_amount, 0) AS reconciled_amount,
+          o.payment_method,
+          o.transfer_date,
+          o.bank_account_id,
+          o.order_status,
+          IFNULL(os.total_slip, 0) AS slip_total,
+          os.slip_transfer_date,
+          os.slip_bank_account_id,
+          oss.slip_items
+        FROM orders o
+        LEFT JOIN (
+          SELECT
+            order_id,
+            SUM(COALESCE(amount, 0)) AS total_slip,
+            MAX(transfer_date) AS slip_transfer_date,
+            MAX(bank_account_id) AS slip_bank_account_id
+          FROM order_slips
+          GROUP BY order_id
+        ) os ON os.order_id = o.id
+        LEFT JOIN (
+          SELECT
+            order_id,
+            JSON_ARRAYAGG(
+              JSON_OBJECT(
+                'amount', amount,
+                'transfer_date', transfer_date,
+                'bank_account_id', bank_account_id
+              )
+            ) AS slip_items
+          FROM order_slips
+          GROUP BY order_id
+        ) oss ON oss.order_id = o.id
+        LEFT JOIN (
+          SELECT
+             srl.order_id,
+             SUM(COALESCE(srl.confirmed_amount, 0)) AS reconciled_amount
+          FROM statement_reconcile_logs srl
+          INNER JOIN statement_reconcile_batches srb ON srb.id = srl.batch_id
+          WHERE srb.company_id = :companyRecon
+          GROUP BY srl.order_id
+        ) r ON r.order_id = o.id
+        WHERE o.company_id = :companyId
+          {$orderBankFilter}
+          AND (o.payment_method = 'Transfer' OR os.total_slip > 0)
+          AND o.order_status NOT IN ('Cancelled', 'Returned')
+          AND (
+            o.transfer_date BETWEEN :rangeStart AND :rangeEnd
+            OR o.transfer_date IS NULL
+          )
+          AND (
+            COALESCE(r.reconciled_amount, 0) < o.total_amount - 0.009
+          )
+      ";
+      
+      $ordersStmt = $pdo->prepare($orderSql);
+      $ordersStmt->execute($orderParams);
+      while ($orow = $ordersStmt->fetch(PDO::FETCH_ASSOC)) {
+          $candidateOrders[] = $orow;
+      }
+  }
+
   foreach ($rows as $row) {
     $status = 'Unmatched';
     $diff = 0;
@@ -107,8 +197,83 @@ try {
     $orderMatchNo = isset($row['order_match_no']) ? (int)$row['order_match_no'] : null;
     $orderDisplay = $row['order_id'] ?? null;
     if ($orderDisplay && $orderMatchNo && $orderMatchNo > 1) {
-        // Append -N to indicate box-level match when there are multiple matches for the order
         $orderDisplay = $orderDisplay . '-' . $orderMatchNo;
+    }
+    
+    // Auto-match logic if Unmatched
+    $suggestedOrderId = null;
+    $suggestedOrderInfo = null;
+    $suggestedOrderAmount = null;
+    $suggestedPaymentMethod = null;
+    
+    if ($matchStatement && $status === 'Unmatched') {
+        $stmtAmount = (float)$row['statement_amount'];
+        $stmtDate = $row['transfer_at'];
+        
+        foreach ($candidateOrders as $ord) {
+            $matchFound = false;
+            // ... (matching logic remains the same) ...
+            
+            // 1. Check Slips
+            if (!empty($ord['slip_items'])) {
+                $slips = json_decode($ord['slip_items'], true);
+                if (is_array($slips)) {
+                    foreach ($slips as $slip) {
+                        $slipAmount = (float)$slip['amount'];
+                        $slipDate = $slip['transfer_date'];
+                        $slipBankId = isset($slip['bank_account_id']) ? (int)$slip['bank_account_id'] : null;
+                        
+                        // Exact Amount
+                        if (abs($slipAmount - $stmtAmount) > 0.01) continue;
+                        
+                        // Bank Match (if slip has bank)
+                        if ($slipBankId && $slipBankId !== $bankAccountId) continue;
+                        
+                        // Time Match (within 60s)
+                        if ($slipDate) {
+                            $timeDiff = abs(strtotime($stmtDate) - strtotime($slipDate));
+                            if ($timeDiff <= 60) {
+                                $matchFound = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 2. Check Main Order (if no slip match found yet)
+            if (!$matchFound) {
+                 $payAmount = (float)$ord['amount_paid'];
+                 $slipTotal = (float)$ord['slip_total'];
+                 $totalAmount = (float)$ord['total_amount'];
+                 
+                 // Determine which amount to match against
+                 $targetAmount = ($slipTotal > 0) ? $slipTotal : (($payAmount > 0) ? $payAmount : $totalAmount);
+                 
+                 if (abs($targetAmount - $stmtAmount) <= 0.01) {
+                     // Check Bank
+                     $ordBankId = $ord['bank_account_id'] ?? $ord['slip_bank_account_id'];
+                     if (!$ordBankId || (int)$ordBankId === $bankAccountId) {
+                         // Check Time
+                         $ordDate = $ord['slip_transfer_date'] ?? $ord['transfer_date'];
+                         if ($ordDate) {
+                             $timeDiff = abs(strtotime($stmtDate) - strtotime($ordDate));
+                             if ($timeDiff <= 60) {
+                                 $matchFound = true;
+                             }
+                         }
+                     }
+                 }
+            }
+            
+            if ($matchFound) {
+                $suggestedOrderId = $ord['id'];
+                $suggestedOrderInfo = "Found matching amount " . number_format($stmtAmount, 2) . " and time";
+                $suggestedOrderAmount = (float)$stmtAmount; // Since we matched on exact amount, this is safe
+                $suggestedPaymentMethod = $ord['payment_method'];
+                break; 
+            }
+        }
     }
 
     $results[] = [
@@ -124,11 +289,14 @@ try {
         'description' => $row['description'],
         'order_id' => $row['order_id'],
         'order_display' => $orderDisplay,
-        // Show box-level confirmed amount when available; otherwise full order amount
-        'order_amount' => $row['confirmed_amount'] !== null ? $row['confirmed_amount'] : $row['order_amount'],
+        'order_amount' => in_array($reconcileType, ['Suspense', 'Deposit']) ? null : ($row['confirmed_amount'] !== null ? $row['confirmed_amount'] : $row['order_amount']),
         'payment_method' => $row['payment_method'],
         'status' => $status,
-        'diff' => $diff
+        'diff' => $diff,
+        'suggested_order_id' => $suggestedOrderId,
+        'suggested_order_info' => $suggestedOrderInfo,
+        'suggested_order_amount' => $suggestedOrderAmount,
+        'suggested_payment_method' => $suggestedPaymentMethod
     ];
   }
   

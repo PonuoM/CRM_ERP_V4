@@ -20,7 +20,7 @@ register_shutdown_function(function() {
 
 if (!defined("RECONCILE_CHARSET")) {
   define("RECONCILE_CHARSET", "utf8mb4");
-  define("RECONCILE_COLLATION", "utf8mb4_0900_ai_ci");
+  define("RECONCILE_COLLATION", "utf8mb4_unicode_ci");
 }
 
 /**
@@ -166,23 +166,7 @@ try {
   // Enable error reporting for PDO FIRST before any queries
   $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
   
-  // Set connection to the unified collation - MUST be set before any queries
-  // Use SET SESSION to ensure it applies to this connection only
-  // Force set multiple times to be absolutely sure
-  $pdo->exec("SET SESSION collation_connection = 'utf8mb4_0900_ai_ci'");
-  $pdo->exec("SET SESSION character_set_connection = 'utf8mb4'");
-  $pdo->exec("SET SESSION collation_database = 'utf8mb4_0900_ai_ci'");
-  $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-  $pdo->exec("SET CHARACTER SET utf8mb4");
-  
-  // Verify connection collation
-  $verifyCollation = $pdo->query("SELECT @@collation_connection as coll")->fetch(PDO::FETCH_ASSOC);
-  if ($verifyCollation['coll'] !== 'utf8mb4_0900_ai_ci') {
-    error_log("WARNING: Connection collation is '{$verifyCollation['coll']}', not 'utf8mb4_0900_ai_ci'");
-    // Force set again
-    $pdo->exec("SET collation_connection = 'utf8mb4_0900_ai_ci'");
-  }
-
+  // Use standard connection from config.php
   ensure_reconcile_tables($pdo);
 
   $startDate = normalize_date($startDateRaw, false);

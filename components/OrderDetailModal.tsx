@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getOrder } from '../services/api';
+import resolveApiBasePath from '../utils/apiBasePath';
 import { X, User, MapPin, Box, Image as ImageIcon } from 'lucide-react';
 
 interface OrderDetailModalProps {
@@ -151,9 +152,19 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ isOpen, onClose, or
 
                             {/* Proof of Payment Images */}
                             {(() => {
+                                // Calculate base path for images
+                                const apiBase = resolveApiBasePath().replace(/\/api$/, '');
+                                const getFullUrl = (path: string) => {
+                                    if (!path) return '';
+                                    if (path.startsWith('http')) return path;
+                                    // Remove leading slash if present to avoid double slashes
+                                    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+                                    return `${apiBase}/${cleanPath}`;
+                                };
+
                                 const images = [
-                                    ...(order.slips?.map((s: any) => s.url) || []),
-                                    order.slipUrl
+                                    ...(order.slips?.map((s: any) => getFullUrl(s.url)) || []),
+                                    getFullUrl(order.slipUrl)
                                 ].filter(Boolean);
 
                                 if (images.length === 0) return null;
