@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
 import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
+import OrderSearchModal from '../../components/OrderSearchModal';
 
 interface AuditLog {
     id: number;
@@ -15,7 +17,7 @@ interface AuditLog {
     order_display?: string | null;
     order_amount: number | null;
     payment_method: string | null;
-    status: 'Unmatched' | 'Short' | 'Exact' | 'Over';
+    status: 'Unmatched' | 'Short' | 'Exact' | 'Over' | 'Suspense' | 'Deposit';
     diff: number;
     confirmed_at?: string | null;
     confirmed_action?: string | null;
@@ -54,6 +56,10 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
+    // New state for search modal
+    const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+    const [selectedLogForSearch, setSelectedLogForSearch] = useState<AuditLog | null>(null);
+
     useEffect(() => {
         fetchBanks();
     }, []);
@@ -91,7 +97,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                 method: 'POST',
                 body: JSON.stringify({
                     // API expects snake_case; fall back to camelCase if that's what we have in session
-                    company_id: currentUser.company_id ?? (currentUser as any).companyId,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
                     bank_account_id: parseInt(selectedBankId),
                     start_date: startDate,
                     end_date: endDate,
@@ -115,6 +121,21 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
     const openOrderModal = (orderId: string) => {
         setSelectedOrderId(orderId);
         setIsOrderModalOpen(true);
+    };
+
+    // Function to open search modal
+    const openSearchModal = (log: AuditLog) => {
+        setSelectedLogForSearch(log);
+        setIsSearchModalOpen(true);
+    };
+
+    // Callback when order is selected from modal
+    const handleOrderSelected = (orderId: string, orderAmount: number) => {
+        if (selectedLogForSearch) {
+            handleConfirmMatch(selectedLogForSearch, orderId);
+            setIsSearchModalOpen(false);
+            setSelectedLogForSearch(null);
+        }
     };
 
     const formatCurrency = (amount: number | null) => {
@@ -153,7 +174,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             const res = await apiFetch('Statement_DB/reconcile_save.php', {
                 method: 'POST',
                 body: JSON.stringify({
-                    company_id: currentUser.company_id || (currentUser as any).companyId,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
                     user_id: currentUser.id,
                     bank_account_id: parseInt(selectedBankId),
                     start_date: startDate,
@@ -186,7 +207,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
             const res = await apiFetch('Statement_DB/reconcile_save.php', {
                 method: 'POST',
                 body: JSON.stringify({
-                    company_id: currentUser.company_id || (currentUser as any).companyId,
+                    company_id: currentUser.companyId || (currentUser as any).company_id,
                     user_id: currentUser.id,
                     bank_account_id: parseInt(selectedBankId),
                     start_date: startDate,
@@ -500,19 +521,35 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                                                         <span className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block max-w-[11rem] truncate align-middle" onClick={() => openOrderModal(log.order_id!)}>
                                                             {log.order_display || log.order_id}
                                                         </span>
-                                                    ) : (log as any).suggested_order_id ? (
-                                                        <div className="flex flex-col">
-                                                            <span className="text-gray-400 italic">Unmatched</span>
-                                                            <span
-                                                                className="text-xs text-green-600 font-medium cursor-pointer hover:underline mt-0.5"
-                                                                onClick={() => openOrderModal((log as any).suggested_order_id)}
-                                                                title={(log as any).suggested_order_info}
-                                                            >
-                                                                แนะนำ: {(log as any).suggested_order_id}
-                                                            </span>
-                                                        </div>
                                                     ) : (
-                                                        <span className="text-gray-400 italic">Unmatched</span>
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            {(log as any).suggested_order_id ? (
+                                                                <>
+                                                                    <span className="text-gray-400 italic">Unmatched</span>
+                                                                    <span
+                                                                        className="text-xs text-green-600 font-medium cursor-pointer hover:underline mt-0.5"
+                                                                        onClick={() => openOrderModal((log as any).suggested_order_id)}
+                                                                        title={(log as any).suggested_order_info}
+                                                                    >
+                                                                        แนะนำ: {(log as any).suggested_order_id}
+                                                                    </span>
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-gray-400 italic">Unmatched</span>
+                                                            )}
+
+                                                            {/* Search Button for Unmatched or Unconfirmed items */}
+                                                            {!log.confirmed_at && (
+                                                                <button
+                                                                    onClick={() => openSearchModal(log)}
+                                                                    className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                                                                    title="ค้นหาและจับคู่คำสั่งซื้อ"
+                                                                >
+                                                                    <Search className="w-3 h-3" />
+                                                                    ค้นหา
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
@@ -624,6 +661,23 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     />
                 )
             }
+
+            {/* Order Search Modal */}
+            {isSearchModalOpen && selectedLogForSearch && (
+                <OrderSearchModal
+                    isOpen={isSearchModalOpen}
+                    onClose={() => {
+                        setIsSearchModalOpen(false);
+                        setSelectedLogForSearch(null);
+                    }}
+                    onSelectOrder={handleOrderSelected}
+                    initialParams={{
+                        date: selectedLogForSearch.transfer_at,
+                        amount: selectedLogForSearch.statement_amount,
+                        companyId: currentUser.company_id || (currentUser as any).companyId
+                    }}
+                />
+            )}
         </>
     );
 };
