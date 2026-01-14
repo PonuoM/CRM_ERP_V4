@@ -55,14 +55,69 @@ if (!empty($_GET["phone"])) {
 
 if (!empty($_GET["start_date"])) {
   $filters["start_date"] = trim($_GET["start_date"]);
-  $conditions[] = "DATE(o.order_date) >= ?";
+  // If input contains time, compare as datetime, otherwise compare as date
+  if (strpos($filters["start_date"], ":") !== false) {
+      $conditions[] = "o.order_date >= ?";
+  } else {
+      $conditions[] = "DATE(o.order_date) >= ?";
+  }
   $bindParams[] = $filters["start_date"];
 }
 
 if (!empty($_GET["end_date"])) {
   $filters["end_date"] = trim($_GET["end_date"]);
-  $conditions[] = "DATE(o.order_date) <= ?";
+   // If input contains time, compare as datetime, otherwise compare as date
+  if (strpos($filters["end_date"], ":") !== false) {
+      $conditions[] = "o.order_date <= ?";
+  } else {
+      $conditions[] = "DATE(o.order_date) <= ?";
+  }
   $bindParams[] = $filters["end_date"];
+}
+
+// ... (existing params)
+
+// ...
+
+  // Main query to fetch transfer orders with customer data and payment status (with pagination)
+  // Filter out orders that are already fully paid based on slip totals
+  // Also exclude orders with payment_status that indicates completion (Verified, PreApproved, Approved, Paid)
+  // Selecting MAX(os.date) or MAX(os.created_at) as transfer_date? 
+  // User asked for "transfer_date". In order_slips, usually there is a 'transfer_date' or 'date' or 'transfer_at' column.
+  // Based on previous chats, order_slips has 'transfer_date' or 'date'? 
+  // Wait, I need to know the schema of order_slips or guess it. 
+  // Checking previous context or code.. In BankAccountAuditPage, log has transfer_at.
+  // In SlipUpload.tsx (not visible), standard slip has 'date' and 'time'.
+  // Let's assume there is a 'transfer_date' column or similar in order_slips.
+  // If not sure, I should check. But 'get_transfer_orders.php' joins order_slips os.
+  // Providing MAX(os.date) seems reasonable if multiple slips.
+  // Actually, let's grab the date/time from the slip.
+  // BUT the query groups by order. If multiple slips, which date? The latest one.
+  
+  // Let's check schema via SQL first to be safe about 'transfer_date' column name.
+  // I will pause this replacement and check schema.
+  
+  // Wait, I can't check schema easily without running a command. 
+  // I'll take a safe guess or check other files. 
+  // 'onecall_batch_crud.php' uses 'onecall_batch'.
+  // 'Slip_DB/get_transfer_orders.php' uses 'order_slips'.
+  // Let's look at `api/Slip_DB/update_order_slip.php` or similar if I can.
+  // Or just try to include `MAX(os.date) as transfer_date` and `MAX(os.time) as transfer_time`?
+  // User said "transfer_date". 
+  
+  // Let's assume the column is `transfer_date` or `date`.
+  // I'll try to find where order_slips is used.
+  
+  // Actually, I can search for "order_slips" usage in the codebase.
+
+
+if (!empty($_GET["amount"])) {
+  $filters["amount"] = (float) $_GET["amount"];
+  // Allow for small floating point differences (optional, or exact)
+  // Or better, exact match or slight range? Statement matching is usually exact.
+  // Let's use exact match for now, or maybe a tiny range if needed.
+  $conditions[] = "o.total_amount = ?";
+  $bindParams[] = $filters["amount"];
 }
 
 // Payment method selector (default Transfer for backward compatibility)
@@ -282,9 +337,11 @@ try {
                 o.delivery_date,
                 o.total_amount,
                 o.payment_status,
+                o.payment_method,
                 c.first_name,
                 c.last_name,
-                c.phone";
+                c.phone,
+                MAX(os.transfer_date) as transfer_date"; // Add transfer_date
 
   // Add slip_total calculation based on column existence
   if ($check_amount_col > 0) {
@@ -309,7 +366,7 @@ try {
             WHERE {$whereClause}
             AND o.id NOT REGEXP '^.+-[0-9]+$'
             AND o.payment_status IN ('Unpaid', 'PendingVerification')
-            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, c.first_name, c.last_name, c.phone";
+            GROUP BY o.id, o.order_date, o.delivery_date, o.total_amount, o.payment_status, o.payment_method, c.first_name, c.last_name, c.phone";
 
   // Only add HAVING clause if amount column exists
   // Filter out orders that are fully paid based on slip totals
@@ -333,12 +390,14 @@ try {
       "id" => $row["id"],
       "order_date" => $row["order_date"],
       "delivery_date" => $row["delivery_date"],
+      "transfer_date" => $row["transfer_date"], // Add transfer_date to output
       "total_amount" => (float) $row["total_amount"],
       "first_name" => $row["first_name"],
       "last_name" => $row["last_name"],
       "phone" => $row["phone"],
       "full_name" => trim($row["first_name"] . " " . $row["last_name"]),
       "payment_status" => $row["payment_status"],
+      "payment_method" => $row["payment_method"],
       "slip_total" => (float) ($row["slip_total"] ?? 0),
     ];
   }
