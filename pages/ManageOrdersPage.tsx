@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { User, Order, Customer, ModalType, OrderStatus, PaymentMethod, PaymentStatus, Product } from '../types';
 import OrderTable from '../components/OrderTable';
 import { Send, Calendar, ListChecks, History, Filter, Package, Clock, CheckCircle2, ChevronLeft, ChevronRight, Truck, FileText, XCircle } from 'lucide-react';
-import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl } from '../services/api';
+import { logExport, listOrderSlips, listOrders, getOrderCounts, listExports, downloadExportUrl, getTabRules, validateOrdersForExport } from '../services/api';
 import { apiFetch } from '../services/api';
 import usePersistentState from '../utils/usePersistentState';
 import Spinner from '../components/Spinner';
@@ -70,6 +70,31 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [afCustomerPhone, setAfCustomerPhone] = useState('');
   // Removed duplicate states
   const [afShop, setAfShop] = useState<string>('');
+
+  const [validationModal, setValidationModal] = useState<{ isOpen: boolean; valid: Order[]; invalid: Order[] }>({
+    isOpen: false,
+    valid: [],
+    invalid: []
+  });
+
+  const runExport = async (ordersToExport: Order[]) => {
+    try {
+      generateAndDownloadCsv(ordersToExport);
+      setTimeout(async () => {
+        const ordersToProcess = ordersToExport.map(o => ({
+          id: o.id,
+          customerId: o.customerId,
+          creatorId: o.creatorId
+        }));
+        await onProcessOrders(ordersToProcess);
+        setSelectedIds([]);
+        setRefreshCounter(prev => prev + 1);
+      }, 0);
+    } catch (error) {
+      console.error('An error occurred during the export process:', error);
+      alert('เกิดข้อผิดพลาดในการสร้างไฟล์ CSV กรุณาตรวจสอบ Console log และลองใหม่อีกครั้ง');
+    }
+  };
 
   // API Data States (Server-Side Pagination)
   const [apiOrders, setApiOrders] = useState<Order[]>([]);
@@ -1050,29 +1075,33 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       return;
     }
 
-    if (window.confirm(`คุณต้องการส่งออกและส่งออเดอร์ ${selectedOrders.length} รายการให้คลังสินค้าใช่หรือไม่? สถานะจะถูกเปลี่ยนเป็น "กำลังจัดสินค้า"`)) {
+    // New Validation for 'waitingExport' tab rules
+    let validOrders = selectedOrders;
+    let invalidCount = 0;
+
+    if (activeTab === 'waitingExport') {
       try {
-        // First, trigger the file download.
-        generateAndDownloadCsv(selectedOrders);
+        const { invalid } = await validateOrdersForExport(selectedIds);
 
-        // Then, use setTimeout to schedule the state updates to run in the next
-        // event loop cycle to avoid interfering with the download.
-        setTimeout(async () => {
-          const ordersToProcess = selectedOrders.map(o => ({
-            id: o.id,
-            customerId: o.customerId,
-            creatorId: o.creatorId
-          }));
-          await onProcessOrders(ordersToProcess);
-          setSelectedIds([]);
-          // Trigger refresh to update the grid and tab counts
-          setRefreshCounter(prev => prev + 1);
-        }, 0);
+        if (invalid.length > 0) {
+          const invalidIds = new Set(invalid.map((inv: any) => String(inv.id)));
+          const validFrontendOrders = selectedOrders.filter(o => !invalidIds.has(o.id));
+          const invalidFrontendOrders = selectedOrders.filter(o => invalidIds.has(o.id));
 
-      } catch (error) {
-        console.error('An error occurred during the export process:', error);
-        alert('เกิดข้อผิดพลาดในการสร้างไฟล์ CSV กรุณาตรวจสอบ Console log และลองใหม่อีกครั้ง');
+          setValidationModal({
+            isOpen: true,
+            valid: validFrontendOrders,
+            invalid: invalidFrontendOrders
+          });
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to validate tab rules', e);
       }
+    }
+
+    if (window.confirm(`คุณต้องการส่งออกและส่งออเดอร์ ${validOrders.length} รายการให้คลังสินค้าใช่หรือไม่? สถานะจะถูกเปลี่ยนเป็น "กำลังจัดสินค้า"`)) {
+      runExport(validOrders);
     }
   };
 
@@ -1749,6 +1778,72 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {validationModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold text-gray-900">สรุปผลการตรวจสอบข้อมูล</h3>
+              <button
+                onClick={() => setValidationModal(prev => ({ ...prev, isOpen: false }))}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="flex gap-4 mb-6">
+                <div className="flex-1 bg-green-50 p-4 rounded-lg border border-green-100 text-center">
+                  <div className="text-2xl font-bold text-green-600">{validationModal.valid.length}</div>
+                  <div className="text-sm text-green-800">ออเดอร์ที่พร้อมส่งออก</div>
+                </div>
+                <div className="flex-1 bg-red-50 p-4 rounded-lg border border-red-100 text-center">
+                  <div className="text-2xl font-bold text-red-600">{validationModal.invalid.length}</div>
+                  <div className="text-sm text-red-800">ออเดอร์ที่ไม่ผ่านเงื่อนไข</div>
+                </div>
+              </div>
+
+              {validationModal.invalid.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+                  <p className="text-red-700 font-medium mb-2">สาเหตุ: ออเดอร์เหล่านี้มีสถานะหรือวิธีการชำระเงินไม่ตรงกับเงื่อนไข "รอส่งออก"</p>
+                  <div className="text-sm text-red-600 max-h-40 overflow-y-auto font-mono bg-white p-2 rounded border border-red-100">
+                    {validationModal.invalid.map(o => (
+                      <div key={o.id}>{o.id} ({o.paymentMethod} - {o.paymentStatus} - {o.orderStatus})</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {validationModal.valid.length > 0 ? (
+                <p className="text-gray-600 text-center">คุณต้องการดำเนินการส่งออกเฉพาะออเดอร์ที่ตรวจสอบผ่าน {validationModal.valid.length} รายการหรือไม่?</p>
+              ) : (
+                <p className="text-red-600 text-center font-medium">ไม่มีออเดอร์ที่สามารถส่งออกได้ในขณะนี้</p>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => setValidationModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 font-medium"
+              >
+                ปิด
+              </button>
+              {validationModal.valid.length > 0 && (
+                <button
+                  onClick={() => {
+                    runExport(validationModal.valid);
+                    setValidationModal(prev => ({ ...prev, isOpen: false }));
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium shadow-sm"
+                >
+                  ยืนยันส่งออก ({validationModal.valid.length} รายการ)
+                </button>
               )}
             </div>
           </div>

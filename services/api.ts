@@ -32,7 +32,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
   let url = `${base}${path}`;
 
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/')) {
+  // Direct file access for inventory and product modules (bypassing index.php router)
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -613,6 +614,18 @@ export async function updatePage(
     body: JSON.stringify(payload),
   });
 }
+
+export const getTabRules = async (): Promise<any> => {
+  return await apiFetch('tab_rules/get');
+};
+
+export const validateOrdersForExport = async (orderIds: string[], tabKey: string = 'waitingExport'): Promise<{ valid: any[], invalid: any[] }> => {
+  const response = await apiFetch('Order_DB/validate_for_export.php', {
+    method: 'POST',
+    body: JSON.stringify({ orderIds, tabKey })
+  });
+  return response ? response : { valid: [], invalid: [] };
+};
 
 // Fix: make params optional
 export async function listOrders(params: {
