@@ -34,6 +34,7 @@ try {
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
+  $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
   $threshold = 40; // seconds
 
   $userFirstName = null;
@@ -52,6 +53,33 @@ try {
         $additionalWhere = " AND phone_telesale = :userphone";
       }
     }
+  } elseif (!empty($companyId)) {
+    // Filter by Company Users
+    $usersParams = [$companyId];
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE company_id = ? AND phone IS NOT NULL AND phone != ''");
+    $uStmt->execute($usersParams);
+    
+    $phones = [];
+    while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+        $norm = normalize_phone_to_66($row['phone']);
+        if ($norm) $phones[] = $norm;
+    }
+
+    if (empty($phones)) {
+         $additionalWhere = " AND 1=0";
+    } else {
+         $phPlaceholders = [];
+         foreach ($phones as $i => $p) {
+             $key = ":ph$i";
+             $phPlaceholders[] = $key;
+             $params[$key] = $p; // Note: $params defined below, need to merge later or define earlier?
+             // Original code defines $params AFTER this block.
+         }
+         $inQuery = implode(',', $phPlaceholders);
+         $additionalWhere = " AND phone_telesale IN ($inQuery)";
+         // I need to carry over the phone params.
+         $companyPhoneParams = $params; // temp storage
+    }
   }
 
   // Use a simpler SQL query approach
@@ -66,6 +94,10 @@ try {
 
   if (!empty($userPhone)) {
     $params[":userphone"] = $userPhone;
+  }
+  
+  if (!empty($companyPhoneParams)) {
+      $params = array_merge($params, $companyPhoneParams);
   }
 
   // Log SQL and parameters for debugging

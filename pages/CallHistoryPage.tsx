@@ -133,38 +133,28 @@ const getOnecallCredentialsFromDB = async () => {
       throw new Error("Access denied - insufficient permissions");
     }
 
-    // Call secure API to get credentials (prefix with BASE_URL for prod subpath)
-    const apiBase = resolveApiBasePath();
-    const response = await fetch(`${apiBase}/Onecall_DB/get_credentials.php`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user: {
-          id: user.id,
-          company_id: user.company_id,
-          role: user.role,
+    company_id: user.company_id,
+      role: user.role,
         },
-      }),
+}),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to retrieve credentials");
-    }
+if (!response.ok) {
+  const errorData = await response.json();
+  throw new Error(errorData.error || "Failed to retrieve credentials");
+}
 
-    const result = await response.json();
+const result = await response.json();
 
-    if (!result.success) {
-      throw new Error(result.error || "Credentials not found");
-    }
+if (!result.success) {
+  throw new Error(result.error || "Credentials not found");
+}
 
-    return result.data;
+return result.data;
   } catch (error) {
-    console.error("Error retrieving Onecall credentials from database:", error);
-    throw error;
-  }
+  console.error("Error retrieving Onecall credentials from database:", error);
+  throw error;
+}
 };
 
 // JavaScript version of authenticateOneCall function
@@ -1842,6 +1832,22 @@ const CallHistoryPage: React.FC<CallHistoryPageProps> = ({
       console.error("Error filtering recordings:", error);
     } finally {
       setIsSearchLoading(false);
+    }
+  };
+
+  // Function to save log data to database
+  const saveLogToDatabase = async (logs: any[], batchId: number, companyId?: number) => {
+    try {
+      const apiBase = resolveApiBasePath();
+      const requestData = {
+        logs: logs,
+        batch_id: batchId,
+        company_id: companyId,
+      };
+      // TODO: Implement the actual fetch call to save logs
+      console.log("Saving logs to database:", requestData);
+    } catch (error) {
+      console.error("Error saving logs to database:", error);
     }
   };
 

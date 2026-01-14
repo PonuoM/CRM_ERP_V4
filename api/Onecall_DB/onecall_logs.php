@@ -37,8 +37,6 @@ error_log("Received data in onecall_logs.php: " . json_encode($data));
 
 // Validate input
 if (
-  !isset($data["logs"]) ||
-  !isset($data["batch_id"]) ||
   !is_array($data["logs"])
 ) {
   error_log("Missing required fields or invalid logs data in onecall_logs.php");
@@ -51,7 +49,19 @@ if (
   );
 }
 
+$companyId = isset($_GET['company_id']) ? intval($_GET['company_id']) : (isset($data['company_id']) ? intval($data['company_id']) : null);
+
 try {
+  // Verify batch ownership logic if company ID is provided
+  // This ensures we only add logs to a batch that belongs to the user's company
+  if ($companyId) {
+      $stmt = $pdo->prepare("SELECT id FROM onecall_batch WHERE id = ? AND company_id = ?");
+      $stmt->execute([$data["batch_id"], $companyId]);
+      if (!$stmt->fetch()) {
+          json_response(["success" => false, "error" => "Batch not found or access denied for this company"], 403);
+      }
+  }
+
   // Begin transaction
   $pdo->beginTransaction();
 

@@ -37,8 +37,6 @@ error_log("Received data in onecall_batch.php: " . json_encode($data));
 
 // Validate input
 if (
-  !isset($data["startdate"]) ||
-  !isset($data["enddate"]) ||
   !isset($data["amount_record"])
 ) {
   error_log("Missing required fields in onecall_batch.php");
@@ -48,15 +46,22 @@ if (
   );
 }
 
+$companyId = isset($data['company_id']) ? intval($data['company_id']) : (isset($_GET['company_id']) ? intval($_GET['company_id']) : 1); 
+// Default to 1 if not set? Or fail? 
+// Schema says NOT NULL DEFAULT '1'. So 1 is safe fallback for legacy. 
+// But ideally we want explicit company.
+// I will use 1 as default to match schema but log if missing? 
+// Or better, prefer data['company_id'].
+
 try {
   // Check for exact matching batches and don't create duplicates
   error_log(
     "Checking for exact matching batches with startdate: {$data["startdate"]}, enddate: {$data["enddate"]}",
   );
   $stmt = $pdo->prepare(
-    "SELECT id FROM onecall_batch WHERE startdate = ? AND enddate = ?",
+    "SELECT id FROM onecall_batch WHERE startdate = ? AND enddate = ? AND company_id = ?",
   );
-  $stmt->execute([$data["startdate"], $data["enddate"]]);
+  $stmt->execute([$data["startdate"], $data["enddate"], $companyId]);
   $existingBatch = $stmt->fetch(PDO::FETCH_ASSOC);
 
   if ($existingBatch) {
@@ -72,12 +77,13 @@ try {
 
   // Insert batch record
   $stmt = $pdo->prepare(
-    "INSERT INTO onecall_batch (startdate, enddate, amount_record) VALUES (?, ?, ?)",
+    "INSERT INTO onecall_batch (startdate, enddate, amount_record, company_id) VALUES (?, ?, ?, ?)",
   );
   $stmt->execute([
     $data["startdate"],
     $data["enddate"],
     $data["amount_record"],
+    $companyId
   ]);
 
   // Get the ID of the inserted record

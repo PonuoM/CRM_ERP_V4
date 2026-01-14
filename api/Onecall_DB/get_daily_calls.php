@@ -34,6 +34,7 @@ try {
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
+  $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
 
   $params = [":year" => $year, ":month" => $month];
   $userPhone = null;
@@ -52,6 +53,7 @@ try {
         $params[":userphone"] = $normalized;
       }
     } else {
+      // If user not found (or has no phone), return zeroed days
       // If user not found, return zeroed days for month
       $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
       $empty = [];
@@ -67,6 +69,30 @@ try {
       ]);
       exit();
     }
+  } elseif (!empty($companyId)) {
+    // Filter by Company
+    $usersParams = [$companyId];
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE company_id = ? AND phone IS NOT NULL AND phone != ''");
+    $uStmt->execute($usersParams);
+    
+    $phones = [];
+    while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+        $norm = normalize_phone_to_66($row['phone']);
+        if ($norm) $phones[] = $norm;
+    }
+    
+    if (empty($phones)) {
+        $where .= " AND 1=0";
+    } else {
+        $phPlaceholders = [];
+        foreach ($phones as $i => $p) {
+            $key = ":ph$i";
+            $phPlaceholders[] = $key;
+            $params[$key] = $p;
+        }
+        $inQuery = implode(',', $phPlaceholders);
+        $where .= " AND phone_telesale IN ($inQuery)";
+    }
   }
 
   $sql = "SELECT DATE(`timestamp`) AS d, COUNT(*) AS cnt, FLOOR(SUM(duration)/60) AS total_min
@@ -77,7 +103,7 @@ try {
   $stmt = $pdo->prepare($sql);
   $stmt->execute($params);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
+  
   $byDate = [];
   foreach ($rows as $r) {
     $dateKey = substr($r["d"], 0, 10); // YYYY-MM-DD

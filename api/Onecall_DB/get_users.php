@@ -30,13 +30,21 @@ if ($_SERVER["REQUEST_METHOD"] !== "GET") {
 }
 
 try {
+  $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
+
   // Query to get users with Telesale and Supervisor Telesale roles
-  $stmt = $pdo->prepare(
-    "SELECT id, first_name, last_name, role, company_id
+  $sql = "SELECT id, first_name, last_name, role, company_id
        FROM users
-      WHERE role IN ('Telesale', 'Supervisor Telesale')",
-  );
-  $stmt->execute();
+      WHERE role IN ('Telesale', 'Supervisor Telesale')";
+  $params = [];
+  
+  if (!empty($companyId)) {
+      $sql .= " AND company_id = ?";
+      $params[] = $companyId;
+  }
+  
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($params);
 
   $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

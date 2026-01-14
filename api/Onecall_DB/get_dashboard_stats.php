@@ -25,6 +25,25 @@ try {
   );
 }
 
+
+// Set CORS headers
+cors();
+
+// Database connection using config
+try {
+  $pdo = db_connect();
+  error_log("Database connection successful for get_dashboard_stats.php");
+} catch (RuntimeException $e) {
+  error_log("Database connection failed: " . $e->getMessage());
+  json_response(
+    [
+      "success" => false,
+      "error" => "Database connection failed: " . $e->getMessage(),
+    ],
+    500,
+  );
+}
+
 // Only allow GET requests
 if ($_SERVER["REQUEST_METHOD"] !== "GET") {
   json_response(["success" => false, "error" => "Method not allowed"], 405);
@@ -35,6 +54,7 @@ try {
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
+  $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
 
   // Build WHERE clause
   $whereClause = "WHERE MONTH(timestamp) = ? AND YEAR(timestamp) = ?";
@@ -53,12 +73,35 @@ try {
         $whereClause .= " AND phone_telesale = ?";
         $params[] = $normalized;
       }
+    } else {
+       // User found but no phone?
+       $whereClause .= " AND 1=0";
+    }
+  } elseif (!empty($companyId)) {
+    // Filter by Company Users
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE company_id = ? AND phone IS NOT NULL AND phone != ''");
+    $uStmt->execute([$companyId]);
+
+    $phones = [];
+    while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+        $norm = normalize_phone_to_66($row['phone']);
+        if ($norm) $phones[] = $norm;
+    }
+
+    if (empty($phones)) {
+         $whereClause .= " AND 1=0";
+    } else {
+         $inParams = implode(',', array_fill(0, count($phones), '?'));
+         $whereClause .= " AND phone_telesale IN ($inParams)";
+         foreach ($phones as $p) {
+             $params[] = $p;
+         }
     }
   }
 
   // Calculate total calls
   $stmt = $pdo->prepare(
-    "SELECT COUNT(*) as total_calls FROM onecall_log $whereClause",
+    "SELECT COUNT(*) as total_calls FROM onecall_log $whereClause"
   );
   $stmt->execute($params);
   $totalCalls = $stmt->fetch(PDO::FETCH_ASSOC)["total_calls"];

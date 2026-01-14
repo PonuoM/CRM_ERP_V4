@@ -58,12 +58,48 @@ try {
       ]);
       exit();
     }
+  } elseif (!empty($companyId)) {
+    // Filter by Company Users (Phone based)
+    $usersParams = [$companyId];
+    $uStmt = $pdo->prepare("SELECT phone FROM users WHERE company_id = ? AND phone IS NOT NULL AND phone != ''");
+    $uStmt->execute($usersParams);
+    
+    $phones = [];
+    while ($row = $uStmt->fetch(PDO::FETCH_ASSOC)) {
+        $norm = normalize_phone_to_66($row['phone']);
+        if ($norm) $phones[] = $norm;
+    }
+
+    if (empty($phones)) {
+         // No valid phones in company -> empty result
+         $empty = [];
+         for ($m = 1; $m <= 12; $m++) {
+           $empty[] = ["month" => $m, "count" => 0, "total_minutes" => 0];
+         }
+         json_response([
+           "success" => true,
+           "year" => $year,
+           "data" => $empty,
+         ]);
+         exit();
+    } else {
+         $companyPhones = $phones;
+    }
   }
 
   $where = "WHERE YEAR(`timestamp`) = :year";
   if ($userFirstName !== null) {
     $where .= " AND phone_telesale = :firstname";
     $params[":firstname"] = $userFirstName;
+  } elseif (!empty($companyPhones)) {
+    $phPlaceholders = [];
+    foreach ($companyPhones as $i => $p) {
+        $key = ":ph$i";
+        $phPlaceholders[] = $key;
+        $params[$key] = $p;
+    }
+    $inQuery = implode(',', $phPlaceholders);
+    $where .= " AND phone_telesale IN ($inQuery)";
   }
 
   // Aggregate by month

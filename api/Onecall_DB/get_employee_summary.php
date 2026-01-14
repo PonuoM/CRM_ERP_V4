@@ -33,6 +33,7 @@ try {
   $month = isset($_GET["month"]) ? intval($_GET["month"]) : intval(date("m"));
   $year = isset($_GET["year"]) ? intval($_GET["year"]) : intval(date("Y"));
   $userId = isset($_GET["user_id"]) ? intval($_GET["user_id"]) : null;
+  $companyId = isset($_GET["company_id"]) ? intval($_GET["company_id"]) : null;
 
   // Get employee summary data from the call overview view
   $monthKey = sprintf("%04d-%02d", $year, $month);
@@ -56,6 +57,10 @@ try {
   if (!empty($userId)) {
     $sql .= " AND user_id = :user_id";
     $params[":user_id"] = $userId;
+  } elseif (!empty($companyId)) {
+    // Filter by Company Users using subquery
+    $sql .= " AND user_id IN (SELECT id FROM users WHERE company_id = :comp_id)";
+    $params[":comp_id"] = $companyId;
   }
 
   $sql .= " ORDER BY first_name";

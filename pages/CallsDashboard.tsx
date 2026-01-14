@@ -254,6 +254,7 @@ const saveBatchToDatabase = async (
   startDate: string,
   endDate: string,
   amountRecord: number,
+  companyId?: number,
 ) => {
   try {
     const apiBase = resolveApiBasePath();
@@ -261,6 +262,7 @@ const saveBatchToDatabase = async (
       startdate: startDate,
       enddate: endDate,
       amount_record: amountRecord,
+      company_id: companyId,
     };
 
     const response = await fetch(`${apiBase}/Onecall_DB/onecall_batch.php`, {
@@ -318,12 +320,13 @@ const saveBatchToDatabase = async (
 };
 
 // Function to save log data to database
-const saveLogToDatabase = async (logs: any[], batchId: number) => {
+const saveLogToDatabase = async (logs: any[], batchId: number, companyId?: number) => {
   try {
     const apiBase = resolveApiBasePath();
     const requestData = {
       logs: logs,
       batch_id: batchId,
+      company_id: companyId,
     };
 
     const response = await fetch(`${apiBase}/Onecall_DB/onecall_logs.php`, {
@@ -667,8 +670,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userParam = selectedUserId
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
+      const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
       const response = await fetch(
-        `${apiBase}/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}`,
+        `${apiBase}/Onecall_DB/get_dashboard_stats.php?month=${month}&year=${year}${userParam}${companyParam}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -689,8 +693,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userParam = selectedUserId
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
+      const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}`,
+        `${apiBase}/Onecall_DB/get_employee_summary.php?month=${month}&year=${year}${userParam}${companyParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -711,8 +716,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userParam = selectedUserId
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
+      const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}`,
+        `${apiBase}/Onecall_DB/get_daily_calls.php?month=${month}&year=${year}${userParam}${companyParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -733,8 +739,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
       const userParam = selectedUserId
         ? `&user_id=${encodeURIComponent(selectedUserId)}`
         : "";
+      const companyParam = currentCompanyId ? `&company_id=${currentCompanyId}` : "";
       const resp = await fetch(
-        `${apiBase}/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}`,
+        `${apiBase}/Onecall_DB/get_talk_summary.php?month=${month}&year=${year}${userParam}${companyParam}`,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -798,6 +805,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
         startDate,
         endDate,
         resultCount,
+        currentCompanyId,
       );
 
       if (!batchResult.success) {
@@ -899,7 +907,7 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
           });
 
           // Save logs to database
-          const logResult = await saveLogToDatabase(logs, batchId);
+          const logResult = await saveLogToDatabase(logs, batchId, currentCompanyId);
 
           if (!logResult.success) {
             alert("ไม่สามารถบันทึกข้อมูล Log: " + logResult.error);
@@ -967,8 +975,9 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch batches
   const fetchBatches = async () => {
     try {
+      const companyParam = currentCompanyId ? `?company_id=${currentCompanyId}` : "";
       const response = await fetch(
-        `${apiBase}/Onecall_DB/onecall_batch_crud.php`,
+        `${apiBase}/Onecall_DB/onecall_batch_crud.php${companyParam}`,
       );
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -987,7 +996,8 @@ const CallsDashboard: React.FC<CallsDashboardProps> = ({
   // Function to fetch users with telesale and supervisor roles
   const fetchUsers = async () => {
     try {
-      const response = await fetch(`${apiBase}/Onecall_DB/get_users.php`);
+      const companyParam = currentCompanyId ? `?company_id=${currentCompanyId}` : "";
+      const response = await fetch(`${apiBase}/Onecall_DB/get_users.php${companyParam}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
