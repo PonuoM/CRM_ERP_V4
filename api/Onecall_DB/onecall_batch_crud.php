@@ -41,6 +41,8 @@ $companyId = get_company_id($input);
 // Given "add logic... to determine company_id every action", let's assume filtering.
 
 // Handle different request methods
+$method = $_SERVER['REQUEST_METHOD'];
+
 switch ($method) {
   case "GET":
     // Get all batches or a specific batch
