@@ -6814,7 +6814,6 @@ const App: React.FC = () => {
       return (
         <DebtCollectionPage
           user={currentUser}
-          orders={companyOrders}
           customers={companyCustomers}
           users={companyUsers}
           openModal={openModal}
@@ -7429,7 +7428,6 @@ const App: React.FC = () => {
         return (
           <DebtCollectionPage
             user={currentUser}
-            orders={companyOrders}
             customers={companyCustomers}
             users={companyUsers}
             openModal={openModal}
