@@ -472,8 +472,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const canCancelVerification = canVerifySlip;
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;
+  // สามารถแก้ไขสลิปได้เฉพาะ order ที่อยู่ใน tab waitingVerifySlip
   const canEditSlips =
-    !isOrderCompleted && (canVerifySlip || canEditPayAfterSlips);
+    (order as any).isWaitingVerifySlipTab && (canVerifySlip || canEditPayAfterSlips);
 
   const initialSlips = Array.isArray((order as any).slips)
     ? (order as any).slips.map((s: any) => ({
