@@ -4,7 +4,7 @@ import { apiFetch } from '../../services/api';
 import { User, Customer, Activity, LineItem, Order } from '../../types';
 import { Search, Loader2, ExternalLink, Filter, CheckSquare, Download } from 'lucide-react';
 import OrderDetailModal from '../../components/OrderDetailModal';
-import OrderSearchModal from '../../components/OrderSearchModal';
+import SlipOrderSearchModal from '../../components/SlipOrderSearchModal';
 
 interface AuditLog {
     id: number;
@@ -664,7 +664,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
 
             {/* Order Search Modal */}
             {isSearchModalOpen && selectedLogForSearch && (
-                <OrderSearchModal
+                <SlipOrderSearchModal
                     isOpen={isSearchModalOpen}
                     onClose={() => {
                         setIsSearchModalOpen(false);
@@ -674,7 +674,7 @@ const BankAccountAuditPage: React.FC<BankAccountAuditPageProps> = ({ currentUser
                     initialParams={{
                         date: selectedLogForSearch.transfer_at,
                         amount: selectedLogForSearch.statement_amount,
-                        companyId: currentUser.company_id || (currentUser as any).companyId
+                        companyId: currentUser.companyId || (currentUser as any).company_id
                     }}
                 />
             )}

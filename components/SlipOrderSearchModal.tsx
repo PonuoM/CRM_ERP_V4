@@ -5,8 +5,10 @@ import { apiFetch } from "../services/api";
 import { User } from "../types";
 import resolveApiBasePath from "../utils/apiBasePath";
 import DateRangePicker, { DateRange } from "./DateRangePicker";
+import NumberRangePicker from "./NumberRangePicker";
+import OrderDetailModal from "./OrderDetailModal";
 
-interface OrderSearchModalProps {
+interface SlipOrderSearchModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSelectOrder: (orderId: string, orderAmount: number) => void;
@@ -17,7 +19,7 @@ interface OrderSearchModalProps {
     };
 }
 
-const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
+const SlipOrderSearchModal: React.FC<SlipOrderSearchModalProps> = ({
     isOpen,
     onClose,
     onSelectOrder,
@@ -32,10 +34,15 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
     // Search Fields
     const [customerName, setCustomerName] = useState("");
     const [phone, setPhone] = useState("");
-    const [amount, setAmount] = useState<string>("");
+
+    // Amount Range
+    const [amountRange, setAmountRange] = useState<{ min: string; max: string }>({ min: "", max: "" });
+
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("all");
+
+    const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen && initialParams) {
@@ -48,7 +55,11 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
       }
       */
             if (initialParams.amount) {
-                setAmount(initialParams.amount.toString());
+                // Pre-fill exact amount range
+                setAmountRange({
+                    min: initialParams.amount.toString(),
+                    max: initialParams.amount.toString()
+                });
             }
             // Trigger search immediately if params are present?
             // Maybe wait for user to confirm or adjust?
@@ -69,7 +80,11 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
 
             if (customerName) params.append("customer_name", customerName);
             if (phone) params.append("phone", phone);
-            if (amount) params.append("amount", amount);
+
+            // Send amount range
+            if (amountRange.min) params.append("min_amount", amountRange.min);
+            if (amountRange.max) params.append("max_amount", amountRange.max);
+
             if (startDate) params.append("start_date", startDate);
             if (endDate) params.append("end_date", endDate);
             // Check for "all" explicitly to match API behavior
@@ -101,7 +116,7 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
     const clearFilters = () => {
         setCustomerName("");
         setPhone("");
-        setAmount("");
+        setAmountRange({ min: "", max: "" });
         setStartDate("");
         setEndDate("");
         setPaymentMethod("all");
@@ -176,8 +191,9 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
                             </select>
                         </div>
 
+
                         {/* Date Range */}
-                        <div className="md:col-span-2">
+                        <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 ช่วงวันที่ (Date Range)
                             </label>
@@ -192,42 +208,41 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
                             </div>
                         </div>
 
-                        {/* Amount */}
+                        {/* Amount Range */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                จำนวนเงิน
+                                ช่วงจำนวนเงิน (Amount Range)
                             </label>
-                            <input
-                                type="number"
-                                className="w-full px-3 py-2 border rounded-md text-sm"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                placeholder="ระบุยอดเงิน"
+                            <NumberRangePicker
+                                value={amountRange}
+                                onChange={setAmountRange}
                             />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-end justify-end gap-2">
+                            <button
+                                onClick={clearFilters}
+                                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 text-sm h-[38px]"
+                            >
+                                ล้างค่า
+                            </button>
+                            <button
+                                onClick={() => handleSearch(1)}
+                                disabled={loading}
+                                className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center text-sm h-[38px]"
+                            >
+                                {loading ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Search className="w-4 h-4 mr-2" />
+                                )}
+                                ค้นหา
+                            </button>
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-2 mb-6">
-                        <button
-                            onClick={clearFilters}
-                            className="px-4 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 text-sm"
-                        >
-                            ล้างค่า
-                        </button>
-                        <button
-                            onClick={() => handleSearch(1)}
-                            disabled={loading}
-                            className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center text-sm"
-                        >
-                            {loading ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                                <Search className="w-4 h-4 mr-2" />
-                            )}
-                            ค้นหา
-                        </button>
-                    </div>
+
 
                     {/* Results Table */}
                     <div className="overflow-x-auto border rounded-lg">
@@ -253,7 +268,12 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
                                     orders.map((order) => (
                                         <tr key={order.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 item-center">
-                                                <span className="font-medium text-blue-600">{order.id}</span>
+                                                <button
+                                                    onClick={() => setSelectedOrderForDetail(order.id)}
+                                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                                                >
+                                                    {order.id}
+                                                </button>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col">
@@ -332,8 +352,15 @@ const OrderSearchModal: React.FC<OrderSearchModalProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Order Detail Modal */}
+            <OrderDetailModal
+                isOpen={!!selectedOrderForDetail}
+                onClose={() => setSelectedOrderForDetail(null)}
+                orderId={selectedOrderForDetail}
+            />
         </div>
     );
 };
 
-export default OrderSearchModal;
+export default SlipOrderSearchModal;

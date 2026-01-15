@@ -45,8 +45,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onApply }) => 
   };
 
   return (
-    <div className="relative inline-block" ref={ref}>
-      <button onClick={() => setOpen(o => !o)} className="border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white">
+    <div className="relative w-full" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className="w-full border rounded-md px-3 py-2 text-sm flex items-center gap-2 bg-white justify-between">
         <Calendar className="w-4 h-4 text-gray-500" />
         <span className="text-gray-700">{display}</span>
       </button>
