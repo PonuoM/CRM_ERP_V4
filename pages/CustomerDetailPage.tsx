@@ -1351,6 +1351,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                               const itemCount = items.length;
                               const loading = detail?.loading;
                               const error = detail?.error;
+
                               return (
                                 <React.Fragment key={o.id}>
                                   <tr className="border-b last:border-0">

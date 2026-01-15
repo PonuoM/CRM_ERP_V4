@@ -209,7 +209,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Tracking & Transport",
       icon: Truck,
       children: [
-        { label: "Debt", icon: FileText, key: "nav.debt" },
         { label: "Bulk Tracking", icon: FileUp, key: "nav.bulk_tracking" },
         { label: "COD Management", icon: FileText, key: "nav.cod_management" },
         { label: "Google Sheet Import", icon: FileUp, key: "nav.google_sheet_import" },
@@ -253,6 +252,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Finance Approval", icon: CheckCircle, key: "nav.finance_approval" },
         { label: "Statement Management", icon: FileText, key: "nav.statement_management" },
         { label: "Calculate Commission", icon: BarChart2, key: "finance-commission" },
+        { label: "Debt", icon: FileText, key: "nav.debt" },
       ]
     },
     {

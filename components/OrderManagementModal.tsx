@@ -472,8 +472,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   const canCancelVerification = canVerifySlip;
   const canEditPayAfterSlips =
     currentOrder?.paymentMethod === PaymentMethod.PayAfter;
+  // สามารถแก้ไขสลิปได้เฉพาะ order ที่อยู่ใน tab waitingVerifySlip
   const canEditSlips =
-    !isOrderCompleted && (canVerifySlip || canEditPayAfterSlips);
+    (order as any).isWaitingVerifySlipTab && (canVerifySlip || canEditPayAfterSlips);
 
   const initialSlips = Array.isArray((order as any).slips)
     ? (order as any).slips.map((s: any) => ({
@@ -3620,11 +3621,6 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                               <div className="flex items-center justify-center">
                                                 <CheckCircle className="w-5 h-5 text-green-600" />
                                               </div>
-                                            ) : isOrderCompleted ? (
-                                              // Order เสร็จสิ้นแล้ว - แสดงติ๊กถูก (ไม่สามารถแก้ไขได้)
-                                              <div className="flex items-center justify-center">
-                                                <CheckCircle className="w-5 h-5 text-gray-400" />
-                                              </div>
                                             ) : (
                                               // สลิปยังไม่ถูกตรวจสอบ - แสดง checkbox
                                               <input
@@ -3756,9 +3752,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
                       {canVerifySlip &&
                         ((currentOrder.paymentMethod === PaymentMethod.Transfer ||
-                          currentOrder.paymentMethod === PaymentMethod.PayAfter) || (order as any).isWaitingVerifySlipTab) &&
-                        (hasTransferSlip || (order as any).isWaitingVerifySlipTab) &&
-                        !isOrderCompleted && (
+                          currentOrder.paymentMethod === PaymentMethod.PayAfter ||
+                          currentOrder.paymentMethod === PaymentMethod.COD) || (order as any).isWaitingVerifySlipTab) &&
+                        (hasTransferSlip || (order as any).isWaitingVerifySlipTab) && (
                           <div className="flex justify-end mt-4">
                             {(() => {
                               const isConfirmed = [
