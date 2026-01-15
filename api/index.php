@@ -955,7 +955,9 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                   AND (
                                       (c.lifecycle_status IN ('New', 'DailyDistribution')
                                       AND NOT EXISTS (
-                                          SELECT 1 FROM call_history ch WHERE ch.customer_id = c.customer_id
+                                          SELECT 1 FROM call_history ch 
+                                          WHERE ch.customer_id = c.customer_id 
+                                          AND DATE(CONVERT_TZ(ch.date, '+00:00', '+07:00')) >= DATE(c.date_assigned)
                                       ))
                                       OR 
                                       EXISTS (
@@ -1253,11 +1255,11 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                     customers.lifecycle_status = 'DailyDistribution'
                                     AND DATE(customers.date_assigned) = CURDATE()
                                     AND NOT EXISTS (
-                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND date >= customers.date_assigned
+                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND DATE(CONVERT_TZ(date, '+00:00', '+07:00')) >= DATE(customers.date_assigned)
                                         UNION
-                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND timestamp >= customers.date_assigned
+                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND DATE(CONVERT_TZ(timestamp, '+00:00', '+07:00')) >= DATE(customers.date_assigned)
                                         UNION
-                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND order_date >= customers.date_assigned
+                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND DATE(order_date) >= DATE(customers.date_assigned)
                                     )
                                 )";
                                 
@@ -1265,11 +1267,11 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                 $doConditions[] = "(
                                     customers.lifecycle_status = 'New'
                                     AND NOT EXISTS (
-                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND date >= customers.date_assigned
+                                        SELECT 1 FROM call_history WHERE customer_id = customers.customer_id AND DATE(CONVERT_TZ(date, '+00:00', '+07:00')) >= DATE(customers.date_assigned)
                                         UNION
-                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND timestamp >= customers.date_assigned
+                                        SELECT 1 FROM activities WHERE customer_id = customers.customer_id AND DATE(CONVERT_TZ(timestamp, '+00:00', '+07:00')) >= DATE(customers.date_assigned)
                                         UNION
-                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND order_date >= customers.date_assigned
+                                        SELECT 1 FROM orders WHERE customer_id = customers.customer_id AND DATE(order_date) >= DATE(customers.date_assigned)
                                     )
                                 )";
                                 
@@ -6187,11 +6189,26 @@ function handle_calls(PDO $pdo, ?string $id): void {
             break;
         case 'POST':
             $in = json_input();
+            // Convert date to Thai timezone if provided (frontend may send UTC)
+            $callDate = $in['date'] ?? null;
+            if ($callDate) {
+                try {
+                    $dt = new DateTime($callDate);
+                    $dt->setTimezone(new DateTimeZone('Asia/Bangkok'));
+                    $callDate = $dt->format('Y-m-d H:i:s');
+                } catch (Exception $e) {
+                    $callDate = date('Y-m-d H:i:s');
+                }
+            } else {
+                $callDate = date('Y-m-d H:i:s');
+            }
+            
             $stmt = $pdo->prepare('INSERT INTO call_history (customer_id, date, caller, status, result, crop_type, area_size, notes, duration) VALUES (?,?,?,?,?,?,?,?,?)');
             $stmt->execute([
-                $in['customerId'] ?? null, $in['date'] ?? date('c'), $in['caller'] ?? '', $in['status'] ?? '', $in['result'] ?? '',
+                $in['customerId'] ?? null, $callDate, $in['caller'] ?? '', $in['status'] ?? '', $in['result'] ?? '',
                 $in['cropType'] ?? null, $in['areaSize'] ?? null, $in['notes'] ?? null, $in['duration'] ?? null
             ]);
+
             // Increment total_calls and mark lifecycle to Old on first call
             if (!empty($in['customerId'])) {
                 try {
@@ -6205,7 +6222,7 @@ function handle_calls(PDO $pdo, ?string $id): void {
                         $updateStmt = $pdo->prepare('UPDATE customers SET total_calls = COALESCE(total_calls,0) + 1, last_call_note = ?, last_call_date = ? WHERE customer_id=?');
                         $updateStmt->execute([
                             $in['notes'] ?? null,
-                            $in['date'] ?? date('c'),
+                            $callDate,
                             $customer['customer_id']
                         ]);
                     }
