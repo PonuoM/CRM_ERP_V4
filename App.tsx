@@ -4395,7 +4395,7 @@ const App: React.FC = () => {
     customerId: string,
     newFollowUpDate?: string,
     newTags?: Tag[],
-  ) => {
+  ): Promise<void> => {
     const newCallLog: CallHistory = {
       ...callLogData,
       id: Math.max(...callHistory.map((c) => c.id), 0) + 1,
@@ -4711,50 +4711,56 @@ const App: React.FC = () => {
       setAppointments((prev) => [newAppointment, ...prev]);
       // Trigger refetch in CustomerDetailPage
       setRefreshTrigger(prev => prev + 1);
-      try {
-        await recordFollowUp(customerId);
-        const updated = await getCustomerOwnershipStatus(customerId);
-        if (updated && updated.ownership_expires) {
-          setCustomers((prev) =>
-            prev.map((c) =>
-              c.id === customerId
-                ? { ...c, ownershipExpires: updated.ownership_expires }
-                : c,
-            ),
-          );
-        }
-      } catch (e) {
-        console.error("record follow-up / refresh ownership failed", e);
-      }
-    }
 
-    const customerIdForActivity = getCustomerIdForActivity(customerId);
-    if (customerIdForActivity) {
-      const newActivity: Activity = {
-        id: Date.now(),
-        customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
-        timestamp: new Date().toISOString(),
-        type: ActivityType.CallLogged,
-        description: `บันทึกการโทร: ${callLogData.result}`,
-        actorName: `${currentUser.firstName} ${currentUser.lastName}`,
-      };
-      if (true) {
-        try {
-          await createActivity({
-            customerId: customerIdForActivity, // ส่ง INT ไป API
-            timestamp: newActivity.timestamp,
-            type: newActivity.type,
-            description: newActivity.description,
-            actorName: newActivity.actorName,
-          });
-        } catch (e) {
-          console.error("Failed to create activity", e);
+      const customerIdForActivity = getCustomerIdForActivity(customerId);
+      if (customerIdForActivity) {
+        const newActivity: Activity = {
+          id: Date.now(),
+          customerId: String(customerIdForActivity), // เก็บเป็น string ใน state
+          timestamp: new Date().toISOString(),
+          type: ActivityType.CallLogged,
+          description: `บันทึกการโทร: ${callLogData.result}`,
+          actorName: `${currentUser.firstName} ${currentUser.lastName}`,
+        };
+        if (true) {
+          try {
+            await createActivity({
+              customerId: customerIdForActivity, // ส่ง INT ไป API
+              timestamp: newActivity.timestamp,
+              type: newActivity.type,
+              description: newActivity.description,
+              actorName: newActivity.actorName,
+            });
+          } catch (e) {
+            console.error("Failed to create activity", e);
+          }
         }
+        setActivities((prev) => [newActivity, ...prev]);
       }
-      setActivities((prev) => [newActivity, ...prev]);
-    }
 
+    } // End of if (newFollowUpDate)
+
+    // --- CRITICAL UPDATES COMPLETE ---
+    // Close modal immediately
     closeModal();
+
+    // --- BACKGROUND TASKS ---
+    // Fetch ownership status in background (doesn't block modal closing)
+    try {
+      await recordFollowUp(customerId);
+      const updated = await getCustomerOwnershipStatus(customerId);
+      if (updated && updated.ownership_expires) {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === customerId
+              ? { ...c, ownershipExpires: updated.ownership_expires }
+              : c,
+          ),
+        );
+      }
+    } catch (e) {
+      console.error("record follow-up / refresh ownership failed", e);
+    }
   };
 
   const handleCreateAppointment = async (

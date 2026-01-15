@@ -23,7 +23,7 @@ interface LogCallModalProps {
   user: User;
   systemTags: Tag[];
   // FIX: Change customerId type from number to string to match the Customer type.
-  onSave: (callLog: Omit<CallHistory, 'id'>, customerId: string, newFollowUpDate?: string, newTags?: Tag[]) => void;
+  onSave: (callLog: Omit<CallHistory, 'id'>, customerId: string, newFollowUpDate?: string, newTags?: Tag[]) => Promise<void>;
   onCreateUserTag: (tagName: string) => Promise<Tag | null>;
   onClose: () => void;
 }
@@ -44,6 +44,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   const [notes, setNotes] = useState('');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [showTagModal, setShowTagModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // New state
 
   const isResultDisabled = nonConversationResultOptions.includes(status);
 
@@ -70,14 +71,14 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
   };
 
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!status) {
-        alert('กรุณาเลือกสถานะการโทร');
-        return;
+      alert('กรุณาเลือกสถานะการโทร');
+      return;
     }
-     if (!callResult) {
-        alert('กรุณาเลือกผลการโทร');
-        return;
+    if (!callResult) {
+      alert('กรุณาเลือกผลการโทร');
+      return;
     }
 
     const newCallLog: Omit<CallHistory, 'id'> = {
@@ -93,135 +94,153 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       notes: notes || undefined,
     };
 
-    onSave(newCallLog, customer.id, nextFollowUpDate, selectedTags);
+    setIsSaving(true);
+    try {
+      await onSave(newCallLog, customer.id, nextFollowUpDate, selectedTags);
+    } catch (error) {
+      console.error("Error saving log:", error);
+      alert("เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่");
+      setIsSaving(false);
+    }
+    // Note: We don't set isSaving(false) on success because the parent usually closes the modal,
+    // explicitly or implicitly. But if the modal stays open for some reason, we might want to?
+    // Based on user request, modal closes after request success. 
   };
 
   const nowForInput = new Date().toISOString().slice(0, 16);
 
   return (
-    <Modal title="บันทึกการโทร" onClose={onClose}>
+    <Modal title="บันทึกการโทร" onClose={!isSaving ? onClose : () => { }}>
       <div className="space-y-6 text-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label className="block text-gray-700 font-medium mb-1">สถานะการโทร</label>
-                <select 
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                    style={{ colorScheme: 'light' }}
-                >
-                    <option value="" disabled className="text-gray-500">เลือกสถานะการโทร</option>
-                    {callStatusOptions.map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
-                </select>
-            </div>
-            <div>
-                <label className="block text-gray-700 font-medium mb-1">ผลการโทร</label>
-                <select 
-                    value={callResult}
-                    onChange={(e) => setCallResult(e.target.value)}
-                    disabled={isResultDisabled}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-500"
-                    style={{ colorScheme: 'light' }}
-                >
-                  <option value="" disabled className="text-gray-500">เลือกผลการโทร</option>
-                  {(isResultDisabled ? [status] : conversationResultOptions).map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
-                </select>
-            </div>
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">สถานะการโทร</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              disabled={isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-500"
+              style={{ colorScheme: 'light' }}
+            >
+              <option value="" disabled className="text-gray-500">เลือกสถานะการโทร</option>
+              {callStatusOptions.map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">ผลการโทร</label>
+            <select
+              value={callResult}
+              onChange={(e) => setCallResult(e.target.value)}
+              disabled={isResultDisabled || isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-500"
+              style={{ colorScheme: 'light' }}
+            >
+              <option value="" disabled className="text-gray-500">เลือกผลการโทร</option>
+              {(isResultDisabled ? [status] : conversationResultOptions).map(opt => <option key={opt} value={opt} className="text-black">{opt}</option>)}
+            </select>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label className="block text-gray-700 font-medium mb-1">ระยะเวลา (นาที)</label>
-                <input 
-                    type="number"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
-                    placeholder="0"
-                    style={{ colorScheme: 'light' }}
-                />
-            </div>
-            <div>
-                <label className="block text-gray-700 font-medium mb-1">วันที่คาดว่าจะติดต่อครั้งถัดไป</label>
-                 <input 
-                    type="datetime-local"
-                    min={nowForInput}
-                    value={nextFollowUpDate}
-                    onChange={(e) => setNextFollowUpDate(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
-                    style={{ colorScheme: 'light' }}
-                />
-            </div>
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">ระยะเวลา (นาที)</label>
+            <input
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              disabled={isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+              placeholder="0"
+              style={{ colorScheme: 'light' }}
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">วันที่คาดว่าจะติดต่อครั้งถัดไป</label>
+            <input
+              type="datetime-local"
+              min={nowForInput}
+              value={nextFollowUpDate}
+              onChange={(e) => setNextFollowUpDate(e.target.value)}
+              disabled={isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+              placeholder=""
+              style={{ colorScheme: 'light' }}
+            />
+          </div>
         </div>
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div>
-                <label className="block text-gray-700 font-medium mb-1">พืชพันธุ์</label>
-                <input 
-                    type="text"
-                    value={cropType}
-                    onChange={(e) => setCropType(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
-                    placeholder="เช่น มะม่วง, ทุเรียน, ลำไย"
-                    style={{ colorScheme: 'light' }}
-                />
-            </div>
-             <div>
-                <label className="block text-gray-700 font-medium mb-1">ขนาดสวน</label>
-                <input 
-                    type="text"
-                    value={areaSize}
-                    onChange={(e) => setAreaSize(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500" 
-                    placeholder="เช่น 5 ไร่, 2,000 ตารางวา"
-                    style={{ colorScheme: 'light' }}
-                />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">พืชพันธุ์</label>
+            <input
+              type="text"
+              value={cropType}
+              onChange={(e) => setCropType(e.target.value)}
+              disabled={isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+              placeholder="เช่น มะม่วง, ทุเรียน, ลำไย"
+              style={{ colorScheme: 'light' }}
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 font-medium mb-1">ขนาดสวน</label>
+            <input
+              type="text"
+              value={areaSize}
+              onChange={(e) => setAreaSize(e.target.value)}
+              disabled={isSaving}
+              className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+              placeholder="เช่น 5 ไร่, 2,000 ตารางวา"
+              style={{ colorScheme: 'light' }}
+            />
+          </div>
         </div>
         <div>
-            <label className="block text-gray-700 font-medium mb-1">หมายเหตุ</label>
-            <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={4}
-                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                placeholder="รายละเอียดเพิ่มเติม..."
-                style={{ colorScheme: 'light' }}
-            ></textarea>
+          <label className="block text-gray-700 font-medium mb-1">หมายเหตุ</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={isSaving}
+            rows={4}
+            className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-1 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+            placeholder="รายละเอียดเพิ่มเติม..."
+            style={{ colorScheme: 'light' }}
+          ></textarea>
         </div>
-         <div>
-            <label className="block text-gray-700 font-medium mb-1">เพิ่ม Tag</label>
-            <button 
-                onClick={() => setShowTagModal(true)}
-                className="w-full flex items-center justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-md text-gray-500 hover:border-green-500 hover:text-green-600 transition-colors"
-            >
-                <Plus size={16} className="mr-2"/> เพิ่ม Tag
-            </button>
-            <div className="mt-2 p-2 min-h-[40px] bg-gray-50 rounded-md border">
-                {selectedTags.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                        {selectedTags.map((tag) => {
-                            const tagColor = tag.color || '#9333EA';
-                            const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
-                            const textColor = getContrastColor(bgColor);
-                            return (
-                                <span 
-                                    key={tag.id} 
-                                    className="flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-                                    style={{ backgroundColor: bgColor, color: textColor }}
-                                >
-                                    {tag.name}
-                                    <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 opacity-70 hover:opacity-100">
-                                        <X size={12} />
-                                    </button>
-                                </span>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <p className="text-gray-400 text-xs italic">Tags ที่เลือกจะแสดงที่นี่</p>
-                )}
-            </div>
+        <div>
+          <label className="block text-gray-700 font-medium mb-1">เพิ่ม Tag</label>
+          <button
+            onClick={() => setShowTagModal(true)}
+            disabled={isSaving}
+            className={`w-full flex items-center justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-md text-gray-500 transition-colors ${isSaving ? 'bg-gray-100 cursor-not-allowed' : 'hover:border-green-500 hover:text-green-600'}`}
+          >
+            <Plus size={16} className="mr-2" /> เพิ่ม Tag
+          </button>
+          <div className="mt-2 p-2 min-h-[40px] bg-gray-50 rounded-md border">
+            {selectedTags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedTags.map((tag) => {
+                  const tagColor = tag.color || '#9333EA';
+                  const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
+                  const textColor = getContrastColor(bgColor);
+                  return (
+                    <span
+                      key={tag.id}
+                      className="flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: bgColor, color: textColor }}
+                    >
+                      {tag.name}
+                      <button onClick={() => handleRemoveTag(tag)} disabled={isSaving} className="ml-1.5 opacity-70 hover:opacity-100 disabled:opacity-30">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-gray-400 text-xs italic">Tags ที่เลือกจะแสดงที่นี่</p>
+            )}
+          </div>
         </div>
-        
+
         {showTagModal && (
           <TagSelectionModal
             customer={customer}
@@ -238,15 +257,27 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
       <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
         <button
           onClick={onClose}
-          className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-semibold"
+          disabled={isSaving}
+          className={`px-6 py-2 bg-gray-500 text-white rounded-lg font-semibold ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-600'}`}
         >
           ยกเลิก
         </button>
         <button
           onClick={handleSave}
-          className="px-6 py-2 bg-[#2E7D32] text-white font-semibold rounded-lg hover:bg-green-800"
+          disabled={isSaving}
+          className={`px-6 py-2 bg-[#2E7D32] text-white font-semibold rounded-lg flex items-center ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-800'}`}
         >
-          บันทึก
+          {isSaving ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              กำลังบันทึก...
+            </>
+          ) : (
+            'บันทึก'
+          )}
         </button>
       </div>
     </Modal>
