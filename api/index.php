@@ -2703,6 +2703,11 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 // Orders with order_status = Cancelled
                                 $whereConditions[] = 'o.order_status = "Cancelled"';
                                 break;
+                                
+                            case 'debtCollection':
+                                // Default: Orders with payment_status = Unpaid (debt collection)
+                                $whereConditions[] = 'o.payment_status = "Unpaid"';
+                                break;
                         }
                     }
                 }

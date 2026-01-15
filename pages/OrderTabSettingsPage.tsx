@@ -79,15 +79,29 @@ interface TabRule {
     company_id: number;
 }
 
-const TABS = [
-    { key: 'waitingVerifySlip', label: 'รอตรวจสอบสลิป' },
-    { key: 'waitingExport', label: 'รอดึงข้อมูล' },
-    { key: 'preparing', label: 'กำลังเตรียมสินค้า' },
-    { key: 'shipping', label: 'กำลังจัดส่ง' },
-    { key: 'awaiting_account', label: 'รอตรวจสอบจากบัญชี' },
-    { key: 'completed', label: 'เสร็จสิ้น' },
-    { key: 'cancelled', label: 'ยกเลิก' },
+const TAB_GROUPS = [
+    {
+        label: 'Order Management',
+        tabs: [
+            { key: 'waitingVerifySlip', label: 'รอตรวจสอบสลิป' },
+            { key: 'waitingExport', label: 'รอดึงข้อมูล' },
+            { key: 'preparing', label: 'กำลังเตรียมสินค้า' },
+            { key: 'shipping', label: 'กำลังจัดส่ง' },
+            { key: 'awaiting_account', label: 'รอตรวจสอบจากบัญชี' },
+            { key: 'completed', label: 'เสร็จสิ้น' },
+            { key: 'cancelled', label: 'ยกเลิก' },
+        ]
+    },
+    {
+        label: 'Debt Collection',
+        tabs: [
+            { key: 'debtCollection', label: 'ติดตามหนี้' },
+        ]
+    }
 ];
+
+// Flatten for backward compatibility
+const TABS = TAB_GROUPS.flatMap(group => group.tabs);
 
 const ORDER_STATUSES = [
     'ALL',
@@ -323,18 +337,30 @@ const OrderTabSettingsPage: React.FC<OrderTabSettingsPageProps> = ({ currentUser
                 {/* Sidebar Tabs */}
                 <div className="bg-white rounded-lg shadow-sm border p-2">
                     <h3 className="font-semibold text-gray-500 text-sm uppercase px-3 py-2 mb-2">Tabs</h3>
-                    <div className="space-y-1">
-                        {TABS.map(tab => (
-                            <button
-                                key={tab.key}
-                                onClick={() => setActiveTabKey(tab.key)}
-                                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTabKey === tab.key
-                                    ? 'bg-blue-50 text-blue-700'
-                                    : 'text-gray-600 hover:bg-gray-50'
-                                    }`}
-                            >
-                                {tab.label}
-                            </button>
+                    <div className="space-y-4">
+                        {TAB_GROUPS.map((group, groupIndex) => (
+                            <div key={groupIndex}>
+                                <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                                    {group.label}
+                                </div>
+                                <div className="space-y-1 mt-1">
+                                    {group.tabs.map(tab => (
+                                        <button
+                                            key={tab.key}
+                                            onClick={() => setActiveTabKey(tab.key)}
+                                            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTabKey === tab.key
+                                                ? 'bg-blue-50 text-blue-700'
+                                                : 'text-gray-600 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {groupIndex < TAB_GROUPS.length - 1 && (
+                                    <div className="border-t border-gray-200 my-2"></div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 </div>
