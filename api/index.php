@@ -146,7 +146,7 @@ try {
                 return;
             }
             
-            $trackingsToCheck = array_keys($trackingMap);
+            $trackingsToCheck = array_values(array_map('strval', array_keys($trackingMap)));
             $placeholders = str_repeat('?,', count($trackingsToCheck) - 1) . '?';
             
             // Debug: Log normalized tracking numbers we're searching for
@@ -198,6 +198,7 @@ try {
             $boxesByParent = [];
             
             if (!empty($parentIds)) {
+                $parentIds = array_values($parentIds); // Re-index for PDO
                 $pPlaceholders = str_repeat('?,', count($parentIds) - 1) . '?';
                 $boxSql = "SELECT order_id, sub_order_id, box_number, cod_amount, collection_amount 
                            FROM order_boxes 
