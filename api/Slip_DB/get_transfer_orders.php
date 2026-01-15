@@ -113,11 +113,21 @@ if (!empty($_GET["end_date"])) {
 
 if (!empty($_GET["amount"])) {
   $filters["amount"] = (float) $_GET["amount"];
-  // Allow for small floating point differences (optional, or exact)
-  // Or better, exact match or slight range? Statement matching is usually exact.
-  // Let's use exact match for now, or maybe a tiny range if needed.
+  // Exact match
   $conditions[] = "o.total_amount = ?";
   $bindParams[] = $filters["amount"];
+}
+
+if (isset($_GET["min_amount"]) && $_GET["min_amount"] !== "") {
+    $filters["min_amount"] = (float) $_GET["min_amount"];
+    $conditions[] = "o.total_amount >= ?";
+    $bindParams[] = $filters["min_amount"];
+}
+
+if (isset($_GET["max_amount"]) && $_GET["max_amount"] !== "") {
+    $filters["max_amount"] = (float) $_GET["max_amount"];
+    $conditions[] = "o.total_amount <= ?";
+    $bindParams[] = $filters["max_amount"];
 }
 
 // Payment method selector (default Transfer for backward compatibility)
