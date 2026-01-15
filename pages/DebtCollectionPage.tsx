@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Order, Customer, ModalType } from '../types';
-import OrderTable from '../components/OrderTable';
-import { DollarSign, Users, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { listOrders } from '../services/api';
+import DebtCollectionModal from '../components/DebtCollectionModal';
+import OrderDetailModal from '../components/OrderDetailModal';
+import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle } from 'lucide-react';
+import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary } from '../services/api';
 
 interface DebtCollectionPageProps {
   user: User;
@@ -13,7 +14,7 @@ interface DebtCollectionPageProps {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers, users, openModal }) => {
+const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers, openModal }) => {
   // State
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,106 +23,64 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   const [itemsPerPage, setItemsPerPage] = useState(PAGE_SIZE_OPTIONS[0]); // Default 10
   const [totalPages, setTotalPages] = useState(1);
 
-  // Fetch orders using debtCollection tab rules
-  useEffect(() => {
-    const fetchOrders = async () => {
-      if (!user?.companyId) return;
+  // Summary State
+  const [summaryStats, setSummaryStats] = useState<DebtCollectionSummary>({ orderCount: 0, totalDebt: 0 });
 
-      setLoading(true);
-      try {
-        const response = await listOrders({
-          companyId: user.companyId,
-          tab: 'debtCollection', // Use the debtCollection tab key
-          page: currentPage,
-          pageSize: itemsPerPage,
+  // Modal state
+  const [trackModalOpen, setTrackModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [closingCase, setClosingCase] = useState(false);
+
+  // Fetch Summary Statistics (Global)
+  const fetchSummary = async () => {
+    if (!user?.companyId) return;
+    try {
+      const response = await getDebtCollectionSummary({
+        companyId: user.companyId,
+      });
+      if (response.ok) {
+        setSummaryStats({
+          orderCount: response.orderCount || 0,
+          totalDebt: response.totalDebt || 0
         });
-
-        if (response.ok) {
-          const mappedOrders = (response.orders || []).map((r: any) => ({
-            id: r.id,
-            customerId: r.customer_id,
-            companyId: r.company_id,
-            creatorId: r.creator_id,
-            orderDate: r.order_date,
-            deliveryDate: r.delivery_date,
-            shippingAddress: {
-              recipientFirstName: r.recipient_first_name || '',
-              recipientLastName: r.recipient_last_name || '',
-              street: r.street || '',
-              subdistrict: r.subdistrict || '',
-              district: r.district || '',
-              province: r.province || '',
-              postalCode: r.postal_code || '',
-            },
-            shippingProvider: r.shipping_provider,
-            shippingCost: Number(r.shipping_cost || 0),
-            billDiscount: Number(r.bill_discount || 0),
-            totalAmount: Number(r.total_amount || 0),
-            paymentMethod: r.payment_method,
-            paymentStatus: r.payment_status,
-            orderStatus: r.order_status,
-            trackingNumbers: r.tracking_numbers ? r.tracking_numbers.split(',').map((t: string) => t.trim()) : [],
-            amountPaid: r.amount_paid !== undefined && r.amount_paid !== null ? Number(r.amount_paid) : undefined,
-            codAmount: r.cod_amount ? Number(r.cod_amount) : undefined,
-            slipUrl: r.slip_url,
-            salesChannel: r.sales_channel,
-            salesChannelPageId: r.sales_channel_page_id,
-            warehouseId: r.warehouse_id,
-            bankAccountId: r.bank_account_id,
-            transferDate: r.transfer_date,
-            items: (r.items || []).map((it: any) => ({
-              ...it,
-              pricePerUnit: Number(it.price_per_unit ?? it.price ?? 0),
-              quantity: Number(it.quantity ?? 0),
-              discount: Number(it.discount ?? 0),
-              netTotal: Number(it.net_total ?? it.netTotal ?? 0),
-              isPromotionParent: !!(it.is_promotion_parent ?? 0),
-              parentItemId: it.parent_item_id ?? it.parentItemId,
-            })),
-            slips: r.slips || [],
-            trackingDetails: r.tracking_details || r.trackingDetails || [],
-            boxes: r.boxes || [],
-            reconcileAction: r.reconcile_action,
-            customerInfo: (r.customer_id || r.customer_phone || r.phone) ? {
-              firstName: r.customer_first_name || '',
-              lastName: r.customer_last_name || '',
-              phone: r.phone || r.customer_phone || '',
-              street: r.customer_street || '',
-              subdistrict: r.customer_subdistrict || '',
-              district: r.customer_district || '',
-              province: r.customer_province || '',
-              postalCode: r.customer_postal_code || '',
-            } : undefined,
-          }));
-
-          setOrders(mappedOrders);
-          setTotalOrders(response.pagination?.total || 0);
-          setTotalPages(response.pagination?.totalPages || 1);
-        }
-      } catch (error) {
-        console.error("Failed to fetch orders for debt collection:", error);
-        setOrders([]);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error("Failed to fetch summary:", error);
+    }
+  };
 
+  // Fetch Orders List (Paginated)
+  const fetchOrders = async () => {
+    if (!user?.companyId) return;
+
+    setLoading(true);
+    try {
+      const response = await getDebtCollectionOrders({
+        companyId: user.companyId,
+        page: currentPage,
+        pageSize: itemsPerPage,
+      });
+
+      if (response.ok) {
+        // Map API response to Order type (partial) for display
+        // Note: The API returns formatted objects, we assume they align with what we need
+        setOrders(response.orders || []);
+        setTotalOrders(response.pagination?.total || 0);
+        setTotalPages(response.pagination?.totalPages || 1);
+      }
+    } catch (error) {
+      console.error("Failed to fetch orders:", error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchOrders();
+    fetchSummary(); // Fetch summary initially and when filters change (currently no filters but ready for them)
   }, [user?.companyId, currentPage, itemsPerPage]);
-
-  // Calculate total debt amount and unique customer count
-  const { totalDebt, uniqueCustomerCount } = useMemo(() => {
-    const paidAmount = (o: Order) => (o.amountPaid ?? (o as any).codAmount ?? 0) as number;
-    const shortfall = (o: Order) => Math.max(0, o.totalAmount - paidAmount(o));
-
-    const debt = orders.reduce((sum, order) => sum + shortfall(order), 0);
-    const uniqueCustomers = new Set(orders.map(o => o.customerId)).size;
-
-    return {
-      totalDebt: debt,
-      uniqueCustomerCount: uniqueCustomers
-    };
-  }, [orders]);
 
   const handlePageChange = (page: number) => {
     const next = Math.min(Math.max(page, 1), totalPages);
@@ -130,7 +89,53 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
   const handleItemsPerPageChange = (value: number) => {
     setItemsPerPage(value);
-    setCurrentPage(1); // Reset to first page when changing items per page
+    setCurrentPage(1);
+  };
+
+  const handleViewDetail = (order: Order) => {
+    setSelectedOrder(order);
+    setDetailModalOpen(true);
+  };
+
+  const handleTrackClick = (order: Order) => {
+    setSelectedOrder(order);
+    setTrackModalOpen(true);
+  };
+
+  const handleCloseCase = async (order: Order) => {
+    if (!confirm(`ยืนยันการจบเคสสำหรับ Order ${order.id}?`)) {
+      return;
+    }
+
+    setClosingCase(true);
+    try {
+      const remainingDebt = (order as any).remainingDebt || 0;
+
+      const response = await closeDebtCase({
+        order_id: order.id,
+        user_id: user.id,
+        amount_collected: remainingDebt, // Assuming full collection or just closing
+        result_status: 3, // Collected All (as per previous logic for closing)
+        note: 'จบเคส - ปิดการติดตามหนี้',
+      });
+
+      if (response.ok) {
+        alert('จบเคสเรียบร้อยแล้ว');
+        fetchOrders();
+        fetchSummary(); // Refresh stats too
+      } else {
+        alert(response.error || 'เกิดข้อผิดพลาดในการจบเคส');
+      }
+    } catch (error: any) {
+      alert(error.message || 'เกิดข้อผิดพลาดในการจบเคส');
+    } finally {
+      setClosingCase(false);
+    }
+  };
+
+  const handleTrackSuccess = () => {
+    fetchOrders();
+    fetchSummary(); // Refresh stats too
   };
 
   const getPageNumbers = () => {
@@ -166,16 +171,18 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     return pages;
   };
 
+  // Indices for display
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalOrders);
   const displayStart = totalOrders === 0 ? 0 : startIndex + 1;
   const displayEnd = totalOrders === 0 ? 0 : endIndex;
 
+  // Render
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">ติดตามหนี้</h2>
 
-      {loading ? (
+      {loading && orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
           <p className="text-gray-500">กำลังโหลดข้อมูล...</p>
@@ -190,9 +197,9 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                   <DollarSign className="w-6 h-6 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (หน้านี้)</p>
+                  <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (ทั้งระบบ)</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
+                    {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
                   </p>
                 </div>
               </div>
@@ -201,11 +208,11 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-sm border border-blue-200 p-6">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-200 p-3 rounded-full">
-                  <Users className="w-6 h-6 text-blue-600" />
+                  <FileText className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">จำนวนลูกค้า (หน้านี้)</p>
-                  <p className="text-2xl font-bold text-gray-900">{uniqueCustomerCount} คน</p>
+                  <p className="text-sm text-gray-600 mb-1">จำนวนคำสั่งซื้อ (ทั้งระบบ)</p>
+                  <p className="text-2xl font-bold text-gray-900">{summaryStats.orderCount} รายการ</p>
                 </div>
               </div>
             </div>
@@ -248,8 +255,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                       key={page}
                       onClick={() => handlePageChange(page as number)}
                       className={`px-3 py-1 rounded-md border text-sm font-medium ${currentPage === page
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 hover:bg-gray-50'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-gray-300 hover:bg-gray-50'
                         }`}
                     >
                       {page}
@@ -268,18 +275,109 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             </div>
           </div>
 
-          {/* Orders Table */}
-          <div className="bg-white rounded-lg shadow">
-            <OrderTable
-              orders={orders}
-              customers={customers}
-              openModal={openModal}
-              users={users}
-            />
+          {/* Custom Orders Table */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Order ID
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ลูกค้า
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      เบอร์โทร
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ยอดหนี้คงเหลือ
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      จำนวนครั้ง
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ติดตาม
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      จบเคส
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {orders.map((order) => {
+                    const customerInfo = (order as any).customerInfo;
+                    const remainingDebt = (order as any).remainingDebt;
+
+                    return (
+                      <tr key={order.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => handleViewDetail(order)}
+                            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                          >
+                            {order.id}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {customerInfo ? `${customerInfo.firstName} ${customerInfo.lastName}` : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                          {customerInfo?.phone ? (
+                            <a href={`tel:${customerInfo.phone}`} className="flex items-center gap-1 text-blue-600 hover:text-blue-800">
+                              <Phone size={14} />
+                              {customerInfo.phone}
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-bold text-red-600">
+                          ฿{remainingDebt.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
+                          {(order as any).trackingCount > 0 ? (
+                            <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              {(order as any).trackingCount} ครั้ง
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <button
+                            onClick={() => handleTrackClick(order)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            <FileText size={14} />
+                            ติดตาม
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <button
+                            onClick={() => handleCloseCase(order)}
+                            disabled={closingCase}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <CheckCircle size={14} />
+                            จบเคส
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {orders.length === 0 && !loading && (
+              <div className="text-center py-12 text-gray-500">
+                <p>ไม่พบข้อมูลรายการหนี้</p>
+              </div>
+            )}
           </div>
 
           {/* Pagination Controls - Bottom */}
           <div className="bg-white rounded-lg shadow-sm border p-4 mt-4">
+            {/* Simple Pagination */}
             <div className="flex justify-center items-center gap-2">
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
@@ -291,14 +389,14 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
               {getPageNumbers().map((page, idx) => (
                 page === '...' ? (
-                  <span key={`ellipsis-bottom-${idx}`} className="px-2 text-gray-400">...</span>
+                  <span key={`bottom-ellipsis-${idx}`} className="px-2 text-gray-400">...</span>
                 ) : (
                   <button
                     key={`bottom-${page}`}
                     onClick={() => handlePageChange(page as number)}
                     className={`px-3 py-1 rounded-md border text-sm font-medium ${currentPage === page
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-gray-300 hover:bg-gray-50'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 hover:bg-gray-50'
                       }`}
                   >
                     {page}
@@ -316,6 +414,32 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
             </div>
           </div>
         </>
+      )}
+
+      {/* Debt Collection Modal */}
+      {selectedOrder && trackModalOpen && (
+        <DebtCollectionModal
+          isOpen={trackModalOpen}
+          onClose={() => {
+            setTrackModalOpen(false);
+            setSelectedOrder(null);
+          }}
+          order={selectedOrder}
+          currentUser={user}
+          onSuccess={handleTrackSuccess}
+        />
+      )}
+
+      {/* Order Detail Modal */}
+      {selectedOrder && detailModalOpen && (
+        <OrderDetailModal
+          isOpen={detailModalOpen}
+          onClose={() => {
+            setDetailModalOpen(false);
+            setSelectedOrder(null);
+          }}
+          orderId={selectedOrder.id}
+        />
       )}
     </div>
   );

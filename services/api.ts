@@ -33,7 +33,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/')) {
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Finance/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -1843,3 +1843,115 @@ export function downloadExportUrl(exportId: number): string {
   return `${baseUrl}?download=1${token ? `&token=${token}` : ''}`;
 }
 
+// Debt Collection APIs
+export interface DebtCollectionRecord {
+  id?: number;
+  order_id: string;
+  user_id: number;
+  amount_collected: number;
+  result_status: 1 | 2 | 3; // 1=Unable, 2=Some, 3=All
+  is_complete: 0 | 1; // 0=Ongoing, 1=Closed
+  note?: string;
+  slip_id?: number;
+  created_at?: string;
+  updated_at?: string;
+  first_name?: string;
+  last_name?: string;
+  slip_url?: string;
+}
+
+export async function createDebtCollection(data: {
+  order_id: string;
+  user_id: number;
+  amount_collected: number;
+  result_status: 1 | 2 | 3;
+  is_complete: 0 | 1;
+  note?: string;
+  slip_id?: number;
+}): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
+  return apiFetch('Finance/debt_collection', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getDebtCollectionHistory(params: {
+  order_id?: string;
+  user_id?: number;
+  is_complete?: 0 | 1;
+}): Promise<{ ok: boolean; data?: DebtCollectionRecord[]; error?: string }> {
+  const queryParams = new URLSearchParams();
+  if (params.order_id) queryParams.append('order_id', params.order_id);
+  if (params.user_id) queryParams.append('user_id', params.user_id.toString());
+  if (params.is_complete !== undefined) queryParams.append('is_complete', params.is_complete.toString());
+
+  const query = queryParams.toString();
+  return apiFetch(`Finance/debt_collection${query ? `?${query}` : ''}`);
+}
+
+export async function updateDebtCollection(
+  id: number,
+  data: Partial<DebtCollectionRecord>
+): Promise<{ ok: boolean; data?: DebtCollectionRecord; error?: string }> {
+  return apiFetch(`Finance/debt_collection/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function closeDebtCase(data: {
+  order_id: string;
+  user_id: number;
+  amount_collected: number;
+  result_status: 1 | 2 | 3;
+  note?: string;
+  slip_id?: number;
+}): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
+  return createDebtCollection({
+    ...data,
+    is_complete: 1, // Mark as closed
+  });
+}
+
+
+export interface DebtCollectionSummary {
+  orderCount: number;
+  totalDebt: number;
+}
+
+export async function getDebtCollectionOrders(params: any): Promise<{ ok: boolean; orders?: any[]; pagination?: any; error?: string }> {
+  const queryParams = new URLSearchParams();
+  Object.keys(params).forEach(key => {
+    if (params[key] !== undefined && params[key] !== null) {
+      if (Array.isArray(params[key])) {
+        // Handle array parameters if needed, though simple query params overlap is handled by repeated append or comma joined
+        // For simplicity in this specific API, let's assume we pass standard params
+        // But our PHP API expects repeated params or specific format. 
+        // Let's iterate:
+        params[key].forEach((v: any) => queryParams.append(key, v));
+      } else {
+        queryParams.append(key, params[key].toString());
+      }
+    }
+  });
+  queryParams.append('mode', 'list');
+  return apiFetch(`Finance/get_debt_collection_orders.php?${queryParams.toString()}`);
+}
+
+export async function getDebtCollectionSummary(params: any): Promise<{ ok: boolean; orderCount?: number; totalDebt?: number; error?: string }> {
+  const queryParams = new URLSearchParams();
+  Object.keys(params).forEach(key => {
+    // Exclude pagination params for summary
+    if (['page', 'pageSize'].includes(key)) return;
+
+    if (params[key] !== undefined && params[key] !== null) {
+      if (Array.isArray(params[key])) {
+        params[key].forEach((v: any) => queryParams.append(key, v));
+      } else {
+        queryParams.append(key, params[key].toString());
+      }
+    }
+  });
+  queryParams.append('mode', 'summary');
+  return apiFetch(`Finance/get_debt_collection_orders.php?${queryParams.toString()}`);
+}
