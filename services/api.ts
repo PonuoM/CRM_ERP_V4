@@ -33,7 +33,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Finance/')) {
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Finance/') || path.startsWith('Orders/')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -1956,3 +1956,22 @@ export async function getDebtCollectionSummary(params: any): Promise<{ ok: boole
   queryParams.append('mode', 'summary');
   return apiFetch(`Finance/get_debt_collection_orders.php?${queryParams.toString()}`);
 }
+
+export async function getTelesaleUpsellList(params: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  companyId?: number;
+}): Promise<{ ok: boolean; orders?: any[]; pagination?: any; error?: string }> {
+  const queryParams = new URLSearchParams({
+    page: params.page.toString(),
+    pageSize: params.pageSize.toString()
+  });
+
+  if (params.search) queryParams.append('search', params.search);
+  if (params.companyId) queryParams.append('companyId', params.companyId.toString());
+
+  return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
+}
+
+

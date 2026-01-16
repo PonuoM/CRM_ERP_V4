@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { User, Order, Customer, ModalType, PaymentMethod, PaymentStatus } from '../types';
 import OrderTable from '../components/OrderTable';
-import { CreditCard, List, History, ListChecks, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CreditCard, List, History, ListChecks, Filter, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import usePersistentState from '../utils/usePersistentState';
-import { listOrders } from '../services/api';
+import { listOrders, getTelesaleUpsellList } from '../services/api';
 import Spinner from '../components/Spinner';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100, 500];
@@ -51,7 +51,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
     return { itemsPerPage: resolvedItems, page: resolvedPage, hasStoredPage };
   }, [savedFilters]);
 
-  const [activeTab, setActiveTab] = useState<'all' | 'pendingSlip'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pendingSlip' | 'upsell'>('all');
   const [payTab, setPayTab] = useState<'all' | 'unpaid' | 'paid'>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [fOrderId, setFOrderId] = useState('');
@@ -92,6 +92,7 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
   const [apiTotalPages, setApiTotalPages] = useState(1);
   const [pendingSlipTotal, setPendingSlipTotal] = useState(0);
   const [allOrdersTotal, setAllOrdersTotal] = useState(0);
+  const [upsellTotal, setUpsellTotal] = useState(0);
   const [refreshCounter, setRefreshCounter] = useState(0);
 
   // Listen for modal close event to refresh data
@@ -183,23 +184,33 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
 
       setLoading(true);
       try {
-        const response = await listOrders({
-          companyId: user.companyId,
-          page: currentPage,
-          pageSize: itemsPerPage,
-          creatorId: user.id, // Filter by current user
-          orderId: afOrderId || undefined,
-          trackingNumber: afTracking || undefined,
-          orderDateStart: afOrderDate.start || undefined,
-          orderDateEnd: afOrderDate.end || undefined,
-          deliveryDateStart: afDeliveryDate.start || undefined,
-          deliveryDateEnd: afDeliveryDate.end || undefined,
-          paymentMethod: afPaymentMethod || undefined,
-          // If on pendingSlip tab, filter by PendingVerification status
-          paymentStatus: activeTab === 'pendingSlip' ? 'PendingVerification' : (afPaymentStatus || undefined),
-          customerName: afCustomerName || undefined,
-          customerPhone: afCustomerPhone || undefined,
-        });
+        let response;
+        if (activeTab === 'upsell') {
+          response = await getTelesaleUpsellList({
+            companyId: user.companyId,
+            page: currentPage,
+            pageSize: itemsPerPage,
+            search: afOrderId || afCustomerName || afCustomerPhone || undefined // Simple search mapping
+          });
+        } else {
+          response = await listOrders({
+            companyId: user.companyId,
+            page: currentPage,
+            pageSize: itemsPerPage,
+            creatorId: user.id, // Filter by current user
+            orderId: afOrderId || undefined,
+            trackingNumber: afTracking || undefined,
+            orderDateStart: afOrderDate.start || undefined,
+            orderDateEnd: afOrderDate.end || undefined,
+            deliveryDateStart: afDeliveryDate.start || undefined,
+            deliveryDateEnd: afDeliveryDate.end || undefined,
+            paymentMethod: afPaymentMethod || undefined,
+            // If on pendingSlip tab, filter by PendingVerification status
+            paymentStatus: activeTab === 'pendingSlip' ? 'PendingVerification' : (afPaymentStatus || undefined),
+            customerName: afCustomerName || undefined,
+            customerPhone: afCustomerPhone || undefined,
+          });
+        }
 
         if (response.ok) {
           // Map API response to frontend format
@@ -327,6 +338,26 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
 
     fetchAllOrdersCount();
   }, [user?.companyId, user?.id, activeTab]);
+
+  // Fetch upsell count (only when not on upsell tab)
+  useEffect(() => {
+    const fetchUpsellCount = async () => {
+      if (!user?.companyId || activeTab === 'upsell') return;
+      try {
+        const response = await getTelesaleUpsellList({
+          companyId: user.companyId,
+          page: 1,
+          pageSize: 1,
+        });
+        if (response.ok) {
+          setUpsellTotal(response.pagination.total);
+        }
+      } catch (error) {
+        console.error('Failed to fetch upsell count:', error);
+      }
+    };
+    fetchUpsellCount();
+  }, [user?.companyId, activeTab]);
 
   // Always use API orders (no fallback to props)
   const displayedOrders = apiOrders;
@@ -496,6 +527,18 @@ const TelesaleOrdersPage: React.FC<TelesaleOrdersPageProps> = ({ user, users, or
           <span>รอสลิป</span>
           <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'pendingSlip' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
             }`}>{activeTab === 'pendingSlip' ? totalOrders : pendingSlipTotal}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('upsell')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'upsell'
+            ? 'border-b-2 border-purple-600 text-purple-600'
+            : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <TrendingUp size={16} />
+          <span>รายการ Upsell</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === 'upsell' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-600'
+            }`}>{activeTab === 'upsell' ? totalOrders : upsellTotal}</span>
         </button>
       </div>
 
