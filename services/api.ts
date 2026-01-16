@@ -1869,7 +1869,7 @@ export async function createDebtCollection(data: {
   note?: string;
   slip_id?: number;
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
-  return apiFetch('Finance/debt_collection', {
+  return apiFetch('Finance/debt_collection.php', {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -1886,14 +1886,14 @@ export async function getDebtCollectionHistory(params: {
   if (params.is_complete !== undefined) queryParams.append('is_complete', params.is_complete.toString());
 
   const query = queryParams.toString();
-  return apiFetch(`Finance/debt_collection${query ? `?${query}` : ''}`);
+  return apiFetch(`Finance/debt_collection.php${query ? `?${query}` : ''}`);
 }
 
 export async function updateDebtCollection(
   id: number,
   data: Partial<DebtCollectionRecord>
 ): Promise<{ ok: boolean; data?: DebtCollectionRecord; error?: string }> {
-  return apiFetch(`Finance/debt_collection/${id}`, {
+  return apiFetch(`Finance/debt_collection.php?id=${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
@@ -1912,6 +1912,7 @@ export async function closeDebtCase(data: {
     is_complete: 1, // Mark as closed
   });
 }
+
 
 
 export interface DebtCollectionSummary {

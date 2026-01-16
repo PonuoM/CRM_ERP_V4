@@ -199,7 +199,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                 <div>
                   <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (ทั้งระบบ)</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
+                    {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} บาท
                   </p>
                 </div>
               </div>
@@ -291,7 +291,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                       เบอร์โทร
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ยอดหนี้คงเหลือ
+                      ยอด
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       จำนวนครั้ง
@@ -308,6 +308,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                   {orders.map((order) => {
                     const customerInfo = (order as any).customerInfo;
                     const remainingDebt = (order as any).remainingDebt;
+                    const totalAmount = order.totalAmount;
+                    const collected = (order as any).totalDebtCollected;
 
                     return (
                       <tr key={order.id} className="hover:bg-gray-50">
@@ -330,10 +332,18 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                             </a>
                           ) : '-'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-bold text-red-600">
-                          ฿{remainingDebt.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                          <div className="flex flex-col items-end">
+                            <span className="font-bold text-gray-900">
+                              {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-xs text-green-600">
+                              ตามได้: {collected > 0 ? collected.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
+
                           {(order as any).trackingCount > 0 ? (
                             <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                               {(order as any).trackingCount} ครั้ง
