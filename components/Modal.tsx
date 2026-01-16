@@ -12,6 +12,7 @@ interface ModalProps {
   confirmationMessage?: string;
   // Optional: custom class for backdrop (e.g. for blur effect)
   backdropClassName?: string;
+  closeOnBackdropClick?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -57,10 +58,18 @@ const Modal: React.FC<ModalProps> = ({
 
   // Prevent background scroll while modal is open
   useEffect(() => {
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
     const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
     document.body.style.overflow = 'hidden';
+
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
     };
   }, []);
 

@@ -193,6 +193,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Users,
       children: [
         { label: "Customers", icon: Users, key: "nav.customers" },
+        { label: "Dashboard V2", icon: Layers, key: "home.dashboard_v2" },
         {
           label: "Manage Customers",
           icon: Users,

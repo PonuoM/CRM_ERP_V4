@@ -84,6 +84,7 @@ import { mapCustomerFromApi } from "@/utils/customerMapper";
 import Sidebar from "./components/Sidebar";
 import AdminDashboard from "./pages/AdminDashboard";
 import TelesaleDashboard from "./pages/TelesaleDashboard";
+import TelesaleDashboardV2 from "./pages/TelesaleDashboardV2";
 import BackofficeDashboard from "./pages/BackofficeDashboard";
 import CustomerDetailPage from "./pages/CustomerDetailPage";
 import OrderManagementModal from "./components/OrderManagementModal";
@@ -844,8 +845,8 @@ const App: React.FC = () => {
         const isDashboard = activePage === 'Dashboard';
         const isAdmin = sessionUser?.role === UserRole.Admin;
         // Optimized: Skip loading customers global list. ManageCustomersPage handles its own pagination.
-        // We only might need it for Search page (if it relies on client-side search), otherwise skip always.
-        const shouldSkipCustomers = activePage !== 'Search';
+        // We need customers for Search page and Dashboard V2 (basket-based dashboard)
+        const shouldSkipCustomers = activePage !== 'Search' && activePage !== 'Dashboard V2';
 
         const [
           u,
@@ -1518,6 +1519,7 @@ const App: React.FC = () => {
               tags: (Array.isArray(r.tags) ? r.tags : []) || tagsByCustomer[resolvedId] || [],
               assignmentHistory: [],
               totalPurchases,
+              orderCount: Number(r.order_count || 0),
               totalCalls: Number(r.total_calls || 0),
               facebookName: r.facebook_name ?? undefined,
               lineId: r.line_id ?? undefined,
@@ -6526,6 +6528,32 @@ const App: React.FC = () => {
         />
       );
     }
+
+    // Dashboard V2 - New basket-based dashboard
+    if (activePage === "Dashboard V2") {
+      return (
+        <TelesaleDashboardV2
+          user={currentUser}
+          customers={companyCustomers}
+          appointments={appointments}
+          activities={activities}
+          calls={callHistory}
+          orders={companyOrders}
+          onViewCustomer={handleViewCustomer}
+          openModal={openModal}
+          systemTags={systemTags}
+          setActivePage={setActivePage}
+          onUpsellClick={(customer) => {
+            setUpsellInitialData({ customer });
+            setPreviousPage(activePage);
+            setActivePage("UpsellOrder");
+          }}
+          allUsers={users}
+          refreshTrigger={refreshTrigger}
+        />
+      );
+    }
+
     if (activePage === "Dashboard" || activePage === "Home") {
       if (currentUser.role === UserRole.Backoffice) {
         return (

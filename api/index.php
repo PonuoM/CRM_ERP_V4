@@ -1410,11 +1410,41 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         }
                         log_perf("handle_customers:list:NOTES_BATCH", $t_notes_start);
 
+                        // BATCH FETCH: Order stats (order_count, total_purchases, last_order_date)
+                        $t_order_stats_start = microtime(true);
+                        $orderStatsMap = [];
+                        if (!empty($customerIds)) {
+                            $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+                            $orderStatsSql = "SELECT customer_id, 
+                                                     COUNT(*) as order_count, 
+                                                     COALESCE(SUM(CASE WHEN order_status != 'Cancelled' THEN total_amount ELSE 0 END), 0) as total_purchases,
+                                                     MAX(order_date) as last_order_date
+                                              FROM orders 
+                                              WHERE customer_id IN ($placeholders)
+                                              AND order_status != 'Cancelled'
+                                              GROUP BY customer_id";
+                            $orderStatsStmt = $pdo->prepare($orderStatsSql);
+                            $orderStatsStmt->execute($customerIds);
+                            while ($row = $orderStatsStmt->fetch()) {
+                                // Cast to string for consistent key matching
+                                $orderStatsMap[strval($row['customer_id'])] = [
+                                    'order_count' => (int)$row['order_count'],
+                                    'total_purchases' => (float)$row['total_purchases'],
+                                    'last_order_date' => $row['last_order_date']
+                                ];
+                            }
+                        }
+                        log_perf("handle_customers:list:ORDER_STATS_BATCH", $t_order_stats_start);
+
                         // Apply batch results to customers
                         foreach ($customers as &$customer) {
-                            $cid = $customer['customer_id'];
+                            $cid = strval($customer['customer_id']); // Cast to string for lookup
                             $customer['is_upsell_eligible'] = isset($upsellMap[$cid]) ? 1 : 0;
                             $customer['last_call_note'] = $notesMap[$cid] ?? null;
+                            // Order stats from batch query (overrides stale column data)
+                            $customer['order_count'] = $orderStatsMap[$cid]['order_count'] ?? 0;
+                            $customer['total_purchases'] = $orderStatsMap[$cid]['total_purchases'] ?? ($customer['total_purchases'] ?? 0);
+                            $customer['last_order_date'] = $orderStatsMap[$cid]['last_order_date'] ?? ($customer['last_order_date'] ?? null);
                         }
 
                         // Optimized: Fetch tags for all customers in one query

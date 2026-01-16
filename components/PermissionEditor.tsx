@@ -23,6 +23,7 @@ const PERMISSION_GROUPS_DEF = {
         label: 'คำสั่งซื้อและลูกค้า (Orders & Customers)',
         items: [
             { key: 'nav.customers', label: 'เมนู Customers (ลูกค้า)' },
+            { key: 'home.dashboard_v2', label: 'Dashboard V2 (ตะกร้าลูกค้า)' },
             { key: 'nav.manage_customers', label: 'เมนู Manage Customers (แจกรายชื่อ)' },
             { key: 'nav.orders', label: 'เมนู Orders (คำสั่งซื้อ)' },
             { key: 'nav.manage_orders', label: 'เมนู Manage Orders (จัดการคำสั่งซื้อ - ขนส่ง)' },

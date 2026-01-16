@@ -191,6 +191,17 @@ export enum CustomerLifecycleStatus {
   DailyDistribution = "DailyDistribution",
 }
 
+// NEW: Basket types for V2 campaign system
+export enum BasketType {
+  Upsell = "Upsell",           // ตะกร้า Upsell (24 ชม. หลังปิดการขาย)
+  NewCustomer = "NewCustomer", // ตะกร้าลูกค้าใหม่ (หลัง Upsell เสร็จ)
+  Month1_2 = "Month1_2",       // ตะกร้า 1-2 เดือน (last_order ≤ 60 วัน)
+  Month3 = "Month3",           // ตะกร้า 3 เดือน (61-90 วัน)
+  LastChance = "LastChance",   // ตะกร้าโอกาสสุดท้าย (> 90 วัน)
+  Archive = "Archive",         // ตะกร้าพัก (Ready to Redistribute)
+  Ready = "Ready",             // พร้อมแจก (ยังไม่ถูก assign)
+}
+
 export enum CustomerBehavioralStatus {
   Hot = "Hot",
   Warm = "Warm",
