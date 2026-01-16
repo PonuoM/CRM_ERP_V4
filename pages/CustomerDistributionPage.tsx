@@ -1678,6 +1678,11 @@ const CustomerDistributionPage: React.FC<CustomerDistributionPageProps> = ({
               <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
                 <UserCheck className="mr-2" />
                 2. เลือกพนักงานเป้าหมาย
+                {selectedAgentIds.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+                    (เลือก {selectedAgentIds.length} คน)
+                  </span>
+                )}
               </h3>
               <div className="mt-1 space-y-1">
                 <div className="text-lg font-semibold text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-flex items-center gap-2 min-h-[56px] min-w-[200px] relative overflow-hidden">
