@@ -140,7 +140,7 @@ try {
                 is_in_waiting_basket = 0,
                 waiting_basket_start_date = NULL,
                 is_blocked = 0,
-                bucket_type = 'ready'
+                bucket_type = 'assigned'
             WHERE customer_id = ?
         ");
         
