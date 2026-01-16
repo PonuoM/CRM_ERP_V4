@@ -13,14 +13,11 @@ const parseDateSafe = (dateStr: string | undefined | null | number): number => {
   return isNaN(time) ? 0 : time;
 };
 
-import { db } from '../db/db';
-import { syncCustomers } from '../services/syncService';
+// Removed: import { db } from '../db/db'; - Now using API directly
+// Removed: import { syncCustomers } from '../services/syncService'; - No more LocalDB sync
 import { listCustomers, apiFetch } from '../services/api';
 import { mapCustomerFromApi } from '../utils/customerMapper';
 import usePersistentState from "@/utils/usePersistentState";
-
-// Module-level flag to prevent auto-sync from triggering twice (React Strict Mode double-mount)
-let hasTriggeredAutoSync = false;
 
 interface TelesaleDashboardProps {
   user: User;
@@ -436,90 +433,64 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Auto-Sync Logic
+  // Auto-Sync Logic - Now uses direct API instead of LocalDB
   useEffect(() => {
     let active = true;
-    const AUTO_SYNC_INTERVAL = 60 * 1000; // 1 minute
+    const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1 minute
 
-    const runSync = async () => {
+    const fetchFromAPI = async () => {
       if (!user || !user.id || isSyncing) return;
 
       try {
         setIsSyncing(true);
-        // Silent sync (delta)
-        await syncCustomers(
-          user.companyId || 1,
-          undefined, // No progress callback needed for silent sync
-          Number(user.id),
-          { silent: true }
+        // Fetch directly from API - no LocalDB
+        const response = await apiFetch(
+          `customers?companyId=${user.companyId}&assignedTo=${user.id}&page=1&pageSize=10000`
         );
 
-        if (active) {
+        if (active && response) {
           setLastUpdated(new Date());
-          // Reload local data
-          const myCustomers = await db.customers.where('assignedTo').equals(Number(user.id)).toArray();
-          setLocalCustomers(myCustomers);
+          // Map API response to Customer type
+          const data = response?.customers || response?.data || response || [];
+          const mapped = (Array.isArray(data) ? data : []).map((r: any) => mapCustomerFromApi(r));
+          setLocalCustomers(mapped);
+          console.log(`[TelesaleDashboard] Loaded ${mapped.length} customers from API`);
         }
       } catch (error) {
-        console.error("Auto-sync failed:", error);
+        console.error("API fetch failed:", error);
       } finally {
         if (active) setIsSyncing(false);
       }
     };
 
-    // Initial load & Sync loop
-    const init = async () => {
-      // Load initial data from DB strictly first for speed
-      if (user.id) {
-        const count = await db.customers.count();
-        if (count > 0) {
-          const myCustomers = await db.customers.where('assignedTo').equals(Number(user.id)).toArray();
-          if (active) setLocalCustomers(myCustomers);
-        }
-      }
+    // Initial load from API
+    fetchFromAPI();
 
-      // Then run sync immediately
-      await runSync();
-    };
-
-    init();
-
-    const intervalId = setInterval(runSync, AUTO_SYNC_INTERVAL);
+    // Auto-refresh interval
+    const intervalId = setInterval(fetchFromAPI, AUTO_REFRESH_INTERVAL);
     return () => {
       active = false;
       clearInterval(intervalId);
     };
   }, [user.id, user.companyId]);
 
-  // Import DB: load from DB on mount/user change (Auto-sync handles updates)
-  useEffect(() => {
-    let active = true;
-    const loadFromDB = async () => {
-      if (!user || !user.id) return;
-      try {
-        const userId = Number(user.id);
-        if (!isNaN(userId)) {
-          console.log(`Loading initial data for user ${userId}`);
-          const myCustomers = await db.customers.where('assignedTo').equals(userId).toArray();
-          if (active) setLocalCustomers(myCustomers);
-        }
-      } catch (error) {
-        console.error("Failed to load local customers", error);
-      }
-    };
-    loadFromDB();
-    return () => { active = false; };
-  }, [user.id]);
+  // Note: loadFromDB removed - now using fetchFromAPI on mount
+  // This is handled by the main useEffect above
 
-  // Listen for external refresh triggers (Optimistic UI updates from App.tsx)
+  // Listen for external refresh triggers (re-fetch from API)
   useEffect(() => {
-    if (refreshTrigger && user?.id) {
-      // Reload data from DB immediately
-      db.customers.where('assignedTo').equals(Number(user.id)).toArray().then(myCustomers => {
-        setLocalCustomers(myCustomers);
-      }).catch(err => console.error("[Dashboard] Refresh trigger failed", err));
+    if (refreshTrigger && user?.id && user?.companyId) {
+      // Re-fetch from API directly (no LocalDB)
+      apiFetch(`customers?companyId=${user.companyId}&assignedTo=${user.id}&page=1&pageSize=10000`)
+        .then(response => {
+          const data = response?.customers || response?.data || response || [];
+          const mapped = (Array.isArray(data) ? data : []).map((r: any) => mapCustomerFromApi(r));
+          setLocalCustomers(mapped);
+          console.log(`[Dashboard] Refresh triggered - loaded ${mapped.length} customers`);
+        })
+        .catch(err => console.error("[Dashboard] Refresh trigger failed", err));
     }
-  }, [refreshTrigger, user?.id]);
+  }, [refreshTrigger, user?.id, user?.companyId]);
 
   const userCustomers = useMemo(() => {
     // Merge props.customers (if any) with localCustomers, preferring local? 

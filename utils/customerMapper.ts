@@ -83,6 +83,7 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         last_call_date: r.last_call_date ?? undefined,
         last_call_id: r.last_call_id ?? undefined,
         isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
+        firstOrderDate: r.first_order_date ?? r.firstOrderDate ?? undefined,
         lastOrderDate: r.last_order_date ?? r.lastOrderDate ?? undefined,
         // AI Specific Fields (pass through if present)
         ai_priority_score: r.ai_priority_score,

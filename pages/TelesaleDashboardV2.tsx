@@ -14,7 +14,7 @@ import BasketTabs from "@/components/BasketTabs";
 import RegionFilter from "@/components/RegionFilter";
 import FilterDropdown from "@/components/FilterDropdown";
 import Spinner from "@/components/Spinner";
-import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Calendar, X } from "lucide-react";
+import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Calendar, X, Settings, RotateCcw } from "lucide-react";
 import {
     determineBasketType,
     groupCustomersByBasket,
@@ -161,7 +161,9 @@ const UpcomingAppointmentsPanel: React.FC<{
     onViewCustomer: (customer: Customer) => void;
     isOpen: boolean;
     onToggle: () => void;
-}> = ({ appointments, customers, onViewCustomer, isOpen, onToggle }) => {
+    isFilterActive?: boolean;
+    onFilterToggle?: () => void;
+}> = ({ appointments, customers, onViewCustomer, isOpen, onToggle, isFilterActive = false, onFilterToggle }) => {
     // Create customer map for quick lookup
     const customerMap = useMemo(() => {
         const map = new Map<string, Customer>();
@@ -201,26 +203,43 @@ const UpcomingAppointmentsPanel: React.FC<{
         return <span className="text-gray-500">อีก {days} วัน</span>;
     };
 
+    // Handle button click - toggle filter if onFilterToggle is provided
+    const handleButtonClick = () => {
+        if (onFilterToggle) {
+            onFilterToggle();
+        } else {
+            onToggle();
+        }
+    };
+
     return (
-        <div className="mb-4">
-            {/* Toggle Button */}
+        <div className="relative">
+            {/* Toggle/Filter Button */}
             <button
-                onClick={onToggle}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors border border-blue-200"
+                onClick={handleButtonClick}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all border ${isFilterActive
+                    ? "bg-green-100 border-green-400 text-green-700"
+                    : "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                    }`}
             >
                 <Calendar size={18} />
                 <span className="font-medium">นัดหมายใกล้ถึง</span>
                 {upcomingAppointments.length > 0 && (
-                    <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isFilterActive
+                        ? "bg-green-600 text-white"
+                        : "bg-blue-600 text-white"
+                        }`}>
                         {upcomingAppointments.length}
                     </span>
                 )}
-                <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                {isFilterActive && (
+                    <span className="text-xs text-green-600 font-medium">(กำลังกรอง)</span>
+                )}
             </button>
 
-            {/* Panel Content */}
-            {isOpen && (
-                <div className="mt-2 bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden max-h-[400px] overflow-y-auto">
+            {/* Panel Content - shows when isOpen is true */}
+            {isOpen && !isFilterActive && (
+                <div className="absolute left-0 top-full mt-2 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden max-h-[400px] overflow-y-auto min-w-[320px]">
                     {upcomingAppointments.length === 0 ? (
                         <div className="p-6 text-center text-gray-500">
                             <Calendar size={32} className="mx-auto mb-2 text-gray-300" />
@@ -266,6 +285,7 @@ const UpcomingAppointmentsPanel: React.FC<{
         </div>
     );
 };
+
 
 const CustomerRow = React.memo(({
     customer,
@@ -408,19 +428,21 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     );
     const deferredSelectedTagIds = useDeferredValue(selectedTagIds);
     const [searchTerm, setSearchTerm] = useState("");
-    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+    const [activeSearchTerm, setActiveSearchTerm] = useState(""); // Only updates on Enter/button click
     const [isPending, startTransition] = useTransition();
 
+    // Handle search on Enter key or button click
+    const handleSearch = () => {
+        setActiveSearchTerm(searchTerm);
+    };
 
-    // Debounce search term
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedSearchTerm(searchTerm);
-        }, 300); // 300ms delay
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            handleSearch();
+        }
+    };
 
-    const [sortBy, setSortBy] = useState<"lastOrder" | "name" | "grade">("lastOrder");
+    const [sortBy, setSortBy] = useState<"lastOrder" | "name" | "grade" | "dateAssignedNewest" | "dateAssignedOldest">("lastOrder");
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -435,10 +457,34 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
     const deferredQuickFilter = useDeferredValue(quickFilter);
 
+    // Upcoming Appointments Panel toggle
+    const [isAppointmentPanelOpen, setIsAppointmentPanelOpen] = useState(false);
+
+    // Appointment Filter (show only customers with upcoming appointments)
+    const [filterByAppointment, setFilterByAppointment] = useState(false);
+
+    // Hide Contacted Filter - hide customers called within X days (null = disabled)
+    const [hideContactedDays, setHideContactedDays] = useState<number | null>(null);
+    const [isHideContactedDropdownOpen, setIsHideContactedDropdownOpen] = useState(false);
+
+    // Advanced Settings Panel toggle
+    const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+
+    // Check if any filters are active
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || hideContactedDays !== null;
+
+    // Clear all filters
+    const clearAllFilters = () => {
+        setSelectedRegions([]);
+        setSelectedTagIds([]);
+        setFilterByAppointment(false);
+        setHideContactedDays(null);
+    };
+
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasket, selectedRegions, searchTerm, quickFilter]);
+    }, [activeBasket, selectedRegions, searchTerm, quickFilter, filterByAppointment, hideContactedDays]);
 
     // Optimize Call History Lookup
     const lastCallMap = useMemo(() => {
@@ -564,13 +610,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         return groupCustomersByBasket(localCustomers);
     }, [localCustomers]);
 
-    // Tab counts
+    // Tab counts - Dashboard V2 shows only 4 baskets
+    // (LastChance and other baskets are for Distribution page)
     const tabConfigs = useMemo(() => [
         { type: BasketType.Upsell, count: basketGroups[BasketType.Upsell].length },
         { type: BasketType.NewCustomer, count: basketGroups[BasketType.NewCustomer].length },
         { type: BasketType.Month1_2, count: basketGroups[BasketType.Month1_2].length },
         { type: BasketType.Month3, count: basketGroups[BasketType.Month3].length },
-        { type: BasketType.LastChance, count: basketGroups[BasketType.LastChance].length },
     ], [basketGroups]);
 
     // Filter and sort customers for active tab
@@ -633,18 +679,62 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         }
 
         // Apply search filter
-        if (debouncedSearchTerm) {
-            const lower = debouncedSearchTerm.toLowerCase();
+        if (activeSearchTerm) {
+            const lower = activeSearchTerm.toLowerCase();
             customers = customers.filter(c =>
                 c.firstName?.toLowerCase().includes(lower) ||
                 c.lastName?.toLowerCase().includes(lower) ||
-                c.phone?.includes(debouncedSearchTerm) ||
+                c.phone?.includes(activeSearchTerm) ||
                 c.province?.toLowerCase().includes(lower)
             );
         }
 
+        // Apply Appointment Filter - show only customers with upcoming appointments
+        if (filterByAppointment) {
+            customers = customers.filter(c => {
+                const appointmentInfo = appointmentInfoMap.get(String(c.id));
+                return appointmentInfo?.hasAppointment === true;
+            });
+        }
+
+        // Apply Hide Contacted Filter - hide customers called within X days
+        if (hideContactedDays !== null) {
+            if (hideContactedDays === -1) {
+                // Hide ALL customers who have been contacted
+                customers = customers.filter(c => {
+                    const lastCall = lastCallMap.get(String(c.id));
+                    return !lastCall; // Only show customers with no calls
+                });
+            } else {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const cutoffDate = new Date(today);
+                cutoffDate.setDate(cutoffDate.getDate() - hideContactedDays);
+
+                customers = customers.filter(c => {
+                    const lastCall = lastCallMap.get(String(c.id));
+                    if (!lastCall) return true; // No call = show
+
+                    const lastCallDate = new Date(lastCall.date);
+                    lastCallDate.setHours(0, 0, 0, 0);
+
+                    // Hide if called within the cutoff period
+                    return lastCallDate < cutoffDate;
+                });
+            }
+        }
+
         // Sort
         customers = [...customers].sort((a, b) => {
+            // If filtering by appointments, sort by appointment date (earliest first)
+            if (filterByAppointment) {
+                const aInfo = appointmentInfoMap.get(String(a.id));
+                const bInfo = appointmentInfoMap.get(String(b.id));
+                const aDays = aInfo?.daysUntil ?? 9999;
+                const bDays = bInfo?.daysUntil ?? 9999;
+                return aDays - bDays; // Earliest appointment first
+            }
+
             switch (sortBy) {
                 case "lastOrder":
                     const dateA = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
@@ -655,13 +745,21 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 case "grade":
                     const gradeOrder = { "A+": 0, "A": 1, "B": 2, "C": 3, "D": 4 };
                     return (gradeOrder[a.grade] ?? 5) - (gradeOrder[b.grade] ?? 5);
+                case "dateAssignedNewest":
+                    const assignedA = a.dateAssigned ? new Date(a.dateAssigned).getTime() : 0;
+                    const assignedB = b.dateAssigned ? new Date(b.dateAssigned).getTime() : 0;
+                    return assignedB - assignedA; // Newest first
+                case "dateAssignedOldest":
+                    const assignedA2 = a.dateAssigned ? new Date(a.dateAssigned).getTime() : Infinity;
+                    const assignedB2 = b.dateAssigned ? new Date(b.dateAssigned).getTime() : Infinity;
+                    return assignedA2 - assignedB2; // Oldest first
                 default:
                     return 0;
             }
         });
 
         return customers;
-    }, [basketGroups, activeBasket, deferredSelectedRegions, debouncedSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds]);
+    }, [basketGroups, activeBasket, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, appointmentInfoMap, hideContactedDays]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -691,31 +789,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         </h1>
                         <p className="text-gray-500 mt-1">
                             ลูกค้าทั้งหมด: <span className="font-semibold text-gray-700">{totalCustomers.toLocaleString()}</span>
-
                         </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        {lastUpdated && (
-                            <span className="text-xs text-gray-400">
-                                อัปเดตล่าสุด: {formatRelativeTime(lastUpdated)}
-                            </span>
-                        )}
-                        <button
-                            onClick={handleManualSync}
-                            disabled={isSyncing}
-                            className={`
-                flex items-center gap-2 px-4 py-2 rounded-xl
-                transition-all duration-200
-                ${isSyncing
-                                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                    : "bg-blue-500 text-white hover:bg-blue-600 shadow-md hover:shadow-lg"
-                                }
-              `}
-                        >
-                            <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-                            <span>{isSyncing ? "กำลังซิงค์..." : "ซิงค์ข้อมูล"}</span>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -729,78 +803,174 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 />
             </div>
 
-            {/* Filters Row */}
+            {/* Search & Filters Row */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-4 mb-6">
                 <div className="flex flex-wrap items-center gap-4">
-                    {/* Search */}
+                    {/* Search - Now first and on the left */}
                     <div className="relative flex-1 min-w-[200px]">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="ค้นหาชื่อ, เบอร์โทร, จังหวัด..."
+                            placeholder="ค้นหาชื่อ, เบอร์โทร, จังหวัด... (กด Enter)"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                            onKeyDown={handleSearchKeyDown}
+                            className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
+                        <button
+                            onClick={handleSearch}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                            ค้นหา
+                        </button>
                     </div>
 
-                    {/* Region Filter */}
-                    <RegionFilter
-                        selectedRegions={selectedRegions}
-                        onRegionChange={setSelectedRegions}
+                    {/* Upcoming Appointments Button */}
+                    <UpcomingAppointmentsPanel
+                        appointments={appointments || []}
+                        customers={localCustomers}
+                        onViewCustomer={onViewCustomer}
+                        isOpen={isAppointmentPanelOpen}
+                        onToggle={() => setIsAppointmentPanelOpen(!isAppointmentPanelOpen)}
+                        isFilterActive={filterByAppointment}
+                        onFilterToggle={() => setFilterByAppointment(!filterByAppointment)}
                     />
 
-                    {/* Tag Filter */}
-                    <FilterDropdown
-                        title="Tags"
-                        options={relevantTags}
-                        selected={selectedTagIds}
-                        onSelect={(id) => handleFilterSelect(setSelectedTagIds, selectedTagIds, id)}
-                    />
+                    {/* Hide Contacted Filter Button */}
+                    <div className="relative">
+                        <button
+                            onClick={() => {
+                                // Toggle dropdown open/close
+                                setIsHideContactedDropdownOpen(!isHideContactedDropdownOpen);
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all border ${hideContactedDays !== null
+                                ? "bg-orange-100 border-orange-400 text-orange-700"
+                                : "bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200"
+                                }`}
+                        >
+                            <Phone size={18} />
+                            <span className="font-medium">ซ่อนที่โทรแล้ว</span>
+                            {hideContactedDays !== null && (
+                                <span className="text-xs bg-orange-600 text-white px-2 py-0.5 rounded-full">
+                                    {hideContactedDays === -1 ? "ทั้งหมด" : hideContactedDays === 0 ? "วันนี้" : `${hideContactedDays} วัน`}
+                                </span>
+                            )}
+                            <ChevronDown size={16} className={`transition-transform ${isHideContactedDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
 
-                    {/* Quick Filters Group */}
-                    <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200">
-                        <button
-                            onClick={() => setQuickFilter("all")}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${quickFilter === "all" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-                        >
-                            ทั้งหมด
-                        </button>
-                        <div className="w-px h-4 bg-gray-300 mx-1"></div>
-                        <button
-                            onClick={() => setQuickFilter("uncontacted")}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${quickFilter === "uncontacted" ? "bg-red-50 text-red-600 shadow-sm border border-red-100" : "text-gray-500 hover:text-gray-700"}`}
-                        >
-                            <span className={`w-2 h-2 rounded-full ${quickFilter === "uncontacted" ? "bg-red-500" : "bg-gray-300"}`}></span>
-                            ยังไม่โทร
-                        </button>
-                        <button
-                            onClick={() => setQuickFilter("contacted")}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${quickFilter === "contacted" ? "bg-blue-50 text-blue-600 shadow-sm border border-blue-100" : "text-gray-500 hover:text-gray-700"}`}
-                        >
-                            โทรแล้ว
-                        </button>
-                        <button
-                            onClick={() => setQuickFilter("highGrade")}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${quickFilter === "highGrade" ? "bg-amber-50 text-amber-600 shadow-sm border border-amber-100" : "text-gray-500 hover:text-gray-700"}`}
-                        >
-                            เกรด A/B
-                        </button>
+                        {/* Day Selection Dropdown */}
+                        {isHideContactedDropdownOpen && (
+                            <div className="absolute left-0 top-full mt-2 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-2 min-w-[180px]">
+                                <div className="text-xs text-gray-500 px-2 py-1 mb-1">ซ่อนที่โทรภายใน (กดซ้ำเพื่อยกเลิก)</div>
+                                {[
+                                    { value: -1, label: "ซ่อนทั้งหมด (เคยโทร)" },
+                                    { value: 0, label: "วันนี้" },
+                                    { value: 1, label: "1 วัน" },
+                                    { value: 3, label: "3 วัน" },
+                                    { value: 7, label: "7 วัน" },
+                                    { value: 14, label: "14 วัน" },
+                                    { value: 30, label: "30 วัน" },
+                                ].map(option => (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => {
+                                            // Toggle: click = select, click again = deselect
+                                            if (hideContactedDays === option.value) {
+                                                setHideContactedDays(null); // Deselect
+                                            } else {
+                                                setHideContactedDays(option.value); // Select
+                                            }
+                                            // Dropdown stays open
+                                        }}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${hideContactedDays === option.value
+                                            ? "bg-orange-100 text-orange-700 font-medium"
+                                            : "hover:bg-gray-100 text-gray-700"
+                                            }`}
+                                    >
+                                        <span>{option.label}</span>
+                                        {hideContactedDays === option.value && (
+                                            <span className="text-orange-600">✓</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Sort */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-500">เรียงตาม:</span>
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none"
+                    {/* Advanced Settings Button */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${hasActiveFilters
+                                ? "bg-purple-50 border-purple-300 text-purple-700"
+                                : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                                }`}
                         >
-                            <option value="lastOrder">วันที่สั่งซื้อล่าสุด</option>
-                            <option value="name">ชื่อ-นามสกุล</option>
-                            <option value="grade">หมายเหตุล่าสุด</option>
-                        </select>
+                            <Settings size={18} />
+                            <span className="font-medium">ตั้งค่าขั้นสูง</span>
+                            {hasActiveFilters && (
+                                <span className="bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
+                                    {selectedRegions.length + selectedTagIds.length}
+                                </span>
+                            )}
+                            <ChevronDown size={16} className={`transition-transform ${isAdvancedSettingsOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Advanced Settings Dropdown */}
+                        {isAdvancedSettingsOpen && (
+                            <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 p-4 min-w-[300px]">
+                                <div className="space-y-4">
+                                    {/* Region Filter */}
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 mb-2 block">กรองตามภูมิภาค</label>
+                                        <RegionFilter
+                                            selectedRegions={selectedRegions}
+                                            onRegionChange={setSelectedRegions}
+                                        />
+                                    </div>
+
+                                    {/* Tag Filter */}
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 mb-2 block">กรองตาม Tag</label>
+                                        <FilterDropdown
+                                            title="Tags"
+                                            options={relevantTags}
+                                            selected={selectedTagIds}
+                                            onSelect={(id) => handleFilterSelect(setSelectedTagIds, selectedTagIds, id)}
+                                        />
+                                    </div>
+
+                                    {/* Sort */}
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 mb-2 block">เรียงตาม</label>
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => setSortBy(e.target.value as any)}
+                                            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none"
+                                        >
+                                            <option value="lastOrder">วันที่สั่งซื้อล่าสุด</option>
+                                            <option value="dateAssignedNewest">วันที่ได้รับ ล่าสุด</option>
+                                            <option value="dateAssignedOldest">วันที่ได้รับ เก่าสุด</option>
+                                            <option value="name">ชื่อ-นามสกุล</option>
+                                            <option value="grade">หมายเหตุล่าสุด</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
+
+                    {/* Clear Filters Button - only show when filters are active */}
+                    {hasActiveFilters && (
+                        <button
+                            onClick={clearAllFilters}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition-all"
+                            title="ล้างตัวกรองทั้งหมด"
+                        >
+                            <RotateCcw size={16} />
+                            <span className="font-medium">ล้างตัวกรอง</span>
+                        </button>
+                    )}
                 </div>
             </div>
 

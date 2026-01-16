@@ -138,6 +138,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     "Orders & Customers": "คำสั่งซื้อและลูกค้า",
     "COD Management": "จัดการยอด COD",
     "Order Tab Settings": "ตั้งค่าจัดการคำสั่งซื้อ",
+    "Basket Settings": "ตั้งค่าถัง",
+    "Distribution V2": "แจกงาน V2",
     "Finance": "การเงิน",
     "Accounting Audit": "ตรวจสอบจากบัญชี",
     "Bank Account Audit": "ตรวจสอบบัญชีธนาคาร",
@@ -203,6 +205,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { label: "Orders", icon: ShoppingCart, key: "nav.orders" },
         { label: "Manage Orders", icon: ShoppingCart, key: "nav.manage_orders" },
         { label: "Order Tab Settings", icon: Settings, key: "nav.order_tab_settings" },
+        { label: "Basket Settings", icon: Layers, key: "nav.basket_settings" },
+        { label: "Distribution V2", icon: Users, key: "nav.distribution_v2" },
         { label: "Search", icon: Search, key: "nav.search" },
       ]
     },

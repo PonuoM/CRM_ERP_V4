@@ -1410,7 +1410,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         }
                         log_perf("handle_customers:list:NOTES_BATCH", $t_notes_start);
 
-                        // BATCH FETCH: Order stats (order_count, total_purchases, last_order_date)
+                        // BATCH FETCH: Order stats (order_count, total_purchases, first_order_date, last_order_date)
                         $t_order_stats_start = microtime(true);
                         $orderStatsMap = [];
                         if (!empty($customerIds)) {
@@ -1418,6 +1418,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $orderStatsSql = "SELECT customer_id, 
                                                      COUNT(*) as order_count, 
                                                      COALESCE(SUM(CASE WHEN order_status != 'Cancelled' THEN total_amount ELSE 0 END), 0) as total_purchases,
+                                                     MIN(order_date) as first_order_date,
                                                      MAX(order_date) as last_order_date
                                               FROM orders 
                                               WHERE customer_id IN ($placeholders)
@@ -1430,6 +1431,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                                 $orderStatsMap[strval($row['customer_id'])] = [
                                     'order_count' => (int)$row['order_count'],
                                     'total_purchases' => (float)$row['total_purchases'],
+                                    'first_order_date' => $row['first_order_date'],
                                     'last_order_date' => $row['last_order_date']
                                 ];
                             }
@@ -1444,6 +1446,7 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             // Order stats from batch query (overrides stale column data)
                             $customer['order_count'] = $orderStatsMap[$cid]['order_count'] ?? 0;
                             $customer['total_purchases'] = $orderStatsMap[$cid]['total_purchases'] ?? ($customer['total_purchases'] ?? 0);
+                            $customer['first_order_date'] = $orderStatsMap[$cid]['first_order_date'] ?? ($customer['first_order_date'] ?? null);
                             $customer['last_order_date'] = $orderStatsMap[$cid]['last_order_date'] ?? ($customer['last_order_date'] ?? null);
                         }
 

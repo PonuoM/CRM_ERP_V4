@@ -8,10 +8,10 @@ import { getDaysSince } from "./dateUtils";
 
 // Basket configuration (days thresholds)
 export const BASKET_CONFIG = {
-    UPSELL_HOURS: 24,         // Hours after order to stay in Upsell basket
+    NEW_CUSTOMER_DAYS: 30,    // Days since first order to be considered "new customer"
     MONTH_1_2_DAYS: 60,       // Days threshold for Month 1-2 basket
-    MONTH_3_DAYS: 90,         // Days threshold for Month 3 basket
-    LAST_CHANCE_DAYS: 120,    // Days threshold for Last Chance basket
+    MONTH_3_DAYS_MIN: 61,     // Min days for Month 3 basket (โอกาสสุดท้าย)
+    MONTH_3_DAYS_MAX: 90,     // Max days for Month 3 basket
     ARCHIVE_RELEASE_DAYS: 30, // Days in Archive before release to Ready
 };
 
@@ -40,7 +40,15 @@ export const THAI_REGIONS: Record<string, string[]> = {
 };
 
 /**
- * Determine which basket a customer should be in based on last_order_date
+ * Determine which basket a customer should be in based on new rules:
+ * - Upsell: Order created TODAY (same-day) - uses isUpsellEligible flag
+ * - ลูกค้าใหม่: 
+ *   - order_count = 0 AND date_registered within 30 days (ลงทะเบียนใหม่ยังไม่ซื้อ)
+ *   - order_count = 1 AND first_order_date within 30 days (ซื้อครั้งแรกภายใน 30 วัน)
+ * - 1-2 เดือน: order_count >= 2 AND last_order_date <= 60 days
+ * - โอกาสสุดท้าย เดือน 3: order_count >= 2 AND last_order_date 61-90 days
+ * - Ready: not assigned
+ * - Archive: > 90 days or doesn't fit other categories
  */
 export const determineBasketType = (customer: Customer): BasketType => {
     // If not assigned, customer is in Ready pool
@@ -48,31 +56,46 @@ export const determineBasketType = (customer: Customer): BasketType => {
         return BasketType.Ready;
     }
 
-    // If no order history, treat as New Customer
-    if (!customer.lastOrderDate) {
-        return BasketType.NewCustomer;
-    }
-
-    const daysSinceLastOrder = getDaysSince(customer.lastOrderDate);
-
-    // Check upsell eligibility (within 24 hours)
+    // Check upsell eligibility (same-day order)
     if (customer.isUpsellEligible) {
         return BasketType.Upsell;
     }
 
-    // Determine basket based on days since last order
-    if (daysSinceLastOrder <= BASKET_CONFIG.MONTH_1_2_DAYS) {
+    const orderCount = customer.orderCount || 0;
+    const firstOrderDate = customer.firstOrderDate;
+    const lastOrderDate = customer.lastOrderDate;
+    const dateRegistered = customer.dateRegistered;
+
+    // Calculate days since orders
+    const daysSinceFirstOrder = firstOrderDate ? getDaysSince(firstOrderDate) : Infinity;
+    const daysSinceLastOrder = lastOrderDate ? getDaysSince(lastOrderDate) : Infinity;
+    const daysSinceRegistered = dateRegistered ? getDaysSince(dateRegistered) : Infinity;
+
+    // ลูกค้าใหม่ (NEW): order_count = 0 AND date_registered within 30 days
+    // (ลงทะเบียนใหม่แต่ยังไม่มี order)
+    if (orderCount === 0 && daysSinceRegistered <= BASKET_CONFIG.NEW_CUSTOMER_DAYS) {
+        return BasketType.NewCustomer;
+    }
+
+    // ลูกค้าใหม่ (FIRST ORDER): order_count = 1 AND first_order_date within 30 days
+    if (orderCount === 1 && daysSinceFirstOrder <= BASKET_CONFIG.NEW_CUSTOMER_DAYS) {
+        return BasketType.NewCustomer;
+    }
+
+    // 1-2 เดือน: order_count >= 2 AND last_order_date <= 60 days
+    if (orderCount >= 2 && daysSinceLastOrder <= BASKET_CONFIG.MONTH_1_2_DAYS) {
         return BasketType.Month1_2;
     }
 
-    if (daysSinceLastOrder <= BASKET_CONFIG.MONTH_3_DAYS) {
+    // โอกาสสุดท้าย เดือน 3: order_count >= 2 AND last_order_date 61-90 days
+    if (orderCount >= 2 &&
+        daysSinceLastOrder >= BASKET_CONFIG.MONTH_3_DAYS_MIN &&
+        daysSinceLastOrder <= BASKET_CONFIG.MONTH_3_DAYS_MAX) {
         return BasketType.Month3;
     }
 
-    if (daysSinceLastOrder <= BASKET_CONFIG.LAST_CHANCE_DAYS) {
-        return BasketType.LastChance;
-    }
-
+    // Everything else goes to Archive (> 90 days or doesn't fit criteria)
+    // These will be handled by the Distribution page
     return BasketType.Archive;
 };
 
@@ -84,8 +107,8 @@ export const getBasketDisplayName = (basketType: BasketType): string => {
         [BasketType.Upsell]: "Upsell",
         [BasketType.NewCustomer]: "ลูกค้าใหม่",
         [BasketType.Month1_2]: "1-2 เดือน",
-        [BasketType.Month3]: "3 เดือน",
-        [BasketType.LastChance]: "โอกาสสุดท้าย",
+        [BasketType.Month3]: "โอกาสสุดท้าย เดือน 3",
+        [BasketType.LastChance]: "โอกาสสุดท้าย",  // Reserved for distribution page
         [BasketType.Archive]: "พักรายชื่อ",
         [BasketType.Ready]: "พร้อมแจก",
     };

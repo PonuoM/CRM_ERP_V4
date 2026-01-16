@@ -145,6 +145,8 @@ import CommissionPage from "./pages/Finance/CommissionPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
 import OrdersReportPage from "./pages/OrdersReportPage";
 import OrderTabSettingsPage from "./pages/OrderTabSettingsPage";
+import BasketSettingsPage from "./pages/BasketSettingsPage";
+import CustomerDistributionV2 from "./pages/CustomerDistributionV2";
 import { db } from "./db/db";
 
 const HALF_THRESHOLD_SECONDS = 2 * 3600;
@@ -524,6 +526,7 @@ const App: React.FC = () => {
       'Orders': 'nav.orders',
       'Manage Orders': 'nav.manage_orders',
       'Order Tab Settings': 'nav.order_tab_settings',
+      'Basket Settings': 'nav.basket_settings',
       'Search': 'nav.search',
       'Debt': 'nav.debt',
       'Bulk Tracking': 'nav.bulk_tracking',
@@ -1443,8 +1446,7 @@ const App: React.FC = () => {
             listCustomerTags(),
             listCustomers({
               companyId: sessionUser.company_id,
-              pageSize: 100, // Reduced from 10000 for pagination support
-              page: 1,       // Initial page
+              pageSize: 10000, // Keep consistent with initial load to avoid missing customers
               assignedTo: (sessionUser.role === UserRole.Telesale || sessionUser.role === UserRole.Supervisor) ? sessionUser.id : undefined
             }),
           ]);
@@ -7195,6 +7197,16 @@ const App: React.FC = () => {
       case "nav.order_tab_settings":
       case "ตั้งค่าจัดการคำสั่งซื้อ":
         return <OrderTabSettingsPage currentUser={currentUser} />;
+
+      case "Basket Settings":
+      case "nav.basket_settings":
+      case "ตั้งค่าถัง":
+        return <BasketSettingsPage currentUser={currentUser} />;
+
+      case "Distribution V2":
+      case "nav.distribution_v2":
+      case "แจกงาน V2":
+        return <CustomerDistributionV2 currentUser={currentUser} />;
 
       // PROCESSED: Customers
       case "Add Customer":
