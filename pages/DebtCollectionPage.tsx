@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Order, Customer, ModalType } from '../types';
 import DebtCollectionModal from '../components/DebtCollectionModal';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle } from 'lucide-react';
-import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary } from '../services/api';
+import { DollarSign, FileText, Loader2, ChevronLeft, ChevronRight, Phone, CheckCircle, XCircle } from 'lucide-react';
+import { getDebtCollectionOrders, getDebtCollectionSummary, closeDebtCase, DebtCollectionSummary, getDebtCollectionHistory, updateDebtCollection } from '../services/api';
 
 interface DebtCollectionPageProps {
   user: User;
@@ -26,6 +26,10 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   // Summary State
   const [summaryStats, setSummaryStats] = useState<DebtCollectionSummary>({ orderCount: 0, totalDebt: 0 });
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+
+
   // Modal state
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -37,7 +41,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     if (!user?.companyId) return;
     try {
       const response = await getDebtCollectionSummary({
-        companyId: user.companyId,
+        // companyId: user.companyId, 
+        status: activeTab // Filter summary by tab status
       });
       if (response.ok) {
         setSummaryStats({
@@ -57,9 +62,10 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     setLoading(true);
     try {
       const response = await getDebtCollectionOrders({
-        companyId: user.companyId,
+        // companyId: user.companyId, // Filtered by user auth in API usually, or pass if needed
         page: currentPage,
         pageSize: itemsPerPage,
+        status: activeTab // Filter by tab status
       });
 
       if (response.ok) {
@@ -79,8 +85,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
   useEffect(() => {
     fetchOrders();
-    fetchSummary(); // Fetch summary initially and when filters change (currently no filters but ready for them)
-  }, [user?.companyId, currentPage, itemsPerPage]);
+    fetchSummary();
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab]);
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   const handlePageChange = (page: number) => {
     const next = Math.min(Math.max(page, 1), totalPages);
@@ -109,14 +120,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
     setClosingCase(true);
     try {
-      const remainingDebt = (order as any).remainingDebt || 0;
-
+      // User requested to set collected amount to 0 when closing via quick button
       const response = await closeDebtCase({
         order_id: order.id,
         user_id: user.id,
-        amount_collected: remainingDebt, // Assuming full collection or just closing
-        result_status: 3, // Collected All (as per previous logic for closing)
-        note: 'จบเคส - ปิดการติดตามหนี้',
+        amount_collected: 0,
+        result_status: 3, // Collected All / Closed
+        note: 'จบเคส - ปิดการติดตามหนี้ (ไม่ได้ยอดเพิ่ม)',
       });
 
       if (response.ok) {
@@ -128,6 +138,45 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
       }
     } catch (error: any) {
       alert(error.message || 'เกิดข้อผิดพลาดในการจบเคส');
+    } finally {
+      setClosingCase(false);
+    }
+  };
+
+  const handleCancelCase = async (order: Order) => {
+    if (!confirm(`ยืนยันการยกเลิกสถานะ "จบเคส" สำหรับ Order ${order.id}?`)) {
+      return;
+    }
+
+    setClosingCase(true);
+    try {
+      // 1. Fetch history to find the closing record
+      const historyResponse = await getDebtCollectionHistory({ order_id: order.id });
+
+      if (!historyResponse.ok || !historyResponse.data) {
+        throw new Error('ไม่สามารถดึงข้อมูลประวัติการติดตามได้');
+      }
+
+      const closingRecord = historyResponse.data.find(r => r.is_complete === 1);
+
+      if (!closingRecord) {
+        throw new Error('ไม่พบรายการที่ทำการจบเคส');
+      }
+
+      // 2. Update is_complete to 0
+      const response = await updateDebtCollection(closingRecord.id, {
+        is_complete: 0
+      });
+
+      if (response.ok) {
+        alert('ยกเลิกการจบเคสเรียบร้อยแล้ว');
+        fetchOrders();
+        fetchSummary();
+      } else {
+        alert(response.error || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
+      }
+    } catch (error: any) {
+      alert(error.message || 'เกิดข้อผิดพลาดในการยกเลิกจบเคส');
     } finally {
       setClosingCase(false);
     }
@@ -182,6 +231,59 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">ติดตามหนี้</h2>
 
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`${activeTab === 'active'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            กำลังติดตาม
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`${activeTab === 'completed'
+              ? 'border-green-500 text-green-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            จบเคสแล้ว / จ่ายครบ
+          </button>
+        </nav>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg shadow-sm border border-red-200 p-6">
+          <div className="flex items-center gap-4">
+            <div className="bg-red-200 p-3 rounded-full">
+              <DollarSign className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (ทั้งระบบ)</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} บาท
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-sm border border-blue-200 p-6">
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-200 p-3 rounded-full">
+              <FileText className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 mb-1">จำนวนคำสั่งซื้อ (ทั้งระบบ)</p>
+              <p className="text-2xl font-bold text-gray-900">{summaryStats.orderCount} รายการ</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {loading && orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
@@ -189,34 +291,6 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg shadow-sm border border-red-200 p-6">
-              <div className="flex items-center gap-4">
-                <div className="bg-red-200 p-3 rounded-full">
-                  <DollarSign className="w-6 h-6 text-red-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">ยอดค้างชำระทั้งหมด (ทั้งระบบ)</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {summaryStats.totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-sm border border-blue-200 p-6">
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-200 p-3 rounded-full">
-                  <FileText className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">จำนวนคำสั่งซื้อ (ทั้งระบบ)</p>
-                  <p className="text-2xl font-bold text-gray-900">{summaryStats.orderCount} รายการ</p>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Pagination Controls - Top */}
           <div className="bg-white rounded-lg shadow-sm border p-4 mb-4">
@@ -290,8 +364,11 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       เบอร์โทร
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      วันจัดส่ง
+                    </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ยอดหนี้คงเหลือ
+                      ยอด
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       จำนวนครั้ง
@@ -300,7 +377,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                       ติดตาม
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      จบเคส
+                      {activeTab === 'completed' ? 'ยกเลิก' : 'จบเคส'}
                     </th>
                   </tr>
                 </thead>
@@ -308,6 +385,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                   {orders.map((order) => {
                     const customerInfo = (order as any).customerInfo;
                     const remainingDebt = (order as any).remainingDebt;
+                    const totalAmount = order.totalAmount;
+                    const collected = (order as any).totalDebtCollected;
 
                     return (
                       <tr key={order.id} className="hover:bg-gray-50">
@@ -330,10 +409,26 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                             </a>
                           ) : '-'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-bold text-red-600">
-                          ฿{remainingDebt.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {(order as any).deliveryDate ? (
+                            <div className="flex flex-col">
+                              <span>{new Date((order as any).deliveryDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                              <span className="text-xs text-gray-500">ผ่านมา {(order as any).daysPassed} วัน</span>
+                            </div>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                          <div className="flex flex-col items-end">
+                            <span className="font-bold text-gray-900">
+                              {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-xs text-green-600">
+                              ตามได้: {collected > 0 ? collected.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
+
                           {(order as any).trackingCount > 0 ? (
                             <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                               {(order as any).trackingCount} ครั้ง
@@ -352,14 +447,25 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                           </button>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center">
-                          <button
-                            onClick={() => handleCloseCase(order)}
-                            disabled={closingCase}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <CheckCircle size={14} />
-                            จบเคส
-                          </button>
+                          {activeTab === 'completed' ? (
+                            <button
+                              onClick={() => handleCancelCase(order)}
+                              disabled={closingCase}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <XCircle size={14} />
+                              ยกเลิก
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleCloseCase(order)}
+                              disabled={closingCase}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <CheckCircle size={14} />
+                              จบเคส
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -427,6 +533,7 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
           order={selectedOrder}
           currentUser={user}
           onSuccess={handleTrackSuccess}
+          isCompletedView={activeTab === 'completed'}
         />
       )}
 

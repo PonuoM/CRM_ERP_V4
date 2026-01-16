@@ -1869,7 +1869,7 @@ export async function createDebtCollection(data: {
   note?: string;
   slip_id?: number;
 }): Promise<{ ok: boolean; data?: DebtCollectionRecord; id?: number; error?: string }> {
-  return apiFetch('Finance/debt_collection', {
+  return apiFetch('Finance/debt_collection.php', {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -1886,14 +1886,14 @@ export async function getDebtCollectionHistory(params: {
   if (params.is_complete !== undefined) queryParams.append('is_complete', params.is_complete.toString());
 
   const query = queryParams.toString();
-  return apiFetch(`Finance/debt_collection${query ? `?${query}` : ''}`);
+  return apiFetch(`Finance/debt_collection.php${query ? `?${query}` : ''}`);
 }
 
 export async function updateDebtCollection(
   id: number,
   data: Partial<DebtCollectionRecord>
 ): Promise<{ ok: boolean; data?: DebtCollectionRecord; error?: string }> {
-  return apiFetch(`Finance/debt_collection/${id}`, {
+  return apiFetch(`Finance/debt_collection.php?id=${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
@@ -1912,6 +1912,7 @@ export async function closeDebtCase(data: {
     is_complete: 1, // Mark as closed
   });
 }
+
 
 
 export interface DebtCollectionSummary {
@@ -1955,3 +1956,22 @@ export async function getDebtCollectionSummary(params: any): Promise<{ ok: boole
   queryParams.append('mode', 'summary');
   return apiFetch(`Finance/get_debt_collection_orders.php?${queryParams.toString()}`);
 }
+
+export async function getTelesaleUpsellList(params: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  companyId?: number;
+}): Promise<{ ok: boolean; orders?: any[]; pagination?: any; error?: string }> {
+  const queryParams = new URLSearchParams({
+    page: params.page.toString(),
+    pageSize: params.pageSize.toString()
+  });
+
+  if (params.search) queryParams.append('search', params.search);
+  if (params.companyId) queryParams.append('companyId', params.companyId.toString());
+
+  return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
+}
+
+

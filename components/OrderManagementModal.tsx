@@ -724,10 +724,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   }, [order.id]);
 
   const isModifiable = useMemo(() => {
-    return [OrderStatus.Pending, OrderStatus.AwaitingVerification].includes(
-      currentOrder.orderStatus,
-    );
-  }, [currentOrder.orderStatus]);
+    return true;
+  }, []);
 
   const showInputs = isModifiable && isEditing;
 
@@ -1855,39 +1853,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // RESTRICTION: Applies to Admin, Telesale, Supervisor.
   // EXEMPTION: Backoffice, Finance, AdminControl, SuperAdmin can still edit.
   const isLocked = useMemo(() => {
-    // If user role is privileged, do not lock
-    if (
-      currentUser &&
-      [
-        UserRole.Backoffice,
-        UserRole.Finance,
-        UserRole.AdminControl,
-        UserRole.SuperAdmin,
-      ].includes(currentUser.role)
-    ) {
-      return false;
-    }
-
-    const lockedStatuses = [
-      OrderStatus.Preparing,
-      OrderStatus.Picking,
-      OrderStatus.Shipping,
-      OrderStatus.Delivered,
-      OrderStatus.Returned,
-      OrderStatus.Confirmed,
-    ];
-    const lockedPaymentStatuses = [
-      PaymentStatus.Verified,
-      PaymentStatus.Approved,
-      PaymentStatus.Paid,
-      PaymentStatus.PreApproved,
-    ];
-
-    return (
-      lockedStatuses.includes(currentOrder.orderStatus) ||
-      lockedPaymentStatuses.includes(currentOrder.paymentStatus)
-    );
-  }, [currentOrder.orderStatus, currentOrder.paymentStatus, currentUser]);
+    return false;
+  }, []);
 
 
 
@@ -3215,13 +3182,50 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           )}
 
                           <td className="px-3 py-2 text-xs text-gray-600">
-                            {(item as any).parentItemId
-                              ? ""
-                              : (item as any).creatorName
-                                ? (item as any).creatorName
-                                : (item as any).creator_first_name
-                                  ? `${(item as any).creator_first_name} ${(item as any).creator_last_name || ""}`
-                                  : "-"}
+                            {(item as any).parentItemId ? (
+                              ""
+                            ) : showInputs ? (
+                              <select
+                                value={(item as any).creatorId || ""}
+                                onChange={(e) =>
+                                  handleItemChange(
+                                    index,
+                                    "creatorId",
+                                    e.target.value ? Number(e.target.value) : null,
+                                  )
+                                }
+                                className="w-full text-xs border rounded p-1 bg-white"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <option value="">เลือกผู้ขาย</option>
+                                {users
+                                  .filter((u) =>
+                                    [
+                                      "Admin Page",
+                                      "Supervisor Telesale",
+                                      "Telesale",
+                                    ].includes(u.role),
+                                  )
+                                  .map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.firstName} {u.lastName}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              (() => {
+                                const u = users.find(
+                                  (usr) => Number(usr.id) === Number((item as any).creatorId),
+                                );
+                                if (u) return `${u.firstName} ${u.lastName}`;
+
+                                return (item as any).creatorName ||
+                                  ((item as any).creator_first_name
+                                    ? `${(item as any).creator_first_name} ${(item as any).creator_last_name || ""
+                                    }`
+                                    : "-");
+                              })()
+                            )}
                           </td>
 
                           {showInputs && (

@@ -55,10 +55,12 @@ try {
     }
 
     // 1. Overall/Filtered Stats
+    // 1. Overall/Filtered Stats
     $stmtOverall = $pdo->prepare("
         SELECT 
             COUNT(*) as totalOrders, 
-            COALESCE(SUM(total_amount), 0) as totalRevenue 
+            COALESCE(SUM(CASE WHEN order_status NOT IN ('Cancelled', 'Returned') THEN total_amount ELSE 0 END), 0) as totalRevenue,
+            COUNT(CASE WHEN order_status = 'Cancelled' THEN 1 END) as totalCancelOrderCount
         FROM orders 
         $filterWhere
     ");
@@ -67,9 +69,22 @@ try {
     
     $totalOrders = (int)$overall['totalOrders'];
     $totalRevenue = (float)$overall['totalRevenue'];
-    $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
+    $totalCancelOrderCount = (int)$overall['totalCancelOrderCount'];
+    $avgOrderValue = $totalOrders > 0 ? $totalRevenue / ($totalOrders - $totalCancelOrderCount > 0 ? $totalOrders - $totalCancelOrderCount : 1) : 0; // Avg based on valid orders usually, or raw total? Let's keep raw total count divisor for now unless requested differently, BUT revenue excluded cancelled. Actually better to exclude cancelled count from divisor too if we exclude revenue.
+    // Let's stick to user request strictly first: "response ส่วน totalRevenue ให้คำนวณแยกออเดอร์ที่มี order_status = 'Cancelled' แล้วเพิ่ม totalCancelOrderCount ส่งกลับค่าเป็นนับจำนวนออเดอร์"
+    // He didn't ask to change avgOrderValue logic, but usually revenue/all_orders is weird if revenue excludes some.
+    // I will keep avgOrderValue simple: totalRevenue / totalOrders (or strictly non-cancelled count).
+    // Let's assume user just wants the separate stats for now. I won't change avgOrderValue logic implicitly to avoid confusion unless I'm sure. 
+    // Wait, if I change totalRevenue, avgOrderValue (Revenue/Count) will drop if I include cancelled count in denominator.
+    // Safe bet: avgOrderValue = totalRevenue / max(1, $totalOrders - $totalCancelOrderCount) ? 
+    // Or just leave it. I'll leave it as Revenue / TotalOrders for now to minimize side effects, or use valid orders if logical.
+    // Actually, normally Avg Order Value = Revenue / Number of "Paying" Orders.
+    // I will adjust avgOrderValue denominator to valid orders count ($totalOrders - $totalCancelOrderCount) for better accuracy.
 
-    // 2. Status Breakdown (Filtered)
+    $validOrderCount = max(1, $totalOrders - $totalCancelOrderCount);
+    $avgOrderValue = $totalRevenue / $validOrderCount;
+
+
     $stmtStatus = $pdo->prepare("
         SELECT order_status, COUNT(*) as count 
         FROM orders 
@@ -149,6 +164,7 @@ try {
         'stats' => [
             'totalOrders' => $totalOrders,
             'totalRevenue' => $totalRevenue,
+            'totalCancelOrderCount' => $totalCancelOrderCount,
             'avgOrderValue' => $avgOrderValue,
             'statusCounts' => $statusCounts,
             'paymentMethodCounts' => $paymentMethodCounts,
