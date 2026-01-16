@@ -26,6 +26,10 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
   // Summary State
   const [summaryStats, setSummaryStats] = useState<DebtCollectionSummary>({ orderCount: 0, totalDebt: 0 });
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
+
+
   // Modal state
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -37,7 +41,8 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     if (!user?.companyId) return;
     try {
       const response = await getDebtCollectionSummary({
-        companyId: user.companyId,
+        // companyId: user.companyId, 
+        status: activeTab // Filter summary by tab status
       });
       if (response.ok) {
         setSummaryStats({
@@ -57,9 +62,10 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
     setLoading(true);
     try {
       const response = await getDebtCollectionOrders({
-        companyId: user.companyId,
+        // companyId: user.companyId, // Filtered by user auth in API usually, or pass if needed
         page: currentPage,
         pageSize: itemsPerPage,
+        status: activeTab // Filter by tab status
       });
 
       if (response.ok) {
@@ -79,8 +85,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
   useEffect(() => {
     fetchOrders();
-    fetchSummary(); // Fetch summary initially and when filters change (currently no filters but ready for them)
-  }, [user?.companyId, currentPage, itemsPerPage]);
+    fetchSummary();
+  }, [user?.companyId, currentPage, itemsPerPage, activeTab]);
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   const handlePageChange = (page: number) => {
     const next = Math.min(Math.max(page, 1), totalPages);
@@ -109,14 +120,13 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
 
     setClosingCase(true);
     try {
-      const remainingDebt = (order as any).remainingDebt || 0;
-
+      // User requested to set collected amount to 0 when closing via quick button
       const response = await closeDebtCase({
         order_id: order.id,
         user_id: user.id,
-        amount_collected: remainingDebt, // Assuming full collection or just closing
-        result_status: 3, // Collected All (as per previous logic for closing)
-        note: 'จบเคส - ปิดการติดตามหนี้',
+        amount_collected: 0,
+        result_status: 3, // Collected All / Closed
+        note: 'จบเคส - ปิดการติดตามหนี้ (ไม่ได้ยอดเพิ่ม)',
       });
 
       if (response.ok) {
@@ -189,6 +199,30 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
         </div>
       ) : (
         <>
+          {/* Tabs */}
+          <div className="mb-6 border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('active')}
+                className={`${activeTab === 'active'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              >
+                กำลังติดตาม
+              </button>
+              <button
+                onClick={() => setActiveTab('completed')}
+                className={`${activeTab === 'completed'
+                  ? 'border-green-500 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+              >
+                จบเคสแล้ว / จ่ายครบ
+              </button>
+            </nav>
+          </div>
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg shadow-sm border border-red-200 p-6">
@@ -290,6 +324,9 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       เบอร์โทร
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      วันจัดส่ง
+                    </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       ยอด
                     </th>
@@ -330,6 +367,14 @@ const DebtCollectionPage: React.FC<DebtCollectionPageProps> = ({ user, customers
                               <Phone size={14} />
                               {customerInfo.phone}
                             </a>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {(order as any).deliveryDate ? (
+                            <div className="flex flex-col">
+                              <span>{new Date((order as any).deliveryDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                              <span className="text-xs text-gray-500">ผ่านมา {(order as any).daysPassed} วัน</span>
+                            </div>
                           ) : '-'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right text-sm">

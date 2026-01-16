@@ -21,6 +21,7 @@ try {
     // 3. Parameters
     $companyId = isset($_GET['companyId']) ? (int)$_GET['companyId'] : ($user['company_id'] ?? 0);
     $mode = $_GET['mode'] ?? 'list'; // 'list' or 'summary'
+    $status = $_GET['status'] ?? 'active'; // 'active' or 'completed'
     
     // Pagination (only for list mode)
     $page = max(1, (int)($_GET['page'] ?? 1));
@@ -41,8 +42,14 @@ try {
     // Exclude sub-orders
     $whereConditions[] = "o.id NOT REGEXP '^.+-[0-9]+$'";
     
-    // Exclude completed cases
-    $whereConditions[] = "NOT EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
+    // Status Filter
+    if ($status === 'completed') {
+        // Show orders that HAVE a complete debt collection record
+        $whereConditions[] = "EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
+    } else {
+        // Default 'active': Show orders that DO NOT HAVE a complete debt collection record
+        $whereConditions[] = "NOT EXISTS (SELECT 1 FROM debt_collection dc_check WHERE dc_check.order_id = o.id AND dc_check.is_complete = 1)";
+    }
 
     if ($companyId > 0) {
         $whereConditions[] = "o.company_id = ?";
@@ -110,14 +117,14 @@ try {
 
         // Fetch Orders
         $sql = "SELECT 
-                    o.id, o.customer_id, o.order_date, o.total_amount, o.amount_paid, o.cod_amount,
+                    o.id, o.customer_id, o.order_date, o.delivery_date, o.total_amount, o.amount_paid, o.cod_amount,
                     c.first_name, c.last_name, c.phone,
                     (SELECT COUNT(*) FROM debt_collection dc WHERE dc.order_id = o.id) as tracking_count,
                     (SELECT COALESCE(SUM(amount_collected), 0) FROM debt_collection dc WHERE dc.order_id = o.id) as total_debt_collected
                 FROM orders o
                 LEFT JOIN customers c ON o.customer_id = c.customer_id
                 $whereClause
-                ORDER BY o.order_date DESC
+                ORDER BY o.delivery_date ASC, o.order_date ASC
                 LIMIT $pageSize OFFSET $offset";
 
         $stmt = $pdo->prepare($sql);
@@ -131,10 +138,21 @@ try {
             $collected = (float)$order['total_debt_collected'];
             $remainingDebt = max(0, $totalAmount - $collected);
 
+            // Calculate Days Passed from Delivery Date
+            $daysPassed = 0;
+            if (!empty($order['delivery_date'])) {
+                $deliveryTime = strtotime($order['delivery_date']);
+                $now = time();
+                $diff = $now - $deliveryTime;
+                $daysPassed = floor($diff / (60 * 60 * 24));
+            }
+
             return [
                 'id' => $order['id'],
                 'customerId' => $order['customer_id'],
                 'orderDate' => $order['order_date'],
+                'deliveryDate' => $order['delivery_date'],
+                'daysPassed' => (int)$daysPassed,
                 'totalAmount' => $totalAmount,
                 'customerInfo' => [
                     'firstName' => $order['first_name'],
