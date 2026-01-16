@@ -34,7 +34,7 @@ const PERMISSION_GROUPS_DEF = {
     'Tracking & Transport': {
         label: 'จัดการขนส่ง (Tracking & Transport)',
         items: [
-            { key: 'nav.debt', label: 'เมนู Debt (ติดตามหนี้)' },
+
             { key: 'nav.bulk_tracking', label: 'เมนู Bulk Tracking (จัดการ Tracking)' },
             { key: 'nav.cod_management', label: 'เมนู COD Management (จัดการยอด COD)' },
             { key: 'nav.google_sheet_import', label: 'เมนู Google Sheet Import (อัพสถานะ Aiport)' },
@@ -96,6 +96,7 @@ const PERMISSION_GROUPS_DEF = {
     'Finance': {
         label: 'การเงิน (Finance)',
         items: [
+            { key: 'nav.debt', label: 'เมนู Debt (ติดตามหนี้)' },
             { key: 'nav.finance_approval', label: 'Finance Approval (ตรวจสอบยอดเงิน)' },
             { key: 'nav.statement_management', label: 'Statement Management (จัดการ Statement)' },
             { key: 'finance-commission', label: 'Commission Menu (เมนูคำนวณค่าคอม)' },

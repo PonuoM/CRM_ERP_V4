@@ -424,6 +424,11 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
           setTotalOrders(response.pagination.total);
           setApiTotalPages(response.pagination.totalPages);
 
+          // Auto-fix pagination if stored page exceeds available pages
+          if (currentPage > response.pagination.totalPages && currentPage > 1) {
+            setCurrentPage(1);
+          }
+
           // Lazy load count if on completed or cancelled tab (not returned by getOrderCounts for performance)
           if (activeTab === 'completed') {
             setTabCounts(prev => ({ ...prev, completed: response.pagination.total }));
