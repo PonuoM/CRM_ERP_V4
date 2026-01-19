@@ -68,7 +68,7 @@ interface CustomerDetailPageProps {
   openModal: (type: ModalType, data?: any) => void;
   onAddTag: (customerId: string, tag: Tag) => void;
   onRemoveTag: (customerId: string, tagId: number) => void;
-  onCreateUserTag: (tagName: string) => Tag | null;
+  onCreateUserTag: (tagName: string) => Promise<Tag | null>;
   onCompleteAppointment?: (appointmentId: number, customerId?: string) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
@@ -118,7 +118,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     refreshTrigger,
   } = props;
   const [activeTab, setActiveTab] = useState<ActiveTab>("calls");
-  const [newTagName, setNewTagName] = useState("");
+
   const [activityLogs, setActivityLogs] = useState<CustomerLog[]>([]);
   const [activityLogsLoading, setActivityLogsLoading] = useState(false);
   const [activityLogsError, setActivityLogsError] = useState<string | null>(
@@ -751,33 +751,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
   };
 
-  const handleAddTag = () => {
-    if (!newTagName.trim()) return;
 
-    if (
-      customer.tags.some(
-        (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase(),
-      )
-    ) {
-      setNewTagName("");
-      return;
-    }
-
-    const allAvailableTags = [...systemTags, ...user.customTags];
-    const existingTag = allAvailableTags.find(
-      (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase(),
-    );
-
-    if (existingTag) {
-      onAddTag(customer.id, existingTag);
-    } else {
-      const newTag = onCreateUserTag(newTagName.trim());
-      if (newTag) {
-        onAddTag(customer.id, newTag);
-      }
-    }
-    setNewTagName("");
-  };
 
   const getRelativeTime = (timestamp: string) => {
     const now = new Date();
@@ -1738,20 +1712,13 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 );
               })}
             </div>
-            <div className="flex space-x-2">
-              <input
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                type="text"
-                placeholder="เพิ่ม Tag ใหม่..."
-                className="flex-grow border rounded-md px-2 py-1 text-sm w-full"
-              />
+            <div className="mt-2">
               <button
-                onClick={handleAddTag}
-                className="bg-gray-800 text-white px-3 rounded-md text-sm font-semibold hover:bg-gray-900"
+                onClick={() => openModal("manageTags", customer)}
+                className="w-full bg-white text-gray-700 py-2 px-3 rounded-md text-xs font-medium hover:bg-gray-50 border border-gray-300 border-dashed flex items-center justify-center transition-colors"
               >
-                <Plus size={16} />
+                <TagIcon size={14} className="mr-1.5 text-gray-400" />
+                จัดการ Tag
               </button>
             </div>
           </div>

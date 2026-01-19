@@ -6689,7 +6689,7 @@ function handle_tags(PDO $pdo, ?string $id): void {
             
             // If creating a USER tag, check limit (10 tags per user)
             if ($tagType === 'USER' && $userId) {
-                $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags ut JOIN tags t ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = \'USER\'');
                 $countStmt->execute([$userId]);
                 $tagCount = (int)$countStmt->fetchColumn();
                 if ($tagCount >= 10) {
@@ -6710,7 +6710,7 @@ function handle_tags(PDO $pdo, ?string $id): void {
                     $linkCheck->execute([$userId, $existingId]);
                     if (!$linkCheck->fetchColumn()) {
                         // Re-check quota before linking
-                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags ut JOIN tags t ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = \'USER\'');
                         $countStmt->execute([$userId]);
                         $tagCount = (int)$countStmt->fetchColumn();
                         if ($tagCount >= 10) {
