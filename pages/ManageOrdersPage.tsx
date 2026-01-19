@@ -687,6 +687,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       creatorId: Number(r.creator_id ?? 0),
       orderDate: r.order_date ?? '',
       deliveryDate: r.delivery_date ?? '',
+      shippingProvider: r.shipping_provider ?? undefined,
       shippingAddress: {
         recipientFirstName: r.recipient_first_name || '',
         recipientLastName: r.recipient_last_name || '',
@@ -1006,6 +1007,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             creatorId: Number(r.creator_id ?? fallback.creatorId ?? 0),
             orderDate: r.order_date ?? fallback.orderDate,
             deliveryDate: r.delivery_date ?? fallback.deliveryDate,
+            shippingProvider: r.shipping_provider ?? (fallback as any).shippingProvider ?? undefined,
             shippingAddress: {
               recipientFirstName:
                 (r.recipient_first_name ??
