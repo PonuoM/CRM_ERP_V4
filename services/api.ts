@@ -33,7 +33,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -838,6 +838,13 @@ function enrichOrderWithBoxes(payload: any) {
     // Add boxes to payload
     payload.boxes = boxes;
   }
+}
+
+export async function saveReturnOrders(returns: { order_id: string; return_amount: number; note: string }[]) {
+  return apiFetch("Orders/save_return_orders.php", {
+    method: "POST",
+    body: JSON.stringify({ returns }),
+  });
 }
 
 export async function updateOrder(id: string | number, data: any) {
@@ -2002,6 +2009,12 @@ export async function getTelesaleUpsellList(params: {
   if (params.companyId) queryParams.append('companyId', params.companyId.toString());
 
   return apiFetch(`Orders/get_upsell_orders.php?${queryParams.toString()}`);
+}
+
+export async function getReturnOrders() {
+  return apiFetch("Orders/get_return_orders.php", {
+    method: "GET",
+  });
 }
 
 

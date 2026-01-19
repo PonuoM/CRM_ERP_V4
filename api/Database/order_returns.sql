@@ -1,0 +1,9 @@
+CREATE TABLE `order_returns` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `return_amount` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `note` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_order_id` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
