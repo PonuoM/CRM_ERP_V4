@@ -4753,7 +4753,7 @@ const App: React.FC = () => {
     // --- BACKGROUND TASKS ---
     // Fetch ownership status in background (doesn't block modal closing)
     try {
-      await recordFollowUp(customerId);
+      await recordFollowUp(customerId, { skipStatusUpdate: !newFollowUpDate });
       const updated = await getCustomerOwnershipStatus(customerId);
       if (updated && updated.ownership_expires) {
         setCustomers((prev) =>

@@ -138,8 +138,12 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
     $now = new DateTime();
     $bonusRemaining = isset($customer['followup_bonus_remaining']) ? (int)$customer['followup_bonus_remaining'] : 1;
     
+
+    // Check for skipStatusUpdate flag in the nested data object
+    $skipStatusUpdate = !empty($input['data']['skipStatusUpdate']);
+    
     // Debug logging
-    error_log("Follow-up for customer {$customerId}: customer_id={$customer['customer_id']}, customer_ref_id={$customer['customer_ref_id']}, bonusRemaining={$bonusRemaining}, currentExpiry={$customer['ownership_expires']}");
+    error_log("Follow-up for customer {$customerId}: customer_id={$customer['customer_id']}, customer_ref_id={$customer['customer_ref_id']}, bonusRemaining={$bonusRemaining}, currentExpiry={$customer['ownership_expires']}, skipStatusUpdate=" . ($skipStatusUpdate ? 'true' : 'false'));
     
     if ($bonusRemaining > 0) {
         if (empty($customer['ownership_expires'])) {
@@ -171,7 +175,14 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
                 return;
             }
             error_log("Updating customer_id={$updateId}: old_expiry={$currentExpiry->format('Y-m-d H:i:s')}, new_expiry={$newExpiry->format('Y-m-d H:i:s')}");
-            $upd = $pdo->prepare('UPDATE customers SET ownership_expires = ?, follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0), lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
+            
+            $sql = 'UPDATE customers SET ownership_expires = ?, follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0)';
+            if (!$skipStatusUpdate) {
+                $sql .= ", lifecycle_status = 'FollowUp'";
+            }
+            $sql .= ' WHERE customer_id = ?';
+            
+            $upd = $pdo->prepare($sql);
             $result = $upd->execute([$newExpiry->format('Y-m-d H:i:s'), $now->format('Y-m-d H:i:s'), $updateId]);
             $affectedRows = $upd->rowCount();
             error_log("Update result: success={$result}, affectedRows={$affectedRows}");
@@ -198,7 +209,13 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
                 json_response(['error' => 'INVALID_CUSTOMER_ID', 'message' => 'Customer ID not found in result'], 500);
                 return;
             }
-            $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0), lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
+            $sql = 'UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, followup_bonus_remaining = GREATEST(followup_bonus_remaining - 1, 0)';
+            if (!$skipStatusUpdate) {
+                $sql .= ", lifecycle_status = 'FollowUp'";
+            }
+            $sql .= ' WHERE customer_id = ?';
+            
+            $upd = $pdo->prepare($sql);
             $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
             json_response([
                 'success' => true, 
@@ -217,7 +234,13 @@ function handleFollowUpQuota(PDO $pdo, string $customerId, array $input): void {
             json_response(['error' => 'INVALID_CUSTOMER_ID', 'message' => 'Customer ID not found in result'], 500);
             return;
         }
-        $upd = $pdo->prepare('UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?, lifecycle_status = \'FollowUp\' WHERE customer_id = ?');
+        $sql = 'UPDATE customers SET follow_up_count = follow_up_count + 1, last_follow_up_date = ?';
+        if (!$skipStatusUpdate) {
+            $sql .= ", lifecycle_status = 'FollowUp'";
+        }
+        $sql .= ' WHERE customer_id = ?';
+        
+        $upd = $pdo->prepare($sql);
         $upd->execute([$now->format('Y-m-d H:i:s'), $updateId]);
         json_response(['success' => true, 'message' => 'Follow-up recorded (no bonus)']);
     }
