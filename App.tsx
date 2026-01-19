@@ -131,6 +131,7 @@ import DataManagementPage from "./pages/DataManagementPage";
 import ImportExportPage from "./pages/ImportExportPage";
 import CompanyManagementPage from "./pages/CompanyManagementPage";
 import WarehouseManagementPage from "./pages/WarehouseManagementPage";
+import ReturnManagementPage from "./pages/ReturnManagementPage";
 import { CreateOrderPage } from "./pages/CreateOrderPage";
 import UpsellOrderPage from "./pages/UpsellOrderPage";
 import MarketingPage from "./pages/MarketingPage";
@@ -543,6 +544,7 @@ const App: React.FC = () => {
       'Marketing Dashboard': 'marketing.dashboard',
       'Ads Input': 'marketing.ads_input',
       'Accounting Report': 'accounting.report',
+      'Return Management': 'nav.return_management',
     };
 
     // Check if current page needs permission check
@@ -7518,6 +7520,8 @@ const App: React.FC = () => {
             onBulkUpdateTracking={handleBulkUpdateTracking}
           />
         );
+      case "Return Management":
+        return <ReturnManagementPage user={currentUser} />;
 
       // PROCESSED: System / Roles
       case "Role Management":
