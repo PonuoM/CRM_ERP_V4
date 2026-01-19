@@ -201,6 +201,36 @@ export async function listCustomers(params?: {
   return response as { total: number; data: any[]; server_timestamp?: number };
 }
 
+export async function getCustomer(id: string | number) {
+  // Use listCustomers with 'q' to find the customer.
+  // The backend searches: first_name, last_name, phone, customer_id
+  const res: any = await listCustomers({ q: String(id) });
+
+  // listCustomers returns { total, data } or array depending on version, 
+  // but looking at valid implementation above:
+  // It returns { total, data } wrapper or array. 
+  // Wait, let's check strict type of listCustomers return. 
+  // The code at line 199 returns { total, data }.
+
+  let customers: any[] = [];
+  if (Array.isArray(res)) {
+    customers = res;
+  } else if (res && res.data && Array.isArray(res.data)) {
+    customers = res.data;
+  }
+
+  if (customers.length > 0) {
+    const idStr = String(id);
+    const exact = customers.find((c: any) =>
+      String(c.id) === idStr ||
+      String(c.customer_id) === idStr ||
+      String(c.customerId) === idStr
+    );
+    return exact || customers[0];
+  }
+  return null;
+}
+
 export async function getCustomerCounts(params: {
   companyId: number;
   assignedTo: number;

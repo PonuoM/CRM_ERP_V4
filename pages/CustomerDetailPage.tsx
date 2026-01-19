@@ -47,7 +47,8 @@ import {
   listAppointments,
   listOrders,
   updateCustomer,
-} from "../services/api";
+  getCustomer
+} from "@/services/api";
 import {
   actionLabels,
   parseCustomerLogRow,
@@ -151,6 +152,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   // Per-customer orders state (to bypass global sync limit)
   const [localOrders, setLocalOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [localTags, setLocalTags] = useState<any[]>(customer.tags || []);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   const mapCall = (r: any): CallHistory => ({
     id: r.id,
@@ -257,7 +260,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk]);
+  }, [customer.id, customer.pk, refreshTrigger]);
+
+  // Fetch latest tags on refresh
+  useEffect(() => {
+    let mounted = true;
+    getCustomer(customer.id).then((res: any) => {
+      if (mounted && res && res.tags) {
+        setLocalTags(res.tags);
+      }
+    });
+    return () => { mounted = false; };
+  }, [customer.id, refreshTrigger]);
 
   // Fetch appointments for this customer
   useEffect(() => {
@@ -329,7 +343,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk, customer.phone]);
+  }, [customer.id, customer.pk, customer.phone, refreshTrigger]);
 
   // Check upsell eligibility
   useEffect(() => {
@@ -366,7 +380,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [customer.id, customer.customerId, customer.customerRefId, user?.id]);
+  }, [customer.id, customer.customerId, customer.customerRefId, user?.id, refreshTrigger]);
 
   const eligibleOwners = useMemo(() => {
     // SuperAdmin can see everyone (or restrict if needed, but usually full access)
@@ -821,7 +835,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [customer.id]);
+  }, [customer.id, refreshTrigger]);
 
   const actionIcons: Record<CustomerLog["actionType"], React.ElementType> = {
     create: Plus,
@@ -1691,7 +1705,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           <div className="bg-white p-4 rounded-lg shadow-sm border">
             <h3 className="font-semibold mb-2 text-gray-700">TAG</h3>
             <div className="flex flex-wrap gap-2 mb-2 min-h-[24px]">
-              {customer.tags.map((tag) => {
+              {localTags.map((tag) => {
                 const tagColor = tag.color || '#9333EA';
                 const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
                 const textColor = getContrastColor(bgColor);
