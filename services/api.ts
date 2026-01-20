@@ -840,7 +840,7 @@ function enrichOrderWithBoxes(payload: any) {
   }
 }
 
-export async function saveReturnOrders(returns: { order_id: string; return_amount: number; note: string }[]) {
+export async function saveReturnOrders(returns: { sub_order_id: string; return_amount: number; status: string; note: string }[]) {
   return apiFetch("Orders/save_return_orders.php", {
     method: "POST",
     body: JSON.stringify({ returns }),

@@ -22,16 +22,12 @@ try {
     $sql = "
         SELECT 
             wr.id,
-            wr.order_id,
             wr.sub_order_id,
             wr.return_amount,
+            wr.status,
             wr.note,
-            wr.created_at,
-            o.order_date,
-            o.total_amount,
-            o.customer_id
+            wr.created_at
         FROM order_returns wr
-        LEFT JOIN orders o ON wr.order_id = o.id
         ORDER BY wr.created_at DESC
     ";
 

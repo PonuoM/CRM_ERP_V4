@@ -26,20 +26,20 @@ $conn = db_connect();
 $conn->beginTransaction();
 
 try {
-    $stmt = $conn->prepare("INSERT INTO order_returns (order_id, sub_order_id, return_amount, note, created_at) VALUES (?, ?, ?, ?, NOW())");
+    $stmt = $conn->prepare("INSERT INTO order_returns (sub_order_id, return_amount, status, note, created_at) VALUES (?, ?, ?, ?, NOW())");
     
     $successCount = 0;
     
     foreach ($data['returns'] as $item) {
-        $orderId = isset($item['order_id']) ? $item['order_id'] : '';
-        $subOrderId = isset($item['sub_order_id']) ? $item['sub_order_id'] : null;
+        $subOrderId = isset($item['sub_order_id']) ? $item['sub_order_id'] : '';
         $amount = isset($item['return_amount']) ? floatval($item['return_amount']) : 0.00;
+        $status = isset($item['status']) ? $item['status'] : 'returned';
         $note = isset($item['note']) ? $item['note'] : '';
 
-        if (empty($orderId)) continue; 
+        if (empty($subOrderId)) continue; 
 
         // PDO execution
-        if ($stmt->execute([$orderId, $subOrderId, $amount, $note])) {
+        if ($stmt->execute([$subOrderId, $amount, $status, $note])) {
             $successCount++;
         }
     }

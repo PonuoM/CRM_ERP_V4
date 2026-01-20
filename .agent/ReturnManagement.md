@@ -17,13 +17,13 @@
 
 ### 2.3 ฟีเจอร์ "จัดการ" (Manage Feature)
 สำหรับรายการในแท็บ Pending ผู้ใช้สามารถกดปุ่ม "จัดการ" เพื่อดำเนินการกับคำสั่งซื้อนั้นๆ ได้ทันทีผ่าน Modal:
-1. **แสดงข้อมูล**: แสดง Order ID และ Tracking Number (ค้นหาได้ทั้งจาก Tracking หลักและ Tracking ย่อย)
-2. **ตัวเลือกสถานะ**:
-   - **ตีกลับ (Returned)**: ยืนยันว่าสินค้านี้ถูกตีกลับจริง
-     - ระบุยอดเงินที่ได้รับ (Received Amount)
-     - เมื่อบันทึก ระบบจะสร้างข้อมูลลงในตาราง `order_returns` และย้ายรายการไปที่แท็บ Verified
-   - **จัดส่งสำเร็จ (Delivered)**: กรณีตรวจสอบพบว่าสินค้าถึงมือลูกค้าแล้วแต่สถานะผิดพลาด
-     - เมื่อบันทึก ระบบจะอัปเดตสถานะคำสั่งซื้อจาก `Returned` กลับเป็น `Delivered` และรายการจะหายไปจากหน้านี้
+1. **แสดงข้อมูล**: แสดงรายการ Tracking Number ทั้งหมดที่เกี่ยวข้อง (สามารถระบุสถานะแยกตาม Tracking ได้)
+2. **ดำเนินการรายบรรทัด**: สามารถเลือกสถานะได้อิสระแยกตามแต่ละ Tracking Number:
+   - **รอดำเนินการ (Pending)**: ยังไม่ทำรายการ (ค่าเริ่มต้น)
+   - **ตีกลับ (Returned)**: ยืนยันว่า Tracking นี้ถูกตีกลับ ต้องระบุยอดเงิน (Amount)
+     - เมื่อบันทึก ระบบจะสร้างข้อมูลลงในตาราง `order_returns` (Status: returned) และย้ายรายการไปที่แท็บ Verified
+   - **จัดส่งสำเร็จ (Delivered)**: สินค้านี้ส่งถึงลูกค้า (ไม่ถูกตีกลับ)
+     - ระบบจะบันทึกข้อมูลลงในตาราง `order_returns` (Status: delivered) เพื่อเป็นหลักฐานว่าผ่านการตรวจสอบแล้วว่าส่งสำเร็จจริง
 
 ### 2.4 ข้อกำหนดของไฟล์นำเข้า (Import & Paste Requirements)
 รองรับ 2 วิธีการนำเข้าข้อมูล:
@@ -84,12 +84,12 @@
 ```sql
 CREATE TABLE `order_returns` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `order_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'รหัสคำสั่งซื้อหลัก',
-  `sub_order_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'รหัสคำสั่งซื้อย่อย (ถ้ามี)',
+  `sub_order_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'รหัสคำสั่งซื้อย่อย (Main Key)',
   `return_amount` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'ยอดเงินที่ตรวจสอบจากไฟล์',
+  `status` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'returned' COMMENT 'สถานะ: returned, delivered',
   `note` text COLLATE utf8mb4_unicode_ci COMMENT 'หมายเหตุ',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_order_id` (`order_id`)
+  KEY `idx_sub_order_id` (`sub_order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
