@@ -1160,6 +1160,52 @@ const TelesaleDashboard: React.FC<TelesaleDashboardProps> = (props) => {
 
     // Apply sorting
     filtered.sort((a, b) => {
+      // Special sorting for 'do' tab: Appointments first, then DailyDistribution, then New
+      if (activeSubMenu === 'do') {
+        const aId = String(a.id || a.pk);
+        const bId = String(b.id || b.pk);
+
+        // Check if customers have upcoming appointments
+        const aHasAppt = a.doReason?.includes('นัดหมาย') || a.doReason?.includes('ติดตาม');
+        const bHasAppt = b.doReason?.includes('นัดหมาย') || b.doReason?.includes('ติดตาม');
+
+        // Priority: 1 = appointments/followup, 2 = DailyDistribution, 3 = New, 4 = others
+        const getPriority = (c: Customer): number => {
+          if (c.doReason?.includes('นัดหมาย') || c.doReason?.includes('ติดตาม')) return 1;
+          if (c.lifecycleStatus === 'DailyDistribution') return 2;
+          if (c.lifecycleStatus === 'New') return 3;
+          return 4;
+        };
+
+        const aPriority = getPriority(a);
+        const bPriority = getPriority(b);
+
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+
+        // Within same priority
+        if (aHasAppt && bHasAppt) {
+          // Extract days from doReason (e.g., "อีก 2 วัน" or "วันนี้" or "พรุ่งนี้")
+          const extractDays = (reason: string | undefined): number => {
+            if (!reason) return 999;
+            if (reason.includes('วันนี้')) return 0;
+            if (reason.includes('พรุ่งนี้')) return 1;
+            const match = reason.match(/อีก\s*(\d+)\s*วัน/);
+            return match ? parseInt(match[1], 10) : 999;
+          };
+          const aDays = extractDays(a.doReason);
+          const bDays = extractDays(b.doReason);
+          return aDays - bDays; // Nearest appointment first
+        }
+
+        // For DailyDistribution and New, sort by date_assigned DESC
+        const aAssigned = a.dateAssigned ? new Date(a.dateAssigned).getTime() : 0;
+        const bAssigned = b.dateAssigned ? new Date(b.dateAssigned).getTime() : 0;
+        return bAssigned - aAssigned; // DESC
+      }
+
+      // Original sorting logic for other tabs
       if (sortByExpiry) {
         const aExp = a.ownershipExpires ? getDaysUntilExpiration(a.ownershipExpires) : 9999;
         const bExp = b.ownershipExpires ? getDaysUntilExpiration(b.ownershipExpires) : 9999;

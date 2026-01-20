@@ -1335,26 +1335,31 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         // OPTIMIZATION: Removed expensive per-row subqueries
                         // is_upsell_eligible and last_call_note will be fetched in batch AFTER main query
                         
-                        // Custom ORDER BY for 'do' filterType: FollowUp (by appointment) → DailyDistribution (by date_assigned) → New (by date_assigned)
+                        // Custom ORDER BY for 'do' filterType:
+                        // 1. Customers with upcoming appointments (sorted by nearest appointment date)
+                        // 2. DailyDistribution (sorted by date_assigned DESC)
+                        // 3. New (sorted by date_assigned DESC)
                         $orderBy = "date_assigned DESC"; // default
                         if ($filterType === 'do') {
                             $orderBy = "
                                 CASE 
-                                    WHEN lifecycle_status = 'FollowUp' THEN 1
+                                    WHEN EXISTS (
+                                        SELECT 1 FROM appointments a 
+                                        WHERE a.customer_id = customers.customer_id 
+                                        AND a.status != 'เสร็จสิ้น'
+                                        AND DATE(a.date) BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+                                    ) THEN 1
                                     WHEN lifecycle_status = 'DailyDistribution' THEN 2
                                     WHEN lifecycle_status = 'New' THEN 3
                                     ELSE 4
                                 END ASC,
-                                CASE 
-                                    WHEN lifecycle_status = 'FollowUp' THEN (
-                                        SELECT MIN(DATE(a.date)) 
-                                        FROM appointments a 
-                                        WHERE a.customer_id = customers.customer_id 
-                                        AND a.status != 'เสร็จสิ้น'
-                                        AND DATE(a.date) >= CURDATE()
-                                    )
-                                    ELSE NULL
-                                END ASC,
+                                (
+                                    SELECT MIN(DATE(a.date)) 
+                                    FROM appointments a 
+                                    WHERE a.customer_id = customers.customer_id 
+                                    AND a.status != 'เสร็จสิ้น'
+                                    AND DATE(a.date) >= CURDATE()
+                                ) ASC,
                                 date_assigned DESC
                             ";
                         }
@@ -7111,6 +7116,66 @@ function handle_do_dashboard(PDO $pdo): void {
             $doCustomers[] = $customer;
         }
     }
+
+    // Sort customers: 1) With appointments (by nearest date), 2) DailyDistribution (by date_assigned), 3) New (by date_assigned)
+    // First, get nearest appointment date for each customer with appointments
+    $customerIdsWithAppointments = [];
+    foreach ($doCustomers as $customer) {
+        if ($customer['upcoming_appointments'] > 0) {
+            $customerIdsWithAppointments[] = $customer['customer_id'];
+        }
+    }
+    
+    $appointmentDates = [];
+    if (!empty($customerIdsWithAppointments)) {
+        $placeholders = implode(',', array_fill(0, count($customerIdsWithAppointments), '?'));
+        $apptStmt = $pdo->prepare("
+            SELECT customer_id, MIN(DATE(date)) as nearest_date 
+            FROM appointments 
+            WHERE customer_id IN ($placeholders) 
+            AND status != 'เสร็จสิ้น'
+            AND DATE(date) >= CURDATE()
+            GROUP BY customer_id
+        ");
+        $apptStmt->execute($customerIdsWithAppointments);
+        while ($row = $apptStmt->fetch()) {
+            $appointmentDates[$row['customer_id']] = $row['nearest_date'];
+        }
+    }
+    
+    // Sort the customers
+    usort($doCustomers, function($a, $b) use ($appointmentDates) {
+        $aHasAppt = $a['upcoming_appointments'] > 0;
+        $bHasAppt = $b['upcoming_appointments'] > 0;
+        
+        // Priority: 1 = appointments, 2 = DailyDistribution, 3 = New, 4 = others
+        $getPriority = function($c) {
+            if ($c['upcoming_appointments'] > 0) return 1;
+            if ($c['lifecycle_status'] === 'DailyDistribution') return 2;
+            if ($c['lifecycle_status'] === 'New') return 3;
+            return 4;
+        };
+        
+        $aPriority = $getPriority($a);
+        $bPriority = $getPriority($b);
+        
+        if ($aPriority !== $bPriority) {
+            return $aPriority - $bPriority;
+        }
+        
+        // Within same priority
+        if ($aHasAppt && $bHasAppt) {
+            // Sort by nearest appointment date ASC
+            $aDate = $appointmentDates[$a['customer_id']] ?? '9999-12-31';
+            $bDate = $appointmentDates[$b['customer_id']] ?? '9999-12-31';
+            return strcmp($aDate, $bDate);
+        }
+        
+        // For DailyDistribution and New, sort by date_assigned DESC
+        $aAssigned = $a['date_assigned'] ?? '1970-01-01';
+        $bAssigned = $b['date_assigned'] ?? '1970-01-01';
+        return strcmp($bAssigned, $aAssigned); // DESC
+    });
 
     json_response([
         'customers' => $doCustomers,
