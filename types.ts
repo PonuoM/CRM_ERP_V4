@@ -401,6 +401,7 @@ export interface LineItem {
   creatorId?: number; // NEW: รหัสผู้สร้างรายการ (สำหรับ upsell)
   originalQuantity?: number; // NEW: จำนวนเริ่มต้นต่อ 1 หน่วยของ parent (สำหรับคำนวณ)
   sku?: string; // NEW: SKU specific to this line item (useful for promotion items)
+  order_id?: string; // NEW: Sub-order ID (e.g., ORD-001-1)
 }
 
 export interface CodBox {
