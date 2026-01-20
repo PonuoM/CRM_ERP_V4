@@ -1334,7 +1334,30 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         // OPTIMIZATION: Removed expensive per-row subqueries
                         // is_upsell_eligible and last_call_note will be fetched in batch AFTER main query
                         
-                        $sql = "SELECT *, $customerIdCol as id FROM customers WHERE $whereSql ORDER BY date_assigned DESC";
+                        // Custom ORDER BY for 'do' filterType: FollowUp (by appointment) → DailyDistribution (by date_assigned) → New (by date_assigned)
+                        $orderBy = "date_assigned DESC"; // default
+                        if ($filterType === 'do') {
+                            $orderBy = "
+                                CASE 
+                                    WHEN lifecycle_status = 'FollowUp' THEN 1
+                                    WHEN lifecycle_status = 'DailyDistribution' THEN 2
+                                    WHEN lifecycle_status = 'New' THEN 3
+                                    ELSE 4
+                                END ASC,
+                                CASE 
+                                    WHEN lifecycle_status = 'FollowUp' THEN (
+                                        SELECT MIN(DATE(a.date)) 
+                                        FROM appointments a 
+                                        WHERE a.customer_id = customers.customer_id 
+                                        AND a.status != 'เสร็จสิ้น'
+                                        AND DATE(a.date) >= CURDATE()
+                                    )
+                                    ELSE NULL
+                                END ASC,
+                                date_assigned DESC
+                            ";
+                        }
+                        $sql = "SELECT *, $customerIdCol as id FROM customers WHERE $whereSql ORDER BY $orderBy";
                         
                         if ($page) {
                             $sql .= " LIMIT $limit OFFSET $offset";
