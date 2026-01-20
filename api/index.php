@@ -306,6 +306,7 @@ try {
         }
         break;
 
+    case 'Orders':
     case 'orders':
         handle_orders($pdo, $id);
         break;
@@ -2444,6 +2445,11 @@ function handle_finance_approval_counts(PDO $pdo): void {
 }
 
 function handle_orders(PDO $pdo, ?string $id): void {
+    if ($id === 'get_upsell_orders.php') {
+        require_once __DIR__ . '/Orders/get_upsell_orders.php';
+        handle_get_upsell_orders($pdo);
+        return;
+    }
     // Handle sequence endpoint for order ID generation
     if ($id === 'sequence') {
         $datePrefix = $_GET['datePrefix'] ?? '';
@@ -6712,7 +6718,7 @@ function handle_tags(PDO $pdo, ?string $id): void {
             
             // If creating a USER tag, check limit (10 tags per user)
             if ($tagType === 'USER' && $userId) {
-                $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags ut JOIN tags t ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = \'USER\'');
                 $countStmt->execute([$userId]);
                 $tagCount = (int)$countStmt->fetchColumn();
                 if ($tagCount >= 10) {
@@ -6733,7 +6739,7 @@ function handle_tags(PDO $pdo, ?string $id): void {
                     $linkCheck->execute([$userId, $existingId]);
                     if (!$linkCheck->fetchColumn()) {
                         // Re-check quota before linking
-                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags WHERE user_id = ?');
+                        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_tags ut JOIN tags t ON t.id = ut.tag_id WHERE ut.user_id = ? AND t.type = \'USER\'');
                         $countStmt->execute([$userId]);
                         $tagCount = (int)$countStmt->fetchColumn();
                         if ($tagCount >= 10) {

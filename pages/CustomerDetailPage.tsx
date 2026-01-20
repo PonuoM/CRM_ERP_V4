@@ -47,7 +47,8 @@ import {
   listAppointments,
   listOrders,
   updateCustomer,
-} from "../services/api";
+  getCustomer
+} from "@/services/api";
 import {
   actionLabels,
   parseCustomerLogRow,
@@ -68,7 +69,7 @@ interface CustomerDetailPageProps {
   openModal: (type: ModalType, data?: any) => void;
   onAddTag: (customerId: string, tag: Tag) => void;
   onRemoveTag: (customerId: string, tagId: number) => void;
-  onCreateUserTag: (tagName: string) => Tag | null;
+  onCreateUserTag: (tagName: string) => Promise<Tag | null>;
   onCompleteAppointment?: (appointmentId: number, customerId?: string) => void;
   ownerName?: string;
   onStartCreateOrder?: (customer: Customer) => void;
@@ -118,7 +119,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     refreshTrigger,
   } = props;
   const [activeTab, setActiveTab] = useState<ActiveTab>("calls");
-  const [newTagName, setNewTagName] = useState("");
+
   const [activityLogs, setActivityLogs] = useState<CustomerLog[]>([]);
   const [activityLogsLoading, setActivityLogsLoading] = useState(false);
   const [activityLogsError, setActivityLogsError] = useState<string | null>(
@@ -151,6 +152,8 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   // Per-customer orders state (to bypass global sync limit)
   const [localOrders, setLocalOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [localTags, setLocalTags] = useState<any[]>(customer.tags || []);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   const mapCall = (r: any): CallHistory => ({
     id: r.id,
@@ -257,7 +260,18 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk]);
+  }, [customer.id, customer.pk, refreshTrigger]);
+
+  // Fetch latest tags on refresh
+  useEffect(() => {
+    let mounted = true;
+    getCustomer(customer.id).then((res: any) => {
+      if (mounted && res && res.tags) {
+        setLocalTags(res.tags);
+      }
+    });
+    return () => { mounted = false; };
+  }, [customer.id, refreshTrigger]);
 
   // Fetch appointments for this customer
   useEffect(() => {
@@ -329,7 +343,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       });
 
     return () => { mounted = false; };
-  }, [customer.id, customer.pk, customer.phone]);
+  }, [customer.id, customer.pk, customer.phone, refreshTrigger]);
 
   // Check upsell eligibility
   useEffect(() => {
@@ -366,7 +380,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [customer.id, customer.customerId, customer.customerRefId, user?.id]);
+  }, [customer.id, customer.customerId, customer.customerRefId, user?.id, refreshTrigger]);
 
   const eligibleOwners = useMemo(() => {
     // SuperAdmin can see everyone (or restrict if needed, but usually full access)
@@ -751,33 +765,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return `${address.street}, ต.${address.subdistrict}, อ.${address.district}, จ.${address.province} ${address.postalCode}`;
   };
 
-  const handleAddTag = () => {
-    if (!newTagName.trim()) return;
 
-    if (
-      customer.tags.some(
-        (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase(),
-      )
-    ) {
-      setNewTagName("");
-      return;
-    }
-
-    const allAvailableTags = [...systemTags, ...user.customTags];
-    const existingTag = allAvailableTags.find(
-      (t) => t.name.toLowerCase() === newTagName.trim().toLowerCase(),
-    );
-
-    if (existingTag) {
-      onAddTag(customer.id, existingTag);
-    } else {
-      const newTag = onCreateUserTag(newTagName.trim());
-      if (newTag) {
-        onAddTag(customer.id, newTag);
-      }
-    }
-    setNewTagName("");
-  };
 
   const getRelativeTime = (timestamp: string) => {
     const now = new Date();
@@ -847,7 +835,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [customer.id]);
+  }, [customer.id, refreshTrigger]);
 
   const actionIcons: Record<CustomerLog["actionType"], React.ElementType> = {
     create: Plus,
@@ -1717,7 +1705,7 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
           <div className="bg-white p-4 rounded-lg shadow-sm border">
             <h3 className="font-semibold mb-2 text-gray-700">TAG</h3>
             <div className="flex flex-wrap gap-2 mb-2 min-h-[24px]">
-              {customer.tags.map((tag) => {
+              {localTags.map((tag) => {
                 const tagColor = tag.color || '#9333EA';
                 const bgColor = tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
                 const textColor = getContrastColor(bgColor);
@@ -1738,20 +1726,13 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                 );
               })}
             </div>
-            <div className="flex space-x-2">
-              <input
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                type="text"
-                placeholder="เพิ่ม Tag ใหม่..."
-                className="flex-grow border rounded-md px-2 py-1 text-sm w-full"
-              />
+            <div className="mt-2">
               <button
-                onClick={handleAddTag}
-                className="bg-gray-800 text-white px-3 rounded-md text-sm font-semibold hover:bg-gray-900"
+                onClick={() => openModal("manageTags", customer)}
+                className="w-full bg-white text-gray-700 py-2 px-3 rounded-md text-xs font-medium hover:bg-gray-50 border border-gray-300 border-dashed flex items-center justify-center transition-colors"
               >
-                <Plus size={16} />
+                <TagIcon size={14} className="mr-1.5 text-gray-400" />
+                จัดการ Tag
               </button>
             </div>
           </div>

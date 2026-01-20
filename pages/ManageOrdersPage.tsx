@@ -39,7 +39,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeDatePreset, setActiveDatePreset] = useState('today'); // Default to 'today' instead of 'all'
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [activeTab, setActiveTab] = usePersistentState<'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed' | 'cancelled'>('manageOrders:activeTab', 'waitingVerifySlip');
+  const [activeTab, setActiveTab] = usePersistentState<'all' | 'waitingVerifySlip' | 'waitingExport' | 'preparing' | 'shipping' | 'awaiting_account' | 'completed' | 'cancelled'>('manageOrders:activeTab', 'waitingVerifySlip');
   const [itemsPerPage, setItemsPerPage] = usePersistentState<number>('manageOrders:itemsPerPage', PAGE_SIZE_OPTIONS[1]);
   const [currentPage, setCurrentPage] = usePersistentState<number>('manageOrders:currentPage', 1);
   const [fullOrdersById, setFullOrdersById] = useState<Record<string, Order>>({});
@@ -687,6 +687,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
       creatorId: Number(r.creator_id ?? 0),
       orderDate: r.order_date ?? '',
       deliveryDate: r.delivery_date ?? '',
+      shippingProvider: r.shipping_provider ?? undefined,
       shippingAddress: {
         recipientFirstName: r.recipient_first_name || '',
         recipientLastName: r.recipient_last_name || '',
@@ -1006,6 +1007,7 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
             creatorId: Number(r.creator_id ?? fallback.creatorId ?? 0),
             orderDate: r.order_date ?? fallback.orderDate,
             deliveryDate: r.delivery_date ?? fallback.deliveryDate,
+            shippingProvider: r.shipping_provider ?? (fallback as any).shippingProvider ?? undefined,
             shippingAddress: {
               recipientFirstName:
                 (r.recipient_first_name ??
@@ -1572,6 +1574,23 @@ const ManageOrdersPage: React.FC<ManageOrdersPageProps> = ({ user, orders, custo
 
       <div className="flex border-b border-gray-200 mb-6">
 
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'all'
+            ? 'border-b-2 border-blue-600 text-blue-600'
+            : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <ListChecks size={16} />
+          <span>ทั้งหมด</span>
+          {countsLoading ? (
+            <span className="px-2 py-0.5"><Spinner size="sm" /></span>
+          ) : (tabCounts['all'] || 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+              {tabCounts['all'] || 0}
+            </span>
+          )}
+        </button>
         <button
           onClick={() => setActiveTab('waitingVerifySlip')}
           className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'waitingVerifySlip'
