@@ -2555,6 +2555,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $selectCols .= ', o.shipping_cost, o.bill_discount, o.total_amount, o.payment_method, o.payment_status, o.order_status,
                                GROUP_CONCAT(DISTINCT t.tracking_number ORDER BY t.id SEPARATOR ",") AS tracking_numbers,
                                GROUP_CONCAT(DISTINCT gss.delivery_status ORDER BY gss.id SEPARATOR ",") AS airport_delivery_status,
+                               MAX(gss.delivery_date) AS airport_delivery_date,
                                o.amount_paid, o.cod_amount, o.slip_url, o.sales_channel, o.sales_channel_page_id, o.warehouse_id,
                                o.bank_account_id, o.transfer_date,
                                MAX(CASE WHEN srl.confirmed_action = \'Confirmed\' THEN \'Confirmed\' ELSE NULL END) as reconcile_action,

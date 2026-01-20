@@ -103,7 +103,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   pages = []
 }) => {
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
-  const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
+  const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'this-month' | 'last-month' | 'custom'>('month');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
@@ -128,6 +128,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         break;
       case 'month':
         filterStartDate.setMonth(today.getMonth() - 1);
+        break;
+      case 'this-month':
+        // เดือนนี้: วันที่ 1 ของเดือนปัจจุบัน ถึง วันนี้
+        filterStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'last-month':
+        // เดือนที่แล้ว: วันที่ 1 ถึง วันสุดท้ายของเดือนที่แล้ว
+        filterStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        filterEndDate = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
         break;
       case 'year':
         filterStartDate.setFullYear(today.getFullYear() - 1);
@@ -227,6 +236,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             salesChannel: r.sales_channel,
             salesChannelPageId: r.sales_channel_page_id,
             customerType: r.customer_type,
+            customerPhone: r.customer_phone || r.phone || '',
+            airportDeliveryDate: r.airport_delivery_date || '',
           }));
 
         console.log('📊 Sample order with customer_type:', mappedOrders[0]);
@@ -276,6 +287,21 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [isTruncated, setIsTruncated] = useState(false);
 
+  // State for order status filter (multi-select)
+  const [selectedOrderStatuses, setSelectedOrderStatuses] = useState<string[]>([]);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+
+  // Available order statuses
+  const orderStatusOptions = [
+    { value: 'Pending', label: 'รอดำเนินการ' },
+    { value: 'Confirmed', label: 'ยืนยันแล้ว' },
+    { value: 'Picking', label: 'กำลังจัดเตรียม' },
+    { value: 'Shipping', label: 'กำลังจัดส่ง' },
+    { value: 'Delivered', label: 'จัดส่งสำเร็จ' },
+    { value: 'Cancelled', label: 'ยกเลิก' },
+    { value: 'Returned', label: 'ตีกลับ' }
+  ];
+
   // Get available departments from current orders (only departments with orders)
   const availableDepartments = useMemo(() => {
     const deptSet = new Set<string>();
@@ -308,16 +334,27 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     }
   };
 
-  // Filter orders by selected departments
+  // Filter orders by selected departments and order statuses
   const orders = useMemo(() => {
-    if (selectedDepartments.length === 0) {
-      return fetchedOrders; // No filter = show all
+    let filtered = fetchedOrders;
+
+    // Filter by department
+    if (selectedDepartments.length > 0) {
+      filtered = filtered.filter(order => {
+        const creator = users.find(u => u.id === order.creatorId);
+        return creator?.role && selectedDepartments.includes(creator.role);
+      });
     }
-    return fetchedOrders.filter(order => {
-      const creator = users.find(u => u.id === order.creatorId);
-      return creator?.role && selectedDepartments.includes(creator.role);
-    });
-  }, [fetchedOrders, selectedDepartments, users]);
+
+    // Filter by order status
+    if (selectedOrderStatuses.length > 0) {
+      filtered = filtered.filter(order =>
+        selectedOrderStatuses.includes(order.orderStatus || 'Pending')
+      );
+    }
+
+    return filtered;
+  }, [fetchedOrders, selectedDepartments, selectedOrderStatuses, users]);
 
   const allCustomers = fetchedCustomers.length > 0 ? fetchedCustomers : customers;
 
@@ -338,6 +375,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         break;
       case 'month':
         filterStartDate.setMonth(today.getMonth() - 1);
+        break;
+      case 'this-month':
+        // เดือนนี้: วันที่ 1 ของเดือนปัจจุบัน ถึง วันนี้
+        filterStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'last-month':
+        // เดือนที่แล้ว: วันที่ 1 ถึง วันสุดท้ายของเดือนที่แล้ว
+        filterStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        filterEndDate = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
         break;
       case 'year':
         filterStartDate.setFullYear(today.getFullYear() - 1);
@@ -616,7 +662,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       };
 
       const getCustomerPhone = () => {
-        return customer?.phone || order.customerInfo?.phone || order.shippingAddress?.phone || '-';
+        // ใช้ customerPhone จาก order ก่อน (ที่ API ส่งมาจาก customer join)
+        return (order as any).customerPhone || customer?.phone || order.customerInfo?.phone || order.shippingAddress?.phone || '-';
+      };
+
+      const getAirportDeliveryDate = () => {
+        const airportDate = (order as any).airportDeliveryDate;
+        if (airportDate) {
+          return new Date(airportDate).toLocaleDateString('th-TH');
+        }
+        return '-';
       };
 
       const getCustomerType = () => {
@@ -636,7 +691,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
       if (order.items && order.items.length > 0) {
         // มี items - แสดงแต่ละรายการ
         order.items.forEach(item => {
-          const itemTotal = (item.pricePerUnit * item.quantity) - (item.discount || 0);
+          // ถ้าเป็นของแถม (isFreebie) ยอดรวมต้องเป็น 0
+          const itemTotal = item.isFreebie ? 0 : (item.pricePerUnit * item.quantity) - (item.discount || 0);
 
           // กำหนด รหัสสินค้า/โปร
           let productCode = '-';
@@ -646,14 +702,18 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           } else if (item.promotionId) {
             // รายการย่อยของโปรโมชั่น (สินค้าในชุด/ของแถม) - แสดงรหัสโปรโมชั่น
             productCode = `PROMO-${String(item.promotionId).padStart(3, '0')}`;
-          } else if (item.productSku) {
+          } else if ((item as any).productSku) {
             // สินค้าเดี่ยวที่มี SKU
-            productCode = item.productSku;
+            productCode = (item as any).productSku;
           } else if (item.productId) {
             // Fallback: หา product จาก products array
             const product = products.find(p => p.id === item.productId);
             productCode = product?.sku || '-';
           }
+
+          // ดึง category จาก products
+          const productForCategory = products.find(p => p.id === item.productId);
+          const productCategory = productForCategory?.category || '-';
 
           // กำหนดชื่อสินค้าและชื่อโปร
           let productName = item.productName || '-';
@@ -691,14 +751,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             'ภาค': getRegion(getProvince()),
             'รหัสสินค้า/โปร': productCode,
             'สินค้า': productName,
+            'ประเภทสินค้า': productCategory,
             'ชื่อโปร': promoName,
+            'ของแถม': item.isFreebie ? 'ใช่' : 'ไม่',
             'จำนวน (ชิ้น)': item.quantity || 0,
             'ราคาต่อหน่วย': `฿${(item.pricePerUnit || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'ส่วนลด': `฿${(item.discount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            'ยอดรวมรายการ': `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            'ยอดรวมรายการ': item.isFreebie ? 0 : `฿${itemTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             'หมายเลขกล่อง': String(item.boxNumber || 1),
             'หมายเลขติดตาม': getTrackingNumber(),
-            'สถานะจาก Airport': order.airportDeliveryStatus || '-',
+            'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
+            'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
             'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
             'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
           });
@@ -725,14 +788,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
           'ภาค': getRegion(getProvince()),
           'รหัสสินค้า/โปร': '-',
           'สินค้า': '-',
+          'ประเภทสินค้า': '-',
           'ชื่อโปร': '-',
+          'ของแถม': 'ไม่',
           'จำนวน (ชิ้น)': 0,
           'ราคาต่อหน่วย': `฿0.00`,
           'ส่วนลด': `฿0.00`,
           'ยอดรวมรายการ': `฿${(order.totalAmount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           'หมายเลขกล่อง': '0',
           'หมายเลขติดตาม': getTrackingNumber(),
-          'สถานะจาก Airport': order.airportDeliveryStatus || '-',
+          'วันที่จัดส่ง Airport': getAirportDeliveryDate(),
+          'สถานะจาก Airport': (order as any).airportDeliveryStatus || '-',
           'สถานะออเดอร์': getOrderStatusThai(order.orderStatus || ''),
           'สถานะสลิป': (order.slips && order.slips.length > 0) ? `อัปโหลดแล้ว (${order.slips.length})` : (order.slipUrl ? 'อัปโหลดแล้ว' : 'ยังไม่อัปโหลด')
         });
@@ -826,6 +892,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             break;
           case 'month':
             filterStartDate.setMonth(today.getMonth() - 1);
+            break;
+          case 'this-month':
+            filterStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            break;
+          case 'last-month':
+            filterStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            filterEndDate = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
             break;
           case 'year':
             filterStartDate.setFullYear(today.getFullYear() - 1);
@@ -1093,13 +1166,16 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 'ภาค': region,
                 'รหัสสินค้า/โปร': getProductCode(item),
                 'สินค้า': productName,
+                'ประเภทสินค้า': (() => { const p = products.find((pr: any) => pr.id === item.product_id); return p?.category || '-'; })(),
                 'ชื่อโปร': getPromoName(item, order.items || []),
+                'ของแถม': item.is_freebie ? 'ใช่' : 'ไม่',
                 'จำนวน (ชิ้น)': qty,
                 'ราคาต่อหน่วย': originalPrice,
                 'ส่วนลด': effectiveDiscount,
-                'ยอดรวมรายการ': itemTotal,
+                'ยอดรวมรายการ': item.is_freebie ? 0 : itemTotal,
                 'หมายเลขกล่อง': String(item.box_number || 1),
                 'หมายเลขติดตาม': getTrackingForBox(order, item.box_number),
+                'วันที่จัดส่ง Airport': order.airport_delivery_date ? new Date(order.airport_delivery_date).toLocaleDateString('th-TH') : '-',
                 'สถานะจาก Airport': order.airport_delivery_status || '-',
                 'สถานะออเดอร์': getOrderStatusThai(order.order_status || ''),
                 'สถานะสลิป': getSlipStatus(order)
@@ -1304,7 +1380,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         return (
           <div>
             <h3 className="text-xl font-semibold mb-4">รายงานออเดอร์แบบละเอียด (Raw Data)</h3>
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="bg-indigo-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">จำนวนออเดอร์</p>
                 <p className="text-2xl font-bold text-indigo-600">
@@ -1323,6 +1399,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                         break;
                       case 'month':
                         filterStartDate.setMonth(filterStartDate.getMonth() - 1);
+                        break;
+                      case 'this-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth(), 1);
+                        break;
+                      case 'last-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth() - 1, 1);
+                        filterEndDate = new Date(filterEndDate.getFullYear(), filterEndDate.getMonth(), 0, 23, 59, 59, 999);
                         break;
                       case 'year':
                         filterStartDate.setFullYear(filterStartDate.getFullYear() - 1);
@@ -1364,6 +1447,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                       case 'month':
                         filterStartDate.setMonth(filterStartDate.getMonth() - 1);
                         break;
+                      case 'this-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth(), 1);
+                        break;
+                      case 'last-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth() - 1, 1);
+                        filterEndDate = new Date(filterEndDate.getFullYear(), filterEndDate.getMonth(), 0, 23, 59, 59, 999);
+                        break;
                       case 'year':
                         filterStartDate.setFullYear(filterStartDate.getFullYear() - 1);
                         break;
@@ -1375,7 +1465,48 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                         }
                         break;
                     }
-                    return orderDate >= filterStartDate && orderDate <= filterEndDate;
+                    return orderDate >= filterStartDate && orderDate <= filterEndDate && o.orderStatus !== 'Cancelled';
+                  }).reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-600">ยอดยกเลิก</p>
+                <p className="text-2xl font-bold text-red-600">
+                  ฿{orders.filter(o => {
+                    const orderDate = new Date(o.orderDate);
+                    let filterStartDate = new Date();
+                    filterStartDate.setHours(0, 0, 0, 0);
+                    let filterEndDate = new Date();
+                    filterEndDate.setHours(23, 59, 59, 999);
+
+                    switch (dateRange) {
+                      case 'today':
+                        break;
+                      case 'week':
+                        filterStartDate.setDate(filterStartDate.getDate() - 7);
+                        break;
+                      case 'month':
+                        filterStartDate.setMonth(filterStartDate.getMonth() - 1);
+                        break;
+                      case 'this-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth(), 1);
+                        break;
+                      case 'last-month':
+                        filterStartDate = new Date(filterStartDate.getFullYear(), filterStartDate.getMonth() - 1, 1);
+                        filterEndDate = new Date(filterEndDate.getFullYear(), filterEndDate.getMonth(), 0, 23, 59, 59, 999);
+                        break;
+                      case 'year':
+                        filterStartDate.setFullYear(filterStartDate.getFullYear() - 1);
+                        break;
+                      case 'custom':
+                        if (startDate) filterStartDate = new Date(startDate);
+                        if (endDate) {
+                          filterEndDate = new Date(endDate);
+                          filterEndDate.setHours(23, 59, 59, 999);
+                        }
+                        break;
+                    }
+                    return orderDate >= filterStartDate && orderDate <= filterEndDate && o.orderStatus === 'Cancelled';
                   }).reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString()}
                 </p>
               </div>
@@ -1541,6 +1672,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 { value: 'today', label: 'วันนี้' },
                 { value: 'week', label: '7 วัน' },
                 { value: 'month', label: '30 วัน' },
+                { value: 'this-month', label: 'เดือนนี้' },
+                { value: 'last-month', label: 'เดือนที่แล้ว' },
                 { value: 'custom', label: 'กำหนดเอง' }
               ].map(option => (
                 <button
@@ -1602,6 +1735,68 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 <span className="text-xs text-gray-400">(สูงสุด 31 วัน)</span>
               </div>
             )}
+
+            {/* Order Status Filter */}
+            <div className="relative">
+              <button
+                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 flex items-center gap-2"
+              >
+                <Filter className="w-4 h-4" />
+                สถานะออเดอร์
+                {selectedOrderStatuses.length > 0 && (
+                  <span className="bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {selectedOrderStatuses.length}
+                  </span>
+                )}
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {isStatusDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[200px]">
+                  <div className="p-2 border-b">
+                    <button
+                      onClick={() => {
+                        if (selectedOrderStatuses.length === orderStatusOptions.length) {
+                          setSelectedOrderStatuses([]);
+                        } else {
+                          setSelectedOrderStatuses(orderStatusOptions.map(o => o.value));
+                        }
+                      }}
+                      className="text-sm text-indigo-600 hover:underline"
+                    >
+                      {selectedOrderStatuses.length === orderStatusOptions.length ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                    </button>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                    {orderStatusOptions.map(option => (
+                      <label key={option.value} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrderStatuses.includes(option.value)}
+                          onChange={() => {
+                            setSelectedOrderStatuses(prev =>
+                              prev.includes(option.value)
+                                ? prev.filter(s => s !== option.value)
+                                : [...prev, option.value]
+                            );
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm">{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="p-2 border-t">
+                    <button
+                      onClick={() => setIsStatusDropdownOpen(false)}
+                      className="w-full px-3 py-1.5 bg-indigo-500 text-white rounded text-sm hover:bg-indigo-600"
+                    >
+                      ปิด
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button
               onClick={handleExport}

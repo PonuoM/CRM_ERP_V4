@@ -28,6 +28,9 @@ interface DistributionPreview {
     customers: Customer[];
 }
 
+// Maximum customers that can be distributed at once
+const MAX_DISTRIBUTION_LIMIT = 1000;
+
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
     const [activeBasket, setActiveBasket] = useState<string>('');
@@ -62,15 +65,17 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     // Fetch telesale agents
     const fetchAgents = useCallback(async () => {
         try {
-            const response = await apiFetch(`/users?companyId=${currentUser?.companyId}`);
-            // Map API response (snake_case) to User interface (camelCase)
-            const mappedUsers = (response || []).map((u: any) => ({
+            const response = await apiFetch(`users?companyId=${currentUser?.companyId}`);
+            // Ensure response is an array before mapping
+            const usersArray = Array.isArray(response) ? response : [];
+            const mappedUsers = usersArray.map((u: any) => ({
                 id: u.id || u.user_id,
                 firstName: u.firstName || u.first_name || '',
                 lastName: u.lastName || u.last_name || '',
                 role: u.role,
                 companyId: u.companyId || u.company_id,
                 username: u.username,
+                customTags: u.customTags || [],
             }));
             const telesales = mappedUsers.filter((u: User) =>
                 u.role === UserRole.Telesale || u.role === UserRole.Supervisor
@@ -91,7 +96,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         try {
             // Use basket_config API with basket_customers action
             const response = await apiFetch(
-                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=500`
+                `basket_config.php?action=basket_customers&basket_key=${activeBasket}&companyId=${currentUser?.companyId}&limit=${MAX_DISTRIBUTION_LIMIT}`
             );
             const data = response?.data || [];
             const mapped = data.map((r: any) => mapCustomerFromApi(r));
@@ -167,6 +172,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const handleGeneratePreview = () => {
         if (selectedAgents.length === 0) {
             setMessage({ type: 'error', text: 'กรุณาเลือกพนักงานอย่างน้อย 1 คน' });
+            return;
+        }
+
+        // Calculate total customers to be distributed
+        const totalToDistribute = Math.min(selectedAgents.length * countPerAgent, filteredCustomers.length);
+        if (totalToDistribute > MAX_DISTRIBUTION_LIMIT) {
+            setMessage({ type: 'error', text: `แจกได้สูงสุดครั้งละไม่เกิน ${MAX_DISTRIBUTION_LIMIT.toLocaleString()} คน (ปัจจุบัน: ${totalToDistribute.toLocaleString()} คน)` });
             return;
         }
 
@@ -321,6 +333,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     min={1}
                                     max={100}
                                 />
+                                <p className="text-xs text-orange-600 mt-2">
+                                    ⚠️ แจกได้สูงสุดครั้งละไม่เกิน {MAX_DISTRIBUTION_LIMIT.toLocaleString()} คน
+                                </p>
                             </div>
 
                             <button
