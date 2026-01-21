@@ -840,7 +840,7 @@ function enrichOrderWithBoxes(payload: any) {
   }
 }
 
-export async function saveReturnOrders(returns: { sub_order_id: string; return_amount: number; status: string; note: string }[]) {
+export async function saveReturnOrders(returns: any[]) {
   return apiFetch("Orders/save_return_orders.php", {
     method: "POST",
     body: JSON.stringify({ returns }),
@@ -2014,7 +2014,12 @@ export async function getTelesaleUpsellList(params: {
 export async function getReturnOrders() {
   return apiFetch("Orders/get_return_orders.php", {
     method: "GET",
+    headers: {
+      "Cache-Control": "no-cache",
+    }
   });
 }
+
+
 
 

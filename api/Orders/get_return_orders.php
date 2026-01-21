@@ -12,6 +12,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+header('Content-Type: application/json');
+
 require_once '../config.php';
 
 $conn = db_connect();
@@ -23,11 +25,16 @@ try {
         SELECT 
             wr.id,
             wr.sub_order_id,
-            wr.return_amount,
             wr.status,
             wr.note,
-            wr.created_at
+            wr.created_at,
+            MAX(COALESCE(otn.tracking_number, wr.sub_order_id)) as tracking_number
         FROM order_returns wr
+        LEFT JOIN order_tracking_numbers otn ON 
+            wr.sub_order_id = otn.tracking_number 
+            OR wr.sub_order_id = otn.parent_order_id
+            OR wr.sub_order_id = CONCAT(otn.parent_order_id, '-', otn.box_number)
+        GROUP BY wr.id
         ORDER BY wr.created_at DESC
     ";
 
