@@ -3240,7 +3240,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $clientToDbParent[(string)$itemId] = (int)$itemId;
                             }
 
-                            $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
+                            $updateSql = "UPDATE order_items SET quantity=?, price_per_unit=?, discount=?, net_total=?, box_number=?, is_freebie=?, promotion_id=?, creator_id=? WHERE id=? AND (order_id=? OR parent_order_id=?)";
                             $isFreebie = !empty($item['isFreebie']) || !empty($item['is_freebie']);
                             $pdo->prepare($updateSql)->execute([
                                 $item['quantity'] ?? 0,
@@ -3250,6 +3250,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                                 $item['boxNumber'] ?? $item['box_number'] ?? 0,
                                 $isFreebie ? 1 : 0,
                                 $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                $item['creatorId'] ?? $item['creator_id'] ?? $fallbackCreatorId,
                                 $itemId,
                                 $id,
                                 $id
@@ -3327,6 +3328,20 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             ]);
                             
                             $incomingIds[] = (int)$pdo->lastInsertId();
+                            $newDbId = (int)$pdo->lastInsertId();
+
+                            // Insert allocation for new regular item
+                            $allocIns = $pdo->prepare('INSERT INTO order_item_allocations (order_id, order_item_id, product_id, required_quantity, is_freebie, promotion_id, status, created_by) VALUES (?,?,?,?,?,?,?,?)');
+                            $allocIns->execute([
+                                $id,
+                                $newDbId,
+                                $item['productId'] ?? $item['product_id'] ?? null,
+                                $item['quantity'] ?? 0,
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                'PENDING',
+                                $itemCreatorId
+                            ]);
                         }
                     }
 
@@ -3365,6 +3380,20 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             ]);
                             
                             $incomingIds[] = (int)$pdo->lastInsertId();
+                            $newDbId = (int)$pdo->lastInsertId();
+
+                            // Insert allocation for new child item
+                            $allocIns = $pdo->prepare('INSERT INTO order_item_allocations (order_id, order_item_id, product_id, required_quantity, is_freebie, promotion_id, status, created_by) VALUES (?,?,?,?,?,?,?,?)');
+                            $allocIns->execute([
+                                $id,
+                                $newDbId,
+                                $item['productId'] ?? $item['product_id'] ?? null,
+                                $item['quantity'] ?? 0,
+                                $isFreebie ? 1 : 0,
+                                $item['promotionId'] ?? $item['promotion_id'] ?? null,
+                                'PENDING',
+                                $itemCreatorId
+                            ]);
                         }
                     }
 

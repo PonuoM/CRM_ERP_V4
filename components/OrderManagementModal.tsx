@@ -812,10 +812,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       creatorId: currentUser.id,
     };
 
-    setCurrentOrder((prev) => ({
-      ...prev,
-      items: [...prev.items, newItem],
-    }));
+    setCurrentOrder((prev) => {
+      let boxes = prev.boxes || [];
+      if (boxes.length === 0) {
+        boxes = [{ boxNumber: 1, codAmount: 0, collectionAmount: 0 }];
+      }
+      return {
+        ...prev,
+        items: [...prev.items, newItem],
+        boxes,
+      };
+    });
 
     closeProductSelector();
   };
@@ -876,10 +883,17 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       parentItemId: parentItemId, // Link to parent
     }));
 
-    setCurrentOrder((prev) => ({
-      ...prev,
-      items: [...prev.items, parentItem, ...childItems],
-    }));
+    setCurrentOrder((prev) => {
+      let boxes = prev.boxes || [];
+      if (boxes.length === 0) {
+        boxes = [{ boxNumber: 1, codAmount: 0, collectionAmount: 0 }];
+      }
+      return {
+        ...prev,
+        items: [...prev.items, parentItem, ...childItems],
+        boxes,
+      };
+    });
 
     closeProductSelector();
   };
@@ -2128,6 +2142,16 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     // Create boxes array based on items (exclude child items and freebies from amount calculation)
     const boxes = uniqueBoxes.map((boxNum) => {
+      // Check if we already have a manual config for this box
+      const existingBox = currentOrder.boxes?.find((b) => b.boxNumber === boxNum);
+      if (existingBox) {
+        return {
+          ...existingBox,
+          // Ensure collectionAmount is set (fallback to codAmount or 0)
+          collectionAmount: existingBox.collectionAmount ?? existingBox.codAmount ?? 0,
+        };
+      }
+
       // Get items in this box (exclude child items for amount calculation)
       const boxItems = currentOrder.items.filter((item: any) => {
         const itemBoxNumber = Number(item.boxNumber || item.box_number) || 1;
@@ -2147,6 +2171,7 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       return {
         boxNumber: boxNum,
         collectionAmount: boxAmount,
+        codAmount: boxAmount, // Required by CodBox type
         collectedAmount: 0,
         waivedAmount: 0,
       };
@@ -3098,25 +3123,40 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                                 value={item.boxNumber || 1}
                                 onChange={(e) => {
                                   const newBoxNumber = Number(e.target.value);
-                                  // Update parent box number
-                                  handleItemChange(
-                                    index,
-                                    "boxNumber",
-                                    newBoxNumber,
-                                  );
 
-                                  // Update all children's box numbers
-                                  if ((item as any).isPromotionParent) {
-                                    const parentId = item.id;
-                                    setCurrentOrder((prev) => ({
+                                  setCurrentOrder((prev) => {
+                                    // 1. Expand boxes array if needed
+                                    let newBoxes = [...(prev.boxes || [])];
+                                    if (newBoxNumber > newBoxes.length) {
+                                      for (let i = newBoxes.length + 1; i <= newBoxNumber; i++) {
+                                        newBoxes.push({
+                                          boxNumber: i,
+                                          codAmount: 0,
+                                          collectionAmount: 0,
+                                        });
+                                      }
+                                    }
+
+                                    // 2. Update item box number
+                                    const newItems = [...prev.items];
+                                    newItems[index] = { ...newItems[index], boxNumber: newBoxNumber };
+
+                                    // 3. Update children if parent
+                                    if ((item as any).isPromotionParent) {
+                                      const parentId = item.id;
+                                      for (let i = 0; i < newItems.length; i++) {
+                                        if ((newItems[i] as any).parentItemId === parentId) {
+                                          newItems[i] = { ...newItems[i], boxNumber: newBoxNumber };
+                                        }
+                                      }
+                                    }
+
+                                    return {
                                       ...prev,
-                                      items: prev.items.map((i) =>
-                                        (i as any).parentItemId === parentId
-                                          ? { ...i, boxNumber: newBoxNumber }
-                                          : i,
-                                      ),
-                                    }));
-                                  }
+                                      items: newItems,
+                                      boxes: newBoxes,
+                                    };
+                                  });
                                 }}
                                 className="w-16 border rounded px-1 text-center"
                               >
