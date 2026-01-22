@@ -21,6 +21,16 @@ interface BasketConfig {
     display_order: number;
     is_active: boolean;
     company_id: number;
+    // Transition Rules
+    on_sale_basket_key?: string | null;
+    fail_after_days?: number | null;
+    on_fail_basket_key?: string | null;
+    max_distribution_count?: number | null;
+    hold_days_before_redistribute?: number | null;
+    linked_basket_key?: string | null;
+    on_max_dist_basket_key?: string | null;
+    on_fail_reevaluate?: boolean;
+    has_loop?: boolean;
 }
 
 interface ReturnConfig {
@@ -189,8 +199,8 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                     key={group.key}
                                     onClick={() => setActiveGroup(group.key)}
                                     className={`w-full text-left p-3 rounded-xl transition-colors flex items-center gap-3 ${activeGroup === group.key
-                                            ? 'bg-blue-100 text-blue-700 font-medium'
-                                            : 'hover:bg-gray-100 text-gray-600'
+                                        ? 'bg-blue-100 text-blue-700 font-medium'
+                                        : 'hover:bg-gray-100 text-gray-600'
                                         }`}
                                 >
                                     <group.icon size={20} />
@@ -300,24 +310,61 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                             </div>
                                             <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
                                                 <div>
-                                                    <span className="text-gray-400">Order Count:</span>
+                                                    <span className="text-gray-400">จำนวน Order:</span>
                                                     <br />
                                                     {basket.min_order_count ?? '-'} - {basket.max_order_count ?? '∞'}
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-400">Days Since Order:</span>
+                                                    <span className="text-gray-400">วันนับจาก Order ล่าสุด:</span>
                                                     <br />
                                                     {basket.min_days_since_order ?? '-'} - {basket.max_days_since_order ?? '∞'}
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-400">First Order:</span>
+                                                    <span className="text-gray-400">วันนับจาก Order แรก:</span>
                                                     <br />
                                                     {basket.days_since_first_order ?? '-'} วัน
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-400">Registered:</span>
+                                                    <span className="text-gray-400">วันนับจากลงทะเบียน:</span>
                                                     <br />
                                                     {basket.days_since_registered ?? '-'} วัน
+                                                </div>
+                                            </div>
+
+                                            {/* Transition Rules Visualization */}
+                                            <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-xs text-gray-600 bg-gray-50/50 p-2 rounded">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">ย้ายเมื่อขายได้:</span>
+                                                    <span className="font-medium text-green-600 truncate ml-2" title={basket.on_sale_basket_key || ''}>
+                                                        {baskets.find(b => b.basket_key === basket.on_sale_basket_key)?.basket_name || basket.on_sale_basket_key || '-'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">กรณีขายไม่ได้:</span>
+                                                    <span className="font-medium text-red-600 truncate ml-2">
+                                                        {basket.fail_after_days ? `${basket.fail_after_days} วัน → ${baskets.find(b => b.basket_key === basket.on_fail_basket_key)?.basket_name || basket.on_fail_basket_key || 'Pool'}` : '-'}
+                                                    </span>
+                                                </div>
+                                                {basket.has_loop && (
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-500">แจกสูงสุด:</span>
+                                                        <span className="font-medium">
+                                                            {basket.max_distribution_count ?
+                                                                `${basket.max_distribution_count} รอบ ${basket.on_fail_reevaluate
+                                                                    ? '→ (ตามเกณฑ์)'
+                                                                    : (basket.on_max_dist_basket_key
+                                                                        ? `→ ${baskets.find(b => b.basket_key === basket.on_max_dist_basket_key)?.basket_name || basket.on_max_dist_basket_key}`
+                                                                        : '(วนซ้ำ)')
+                                                                }`
+                                                                : 'ไม่จำกัด'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">พักรายชื่อ:</span>
+                                                    <span className="font-medium">
+                                                        {basket.hold_days_before_redistribute ? `${basket.hold_days_before_redistribute} วัน` : 'แจกทันที'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -344,13 +391,13 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
 
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Basket Key</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">รหัสถัง (Basket Key)</label>
                                     <input
                                         type="text"
                                         value={editingBasket.basket_key}
                                         onChange={(e) => setEditingBasket({ ...editingBasket, basket_key: e.target.value })}
                                         className="w-full border rounded-lg p-2"
-                                        placeholder="e.g., new_customer"
+                                        placeholder="เช่น new_customer"
                                     />
                                 </div>
 
@@ -365,66 +412,78 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Min Order Count</label>
+                                {/* Order Count Range */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">จำนวนออเดอร์</label>
+                                    <div className="flex items-center gap-2">
                                         <input
                                             type="number"
                                             value={editingBasket.min_order_count ?? ''}
                                             onChange={(e) => setEditingBasket({ ...editingBasket, min_order_count: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
+                                            className="w-24 border rounded-lg p-2 text-center"
+                                            placeholder="ขั้นต่ำ"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Max Order Count</label>
+                                        <span className="text-gray-500">ถึง</span>
                                         <input
                                             type="number"
                                             value={editingBasket.max_order_count ?? ''}
                                             onChange={(e) => setEditingBasket({ ...editingBasket, max_order_count: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
+                                            className="w-24 border rounded-lg p-2 text-center"
+                                            placeholder="สูงสุด"
                                         />
+                                        <span className="text-gray-500 text-sm">ออเดอร์</span>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Min Days Since Order</label>
+                                {/* Days Since Last Order Range */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">วันนับจาก Order ล่าสุด</label>
+                                    <div className="flex items-center gap-2">
                                         <input
                                             type="number"
                                             value={editingBasket.min_days_since_order ?? ''}
                                             onChange={(e) => setEditingBasket({ ...editingBasket, min_days_since_order: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
+                                            className="w-24 border rounded-lg p-2 text-center"
+                                            placeholder="ตั้งแต่"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Since Order</label>
+                                        <span className="text-gray-500">ถึง</span>
                                         <input
                                             type="number"
                                             value={editingBasket.max_days_since_order ?? ''}
                                             onChange={(e) => setEditingBasket({ ...editingBasket, max_days_since_order: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
+                                            className="w-24 border rounded-lg p-2 text-center"
+                                            placeholder="ถึง"
                                         />
+                                        <span className="text-gray-500 text-sm">วัน</span>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                {/* Days Since First Order & Registration */}
+                                <div className="grid grid-cols-2 gap-4 mb-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Days Since First Order</label>
-                                        <input
-                                            type="number"
-                                            value={editingBasket.days_since_first_order ?? ''}
-                                            onChange={(e) => setEditingBasket({ ...editingBasket, days_since_first_order: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
-                                        />
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">วันนับจาก Order แรก (ขั้นต่ำ)</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={editingBasket.days_since_first_order ?? ''}
+                                                onChange={(e) => setEditingBasket({ ...editingBasket, days_since_first_order: e.target.value ? parseInt(e.target.value) : null })}
+                                                className="w-full border rounded-lg p-2"
+                                                placeholder="ว่าง = ไม่จำกัด"
+                                            />
+                                        </div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Days Since Registered</label>
-                                        <input
-                                            type="number"
-                                            value={editingBasket.days_since_registered ?? ''}
-                                            onChange={(e) => setEditingBasket({ ...editingBasket, days_since_registered: e.target.value ? parseInt(e.target.value) : null })}
-                                            className="w-full border rounded-lg p-2"
-                                        />
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">วันนับจากลงทะเบียน (ขั้นต่ำ)</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={editingBasket.days_since_registered ?? ''}
+                                                onChange={(e) => setEditingBasket({ ...editingBasket, days_since_registered: e.target.value ? parseInt(e.target.value) : null })}
+                                                className="w-full border rounded-lg p-2"
+                                                placeholder="ว่าง = ไม่จำกัด"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">สำหรับลูกค้าที่ไม่เคยสั่งซื้อ</p>
                                     </div>
                                 </div>
 
@@ -437,6 +496,163 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                         className="w-full border rounded-lg p-2"
                                     />
                                 </div>
+
+                                {/* Transition Rules - Only for Dashboard baskets */}
+                                {editingBasket.target_page !== 'distribution' && (
+                                    <div className="border-t pt-4 mt-4">
+                                        <h4 className="font-semibold text-gray-800 mb-3">กฎการย้ายถัง (Transition Rules)</h4>
+
+                                        {/* Sale Success */}
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">เมื่อขายได้ ย้ายไปที่:</label>
+                                            <select
+                                                value={editingBasket.on_sale_basket_key || ''}
+                                                onChange={(e) => setEditingBasket({ ...editingBasket, on_sale_basket_key: e.target.value || null })}
+                                                className="w-full border rounded-lg p-2"
+                                            >
+                                                <option value="">-- ไม่ย้าย --</option>
+                                                {baskets.map(b => (
+                                                    <option key={b.id} value={b.basket_key}>
+                                                        {b.basket_name} [{b.target_page === 'distribution' ? 'แจก' : 'Dashboard'}]
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Loop Toggle */}
+                                        <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={editingBasket.has_loop || false}
+                                                    onChange={(e) => setEditingBasket({ ...editingBasket, has_loop: e.target.checked })}
+                                                    className="w-4 h-4 text-blue-600 rounded"
+                                                />
+                                                <span className="font-medium text-gray-800">มีวนซ้ำ (Distribution Loop)</span>
+                                            </label>
+                                        </div>
+
+                                        {/* Fail / Timeout Section */}
+                                        <div className="p-3 bg-red-50 rounded-lg mb-4">
+                                            <div className="font-medium text-red-800 text-sm mb-3">กรณีขายไม่ได้ / หมดเวลา</div>
+
+                                            <div className="grid grid-cols-2 gap-4 mb-3">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">ไม่ขายภายใน (วัน)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editingBasket.fail_after_days ?? ''}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, fail_after_days: e.target.value ? parseInt(e.target.value) : null })}
+                                                        className="w-full border rounded-lg p-2"
+                                                        placeholder="เช่น 30"
+                                                    />
+                                                </div>
+                                                {editingBasket.has_loop ? (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">วนกลับไปถัง</label>
+                                                        <select
+                                                            value={editingBasket.on_fail_basket_key || ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, on_fail_basket_key: e.target.value || null })}
+                                                            className="w-full border rounded-lg p-2"
+                                                        >
+                                                            <option value="">-- ถังเดิม (Pool) --</option>
+                                                            {baskets.map(b => (
+                                                                <option key={b.id} value={b.basket_key}>{b.basket_name} [{b.target_page === 'distribution' ? 'แจก' : 'Dashboard'}]</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">ย้ายไปถัง</label>
+                                                        <select
+                                                            value={editingBasket.on_fail_basket_key || ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, on_fail_basket_key: e.target.value || null })}
+                                                            className="w-full border rounded-lg p-2"
+                                                            disabled={editingBasket.on_fail_reevaluate}
+                                                        >
+                                                            <option value="">-- ไม่ย้าย --</option>
+                                                            {baskets.map(b => (
+                                                                <option key={b.id} value={b.basket_key}>{b.basket_name} [{b.target_page === 'distribution' ? 'แจก' : 'Dashboard'}]</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Loop-specific fields */}
+                                            {editingBasket.has_loop && (
+                                                <div className="grid grid-cols-2 gap-4 mb-3 pt-3 border-t border-red-200">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">วนสูงสุด (รอบ)</label>
+                                                        <input
+                                                            type="number"
+                                                            value={editingBasket.max_distribution_count ?? ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, max_distribution_count: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                            className="w-full border rounded-lg p-2"
+                                                            placeholder="0 = ไม่จำกัด"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">เมื่อครบจำนวนวน ไปยังถัง</label>
+                                                        <select
+                                                            value={editingBasket.on_max_dist_basket_key || ''}
+                                                            onChange={(e) => setEditingBasket({ ...editingBasket, on_max_dist_basket_key: e.target.value || null })}
+                                                            className="w-full border rounded-lg p-2"
+                                                            disabled={editingBasket.on_fail_reevaluate}
+                                                        >
+                                                            <option value="">-- ไม่ย้าย (วนต่อ) --</option>
+                                                            {baskets.map(b => (
+                                                                <option key={b.id} value={b.basket_key}>{b.basket_name} [{b.target_page === 'distribution' ? 'แจก' : 'Dashboard'}]</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Re-Evaluate Checkbox */}
+                                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-red-200">
+                                                <input
+                                                    type="checkbox"
+                                                    id="on_fail_reevaluate"
+                                                    checked={editingBasket.on_fail_reevaluate || false}
+                                                    onChange={(e) => setEditingBasket({ ...editingBasket, on_fail_reevaluate: e.target.checked })}
+                                                    className="w-4 h-4 text-blue-600 rounded"
+                                                />
+                                                <label htmlFor="on_fail_reevaluate" className="text-sm text-gray-700">
+                                                    กลับถังตามเกณฑ์อัตโนมัติ (Re-Evaluate)
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Hold Days */}
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">พักรายชื่อก่อนแจกซ้ำ (วัน)</label>
+                                            <input
+                                                type="number"
+                                                value={editingBasket.hold_days_before_redistribute ?? ''}
+                                                onChange={(e) => setEditingBasket({ ...editingBasket, hold_days_before_redistribute: e.target.value ? parseInt(e.target.value) : 0 })}
+                                                className="w-full border rounded-lg p-2"
+                                                placeholder="0 = แจกทันที"
+                                            />
+                                        </div>
+
+                                        {/* Linked Basket */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">เชื่อมโยงกับถัง (ในอีกหน้า)</label>
+                                            <select
+                                                value={editingBasket.linked_basket_key || ''}
+                                                onChange={(e) => setEditingBasket({ ...editingBasket, linked_basket_key: e.target.value || null })}
+                                                className="w-full border rounded-lg p-2"
+                                            >
+                                                <option value="">-- ไม่เชื่อมโยง --</option>
+                                                {baskets.filter(b => b.target_page !== editingBasket.target_page).map(b => (
+                                                    <option key={b.id} value={b.basket_key}>{b.basket_name} ({b.target_page})</option>
+                                                ))}
+                                            </select>
+                                            <p className="text-xs text-gray-500 mt-1">ใช้สำหรับถังที่ปรากฏทั้งใน Dashboard และ หน้าแจก</p>
+                                        </div>
+                                    </div>
+                                )}  {/* End of Transition Rules conditional */}
 
                                 <div className="flex items-center gap-2">
                                     <input

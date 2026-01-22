@@ -7,21 +7,17 @@
  * - Based on last_order_date instead of ownership_expires
  */
 
-import React, { useState, useMemo, useEffect, useRef, useDeferredValue, useTransition, useCallback } from "react";
-import { User, Customer, CustomerGrade, BasketType, ModalType, Tag, Activity, CallHistory, Order as OrderType, Appointment } from "@/types";
+import React, { useState, useMemo, useEffect, useDeferredValue, useTransition, useCallback } from "react";
+import { User, Customer, CustomerGrade, ModalType, Tag, Activity, CallHistory, Order as OrderType, Appointment } from "@/types";
 import CustomerTable from "@/components/CustomerTable";
-import BasketTabs from "@/components/BasketTabs";
 import RegionFilter from "@/components/RegionFilter";
 import FilterDropdown from "@/components/FilterDropdown";
 import Spinner from "@/components/Spinner";
 import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Calendar, X, Settings, RotateCcw } from "lucide-react";
 import {
-    determineBasketType,
-    groupCustomersByBasket,
     filterCustomersByRegion,
-    getBasketDisplayName,
-    BASKET_CONFIG
 } from "@/utils/basketUtils";
+import { useBasketConfig, groupCustomersByDynamicBaskets, DynamicBasketConfig } from "@/hooks/useBasketConfig";
 import { formatThaiDate, getDaysSince, formatRelativeTime } from "@/utils/dateUtils";
 import { listCustomers, apiFetch } from "@/services/api";
 import { mapCustomerFromApi } from "@/utils/customerMapper";
@@ -300,7 +296,7 @@ const CustomerRow = React.memo(({
     customer: Customer;
     onViewCustomer: (c: Customer) => void;
     openModal: (t: ModalType, d: any) => void;
-    activeBasket: BasketType;
+    activeBasket: string;
     lastCall?: CallHistory;
     hasAppointment?: boolean;
     callCount: number;
@@ -413,9 +409,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // State
     const [localCustomers, setLocalCustomers] = useState<Customer[]>([]);
 
-    const [activeBasket, setActiveBasket] = usePersistentState<BasketType>(
+    // Fetch dynamic basket configs from API
+    const { configs: basketConfigs, loading: basketConfigLoading } = useBasketConfig(user.companyId, 'dashboard_v2');
+
+    // Use basket_key string instead of enum for dynamic baskets
+    const [activeBasketKey, setActiveBasketKey] = usePersistentState<string>(
         `telesale_v2_basket_${user.id}`,
-        BasketType.Month1_2
+        ''
     );
     const [selectedRegions, setSelectedRegions] = usePersistentState<string[]>(
         `telesale_v2_regions_${user.id}`,
@@ -484,7 +484,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasket, selectedRegions, searchTerm, quickFilter, filterByAppointment, hideContactedDays]);
+    }, [activeBasketKey, selectedRegions, searchTerm, quickFilter, filterByAppointment, hideContactedDays]);
 
     // Optimize Call History Lookup
     const lastCallMap = useMemo(() => {
@@ -605,19 +605,28 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // NOTE: Dashboard now fetches its own data if props are empty
 
-    // Group customers by basket type
+    // Group customers by dynamic basket configs from API
     const basketGroups = useMemo(() => {
-        return groupCustomersByBasket(localCustomers);
-    }, [localCustomers]);
+        if (basketConfigs.length === 0) return new Map<string, Customer[]>();
+        return groupCustomersByDynamicBaskets(localCustomers, basketConfigs);
+    }, [localCustomers, basketConfigs]);
 
-    // Tab counts - Dashboard V2 shows only 4 baskets
-    // (LastChance and other baskets are for Distribution page)
-    const tabConfigs = useMemo(() => [
-        { type: BasketType.Upsell, count: basketGroups[BasketType.Upsell].length },
-        { type: BasketType.NewCustomer, count: basketGroups[BasketType.NewCustomer].length },
-        { type: BasketType.Month1_2, count: basketGroups[BasketType.Month1_2].length },
-        { type: BasketType.Month3, count: basketGroups[BasketType.Month3].length },
-    ], [basketGroups]);
+    // Set default active basket when configs load
+    useEffect(() => {
+        if (basketConfigs.length > 0 && !activeBasketKey) {
+            setActiveBasketKey(basketConfigs[0].basket_key);
+        }
+    }, [basketConfigs, activeBasketKey, setActiveBasketKey]);
+
+    // Build dynamic tab configs from DB
+    const tabConfigs = useMemo(() => {
+        return basketConfigs.map(config => ({
+            key: config.basket_key,
+            name: config.basket_name,
+            count: (basketGroups.get(config.basket_key) || []).length,
+            config
+        }));
+    }, [basketConfigs, basketGroups]);
 
     // Filter and sort customers for active tab
     // Tags Logic
@@ -650,7 +659,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // Filter Logic
     const filteredCustomers = useMemo(() => {
-        let customers = basketGroups[activeBasket] || [];
+        let customers = basketGroups.get(activeBasketKey) || [];
 
         // Apply region filter
         if (deferredSelectedRegions.length > 0) {
@@ -759,7 +768,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasket, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, appointmentInfoMap, hideContactedDays]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, appointmentInfoMap, hideContactedDays]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -794,13 +803,41 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                 </div>
             </div>
 
-            {/* Basket Tabs */}
+            {/* Basket Tabs - Dynamic from API */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 mb-6">
-                <BasketTabs
-                    tabs={tabConfigs}
-                    activeTab={activeBasket}
-                    onTabChange={setActiveBasket}
-                />
+                {basketConfigLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400">
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span>กำลังโหลดถัง...</span>
+                    </div>
+                ) : tabConfigs.length === 0 ? (
+                    <div className="text-gray-500 text-center py-4">
+                        <Settings size={24} className="mx-auto mb-2" />
+                        <p>ยังไม่มีถังที่ตั้งค่า</p>
+                        <p className="text-sm">กรุณาไปที่หน้า "ตั้งค่าถัง" เพื่อเพิ่มถัง</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {tabConfigs.map(tab => {
+                            const isActive = activeBasketKey === tab.key;
+                            return (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setActiveBasketKey(tab.key)}
+                                    className={`relative px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 border-2 ${isActive
+                                        ? 'bg-blue-100 text-blue-700 border-blue-300 shadow-md scale-105'
+                                        : 'bg-white/50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    <span>{tab.name}</span>
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-white/70 text-gray-800' : 'bg-gray-200 text-gray-600'}`}>
+                                        {tab.count.toLocaleString()}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Search & Filters Row */}
@@ -978,7 +1015,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden transform-gpu">
                 <div className="p-4 border-b border-gray-100">
                     <h2 className="font-semibold text-gray-700">
-                        {getBasketDisplayName(activeBasket)}
+                        {tabConfigs.find(t => t.key === activeBasketKey)?.name || 'ถัง'}
                         <span className="ml-2 text-gray-400 font-normal">
                             ({filteredCustomers.length.toLocaleString()} รายการ)
                         </span>
@@ -1023,7 +1060,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             customer={customer}
                                             onViewCustomer={onViewCustomer}
                                             openModal={handleOpenModal}
-                                            activeBasket={activeBasket}
+                                            activeBasket={activeBasketKey}
                                             lastCall={lastCallMap.get(String(customer.id))}
                                             hasAppointment={appointmentInfoMap.get(String(customer.id))?.hasAppointment}
                                             callCount={callCountMap.get(String(customer.id)) || 0}

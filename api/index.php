@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Services/ShippingSyncService.php';
+require_once __DIR__ . '/Services/BasketRoutingService.php';
 
 // Polyfill for PHP < 8 str_starts_with
 if (!function_exists('str_starts_with')) {
@@ -422,6 +423,9 @@ try {
         break;
     case 'do_dashboard':
         handle_do_dashboard($pdo);
+        break;
+    case 'upsell_orders':
+        handle_upsell_orders($pdo);
         break;
     case 'exports':
         handle_exports($pdo, $id);
@@ -3891,6 +3895,19 @@ function handle_orders(PDO $pdo, ?string $id): void {
 
                 $pdo->commit();
                 error_log('Order created successfully: ' . $in['id']);
+                
+                // Auto-assign to Telesale for Upsell (Round-Robin)
+                try {
+                    require_once __DIR__ . '/Services/UpsellService.php';
+                    $upsellService = new UpsellService($pdo, $in['companyId'] ?? 1);
+                    $upsellResult = $upsellService->assignOrderToTelesale($in['id']);
+                    if ($upsellResult['success']) {
+                        error_log('Upsell assigned order ' . $in['id'] . ' to user ' . $upsellResult['assigned_to']);
+                    }
+                } catch (Throwable $e) {
+                    error_log('Upsell assignment failed: ' . $e->getMessage());
+                }
+                
                 json_response(['ok' => true, 'id' => $in['id']]);
             } catch (Throwable $e) {
                 $pdo->rollBack();
@@ -4055,6 +4072,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     // If order status is Picking, grant sale quota (+90 days)
                     // Use delivery_date from order as the sale date, then add 90 days for ownership_expires
                     if ($customerId && strcasecmp($newStatus, 'Picking') === 0) {
+                        // Clear Upsell assignment when order moves to Picking
+                        try {
+                            require_once __DIR__ . '/Services/UpsellService.php';
+                            $upsellService = new UpsellService($pdo, $companyIdForAllocation ?? 1);
+                            $upsellService->clearUpsellOnPicking($id);
+                            error_log('Upsell cleared for order ' . $id . ' (status = Picking)');
+                        } catch (Throwable $e) {
+                            error_log('Upsell clear failed: ' . $e->getMessage());
+                        }
+                        
                         // Get delivery_date from the order
                         $orderStmt = $pdo->prepare('SELECT delivery_date FROM orders WHERE id=?');
                         $orderStmt->execute([$id]);
@@ -4078,6 +4105,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             if ($customer && $customer['customer_id']) {
                                 $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE customer_id=?');
                                 $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customer['customer_id']]);
+
+                                // [Basket Routing] Handle transition on sale
+                                try {
+                                    $routingService = new BasketRoutingService($pdo, $existingOrder['company_id'] ?? 1);
+                                    // Use updatedOrder['creator_id'] or existingOrder['creator_id'] as user causing sale
+                                    $userId = $updatedOrder['creator_id'] ?? $existingOrder['creator_id'] ?? null;
+                                    $routingService->handleSaleTransition($customer['customer_id'], $userId);
+                                } catch (Throwable $routeErr) {
+                                    error_log("Basket Routing Failed: " . $routeErr->getMessage());
+                                }
                             }
                         }
                     }
@@ -7028,6 +7065,49 @@ function handle_customer_logs(PDO $pdo, ?string $id): void {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     json_response($stmt->fetchAll());
+}
+
+/**
+ * Get Upsell orders for a Telesale user
+ * Returns orders with upsell_user_id = userId and order_status = pending
+ */
+function handle_upsell_orders(PDO $pdo): void {
+    if (method() !== 'GET') {
+        json_response(['error' => 'METHOD_NOT_ALLOWED'], 405);
+        return;
+    }
+
+    $userId = $_GET['userId'] ?? null;
+    $companyId = $_GET['companyId'] ?? 1;
+
+    if (!$userId) {
+        json_response(['error' => 'USER_ID_REQUIRED'], 400);
+        return;
+    }
+
+    // Get pending orders assigned to this user for Upsell
+    $sql = "SELECT o.*, 
+                   c.first_name, c.last_name, c.phone, c.email,
+                   c.customer_ref_id,
+                   (SELECT GROUP_CONCAT(CONCAT(p.product_name, ' x', oi.quantity) SEPARATOR ', ')
+                    FROM order_items oi 
+                    LEFT JOIN products p ON p.id = oi.product_id 
+                    WHERE oi.order_id = o.id) as items_summary
+            FROM orders o
+            LEFT JOIN customers c ON o.customer_id = c.id
+            WHERE o.upsell_user_id = ?
+              AND o.order_status = 'pending'
+              AND o.company_id = ?
+            ORDER BY o.order_date DESC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$userId, $companyId]);
+    $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    json_response([
+        'orders' => $orders,
+        'count' => count($orders)
+    ]);
 }
 
 function handle_do_dashboard(PDO $pdo): void {
