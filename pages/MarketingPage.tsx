@@ -68,10 +68,7 @@ const inputClass =
   "w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900";
 const labelClass = "block text-sm font-medium text-gray-700 mb-1";
 
-// Check if user has admin access
-const hasAdminAccess = (user: User) => {
-  return true;
-};
+
 
 // Helper function to format date as YYYY-MM-DD in local timezone
 const formatDateLocal = (date: Date): string => {
@@ -398,15 +395,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const queryParams = new URLSearchParams({
         start_date: adsHistoryDateRange.start,
         end_date: adsHistoryDateRange.end,
-        page: productAdsHistoryPage.toString(),
-        limit: productAdsHistoryPageSize.toString()
+        page: "1",
+        limit: "100000"
       });
 
       if (!hasSystemAccess) {
         queryParams.append("user_ids", currentUser.id.toString());
       } else if (dashboardSelectedUsers.length > 0) {
         if (adsHistorySelectedUsers.length > 0) {
-          queryParams.append("user_ids", adsHistorySelectedUsers.map((u: any) => u.id).join(','));
+          queryParams.append("user_ids", adsHistorySelectedUsers.join(','));
         }
       }
 
@@ -445,36 +442,55 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   const loadPageAdsLogs = async () => {
     setProductAdsLogsLoading(true);
     try {
-      const offset = (productAdsHistoryPage - 1) * productAdsHistoryPageSize;
-
       // Prepare user filter
       let userFilter: number | number[] | undefined;
       if (hasSystemAccess) {
         if (adsHistorySelectedUsers.length > 0) {
-          userFilter = adsHistorySelectedUsers.map((u: any) => u.id);
+          userFilter = adsHistorySelectedUsers;
         }
       } else {
         userFilter = currentUser.id;
       }
 
-      // Call common function
-      const result = await loadAdsLogs(
-        adsHistorySelectedPages.length > 0 ? adsHistorySelectedPages.map(Number) : undefined,
-        adsHistoryDateRange.start,
-        adsHistoryDateRange.end,
-        userFilter,
-        productAdsHistoryPageSize,
-        offset
-      );
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (adsHistorySelectedPages.length > 0) {
+        params.set("page_ids", adsHistorySelectedPages.map(Number).join(","));
+      }
+      if (adsHistoryDateRange.start) params.set("date_from", adsHistoryDateRange.start);
+      if (adsHistoryDateRange.end) params.set("date_to", adsHistoryDateRange.end);
+      if (userFilter) {
+        const userIdStr = Array.isArray(userFilter) ? userFilter.join(",") : String(userFilter);
+        params.set("user_id", userIdStr);
+      }
+      params.set("limit", "100000");
+      params.set("offset", "0");
 
-      setProductAdsLogs(result.data);
-      setProductAdsLogsTotal(result.total);
-      setProductAdsHistoryServerPagination({
-        total: result.total,
-        totalPages: result.totalPages,
-        hasMore: result.hasMore,
-        hasPrevious: result.hasPrevious,
-      });
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(
+        `${API_BASE}/Marketing_DB/ads_log_get.php?${params.toString()}`,
+        { headers }
+      );
+      const data = await res.json();
+
+      if (data.success) {
+        setProductAdsLogs(data.data || []);
+        setProductAdsLogsTotal(data.pagination?.total || 0);
+        setProductAdsHistoryServerPagination({
+          total: data.pagination?.total || 0,
+          totalPages: data.pagination?.total_pages || 1,
+          hasMore: data.pagination?.has_more || false,
+          hasPrevious: data.pagination?.has_previous || false,
+        });
+      } else {
+        setProductAdsLogs([]);
+        setProductAdsLogsTotal(0);
+      }
     } catch (error) {
       console.error("Error loading page ads logs:", error);
       setProductAdsLogs([]);
@@ -491,7 +507,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         loadPageAdsLogs();
       }
     }
-  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, productAdsHistoryPage, productAdsHistoryPageSize, adsHistorySelectedProducts]);
+  }, [activeTab, adsHistoryMode, adsHistoryDateRange, adsHistorySelectedPages, adsHistorySelectedUsers, adsHistorySelectedProducts]);
 
   // No longer need client-side pagination since we're using server-side pagination
   // const paginatedAdsLogs = useMemo(() => {
@@ -632,13 +648,13 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       setLoading(true);
       try {
         // Remove prodData from destructuring since we removed listProducts from Promise.all
-        const [pg, plats, promo, userPages, rolesData] = await Promise.all([
+        const [pg, plats, promo, userPages, rolesData, allUsersData] = await Promise.all([
           listActivePages(currentUser.companyId),
           listPlatforms(currentUser.companyId, true, currentUser.role),
           listPromotions(),
           loadPagesWithUserAccess(),
           listRoles(),
-          // listProducts(), // Moved to conditional loading below
+          listUsers(),
         ]);
         if (cancelled) return;
 
@@ -678,7 +694,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
         // Conditional Product Loading
         let loadedProducts: any[] = [];
         if (hasSystemAccess) {
-          loadedProducts = await listProducts();
+          loadedProducts = await listProducts(currentUser.companyId);
           if (!Array.isArray(loadedProducts)) loadedProducts = [];
         } else {
           // Fetch only assigned products
@@ -724,17 +740,35 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
         // Logic check: if is_system (e.g. Super Admin, Admin Control) show all pages
         if (hasSystemAccess) {
+          // Select all active pages
           setAdsHistorySelectedPages(
             allPages
               .filter((page: any) => page.active !== false)
               .map((page: any) => page.id)
           );
+
+          // Select all products
+          setAdsHistorySelectedProducts(
+            loadedProducts.map((p: any) => p.id)
+          );
+
+          // Select all marketing users
+          const marketingUsers = Array.isArray(allUsersData)
+            ? allUsersData.filter(
+              (u: any) => u.role === "Marketing" &&
+                (u.company_id === currentUser.companyId || u.companyId === currentUser.companyId)
+            )
+            : [];
+          setAdsHistorySelectedUsers(marketingUsers.map((u: any) => u.id));
         } else {
           setAdsHistorySelectedPages(
             userPages
               .filter((page: Page) => page.active !== false)
               .map((page: Page) => page.id),
           );
+          // For non-system users, maybe select their own products/users?
+          // Existing behavior: defaults to empty (which implies specific logic or none).
+          // But user request focused on system role.
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -981,74 +1015,9 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
   }, [activeTab, selectedDate, userPages]);
 
-  // Initial data loading for Ads Input when component mounts
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (activeTab === "adsInput" && selectedDate && userPages.length > 0) {
-        loadExistingAdsData();
-      }
-    }, 500);
 
-    return () => clearTimeout(timer);
-  }, [activeTab, selectedDate]);
 
-  // Load ads history when switching to adsHistory tab or when pagination/filters change
-  useEffect(() => {
-    const loadHistory = async () => {
-      if (activeTab !== "adsHistory") return;
-      setAdsLogsLoading(true);
-      try {
-        const offset = (adsHistoryPage - 1) * adsHistoryPageSize;
 
-        // Determine user filter based on role and selection
-        let userFilter: number | number[] | undefined;
-        if (currentUser.role === "Super Admin" || currentUser.role === "Admin Control") {
-          // For admins: use selected users if any, otherwise show all
-          userFilter = adsHistorySelectedUsers.length > 0 ? adsHistorySelectedUsers : undefined;
-        } else {
-          // For non-admins: always filter by their own ID
-          userFilter = currentUser.id;
-        }
-
-        const result = await loadAdsLogs(
-          adsHistorySelectedPages.length > 0
-            ? adsHistorySelectedPages
-            : undefined,
-          adsHistoryDateRange.start || undefined,
-          adsHistoryDateRange.end || undefined,
-          userFilter,
-          adsHistoryPageSize,
-          offset,
-        );
-
-        // No need to sort on client side since server already sorts by date DESC
-        setAdsLogs(result.data || []);
-        setAdsLogsTotal(result.total || 0);
-
-        // Update server pagination info
-        setServerPagination({
-          currentPage: result.currentPage || 1,
-          totalPages: result.totalPages || 1,
-          hasPrevious: result.hasPrevious || false,
-          hasMore: result.hasMore || false,
-        });
-      } catch (e) {
-        console.error("Failed to load ads history:", e);
-        setAdsLogs([]);
-        setAdsLogsTotal(0);
-      } finally {
-        setAdsLogsLoading(false);
-      }
-    };
-    loadHistory();
-  }, [
-    activeTab,
-    adsHistoryPage,
-    adsHistoryPageSize,
-    adsHistoryDateRange,
-    adsHistorySelectedPages,
-    adsHistorySelectedUsers,
-  ]);
 
   // Toggle page expand/collapse
   const togglePageExpand = (pageId: number) => {
@@ -1295,73 +1264,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     }
   };
 
-  // Load ads log data for display with pagination
-  const loadAdsLogs = async (
-    pageIds?: number[],
-    dateFrom?: string,
-    dateTo?: string,
-    userId?: number | number[],
-    limit?: number,
-    offset?: number,
-  ) => {
-    try {
-      const params = new URLSearchParams();
-      if (pageIds && pageIds.length > 0) {
-        params.set("page_ids", pageIds.join(","));
-      }
-      if (dateFrom) params.set("date_from", dateFrom);
-      if (dateTo) params.set("date_to", dateTo);
-      if (userId) {
-        // Handle both single user ID and array of user IDs
-        const userIdStr = Array.isArray(userId) ? userId.join(",") : String(userId);
-        params.set("user_id", userIdStr);
-      }
-      if (limit) params.set("limit", String(limit));
-      if (offset !== undefined) params.set("offset", String(offset));
 
-      const token = localStorage.getItem("authToken");
-      const headers: any = { "Content-Type": "application/json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(
-        `${API_BASE}/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
-        {
-          headers,
-        },
-      );
-      const data = await res.json();
-      if (data.success) {
-        return {
-          data: data.data,
-          total: data.pagination?.total || 0,
-          currentPage: data.pagination?.current_page || 1,
-          totalPages: data.pagination?.total_pages || 1,
-          hasPrevious: data.pagination?.has_previous || false,
-          hasMore: data.pagination?.has_more || false,
-        };
-      }
-      return {
-        data: [],
-        total: 0,
-        currentPage: 1,
-        totalPages: 1,
-        hasPrevious: false,
-        hasMore: false,
-      };
-    } catch (e) {
-      console.error("Failed to load ads logs:", e);
-      return {
-        data: [],
-        total: 0,
-        currentPage: 1,
-        totalPages: 1,
-        hasPrevious: false,
-        hasMore: false,
-      };
-    }
-  };
 
   // Update existing ads log
   const updateAdsLog = async (id: number, updates: any) => {
@@ -2060,7 +1963,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       {/* Content based on active tab */}
       {
-        (!hasAdminAccess(currentUser) || activeTab === "ads") && (
+        (!hasSystemAccess || activeTab === "ads") && (
           <>
             {/* Pages management */}
             <section className="bg-white rounded-lg shadow p-5">
@@ -2321,7 +2224,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       {/* User Management Tab - Admin Only */}
       {
-        hasAdminAccess(currentUser) && activeTab === "userManagement" && (
+        hasSystemAccess && activeTab === "userManagement" && (
           <>
             {/* Active Pages List */}
             <section className="bg-white rounded-lg shadow p-5">
@@ -2655,7 +2558,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       {/* Ads Input Tab */}
       {
-        hasAdminAccess(currentUser) && activeTab === "adsInput" && (
+        hasSystemAccess && activeTab === "adsInput" && (
           <>
             <section className="bg-white rounded-lg shadow p-5">
               <div className="flex items-center justify-between mb-4">
@@ -2894,7 +2797,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       {/* Dashboard Tab */}
       {
-        hasAdminAccess(currentUser) && activeTab === "dashboard" && (
+        hasSystemAccess && activeTab === "dashboard" && (
           <section className="bg-white rounded-lg shadow p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -3683,7 +3586,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
 
       {/* Ads History Tab */}
       {
-        hasAdminAccess(currentUser) && activeTab === "adsHistory" && (
+        hasSystemAccess && activeTab === "adsHistory" && (
           <section className="bg-white rounded-lg shadow p-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-semibold text-gray-800">
@@ -4056,87 +3959,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                     );
                   })()}
 
-                  {productAdsLogs.length > 0 && (
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                      <div className="text-sm text-gray-600">
-                        {(() => {
-                          const start =
-                            (productAdsHistoryPage - 1) * productAdsHistoryPageSize + 1;
-                          const end = Math.min(
-                            start + productAdsHistoryPageSize - 1,
-                            productAdsLogsTotal,
-                          );
-                          return productAdsLogsTotal > 0
-                            ? `แสดง ${start}-${end} จาก ${productAdsLogsTotal} รายการ (ทั้งหมด ${productAdsHistoryServerPagination.totalPages} หน้า)`
-                            : "ไม่มีข้อมูล";
-                        })()}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-700">แถวต่อหน้า</label>
-                        <select
-                          className="border rounded px-2 py-1 text-sm bg-white"
-                          value={productAdsHistoryPageSize}
-                          onChange={(e) =>
-                            setProductAdsHistoryPageSize(Number(e.target.value))
-                          }
-                        >
-                          {[10, 20, 50, 100].map((sz) => (
-                            <option key={sz} value={sz}>
-                              {sz}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                          onClick={() =>
-                            setProductAdsHistoryPage((p) => Math.max(1, p - 1))
-                          }
-                          disabled={
-                            !productAdsHistoryServerPagination.hasPrevious || productAdsHistoryPage === 1
-                          }
-                        >
-                          ก่อนหน้า
-                        </button>
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm text-gray-700">หน้า</span>
-                          <input
-                            type="number"
-                            min="1"
-                            max={productAdsHistoryServerPagination.totalPages}
-                            value={productAdsHistoryPage}
-                            onChange={(e) => {
-                              const page = Math.max(
-                                1,
-                                Math.min(
-                                  productAdsHistoryServerPagination.totalPages,
-                                  Number(e.target.value) || 1,
-                                ),
-                              );
-                              setProductAdsHistoryPage(page);
-                            }}
-                            className="w-16 px-2 py-1 border rounded text-sm text-center"
-                          />
-                          <span className="text-sm text-gray-700">
-                            / {productAdsHistoryServerPagination.totalPages}
-                          </span>
-                        </div>
-                        <button
-                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                          onClick={() =>
-                            setProductAdsHistoryPage((p) =>
-                              Math.min(productAdsHistoryServerPagination.totalPages, p + 1),
-                            )
-                          }
-                          disabled={
-                            !productAdsHistoryServerPagination.hasMore ||
-                            productAdsHistoryPage === productAdsHistoryServerPagination.totalPages
-                          }
-                        >
-                          ถัดไป
-                        </button>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )
             ) : (
@@ -4267,36 +4090,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
                       </table>
                     );
                   })()}
-                  {productAdsLogs.length > 0 && (
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                      <div className="text-sm text-gray-600">
-                        {(() => {
-                          const start = (productAdsHistoryPage - 1) * productAdsHistoryPageSize + 1;
-                          const end = Math.min(start + productAdsHistoryPageSize - 1, productAdsLogsTotal);
-                          return `แสดง ${start}-${end} จาก ${productAdsLogsTotal} รายการ`;
-                        })()}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                          onClick={() => setProductAdsHistoryPage(p => Math.max(1, p - 1))}
-                          disabled={!productAdsHistoryServerPagination.hasPrevious}
-                        >
-                          ก่อนหน้า
-                        </button>
-                        <span className="text-sm text-gray-700">
-                          หน้า {productAdsHistoryPage} / {productAdsHistoryServerPagination.totalPages}
-                        </span>
-                        <button
-                          className="px-3 py-1 border rounded text-sm disabled:opacity-50"
-                          onClick={() => setProductAdsHistoryPage(p => Math.min(productAdsHistoryServerPagination.totalPages, p + 1))}
-                          disabled={!productAdsHistoryServerPagination.hasMore}
-                        >
-                          ถัดไป
-                        </button>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               )
             )}

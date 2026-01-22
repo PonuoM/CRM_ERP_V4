@@ -2,6 +2,8 @@
 require_once __DIR__ . "/../config.php";
 
 cors();
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
 
 try {
   $pdo = db_connect();
@@ -9,7 +11,7 @@ try {
   // Get query parameters
   $pageId = isset($_GET["page_id"]) ? (int) $_GET["page_id"] : null;
   $pageIds = isset($_GET["page_ids"]) ? $_GET["page_ids"] : null;
-  $userId = isset($_GET["user_id"]) ? (int) $_GET["user_id"] : null;
+  $userId = isset($_GET["user_id"]) ? $_GET["user_id"] : null;
   $dateFrom = isset($_GET["date_from"]) ? $_GET["date_from"] : null;
   $dateTo = isset($_GET["date_to"]) ? $_GET["date_to"] : null;
   $limit = isset($_GET["limit"]) ? (int) $_GET["limit"] : null;
@@ -34,8 +36,14 @@ try {
   }
 
   if ($userId) {
-    $whereConditions[] = "mal.user_id = ?";
-    $params[] = $userId;
+    $userIdArray = explode(",", $userId);
+    $userIdArray = array_map("intval", $userIdArray);
+    $userIdArray = array_filter($userIdArray);
+    if (!empty($userIdArray)) {
+      $placeholders = str_repeat("?,", count($userIdArray) - 1) . "?";
+      $whereConditions[] = "mal.user_id IN ($placeholders)";
+      $params = array_merge($params, $userIdArray);
+    }
   }
 
   if ($dateFrom) {
@@ -66,9 +74,10 @@ try {
     $token = $matches[1];
     // Check token
     $stmt = $pdo->prepare("
-      SELECT u.id, u.role, u.username, u.first_name, u.last_name, u.company_id
+      SELECT u.id, u.role, u.username, u.first_name, u.last_name, u.company_id, r.is_system
       FROM user_tokens ut
       JOIN users u ON ut.user_id = u.id
+      LEFT JOIN roles r ON u.role = r.name
       WHERE ut.token = ? AND ut.expires_at > NOW()
     ");
     $stmt->execute([$token]);
@@ -86,14 +95,23 @@ try {
     session_start();
     if (isset($_SESSION['user'])) {
       $currentUser = $_SESSION['user'];
+      // Try to fetch Fresh user data with role info if session is stale
+      $stmt = $pdo->prepare("SELECT u.*, r.is_system FROM users u LEFT JOIN roles r ON u.role = r.name WHERE u.id = ?");
+      $stmt->execute([$currentUser['id']]);
+      $freshUser = $stmt->fetch();
+      if ($freshUser) {
+          $currentUser = $freshUser;
+      }
       $currentUserId = $currentUser['id'];
       $userRole = $currentUser['role'];
       $currentUserCompanyId = $currentUser['company_id'] ?? null;
     }
   }
 
-  // Check user permissions (Bypass for Super Admin and Admin Control)
-  if (!in_array($userRole, ['Super Admin', 'Admin Control'])) {
+  // Check user permissions (Bypass if is_system = 1)
+  $isSystem = !empty($currentUser['is_system']) && $currentUser['is_system'] == 1;
+  
+  if (!$isSystem) {
       if (!$currentUserId) {
         // Not logged in or invalid token -> Return empty or 401
         // We return empty to avoid breaking UI if it expects data

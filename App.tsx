@@ -2611,9 +2611,15 @@ const App: React.FC = () => {
           // If not loaded, we rely on backend to distinguish (SAFE b/c backend ignores ID on insert).
           if (originalOrder && !isExisting) {
             const { id, ...rest } = item;
-            return rest;
+            return {
+              ...rest,
+              creator_id: item.creatorId,
+            };
           }
-          return item;
+          return {
+            ...item,
+            creator_id: item.creatorId,
+          };
         }),
         boxes: updatedOrder.boxes || [], // CRITICAL: Backend needs boxes to generate sub-order IDs
         sales_channel: updatedOrder.salesChannel,
