@@ -33,7 +33,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
+  // Direct file access for inventory and product modules (bypassing index.php router)
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
