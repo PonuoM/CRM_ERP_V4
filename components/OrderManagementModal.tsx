@@ -276,6 +276,9 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   // Prevent duplicate fetches for the same order
   const lastFetchedOrderId = useRef<number | null>(null);
 
+  // Track manual box edits to ensure they persist over any state resets
+  const boxOverrides = useRef<Record<number, { collectionAmount?: number; codAmount?: number }>>({});
+
   const updateShippingAddress = (patch: Partial<Address>) => {
     setCurrentOrder((prev) => ({
       ...prev,
@@ -675,8 +678,22 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
 
     const normalizedDelivery = normalizeDateInputValue(order.deliveryDate);
 
+    const normalizedBoxes = Array.isArray((order as any).boxes)
+      ? (order as any).boxes.map((b: any) => ({
+        boxNumber: Number(b.boxNumber ?? b.box_number ?? 1),
+        codAmount: Number(b.codAmount ?? b.cod_amount ?? 0),
+        collectionAmount: Number(
+          b.collectionAmount ?? b.collection_amount ?? b.codAmount ?? b.cod_amount ?? 0
+        ),
+        collectedAmount: Number(b.collectedAmount ?? b.collected_amount ?? 0),
+        waivedAmount: Number(b.waivedAmount ?? b.waived_amount ?? 0),
+        trackingNumber: b.trackingNumber ?? b.tracking_number,
+      }))
+      : [];
+
     const hydrated = {
       ...order,
+      boxes: normalizedBoxes,
       items: Array.isArray(order.items)
         ? order.items.map((it: any, i: number) => ({
           id: Number(it.id ?? i + 1),
@@ -1631,12 +1648,19 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
       Number.isFinite(computedTotal) &&
       Math.abs(computedTotal - (currentOrder.totalAmount ?? 0)) > 0.009
     ) {
-      setCurrentOrder((prev) => ({ ...prev, totalAmount: computedTotal }));
+      setCurrentOrder((prev) => {
+        return {
+          ...prev,
+          totalAmount: computedTotal,
+        };
+      });
     }
   }, [
     currentOrder.items,
     currentOrder.shippingCost,
     currentOrder.billDiscount,
+    currentOrder.paymentMethod, // Added dependency
+    currentOrder.boxes?.length, // Added dependency
   ]);
 
   const handleSelectProvince = (province: any) => {
@@ -2017,10 +2041,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
   ) => {
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
 
+    // Persist to ref immediately
+    if (!boxOverrides.current[boxNumber]) {
+      boxOverrides.current[boxNumber] = {};
+    }
+    boxOverrides.current[boxNumber] = {
+      ...boxOverrides.current[boxNumber],
+      [field]: safe,
+    };
+    if (field === "collectionAmount") {
+      boxOverrides.current[boxNumber].codAmount = safe;
+    }
+
     setCurrentOrder((prev) => {
       const boxes = (prev.boxes || []).map((box) => {
         if (box.boxNumber === boxNumber) {
-          return { ...box, [field]: safe };
+          const updates: any = { [field]: safe };
+          // Force sync: if user edits collection amount, set codAmount too
+          // This ensures that the manual input overrides any previous calculated value
+          if (field === "collectionAmount") {
+            updates.codAmount = safe;
+          }
+          return { ...box, ...updates };
         }
 
         return box;
@@ -2141,41 +2183,56 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
     }
 
     // Create boxes array based on items (exclude child items and freebies from amount calculation)
+    // Create boxes array based on MANUAL INPUT from user (currentOrder.boxes)
+    // We do NOT recalculate from items anymore to respect user's manual edits
     const boxes = uniqueBoxes.map((boxNum) => {
-      // Check if we already have a manual config for this box
+      // Find the existing box config directly from currentOrder.boxes
+      // This preserves whatever amount the user typed in the COD box list
       const existingBox = currentOrder.boxes?.find((b) => b.boxNumber === boxNum);
+
       if (existingBox) {
+        // Fix: Ensure codAmount matches the collectionAmount input
+        // Check for manual overrides first (ref persistence)
+        const manual = boxOverrides.current[boxNum];
+
+        let finalCollection = existingBox.collectionAmount ?? existingBox.codAmount ?? 0;
+        let finalCod = existingBox.codAmount ?? existingBox.collectionAmount ?? 0;
+
+        // If user manually edited this box, use the override values
+        if (manual) {
+          if (manual.collectionAmount !== undefined) {
+            finalCollection = manual.collectionAmount;
+            finalCod = manual.collectionAmount; // Sync COD to collection
+          }
+        } else {
+          // Fallback sync logic for non-edited boxes
+          const synced = finalCollection || finalCod;
+          finalCollection = synced;
+          finalCod = synced;
+        }
+
         return {
           ...existingBox,
-          // Ensure collectionAmount is set (fallback to codAmount or 0)
-          collectionAmount: existingBox.collectionAmount ?? existingBox.codAmount ?? 0,
+          // Ensure meaningful defaults if missing
+          collectionAmount: finalCollection,
+          codAmount: finalCod,
         };
       }
 
-      // Get items in this box (exclude child items for amount calculation)
-      const boxItems = currentOrder.items.filter((item: any) => {
-        const itemBoxNumber = Number(item.boxNumber || item.box_number) || 1;
-        return itemBoxNumber === boxNum && !item.parentItemId;
-      });
-
-      // Calculate box amount (exclude freebies)
-      const boxAmount = boxItems.reduce((sum, item) => {
-        const isFreebie = item.isFreebie || (item as any).is_freebie;
-        if (isFreebie) return sum;
-        const itemTotal =
-          (item.pricePerUnit || 0) * (item.quantity || 0) -
-          (item.discount || 0);
-        return sum + itemTotal;
-      }, 0);
-
+      // Fallback only if box is missing (should verify if this happens)
+      // If we have items for this box but no box config, we might default to 0
+      // or try to calculate. Given the requirement "COD amount according to input only",
+      // we should probably initialize with 0 if it wasn't there.
       return {
         boxNumber: boxNum,
-        collectionAmount: boxAmount,
-        codAmount: boxAmount, // Required by CodBox type
+        collectionAmount: 0,
+        codAmount: 0,
         collectedAmount: 0,
         waivedAmount: 0,
       };
     });
+
+
 
     // Persist slip metadata edits (bank/date/amount) for Transfer/PayAfter
     if (
@@ -3064,14 +3121,8 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                               <input
                                 type="number"
                                 value={item.pricePerUnit ?? (item as any).price_per_unit}
-                                onChange={(e) =>
-                                  handleItemChange(
-                                    index,
-                                    "pricePerUnit",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-20 border rounded px-1 text-right"
+                                readOnly
+                                className="w-20 border rounded px-1 text-right bg-gray-100 text-gray-500 cursor-not-allowed"
                               />
                             ) : (
                               `฿${isFreebie ? 0 : itemPrice.toLocaleString()} `
@@ -3100,11 +3151,28 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({
                           </td>
 
                           <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                            {(item as any).parentItemId
-                              ? ""
-                              : isFreebie
-                                ? "฿0"
-                                : `฿${itemTotal.toLocaleString()}`}
+                            {(item as any).parentItemId ? (
+                              ""
+                            ) : isFreebie ? (
+                              "฿0"
+                            ) : canEditItem ? (
+                              <input
+                                type="number"
+                                value={Math.max(0, itemTotal)}
+                                onChange={(e) => {
+                                  const newTotal = Math.max(0, Number(e.target.value));
+                                  // Calculate needed discount: (Price * Qty) - NewTotal
+                                  const price = Number(item.pricePerUnit || 0);
+                                  const qty = Number(item.quantity || 0);
+                                  const newDiscount = Math.max(0, price * qty - newTotal);
+
+                                  handleItemChange(index, "discount", newDiscount);
+                                }}
+                                className="w-24 border rounded px-1 text-right font-medium"
+                              />
+                            ) : (
+                              `฿${itemTotal.toLocaleString()}`
+                            )}
                           </td>
 
                           <td className="px-3 py-2 text-center">

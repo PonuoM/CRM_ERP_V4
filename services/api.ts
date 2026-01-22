@@ -851,7 +851,6 @@ export async function saveReturnOrders(returns: any[]) {
 }
 
 export async function updateOrder(id: string | number, data: any) {
-  enrichOrderWithBoxes(data);
   return apiFetch(`orders/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -872,7 +871,6 @@ export async function updateCustomer(id: string, payload: any) {
 }
 
 export async function patchOrder(id: string, payload: any) {
-  enrichOrderWithBoxes(payload);
 
   // DEBUG: Log generated boxes
   console.log('Generated boxes:', {
