@@ -14,6 +14,9 @@
   - มีปุ่ม **"จัดการ" (Manage)** ในแต่ละแถว
 - **ตรวจสอบแล้ว (Verified)**: แสดงรายการที่มีบันทึกใน `order_returns` แล้ว
   - **New Feature**: มีปุ่ม **"จัดการ"** เพื่อแก้ไขข้อมูล (สถานะ/หมายเหตุ) ภายหลังได้ โดยระบบจะดึงข้อมูล Order กลับมาให้แก้ไขใน Modal เดิม
+  - **Grouping Display**: รายการจะถูกจัดกลุ่มตาม **Order ID** เดียวกัน เพื่อไม่ให้แสดงซ้ำซ้อน
+    - คอลัมน์แรกแสดง **Order ID** (Main)
+    - คอลัมน์ Tracking แสดงรายการ Tracking ทั้งหมดที่เกี่ยวข้อง พร้อมสถานะราย Tracking
 
 ### 2.3 ฟีเจอร์ "จัดการ" (Manage Feature) และการค้นหา
 - **การค้นหา (Search)**:
@@ -73,3 +76,12 @@ CREATE TABLE `order_returns` (
   KEY `idx_sub_order_id` (`sub_order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
+
+## 5. อัปเดตล่าสุด (Change Log - 21/01/2026)
+- **Grouped Verified View**: แสดงผลรายการใน Tab "ตรวจสอบแล้ว" ให้รวมกลุ่มตาม **Order ID** เพื่อลดความซ้ำซ้อน
+  - **Tracking & Status**: แสดงรายการ Tracking ทั้งหมดใน Order นั้นๆ ในคอลัมน์เดียว โดยระบุสถานะแยกราย Tracking
+- **UI Adjustments**:
+  - เปลี่ยนคอลัมน์แรกจาก Sub Order ID เป็น **Order ID**
+  - เพิ่มปุ่ม **Copy Order ID** ในทุกรายการ
+  - ปรับขนาดปุ่ม Tab ให้กดง่ายขึ้น (Padding)
+- **Fixes**: แก้ไข Syntax Error สำหรับการ Build Project

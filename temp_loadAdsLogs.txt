@@ -1,0 +1,67 @@
+  // Load ads log data for display with pagination
+  const loadAdsLogs = async (
+    pageIds?: number[],
+    dateFrom?: string,
+    dateTo?: string,
+    userId?: number | number[],
+    limit?: number,
+    offset?: number,
+  ) => {
+    try {
+      const params = new URLSearchParams();
+      if (pageIds && pageIds.length > 0) {
+        params.set("page_ids", pageIds.join(","));
+      }
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      if (userId) {
+        // Handle both single user ID and array of user IDs
+        const userIdStr = Array.isArray(userId) ? userId.join(",") : String(userId);
+        params.set("user_id", userIdStr);
+      }
+      if (limit) params.set("limit", String(limit));
+      if (offset !== undefined) params.set("offset", String(offset));
+
+      const token = localStorage.getItem("authToken");
+      const headers: any = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(
+        `${API_BASE}/Marketing_DB/ads_log_get.php${params.toString() ? `?${params}` : ""}`,
+        {
+          headers,
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        return {
+          data: data.data,
+          total: data.pagination?.total || 0,
+          currentPage: data.pagination?.current_page || 1,
+          totalPages: data.pagination?.total_pages || 1,
+          hasPrevious: data.pagination?.has_previous || false,
+          hasMore: data.pagination?.has_more || false,
+        };
+      }
+      return {
+        data: [],
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        hasPrevious: false,
+        hasMore: false,
+      };
+    } catch (e) {
+      console.error("Failed to load ads logs:", e);
+      return {
+        data: [],
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        hasPrevious: false,
+        hasMore: false,
+      };
+    }
+  };
