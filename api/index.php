@@ -2545,6 +2545,7 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 $creatorId = $_GET['creatorId'] ?? null;
                 $orderStatus = $_GET['orderStatus'] ?? null;
                 $manageTab = $_GET['tab'] ?? null;
+                $returnMode = $_GET['returnMode'] ?? null;
                 
                 $dbName = $pdo->query("SELECT DATABASE()")->fetchColumn();
                 $ordersColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '$dbName' AND TABLE_NAME = 'orders'")->fetchAll(PDO::FETCH_COLUMN);
@@ -2797,6 +2798,16 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $phoneDigits = preg_replace('/\D/', '', $customerPhone);
                     $whereConditions[] = 'REPLACE(REPLACE(REPLACE(c.phone, "-", ""), " ", ""), "(", "") LIKE ?';
                     $params[] = '%' . $phoneDigits . '%';
+                }
+
+                // New Return Mode Logic: Filter out orders already present in order_returns
+                if ($returnMode === 'pending') {
+                    // Check sub_order_id matches o.id or o.id-suffix
+                    $whereConditions[] = "NOT EXISTS (
+                        SELECT 1 FROM order_returns orr 
+                        WHERE orr.sub_order_id = o.id 
+                           OR orr.sub_order_id LIKE CONCAT(o.id, '-%')
+                    )";
                 }
                 
                 if ($creatorId) {

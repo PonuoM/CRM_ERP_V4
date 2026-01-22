@@ -678,6 +678,7 @@ export async function listOrders(params: {
   orderStatus?: string | string[];
   shop?: string;
   tab?: string;
+  returnMode?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
   ok: boolean;
@@ -724,6 +725,7 @@ export async function listOrders(params: {
 
   if (safeParams.shop) qs.set("shop", safeParams.shop);
   if (safeParams.tab) qs.set("tab", safeParams.tab);
+  if (safeParams.returnMode) qs.set("returnMode", safeParams.returnMode);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }

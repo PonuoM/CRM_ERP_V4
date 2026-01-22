@@ -24,7 +24,7 @@ interface MatchResult {
     importRow: ImportRow;
     matchedOrder?: Order;
     matchedSubOrderId?: string | null;
-    status: 'matched' | 'unmatched_system' | 'unmatched_file' | 'amount_mismatch';
+    status: 'matched' | 'unmatched_system' | 'unmatched_file' | 'amount_mismatch' | 'already_verified';
     diff: number;
 }
 
@@ -232,6 +232,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
             const res = await listOrders({
                 companyId: user.companyId,
                 orderStatus: OrderStatus.Returned,
+                returnMode: 'pending',
                 pageSize: 1000 // Construct a reasonable limit or pagination
             });
             if (res.ok) {
@@ -316,7 +317,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
 
         if (parsed.length > 0) {
             setImportedData(parsed);
-            performMatching(parsed, orders);
+            performMatching(parsed, orders, verifiedOrders);
             setMode('verify');
             setIsPasteModalOpen(false);
             setPasteContent('');
@@ -494,13 +495,13 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
             }
 
             setImportedData(parsed);
-            performMatching(parsed, orders);
+            performMatching(parsed, orders, verifiedOrders);
             setMode('verify');
         };
         reader.readAsBinaryString(file);
     };
 
-    const performMatching = (imported: ImportRow[], systemOrders: Order[]) => {
+    const performMatching = (imported: ImportRow[], systemOrders: Order[], verifiedList: VerifiedOrder[]) => {
         const results: MatchResult[] = [];
         const matchedOrderIds = new Set<string>();
 
@@ -543,11 +544,27 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
                     diff: sysAmount - row.amount // Positive = System > Import
                 });
             } else {
-                results.push({
-                    importRow: row,
-                    status: 'unmatched_file',
-                    diff: 0
-                });
+                // Check if it's already verified
+                const alreadyVerified = verifiedList.find(v =>
+                    v.tracking_number === row.orderNumber ||
+                    v.sub_order_id === row.orderNumber ||
+                    v.sub_order_id?.startsWith(row.orderNumber + '-')
+                );
+
+                if (alreadyVerified) {
+                    results.push({
+                        importRow: row,
+                        matchedSubOrderId: alreadyVerified.sub_order_id,
+                        status: 'already_verified',
+                        diff: 0 // Assume 0 or calculate if verified amount differs? Assume 0 for status check.
+                    });
+                } else {
+                    results.push({
+                        importRow: row,
+                        status: 'unmatched_file',
+                        diff: 0
+                    });
+                }
             }
         });
 
@@ -572,7 +589,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.filter(o => !verifiedOrders.some(v => v.sub_order_id === o.id || v.sub_order_id?.startsWith(o.id + '-'))).map(order => (
+                    {orders.map(order => (
                         <tr key={order.id} className="hover:bg-gray-50">
                             <td
                                 className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600"
@@ -627,7 +644,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
                             </td>
                         </tr>
                     ))}
-                    {orders.filter(o => !verifiedOrders.some(v => v.sub_order_id === o.id || v.sub_order_id?.startsWith(o.id + '-'))).length === 0 && (
+                    {orders.length === 0 && (
                         <tr>
                             <td colSpan={6} className="px-6 py-12 text-center text-gray-500">ไม่พบรายการสินค้าตีกลับ (หรือตรวจสอบครบแล้ว)</td>
                         </tr>
@@ -673,6 +690,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
                 <h3 className="font-medium text-gray-700">ผลการตรวจสอบ ({matchResults.length} รายการ)</h3>
                 <div className="flex gap-2 text-sm">
                     <span className="flex items-center gap-1 text-green-600"><CheckCircle size={14} /> ตรงกัน ({matchResults.filter(r => r.status === 'matched').length})</span>
+                    <span className="flex items-center gap-1 text-blue-600"><CheckCircle size={14} /> ตรวจสอบแล้ว ({matchResults.filter(r => r.status === 'already_verified').length})</span>
                     <span className="flex items-center gap-1 text-yellow-600"><AlertCircle size={14} /> ยอดไม่ตรง ({matchResults.filter(r => r.status === 'amount_mismatch').length})</span>
                     <span className="flex items-center gap-1 text-red-600"><XCircle size={14} /> ไม่พบในระบบ ({matchResults.filter(r => r.status === 'unmatched_file').length})</span>
                 </div>
@@ -714,6 +732,7 @@ const ReturnManagementPage: React.FC<ReturnManagementPageProps> = ({ user }) => 
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                                 {res.status === 'matched' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Verified</span>}
+                                {res.status === 'already_verified' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Already Verified</span>}
                                 {res.status === 'amount_mismatch' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Amount Diff</span>}
                                 {res.status === 'unmatched_file' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Not Found</span>}
                             </td>
