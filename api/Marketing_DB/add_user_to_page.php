@@ -19,8 +19,8 @@ try {
         ], 400);
     }
 
-    // Check if user exists and is Marketing role
-    $userCheck = $pdo->prepare("SELECT id, role FROM users WHERE id = ? AND role = 'Marketing'");
+    // Check if user exists (relaxed check: just existence, or potentially check company_id if needed later)
+    $userCheck = $pdo->prepare("SELECT id FROM users WHERE id = ?");
     $userCheck->execute([$userId]);
     $user = $userCheck->fetch();
 

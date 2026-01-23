@@ -298,6 +298,26 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Product Filters
   const [productFilterUser, setProductFilterUser] = useState<number | "All">("All");
 
+  // Effect to default filter to current user if system admin
+  useEffect(() => {
+    if (roles.length > 0 && currentUser?.id) {
+      const userRole = roles.find(r => r.name === currentUser.role);
+      // If system user
+      if (userRole?.is_system) {
+        // In User Management, default to "All" (show all users' pages)
+        if (activeTab === "userManagement") {
+          setPageFilterUser("All");
+        }
+        // In Dashboard (or others), default to themselves for personalized view
+        else if (activeTab === "dashboard") {
+          if (pageFilterUser === "All") setPageFilterUser(currentUser.id);
+          if (productFilterUser === "All") setProductFilterUser(currentUser.id);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles, currentUser.id, activeTab]);
+
   // States for ads input
   const [userPages, setUserPages] = useState<any[]>([]);
   const [adsInputData, setAdsInputData] = useState<any[]>([]);
@@ -752,11 +772,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             loadedProducts.map((p: any) => p.id)
           );
 
-          // Select all marketing users
+          // Select all marketing + system users
           const marketingUsers = Array.isArray(allUsersData)
             ? allUsersData.filter(
-              (u: any) => u.role === "Marketing" &&
-                (u.company_id === currentUser.companyId || u.companyId === currentUser.companyId)
+              (u: any) => {
+                const userRole = fetchedRoles.find((r: any) => r.name === u.role);
+                const isSystem = userRole?.is_system || false;
+                return (u.role === "Marketing" || isSystem) &&
+                  (u.company_id === currentUser.companyId || u.companyId === currentUser.companyId);
+              }
             )
             : [];
           setAdsHistorySelectedUsers(marketingUsers.map((u: any) => u.id));
@@ -901,7 +925,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
     loadMarketingPageUsers();
     loadMarketingUsers();
     loadMarketingUserProducts();
-  }, []);
+  }, [roles]); // Add roles dependency to ensure we can check is_system
 
   const [marketingUserProducts, setMarketingUserProducts] = useState<any[]>([]);
 
@@ -1035,7 +1059,7 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
   // Load marketing page users from marketing_user_page table
   const loadMarketingPageUsers = async () => {
     try {
-      const res = await fetch(`${API_BASE}/Marketing_DB/get_marketing_page_users.php`);
+      const res = await fetch(`${API_BASE}/Marketing_DB/get_marketing_page_users.php?company_id=${currentUser.companyId}`);
       const data = await res.json();
       if (data.success) {
         setMarketingPageUsers(data.data);
@@ -1051,10 +1075,15 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
       const allUsers = await listUsers();
       const marketingRoleUsers = Array.isArray(allUsers)
         ? allUsers.filter(
-          (u: any) =>
-            u.role === "Marketing" &&
-            (u.company_id === currentUser.companyId ||
-              u.companyId === currentUser.companyId),
+          (u: any) => {
+            const userRole = roles.find(r => r.name === u.role);
+            const isSystem = userRole?.is_system || false;
+            return (
+              (u.role === "Marketing" || isSystem) &&
+              (u.company_id === currentUser.companyId ||
+                u.companyId === currentUser.companyId)
+            );
+          }
         )
         : [];
       setMarketingUsersList(marketingRoleUsers);
@@ -3873,25 +3902,60 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังเพจ</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {marketingUsersList.map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleSubmitUserToPage(user.id)}
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {user.first_name} {user.last_name}
-                      </div>
-                      <div className="text-sm text-gray-600">{user.username}</div>
-                    </div>
-                    <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
-                      เลือก
-                    </button>
+                {/* Admin Users */}
+                {marketingUsersList.filter(u => u.role !== 'Marketing').length > 0 && (
+                  <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm">
+                    ผู้ดูแลระบบ (System Admin)
                   </div>
-                ))}
+                )}
+                {marketingUsersList
+                  .filter(u => u.role !== 'Marketing')
+                  .map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleSubmitUserToPage(user.id)}
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {user.first_name} {user.last_name}
+                        </div>
+                        <div className="text-sm text-gray-600">{user.username}</div>
+                      </div>
+                      <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                        เลือก
+                      </button>
+                    </div>
+                  ))}
+
+                {/* Marketing Users */}
+                {marketingUsersList.filter(u => u.role === 'Marketing').length > 0 && (
+                  <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm mt-3">
+                    ฝ่ายการตลาด (Marketing)
+                  </div>
+                )}
+                {marketingUsersList
+                  .filter(u => u.role === 'Marketing')
+                  .map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleSubmitUserToPage(user.id)}
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {user.first_name} {user.last_name}
+                        </div>
+                        <div className="text-sm text-gray-600">{user.username}</div>
+                      </div>
+                      <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                        เลือก
+                      </button>
+                    </div>
+                  ))}
+
                 {marketingUsersList.length === 0 && (
-                  <div className="text-gray-500">ไม่มีผู้ใช้ Marketing</div>
+                  <div className="text-gray-500 text-center py-4">ไม่มีผู้ใช้</div>
                 )}
               </div>
               <button
@@ -3912,34 +3976,60 @@ const MarketingPage: React.FC<MarketingPageProps> = ({ currentUser, view }) => {
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">เพิ่มผู้ใช้ไปยังสินค้า: {selectedProductForUser.name}</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {marketingUsersList.map((user) => {
-                  const isAlreadyAssigned = marketingUserProducts.some(
-                    m => m.user_id === user.id && m.product_id === selectedProductForUser.id
+                {(() => {
+                  const availableUsers = marketingUsersList.filter(user =>
+                    !marketingUserProducts.some(m => m.user_id === user.id && m.product_id === selectedProductForUser.id)
                   );
 
-                  if (isAlreadyAssigned) return null;
+                  const admins = availableUsers.filter(u => u.role !== 'Marketing');
+                  const marketings = availableUsers.filter(u => u.role === 'Marketing');
+
+                  if (availableUsers.length === 0) {
+                    return <div className="text-gray-500 text-center py-4">ผู้ใช้ทุกคนได้รับสิทธิ์แล้ว</div>;
+                  }
 
                   return (
-                    <div
-                      key={user.id}
-                      className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleSubmitUserToProduct(user.id)}
-                    >
-                      <div>
-                        <div className="font-medium">
-                          {user.first_name} {user.last_name}
+                    <>
+                      {admins.length > 0 && (
+                        <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm">
+                          ผู้ดูแลระบบ (System Admin)
                         </div>
-                        <div className="text-sm text-gray-600">{user.username}</div>
-                      </div>
-                      <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
-                        เลือก
-                      </button>
-                    </div>
+                      )}
+                      {admins.map(user => (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleSubmitUserToProduct(user.id)}
+                        >
+                          <div>
+                            <div className="font-medium">{user.first_name} {user.last_name}</div>
+                            <div className="text-sm text-gray-600">{user.username}</div>
+                          </div>
+                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">เลือก</button>
+                        </div>
+                      ))}
+
+                      {marketings.length > 0 && (
+                        <div className="sticky top-0 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 rounded-sm mt-3">
+                          ฝ่ายการตลาด (Marketing)
+                        </div>
+                      )}
+                      {marketings.map(user => (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleSubmitUserToProduct(user.id)}
+                        >
+                          <div>
+                            <div className="font-medium">{user.first_name} {user.last_name}</div>
+                            <div className="text-sm text-gray-600">{user.username}</div>
+                          </div>
+                          <button className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">เลือก</button>
+                        </div>
+                      ))}
+                    </>
                   );
-                })}
-                {marketingUsersList.every(user => marketingUserProducts.some(m => m.user_id === user.id && m.product_id === selectedProductForUser.id)) && (
-                  <div className="text-gray-500 text-center py-4">ผู้ใช้ทุกคนได้รับสิทธิ์แล้ว</div>
-                )}
+                })()}
               </div>
               <button
                 onClick={() => setSelectedProductForUser(null)}

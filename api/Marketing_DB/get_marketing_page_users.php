@@ -6,7 +6,15 @@ cors();
 try {
     $pdo = db_connect();
 
+    // Get company_id from request
+    $companyId = isset($_GET['company_id']) ? $_GET['company_id'] : null;
+
+    if (!$companyId) {
+        throw new Exception("Company ID is required");
+    }
+
     // Query to get all marketing users connected to pages with user details
+    // Filter by company_id instead of role to allow viewing all assigned users (including Admins)
     $stmt = $pdo->prepare("
         SELECT
             mup.id,
@@ -21,11 +29,11 @@ try {
         FROM marketing_user_page mup
         INNER JOIN users u ON mup.user_id = u.id
         INNER JOIN pages p ON mup.page_id = p.id
-        WHERE u.role = 'Marketing'
+        WHERE u.company_id = ?
         ORDER BY mup.page_id, u.first_name, u.last_name
     ");
 
-    $stmt->execute();
+    $stmt->execute([$companyId]);
     $users = $stmt->fetchAll();
 
     json_response([
