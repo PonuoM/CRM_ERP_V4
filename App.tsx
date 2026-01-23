@@ -6599,18 +6599,7 @@ const App: React.FC = () => {
         />
       );
     }
-    const pageRoleLimits: Record<string, UserRole[]> = {
-      Permissions: [UserRole.SuperAdmin],
-      Teams: [UserRole.SuperAdmin],
-      Products: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Users: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Pages: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Tags: [UserRole.SuperAdmin, UserRole.AdminControl],
-    };
-    const allowedRoles = pageRoleLimits[activePage];
-    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-      return <div className="p-6 text-red-600">Not authorized</div>;
-    }
+
     if (activePage === "Users") {
       return (
         <UserManagementPage
