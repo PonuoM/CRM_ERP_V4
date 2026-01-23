@@ -3416,6 +3416,12 @@ function handle_orders(PDO $pdo, ?string $id): void {
                     $itemsToDelete = array_diff($existingIds, $incomingIds);
                     if (!empty($itemsToDelete)) {
                         $placeholders = implode(',', array_fill(0, count($itemsToDelete), '?'));
+                        
+                        // Fix FK constraint: Delete dependent allocations first
+                        $deleteAllocSql = "DELETE FROM order_item_allocations WHERE order_item_id IN ($placeholders)";
+                        $pdo->prepare($deleteAllocSql)->execute($itemsToDelete);
+
+                        // Then delete the items
                         $deleteSql = "DELETE FROM order_items WHERE id IN ($placeholders) AND (order_id = ? OR parent_order_id = ?)";
                         $deleteParams = array_merge($itemsToDelete, [$id, $id]);
                         $pdo->prepare($deleteSql)->execute($deleteParams);
