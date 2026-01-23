@@ -3023,7 +3023,7 @@ const App: React.FC = () => {
 
     // Prepare bulk sync payload
     const syncPayload = updates.map(u => ({
-      sub_order_id: (u.boxNumber && u.boxNumber > 1 && !u.orderId.match(/-\d+$/)) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
+      sub_order_id: (u.boxNumber && u.boxNumber > 1) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
       tracking_number: u.trackingNumber,
       shipping_provider: detectShippingProvider(u.trackingNumber)
     }));
