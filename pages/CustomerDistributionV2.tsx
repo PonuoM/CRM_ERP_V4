@@ -287,7 +287,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 `basket_config.php?action=bulk_assign&companyId=${currentUser?.companyId}`,
                 {
                     method: 'POST',
-                    body: JSON.stringify({ assignments })
+                    body: JSON.stringify({
+                        assignments,
+                        source_basket_key: activeBasket
+                    })
                 }
             );
 

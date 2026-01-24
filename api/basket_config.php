@@ -396,6 +396,7 @@ function handleBulkAssign($pdo, $companyId)
 
     $input = json_decode(file_get_contents('php://input'), true);
     $assignments = $input['assignments'] ?? [];
+    $sourceBasketKey = $input['source_basket_key'] ?? null;
 
     if (empty($assignments)) {
         http_response_code(400);
@@ -403,15 +404,44 @@ function handleBulkAssign($pdo, $companyId)
         return;
     }
 
+    // Check for linked basket
+    $linkedBasketId = null;
+    if ($sourceBasketKey) {
+        // 1. Get linked_basket_key from source basket
+        $linkStmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
+        $linkStmt->execute([$sourceBasketKey, $companyId]);
+        $linkedBasketKey = $linkStmt->fetchColumn();
+
+        // 2. If valid linked_basket_key, resolve its ID
+        if ($linkedBasketKey) {
+            $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
+            $idStmt->execute([$linkedBasketKey, $companyId]);
+            $linkedBasketId = $idStmt->fetchColumn();
+        }
+    }
+
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("
-            UPDATE customers 
-            SET assigned_to = ?, 
-                date_assigned = NOW(),
-                lifecycle_status = 'Assigned'
-            WHERE customer_id = ? AND company_id = ?
-        ");
+        if ($linkedBasketId) {
+            // Update WITH current_basket_key (ID) if linked basket exists
+            $stmt = $pdo->prepare("
+                UPDATE customers 
+                SET assigned_to = ?, 
+                    date_assigned = NOW(),
+                    lifecycle_status = 'Assigned',
+                    current_basket_key = ?
+                WHERE customer_id = ? AND company_id = ?
+            ");
+        } else {
+            // Standard update
+            $stmt = $pdo->prepare("
+                UPDATE customers 
+                SET assigned_to = ?, 
+                    date_assigned = NOW(),
+                    lifecycle_status = 'Assigned'
+                WHERE customer_id = ? AND company_id = ?
+            ");
+        }
 
         $successCount = 0;
         $errors = [];
@@ -426,7 +456,12 @@ function handleBulkAssign($pdo, $companyId)
             }
 
             try {
-                $stmt->execute([$agentId, $customerId, $companyId]);
+                if ($linkedBasketId) {
+                    $stmt->execute([$agentId, $linkedBasketId, $customerId, $companyId]);
+                } else {
+                    $stmt->execute([$agentId, $customerId, $companyId]);
+                }
+
                 if ($stmt->rowCount() > 0) {
                     $successCount++;
                 }
@@ -451,91 +486,99 @@ function handleBulkAssign($pdo, $companyId)
     }
 }
 /**
-* Handle reclaiming customers from an agent back to the pool
-* POST: { agent_id: 123, baskets: { 'new_lead': 10, 'follow_up': 5 } }
-*/
-function handleReclaimCustomers($pdo, $companyId) {
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-http_response_code(405);
-echo json_encode(['error' => 'POST required']);
-return;
-}
-
-$input = json_decode(file_get_contents('php://input'), true);
-$agentId = $input['agent_id'] ?? null;
-$baskets = $input['baskets'] ?? []; // key => quantity
-
-if (!$agentId || empty($baskets)) {
-http_response_code(400);
-echo json_encode(['error' => 'agent_id and baskets required']);
-return;
-}
-
-$pdo->beginTransaction();
-try {
-$totalReclaimed = 0;
-
-// Prepare statement for updating customers
-// We use current_basket_key to identify which basket the customer belongs to
-// and assigned_to to ensure we only take from the target agent
-$updateStmt = $pdo->prepare("
-UPDATE customers
-SET assigned_to = NULL,
-date_assigned = NULL,
-lifecycle_status = 'Pool'
-WHERE company_id = ?
-AND assigned_to = ?
-AND current_basket_key = ?
-LIMIT ?
-");
-
-// We need to map basket_key string to basket_config.id because current_basket_key stores ID
-$basketMapStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
-
-foreach ($baskets as $basketKey => $quantity) {
-$qty = intval($quantity);
-if ($qty <= 0) continue; // Get basket ID $basketMapStmt->execute([$basketKey, $companyId]);
-    $basketId = $basketMapStmt->fetchColumn();
-
-    if (!$basketId) continue; // Basket not found
-
-    // Execute update with LIMIT
-    // Note: PDO LIMIT parameter needs to be integer in some drivers,
-    // but in emulation mode string is okay. Safest to bind explicitly if needed,
-    // but simpler execute usually works for MySQL.
-    // However, for LIMIT in prepared statements, better to bindValue with PDO::PARAM_INT
-    // Reworking to use bindValue for safety.
-
-    $limitStmt = $pdo->prepare("
-    UPDATE customers
-    SET assigned_to = NULL,
-    date_assigned = NULL,
-    lifecycle_status = 'Pool'
-    WHERE company_id = :company_id
-    AND assigned_to = :agent_id
-    AND current_basket_key = :basket_id
-    LIMIT :limit
-    ");
-
-    $limitStmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
-    $limitStmt->bindValue(':agent_id', $agentId, PDO::PARAM_INT);
-    $limitStmt->bindValue(':basket_id', $basketId, PDO::PARAM_INT); // current_basket_key is int ID
-    $limitStmt->bindValue(':limit', $qty, PDO::PARAM_INT);
-
-    $limitStmt->execute();
-    $totalReclaimed += $limitStmt->rowCount();
+ * Handle reclaiming customers from an agent back to the pool
+ * POST: { agent_id: 123, baskets: { 'new_lead': 10, 'follow_up': 5 } }
+ */
+function handleReclaimCustomers($pdo, $companyId)
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'POST required']);
+        return;
     }
 
-    $pdo->commit();
+    $input = json_decode(file_get_contents('php://input'), true);
+    $agentId = $input['agent_id'] ?? null;
+    $baskets = $input['baskets'] ?? []; // key => quantity
 
-    echo json_encode([
-    'ok' => true,
-    'reclaimed' => $totalReclaimed
-    ]);
+    if (!$agentId || empty($baskets)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'agent_id and baskets required']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $totalReclaimed = 0;
+
+        // We need to map basket_key string to basket_config.id because current_basket_key stores ID
+        // Also fetch linked_basket_key to handle customers that were moved to a linked basket
+        $basketMapStmt = $pdo->prepare("SELECT id, linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
+
+        foreach ($baskets as $basketKey => $quantity) {
+            $qty = intval($quantity);
+            if ($qty <= 0)
+                continue;
+
+            $basketMapStmt->execute([$basketKey, $companyId]);
+            $basketConfig = $basketMapStmt->fetch(PDO::FETCH_ASSOC);
+            $basketId = $basketConfig['id'] ?? null;
+            $linkedBasketKey = $basketConfig['linked_basket_key'] ?? null;
+
+            if (!$basketId)
+                continue; // Basket not found
+
+            // Determine the search target (where customers currently are)
+            $searchBasketId = $basketId;
+
+            if ($linkedBasketKey) {
+                // If linked, customers are in the linked basket
+                $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
+                $linkIdStmt->execute([$linkedBasketKey, $companyId]);
+                $linkedId = $linkIdStmt->fetchColumn();
+
+                if ($linkedId) {
+                    $searchBasketId = $linkedId;
+                }
+            }
+
+            // We want to move them BACK to the source basket ($basketId)
+            // So SET current_basket_key = $basketId
+            // WHERE current_basket_key = $searchBasketId
+
+            // Execute update with LIMIT
+            $limitStmt = $pdo->prepare("
+                UPDATE customers 
+                SET assigned_to = NULL, 
+                    date_assigned = NULL,
+                    lifecycle_status = 'Pool',
+                    current_basket_key = :new_basket_id
+                WHERE company_id = :company_id 
+                AND assigned_to = :agent_id
+                AND current_basket_key = :search_basket_id
+                LIMIT :limit
+            ");
+
+            $limitStmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+            $limitStmt->bindValue(':agent_id', $agentId, PDO::PARAM_INT);
+            $limitStmt->bindValue(':new_basket_id', $basketId, PDO::PARAM_INT); // Set to Source ID
+            $limitStmt->bindValue(':search_basket_id', $searchBasketId, PDO::PARAM_INT); // Find in Search ID
+            $limitStmt->bindValue(':limit', $qty, PDO::PARAM_INT);
+
+            $limitStmt->execute();
+            $totalReclaimed += $limitStmt->rowCount();
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'ok' => true,
+            'reclaimed' => $totalReclaimed
+        ]);
 
     } catch (Exception $e) {
-    $pdo->rollBack();
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()]);
     }
-    }
+}
