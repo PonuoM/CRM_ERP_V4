@@ -133,14 +133,20 @@ export const groupCustomersByDynamicBaskets = (
 
             // Check if currentBasketKey is a number (legacy ID-based system)
             // Handle both string numbers ("38") and actual numbers (38)
-            const numericValue = typeof currentBasketKey === 'string' && /^\d+$/.test(currentBasketKey) 
-                ? Number(currentBasketKey) 
-                : typeof currentBasketKey === 'number' 
-                    ? currentBasketKey 
+            const numericValue = typeof currentBasketKey === 'string' && /^\d+$/.test(currentBasketKey)
+                ? Number(currentBasketKey)
+                : typeof currentBasketKey === 'number'
+                    ? currentBasketKey
                     : null;
 
             if (numericValue !== null) {
+                // First try to look up by ID (legacy behavior)
                 resolvedBasketKey = idToBasketKeyMap.get(numericValue) || null;
+
+                // If ID lookup fails, but the numeric value exists as a direct key, use it
+                if (!resolvedBasketKey && basketKeyToConfigMap.has(String(currentBasketKey))) {
+                    resolvedBasketKey = String(currentBasketKey);
+                }
             } else {
                 // It's already a string key (non-numeric)
                 resolvedBasketKey = String(currentBasketKey);
