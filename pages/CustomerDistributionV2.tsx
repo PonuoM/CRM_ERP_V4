@@ -16,6 +16,7 @@ interface BasketConfig {
     id: number;
     basket_key: string;
     basket_name: string;
+    linked_basket_key?: string | null;
     min_order_count: number | null;
     max_order_count: number | null;
     min_days_since_order: number | null;
@@ -37,6 +38,7 @@ interface AgentWithBaskets extends User {
 const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ currentUser }) => {
     // Data
     const [baskets, setBaskets] = useState<BasketConfig[]>([]);
+    const [dashboardBaskets, setDashboardBaskets] = useState<BasketConfig[]>([]);
     const [basketCounts, setBasketCounts] = useState<Record<string, number>>({});
     const [activeBasket, setActiveBasket] = useState<string>('');
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -49,7 +51,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [loadingCustomers, setLoadingCustomers] = useState(false);
     const [loadingAgents, setLoadingAgents] = useState(false);
     const [distributing, setDistributing] = useState(false);
-    const [countPerAgent, setCountPerAgent] = useState(100);
+    const [countPerAgent, setCountPerAgent] = useState<string>('');
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -72,6 +74,36 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             });
         } catch (error) {
             console.error('Failed to fetch baskets:', error);
+        }
+    }, [currentUser?.companyId]);
+
+    // Fetch dashboard basket configurations for agent table
+    const fetchDashboardBaskets = useCallback(async () => {
+        try {
+            const response = await apiFetch(
+                `basket_config.php?target_page=dashboard_v2&companyId=${currentUser?.companyId}`
+            );
+            // Custom sort order as requested
+            const customOrder = [
+                'upsell',
+                'new_customer',
+                'personal_1_2m',
+                'personal_last_chance',
+                'find_new_owner_dash',
+                'waiting_for_match_dash',
+                'mid_6_12m_dash',
+                'mid_1_3y_dash',
+                'ancient_dash'
+            ];
+            const sorted = (response || []).sort((a: BasketConfig, b: BasketConfig) => {
+                const indexA = customOrder.indexOf(a.basket_key);
+                const indexB = customOrder.indexOf(b.basket_key);
+                // If not in custom order, put at end
+                return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+            });
+            setDashboardBaskets(sorted);
+        } catch (error) {
+            console.error('Failed to fetch dashboard baskets:', error);
         }
     }, [currentUser?.companyId]);
 
@@ -207,13 +239,13 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     useEffect(() => {
         const init = async () => {
             setLoading(true);
-            await Promise.all([fetchBaskets(), fetchAgents()]);
+            await Promise.all([fetchBaskets(), fetchDashboardBaskets(), fetchAgents()]);
             setLoading(false);
         };
         if (currentUser?.companyId) {
             init();
         }
-    }, [currentUser?.companyId, fetchBaskets, fetchAgents]);
+    }, [currentUser?.companyId, fetchBaskets, fetchDashboardBaskets, fetchAgents]);
 
     // Fetch counts when baskets are loaded
     useEffect(() => {
@@ -262,7 +294,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             return;
         }
 
-        const totalToDistribute = Math.min(selectedAgents.length * countPerAgent, customers.length);
+        const count = parseInt(countPerAgent) || 0;
+        const totalToDistribute = Math.min(selectedAgents.length * count, customers.length);
         const availableCustomers = [...customers];
         const previewData: DistributionPreview[] = [];
 
@@ -270,7 +303,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             const agent = agents.find(a => a.id === agentId);
             if (!agent) continue;
 
-            const assignCount = Math.min(countPerAgent, availableCustomers.length);
+            const assignCount = Math.min(count, availableCustomers.length);
             const agentCustomers = availableCustomers.splice(0, assignCount);
 
             previewData.push({
@@ -336,7 +369,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
         setReclaimingAgent(agent);
         // Initialize inputs with 0
         const initialInputs: Record<string, number> = {};
-        baskets.forEach(b => initialInputs[b.basket_key] = 0);
+        dashboardBaskets.forEach(b => initialInputs[b.basket_key] = 0);
         setReclaimInputs(initialInputs);
         setReclaimModalOpen(true);
     };
@@ -425,45 +458,28 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 </div>
             )}
 
-            {/* Stats Cards - Basket Overview (Row 1) */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-                {baskets.slice(0, 5).map(basket => (
+            {/* Stats Cards - All Baskets in Grid */}
+            <div className="grid grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+                {baskets.map(basket => (
                     <button
                         key={basket.basket_key}
                         onClick={() => setActiveBasket(basket.basket_key)}
-                        className={`bg-white p-4 rounded-lg shadow-sm border transition-all hover:shadow-md text-left ${activeBasket === basket.basket_key
-                            ? 'ring-2 ring-blue-500 border-blue-500'
-                            : 'hover:border-blue-300'
+                        className={`bg-white p-3 rounded-xl shadow-sm border-2 transition-all hover:shadow-md text-left ${activeBasket === basket.basket_key
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-100 hover:border-blue-200'
                             }`}
                     >
-                        <p className="text-xs font-medium text-gray-500 mb-1">{basket.basket_name}</p>
-                        <div className={`text-2xl font-bold ${activeBasket === basket.basket_key ? 'text-blue-600' : 'text-gray-900'}`}>
+                        <p className="text-[11px] font-medium text-gray-500 mb-0.5 truncate">{basket.basket_name}</p>
+                        <div className={`text-xl font-bold ${activeBasket === basket.basket_key ? 'text-blue-600' : 'text-gray-900'}`}>
                             {basketCounts[basket.basket_key]?.toLocaleString() || 0}
                         </div>
                     </button>
                 ))}
-            </div>
 
-            {/* Stats Cards Row 2 - More Baskets + Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                {baskets.slice(5, 8).map(basket => (
-                    <button
-                        key={basket.basket_key}
-                        onClick={() => setActiveBasket(basket.basket_key)}
-                        className={`bg-white p-4 rounded-lg shadow-sm border transition-all hover:shadow-md text-left ${activeBasket === basket.basket_key
-                            ? 'ring-2 ring-blue-500 border-blue-500'
-                            : 'hover:border-blue-300'
-                            }`}
-                    >
-                        <p className="text-xs font-medium text-gray-500 mb-1">{basket.basket_name}</p>
-                        <div className={`text-2xl font-bold ${activeBasket === basket.basket_key ? 'text-blue-600' : 'text-gray-900'}`}>
-                            {basketCounts[basket.basket_key]?.toLocaleString() || 0}
-                        </div>
-                    </button>
-                ))}
-                <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg shadow-sm border border-orange-200">
-                    <p className="text-xs font-medium text-orange-600 mb-1">รวมทั้งหมด</p>
-                    <div className="text-2xl font-bold text-orange-600">
+                {/* Total Card */}
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-xl shadow-md text-white">
+                    <p className="text-[11px] font-medium text-green-100 mb-0.5">รวมทั้งหมด</p>
+                    <div className="text-xl font-bold">
                         {totalInAllBaskets.toLocaleString()}
                     </div>
                 </div>
@@ -495,7 +511,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         <input
                             type="number"
                             value={countPerAgent}
-                            onChange={(e) => setCountPerAgent(parseInt(e.target.value) || 10)}
+                            onChange={(e) => setCountPerAgent(e.target.value)}
                             className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             min={1}
                             max={availableCount || 1000}
@@ -514,39 +530,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             </div>
 
 
-            {/* Section 1.5: Target Basket Selection */}
-            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                    <span className="w-7 h-7 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                    เลือกถังปลายทาง <span className="text-sm font-normal text-gray-500">(ลูกค้าจะถูกย้ายไปถังนี้หลังแจกงาน)</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm text-gray-500 mb-2">ย้ายไปถัง (Optional)</label>
-                        <select
-                            value={targetBasket}
-                            onChange={(e) => setTargetBasket(e.target.value)}
-                            className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                        >
-                            <option value="">-- ไม่เปลี่ยนแปลง / ตามการตั้งค่าเดิม --</option>
-                            {baskets.filter(b => b.basket_key !== 'upsell').map(basket => (
-                                <option key={basket.basket_key} value={basket.basket_key}>
-                                    {basket.basket_name}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-gray-400 mt-1">
-                            * หากไม่เลือก จะใช้การตั้งค่า Default ของระบบ (สำหรับ Upsell จะไปที่ถัง ID 51 เสมอ หากไม่ระบุ)
-                        </p>
-                    </div>
-                </div>
-            </div>
-
             {/* Section 2: Target Employees - Table Layout */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
-                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">3</span>
+                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
                         เลือกพนักงานเป้าหมาย
                     </h3>
                     <div className="flex items-center gap-4">
@@ -556,13 +544,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         <input
                             type="number"
                             value={countPerAgent}
-                            onChange={(e) => setCountPerAgent(parseInt(e.target.value) || 10)}
+                            onChange={(e) => setCountPerAgent(e.target.value)}
+                            max={availableCount}
+                            min={1}
                             className="w-24 border rounded-lg p-2 text-center"
-                            placeholder="เช่น 100"
+                            placeholder="ใส่จำนวน"
                         />
                         <button
                             onClick={handleGeneratePreview}
-                            disabled={selectedAgents.length === 0 || availableCount === 0}
+                            disabled={selectedAgents.length === 0 || availableCount === 0 || !countPerAgent || parseInt(countPerAgent) <= 0 || parseInt(countPerAgent) > availableCount}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             <Eye size={16} />
@@ -591,8 +581,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                     <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
                                     <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                     <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
-                                    {baskets.map(basket => (
-                                        <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600">
+                                    {dashboardBaskets.map(basket => (
+                                        <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600 text-xs">
                                             {basket.basket_name}
                                         </th>
                                     ))}
@@ -629,8 +619,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                             </button>
                                         </td>
                                         <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
-                                        {baskets.map(basket => (
-                                            <td key={basket.basket_key} className="p-3 text-center text-gray-600">
+                                        {dashboardBaskets.map(basket => (
+                                            <td key={basket.basket_key} className="p-3 text-center text-gray-600 text-sm">
                                                 {agent.basketCounts?.[basket.basket_key] || 0}
                                             </td>
                                         ))}
@@ -642,7 +632,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 )}
 
                 <div className="mt-4 text-sm text-gray-500">
-                    เลือกแล้ว {selectedAgents.length} คน × {countPerAgent} = <span className="font-semibold text-blue-600">{Math.min(selectedAgents.length * countPerAgent, availableCount)}</span> รายชื่อ
+                    เลือกแล้ว {selectedAgents.length} คน × {countPerAgent || 0} = <span className="font-semibold text-blue-600">{Math.min(selectedAgents.length * (parseInt(countPerAgent) || 0), availableCount)}</span> รายชื่อ
                 </div>
             </div>
 
@@ -716,32 +706,44 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                             <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
 
                             <div className="space-y-4 mb-6">
-                                {baskets.map(basket => {
+                                {dashboardBaskets.map(basket => {
                                     // Prevent reclaiming from Upsell basket
                                     if (basket.basket_key === 'upsell') return null;
 
                                     const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
-                                    if (currentHolding === 0) return null;
+                                    const isEmpty = currentHolding === 0;
+
+                                    // Check if this dashboard basket has a linked distribution basket
+                                    // by checking if linked_basket_key exists in basket config
+                                    const hasLinkedDistribution = !!basket.linked_basket_key;
+
+                                    // Treat as disabled if empty OR no linked distribution basket
+                                    const isDisabled = isEmpty || !hasLinkedDistribution;
 
                                     return (
-                                        <div key={basket.basket_key} className="flex items-center gap-4">
+                                        <div key={basket.basket_key} className={`flex items-center gap-4 ${isDisabled ? 'opacity-50' : ''}`}>
                                             <div className="flex-1">
                                                 <div className="flex justify-between mb-1">
-                                                    <label className="text-sm font-medium">{basket.basket_name}</label>
-                                                    <span className="text-xs text-gray-500">มีอยู่ {currentHolding}</span>
+                                                    <label className={`text-sm font-medium ${isDisabled ? 'text-gray-400' : ''}`}>
+                                                        {basket.basket_name}
+                                                        {!hasLinkedDistribution && <span className="text-xs text-gray-400 ml-2">(ไม่มีถัง Distribution)</span>}
+                                                    </label>
+                                                    <span className={`text-xs ${isDisabled ? 'text-gray-400' : 'text-gray-500'}`}>มีอยู่ {currentHolding}</span>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <input
                                                         type="number"
-                                                        value={reclaimInputs[basket.basket_key] || 0}
+                                                        value={reclaimInputs[basket.basket_key] || ''}
                                                         onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
-                                                        className="w-full border rounded p-2 text-sm"
+                                                        className={`w-full border rounded p-2 text-sm ${isDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                                         min={0}
                                                         max={currentHolding}
+                                                        disabled={isDisabled}
                                                     />
                                                     <button
                                                         onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
-                                                        className="px-3 py-2 bg-gray-100 text-xs rounded hover:bg-gray-200 whitespace-nowrap"
+                                                        className={`px-3 py-2 text-xs rounded whitespace-nowrap ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'}`}
+                                                        disabled={isDisabled}
                                                     >
                                                         คืนหมด
                                                     </button>

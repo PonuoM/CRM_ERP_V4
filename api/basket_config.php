@@ -208,9 +208,9 @@ try {
             }
 
             $params[] = $id;
-            $params[] = $companyId;
+            // Basket config is GLOBAL (always company_id = 1)
 
-            $sql = "UPDATE basket_config SET " . implode(', ', $fields) . " WHERE id = ? AND company_id = ?";
+            $sql = "UPDATE basket_config SET " . implode(', ', $fields) . " WHERE id = ? AND company_id = 1";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
 
@@ -224,8 +224,9 @@ try {
                 exit;
             }
 
-            $stmt = $pdo->prepare("DELETE FROM basket_config WHERE id = ? AND company_id = ?");
-            $stmt->execute([$id, $companyId]);
+            // Basket config is GLOBAL (always company_id = 1)
+            $stmt = $pdo->prepare("DELETE FROM basket_config WHERE id = ? AND company_id = 1");
+            $stmt->execute([$id]);
 
             echo json_encode(['ok' => true]);
             break;
@@ -465,8 +466,9 @@ function handleBulkAssign($pdo, $companyId)
 
     // 1. If target_basket_key is provided explicitly, try to resolve it
     if ($targetBasketKey) {
-        $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
-        $idStmt->execute([$targetBasketKey, $companyId]);
+        // Basket config is GLOBAL (always company_id = 1)
+        $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+        $idStmt->execute([$targetBasketKey]);
         $targetBasketId = $idStmt->fetchColumn();
     }
 
@@ -476,14 +478,14 @@ function handleBulkAssign($pdo, $companyId)
         if ($sourceBasketKey === 'upsell') {
             $targetBasketId = 51; // Force distribution to ID 51
         } else {
-            // Get linked_basket_key from source
-            $linkStmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
-            $linkStmt->execute([$sourceBasketKey, $companyId]);
+            // Get linked_basket_key from source (Basket config is GLOBAL)
+            $linkStmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = 1");
+            $linkStmt->execute([$sourceBasketKey]);
             $linkedBasketKey = $linkStmt->fetchColumn();
 
             if ($linkedBasketKey) {
-                $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
-                $idStmt->execute([$linkedBasketKey, $companyId]);
+                $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+                $idStmt->execute([$linkedBasketKey]);
                 $targetBasketId = $idStmt->fetchColumn();
             }
         }
@@ -491,26 +493,38 @@ function handleBulkAssign($pdo, $companyId)
 
     $pdo->beginTransaction();
     try {
+        // Prepare statement to get old basket key before update
+        $getOldBasketStmt = $pdo->prepare("SELECT current_basket_key FROM customers WHERE customer_id = ? AND company_id = ?");
+        
         if ($targetBasketId) {
-            // Update WITH current_basket_key (ID) if target is resolved
+            // Update WITH current_basket_key (ID) AND basket_entered_date if target is resolved
             $stmt = $pdo->prepare("
                 UPDATE customers 
                 SET assigned_to = ?, 
                     date_assigned = NOW(),
+                    basket_entered_date = NOW(),
                     lifecycle_status = 'Assigned',
                     current_basket_key = ?
                 WHERE customer_id = ? AND company_id = ?
             ");
         } else {
-            // Standard update
+            // Standard update (also update basket_entered_date)
             $stmt = $pdo->prepare("
                 UPDATE customers 
                 SET assigned_to = ?, 
                     date_assigned = NOW(),
+                    basket_entered_date = NOW(),
                     lifecycle_status = 'Assigned'
                 WHERE customer_id = ? AND company_id = ?
             ");
         }
+
+        // Prepare statement for basket transition log
+        $logStmt = $pdo->prepare("
+            INSERT INTO basket_transition_log 
+            (customer_id, from_basket_key, to_basket_key, transition_type, created_at) 
+            VALUES (?, ?, ?, 'redistribute', NOW())
+        ");
 
         $successCount = 0;
         $errors = [];
@@ -525,6 +539,10 @@ function handleBulkAssign($pdo, $companyId)
             }
 
             try {
+                // Get old basket key before update
+                $getOldBasketStmt->execute([$customerId, $companyId]);
+                $oldBasketKey = $getOldBasketStmt->fetchColumn();
+                
                 if ($targetBasketId) {
                     $stmt->execute([$agentId, $targetBasketId, $customerId, $companyId]);
                 } else {
@@ -533,6 +551,13 @@ function handleBulkAssign($pdo, $companyId)
 
                 if ($stmt->rowCount() > 0) {
                     $successCount++;
+                    
+                    // Log basket transition
+                    $logStmt->execute([
+                        $customerId, 
+                        $oldBasketKey ?: null, 
+                        $targetBasketId ?: null
+                    ]);
                 }
             } catch (Exception $e) {
                 $errors[] = "Failed to assign customer $customerId: " . $e->getMessage();
@@ -582,60 +607,83 @@ function handleReclaimCustomers($pdo, $companyId)
 
         // We need to map basket_key string to basket_config.id because current_basket_key stores ID
         // Also fetch linked_basket_key to handle customers that were moved to a linked basket
-        $basketMapStmt = $pdo->prepare("SELECT id, linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
+        // Basket config is GLOBAL (always company_id = 1)
+        $basketMapStmt = $pdo->prepare("SELECT id, linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = 1");
 
         foreach ($baskets as $basketKey => $quantity) {
             $qty = intval($quantity);
             if ($qty <= 0)
                 continue;
 
-            $basketMapStmt->execute([$basketKey, $companyId]);
+            // basketKey is the Dashboard basket key (e.g., 'find_new_owner_dash')
+            // We need to find customers in this basket and move them to the linked Distribution basket
+            $basketMapStmt->execute([$basketKey]);
             $basketConfig = $basketMapStmt->fetch(PDO::FETCH_ASSOC);
-            $basketId = $basketConfig['id'] ?? null;
+            $dashboardBasketId = $basketConfig['id'] ?? null;
             $linkedBasketKey = $basketConfig['linked_basket_key'] ?? null;
 
-            if (!$basketId)
+            if (!$dashboardBasketId)
                 continue; // Basket not found
 
-            // Determine the search target (where customers currently are)
-            $searchBasketId = $basketId;
-
+            // Determine the target basket (where to move customers)
+            // If linked_basket_key exists, move to that Distribution basket
+            // Otherwise, just unassign them (keep in same basket)
+            $targetBasketId = $dashboardBasketId; // Default: keep in same basket
+            
             if ($linkedBasketKey) {
-                // If linked, customers are in the linked basket
-                $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
-                $linkIdStmt->execute([$linkedBasketKey, $companyId]);
+                // Find the Distribution basket ID from linked_basket_key (Basket config is GLOBAL)
+                $linkIdStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = 1");
+                $linkIdStmt->execute([$linkedBasketKey]);
                 $linkedId = $linkIdStmt->fetchColumn();
 
                 if ($linkedId) {
-                    $searchBasketId = $linkedId;
+                    $targetBasketId = $linkedId; // Move to Distribution basket
                 }
             }
 
-            // We want to move them BACK to the source basket ($basketId)
-            // So SET current_basket_key = $basketId
-            // WHERE current_basket_key = $searchBasketId
+            // We want to move customers FROM dashboardBasketId TO targetBasketId (Distribution)
+            // So SET current_basket_key = $targetBasketId
+            // WHERE current_basket_key = $dashboardBasketId
 
-            // Execute update with LIMIT
-            $limitStmt = $pdo->prepare("
+            // First, get the customer IDs that will be affected (for logging)
+            $selectStmt = $pdo->prepare("
+                SELECT customer_id FROM customers 
+                WHERE company_id = ? 
+                AND assigned_to = ?
+                AND current_basket_key = ?
+                LIMIT ?
+            ");
+            $selectStmt->execute([$companyId, $agentId, $dashboardBasketId, $qty]);
+            $affectedCustomerIds = $selectStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (empty($affectedCustomerIds)) {
+                continue; // No customers to reclaim
+            }
+
+            // Execute update for these specific customers
+            $placeholders = implode(',', array_fill(0, count($affectedCustomerIds), '?'));
+            $updateSql = "
                 UPDATE customers 
                 SET assigned_to = NULL, 
                     date_assigned = NULL,
                     lifecycle_status = 'Pool',
-                    current_basket_key = :new_basket_id
-                WHERE company_id = :company_id 
-                AND assigned_to = :agent_id
-                AND current_basket_key = :search_basket_id
-                LIMIT :limit
+                    current_basket_key = ?,
+                    basket_entered_date = NOW()
+                WHERE customer_id IN ($placeholders)
+            ";
+            $updateStmt = $pdo->prepare($updateSql);
+            $updateStmt->execute(array_merge([$targetBasketId], $affectedCustomerIds));
+            $totalReclaimed += $updateStmt->rowCount();
+
+            // Log basket transitions for each customer
+            $logStmt = $pdo->prepare("
+                INSERT INTO basket_transition_log 
+                (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, created_at) 
+                VALUES (?, ?, ?, 'manual', ?, NOW())
             ");
-
-            $limitStmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
-            $limitStmt->bindValue(':agent_id', $agentId, PDO::PARAM_INT);
-            $limitStmt->bindValue(':new_basket_id', $basketId, PDO::PARAM_INT); // Set to Source ID
-            $limitStmt->bindValue(':search_basket_id', $searchBasketId, PDO::PARAM_INT); // Find in Search ID
-            $limitStmt->bindValue(':limit', $qty, PDO::PARAM_INT);
-
-            $limitStmt->execute();
-            $totalReclaimed += $limitStmt->rowCount();
+            foreach ($affectedCustomerIds as $custId) {
+                $logStmt->execute([$custId, $dashboardBasketId, $targetBasketId, $agentId]);
+            }
         }
 
         $pdo->commit();

@@ -2,10 +2,16 @@
 require_once __DIR__ . '/../config.php';
 $pdo = db_connect();
 
-echo "=== basket_transition_log ===\n";
-$stmt = $pdo->query("DESCRIBE basket_transition_log");
-print_r($stmt->fetchAll(PDO::FETCH_ASSOC));
+header('Content-Type: text/plain');
 
-echo "\n=== basket_return_log ===\n";
-$stmt = $pdo->query("DESCRIBE basket_return_log");
-print_r($stmt->fetchAll(PDO::FETCH_ASSOC));
+echo "=== basket_transition_log columns ===\n";
+$stmt = $pdo->query("SHOW COLUMNS FROM basket_transition_log");
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    echo $row['Field'] . " | " . $row['Type'] . "\n";
+}
+
+echo "\n=== basket_return_log columns ===\n";
+$stmt = $pdo->query("SHOW COLUMNS FROM basket_return_log");
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    echo $row['Field'] . " | " . $row['Type'] . "\n";
+}

@@ -1175,16 +1175,14 @@ function handle_customers(PDO $pdo, ?string $id): void
                         json_response(['baskets' => [], 'total' => 0, 'agents' => []]);
                     }
 
-                    // Get all DISTRIBUTION baskets with their IDs and linked basket IDs
+                    // Get all DASHBOARD baskets with their IDs for agent table display
                     $basketStmt = $pdo->prepare("
-                        SELECT bc.id, bc.basket_key, bc.basket_name, bc.linked_basket_key,
-                               linked.id as linked_id
+                        SELECT bc.id, bc.basket_key, bc.basket_name
                         FROM basket_config bc
-                        LEFT JOIN basket_config linked ON bc.linked_basket_key = linked.basket_key AND linked.company_id = bc.company_id
-                        WHERE bc.company_id = ? AND bc.target_page = 'distribution' AND bc.is_active = 1 
-                        ORDER BY bc.display_order
+                        WHERE bc.company_id = 1 AND bc.target_page = 'dashboard_v2' AND bc.is_active = 1 
+                        ORDER BY bc.id
                     ");
-                    $basketStmt->execute([$companyId]);
+                    $basketStmt->execute();
                     $baskets = $basketStmt->fetchAll(PDO::FETCH_ASSOC);
 
                     // Create a mapping from ID -> BasketKey for aggregation
@@ -1195,9 +1193,6 @@ function handle_customers(PDO $pdo, ?string $id): void
                         if (!in_array($key, $allBasketKeys))
                             $allBasketKeys[] = $key;
                         $idToKeyMap[$b['id']] = $key;
-                        if (!empty($b['linked_id'])) {
-                            $idToKeyMap[$b['linked_id']] = $key;
-                        }
                     }
 
                     $placeholders = implode(',', array_fill(0, count($agentIds), '?'));
