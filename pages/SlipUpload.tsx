@@ -25,25 +25,13 @@ import {
 import resolveApiBasePath from "@/utils/apiBasePath";
 import { processImage } from "@/utils/imageProcessing";
 import Modal from "../components/Modal";
+import OrderDetailModal from "../components/OrderDetailModal";
 
 import { getPaymentStatusChip } from "../components/OrderTable";
 import { Role, listRoles } from "@/services/roleApi";
 import { isSystemCheck } from "@/utils/isSystemCheck";
 
 
-const InfoCard: React.FC<{
-  icon: React.ElementType;
-  title: string;
-  children: React.ReactNode;
-}> = ({ icon: Icon, title, children }) => (
-  <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-    <h3 className="text-md font-semibold text-gray-700 mb-3 flex items-center">
-      <Icon className="w-5 h-5 mr-2 text-gray-400" />
-      {title}
-    </h3>
-    {children}
-  </div>
-);
 
 interface Order {
   id: number;
@@ -113,321 +101,6 @@ interface SlipHistory {
   updated_at: string;
 }
 
-const OrderDetailsModal: React.FC<{ orderId: number; onClose: () => void }> = ({
-  orderId,
-  onClose,
-}) => {
-  const [order, setOrder] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        const r: any = await apiFetch(`orders/${orderId}`);
-        // Map response to match structure used in OrderManagementModal
-        const mappedOrder = {
-          ...r,
-          id: r.id,
-          orderDate: r.order_date,
-          deliveryDate: r.delivery_date,
-          salesChannel: r.sales_channel,
-          totalAmount: Number(r.total_amount || 0),
-          amountPaid: Number(r.amount_paid || 0),
-          paymentMethod: r.payment_method,
-          paymentStatus: r.payment_status,
-          shippingCost: Number(r.shipping_cost || 0),
-          billDiscount: Number(r.bill_discount || 0),
-          slipUrl: r.slip_url,
-          shippingAddress: {
-            recipientFirstName: r.recipient_first_name,
-            recipientLastName: r.recipient_last_name,
-            street: r.street,
-            subdistrict: r.subdistrict,
-            district: r.district,
-            province: r.province,
-            postalCode: r.postal_code,
-          },
-          items: [], // Will be set below
-        };
-
-        const rawItems = Array.isArray(r.items)
-          ? r.items.map((it: any) => ({
-            id: it.id,
-            productId: it.product_id,
-            productName: it.product_name,
-            quantity: Number(it.quantity || 0),
-            // If parent_item_id exists OR is_freebie is true, set price and discount to 0
-            pricePerUnit:
-              it.parent_item_id || it.is_freebie
-                ? 0
-                : Number(it.price_per_unit || 0),
-            discount:
-              it.parent_item_id || it.is_freebie
-                ? 0
-                : Number(it.discount || 0),
-            creatorId: it.creator_id,
-            parentItemId: it.parent_item_id,
-            isFreebie: it.is_freebie,
-          }))
-          : [];
-
-        // Sort items: Parents first, then their children
-        const sortedItems: any[] = [];
-        const parentItems = rawItems.filter((i: any) => !i.parentItemId);
-        const childItems = rawItems.filter((i: any) => i.parentItemId);
-
-        parentItems.forEach((parent: any) => {
-          sortedItems.push(parent);
-          // Find children for this parent
-          const children = childItems.filter(
-            (child: any) => child.parentItemId === parent.id,
-          );
-          sortedItems.push(...children);
-        });
-
-        // Add any orphans (items with parentItemId but parent not found in list)
-        const processedIds = new Set(sortedItems.map((i) => i.id));
-        const orphans = rawItems.filter((i: any) => !processedIds.has(i.id));
-        sortedItems.push(...orphans);
-
-        mappedOrder.items = sortedItems;
-
-        setOrder(mappedOrder);
-      } catch (error) {
-        console.error("Failed to fetch order details", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrder();
-  }, [orderId]);
-
-  if (loading)
-    return (
-      <Modal title="กำลังโหลด..." onClose={onClose}>
-        <div className="p-8 text-center">กำลังโหลดข้อมูล...</div>
-      </Modal>
-    );
-  if (!order)
-    return (
-      <Modal title="ไม่พบข้อมูล" onClose={onClose}>
-        <div className="p-8 text-center text-red-500">
-          ไม่พบข้อมูลคำสั่งซื้อ
-        </div>
-      </Modal>
-    );
-
-  const formatAddress = (address: any) => {
-    const parts = [
-      address.street,
-      address.subdistrict,
-      address.district,
-      address.province,
-      address.postalCode,
-    ].filter(Boolean);
-    return parts.join(" ");
-  };
-
-  const calculatedTotals = {
-    itemsSubtotal: order.items.reduce(
-      (sum: number, item: any) =>
-        sum + (item.pricePerUnit * item.quantity - item.discount),
-      0,
-    ),
-    itemsDiscount: order.items.reduce(
-      (sum: number, item: any) => sum + item.discount,
-      0,
-    ),
-    shippingCost: order.shippingCost,
-    billDiscount: order.billDiscount,
-    totalAmount: order.totalAmount,
-  };
-
-  return (
-    <Modal title={`รายละเอียดออเดอร์: ${order.id}`} onClose={onClose} size="xl">
-      <div className="space-y-4 text-sm">
-        <InfoCard icon={Calendar} title="รายละเอียดคำสั่งซื้อ">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <p className="text-xs text-gray-500">วันที่สั่งซื้อ</p>
-              <p className="font-medium text-gray-800">
-                {order.orderDate
-                  ? new Date(order.orderDate).toLocaleString("th-TH")
-                  : "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">วันที่จัดส่ง</p>
-              <p className="font-medium text-gray-800">
-                {order.deliveryDate
-                  ? new Date(order.deliveryDate).toLocaleDateString("th-TH")
-                  : "-"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">ช่องทางการขาย</p>
-              <p className="font-medium text-gray-800">
-                {order.salesChannel || "-"}
-              </p>
-            </div>
-          </div>
-        </InfoCard>
-
-        <InfoCard icon={UserIcon} title="ข้อมูลลูกค้า">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="font-semibold text-gray-800 text-base">
-                {order.shippingAddress.recipientFirstName}{" "}
-                {order.shippingAddress.recipientLastName}
-              </p>
-              {/* Note: Customer phone might not be in shippingAddress, checking root order object if available or fallback */}
-              {/* The API usually returns customer info at root or we use what we have */}
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
-              <p className="text-gray-700 flex items-start">
-                <MapPin size={14} className="mr-2 mt-0.5 flex-shrink-0" />
-                <span className="text-sm">
-                  {formatAddress(order.shippingAddress)}
-                </span>
-              </p>
-            </div>
-          </div>
-        </InfoCard>
-
-        <InfoCard icon={Package} title="รายการสินค้า">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
-                    สินค้า
-                  </th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700">
-                    จำนวน
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
-                    ราคา/หน่วย
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
-                    ส่วนลด
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
-                    รวม
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map((item: any, index: number) => (
-                  <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2 text-sm text-gray-800">
-                      <div className="flex items-center">
-                        {item.parentItemId && (
-                          <CornerDownRight className="w-4 h-4 text-gray-400 mr-2 ml-2" />
-                        )}
-                        {item.productName}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs text-gray-700">
-                      {item.quantity}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-gray-700">
-                      ฿{item.pricePerUnit.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-red-600">
-                      -฿{item.discount.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                      ฿
-                      {(
-                        item.pricePerUnit * item.quantity -
-                        item.discount
-                      ).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-gray-50">
-                <tr>
-                  <td colSpan={3} className="px-3 py-2 text-xs text-gray-600">
-                    รวมรายการ
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs text-red-600">
-                    -฿{calculatedTotals.itemsDiscount.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2 text-right text-sm font-medium text-gray-900">
-                    ฿{calculatedTotals.itemsSubtotal.toLocaleString()}
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">
-                    ส่วนลดทั้งออเดอร์
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs text-red-600">
-                    -฿{calculatedTotals.billDiscount.toLocaleString()}
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">
-                    ค่าส่ง
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs font-medium text-gray-900">
-                    ฿{calculatedTotals.shippingCost.toLocaleString()}
-                  </td>
-                </tr>
-                <tr className="border-t-2">
-                  <td
-                    colSpan={4}
-                    className="px-3 py-2 text-sm font-bold text-gray-800"
-                  >
-                    ยอดสุทธิ
-                  </td>
-                  <td className="px-3 py-2 text-right text-base font-bold text-gray-900">
-                    ฿{calculatedTotals.totalAmount.toLocaleString()}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </InfoCard>
-
-        <InfoCard icon={CreditCard} title="การชำระเงิน">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-medium text-gray-600">
-              วิธีชำระ: {order.paymentMethod}
-            </span>
-            {getPaymentStatusChip(
-              order.paymentStatus,
-              order.paymentMethod,
-              order.amountPaid,
-              order.totalAmount,
-            )}
-          </div>
-          {order.slipUrl && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-500 mb-1">หลักฐานการชำระเงิน</p>
-              <div className="relative w-32 h-32 border rounded-md p-1">
-                <img
-                  src={order.slipUrl}
-                  alt="Slip"
-                  className="w-full h-full object-contain"
-                />
-                <a
-                  href={order.slipUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 transition-all text-transparent hover:text-white"
-                >
-                  <Eye size={20} />
-                </a>
-              </div>
-            </div>
-          )}
-        </InfoCard>
-      </div>
-    </Modal>
-  );
-};
 
 const SlipUpload: React.FC = () => {
   const apiBase = useMemo(() => resolveApiBasePath(), []);
@@ -989,6 +662,9 @@ const SlipUpload: React.FC = () => {
       const headers: any = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
+      // Exclude Cancelled and Returned orders as requested
+      queryParams.append("exclude_order_status", "Returned,Cancelled");
+
       const response = await fetch(
         `${apiBase}/Slip_DB/get_transfer_orders.php?${queryParams.toString()}`,
         { headers }
@@ -1484,7 +1160,12 @@ const SlipUpload: React.FC = () => {
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                        #{order.id}
+                        <button
+                          onClick={() => setViewingOrderId(order.id)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          #{order.id}
+                        </button>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {order.full_name || "-"}
@@ -1906,8 +1587,9 @@ const SlipUpload: React.FC = () => {
       )}
 
       {viewingOrderId && (
-        <OrderDetailsModal
-          orderId={viewingOrderId}
+        <OrderDetailModal
+          isOpen={!!viewingOrderId}
+          orderId={viewingOrderId.toString()}
           onClose={() => setViewingOrderId(null)}
         />
       )}

@@ -12,14 +12,12 @@ require_once __DIR__ . "/../config.php";
 $company_id = 0;
 // Connect to DB first for authentication
 $conn = db_connect();
-$conn->exec("SET NAMES utf8mb4");
-$conn->exec("SET CHARACTER SET utf8mb4");
 
 // Authenticate
 $user = get_authenticated_user($conn);
 if (!$user) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
-    exit();
+  echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+  exit();
 }
 
 $company_id = $user['company_id'];
@@ -32,6 +30,16 @@ $status = isset($_GET["status"]) ? strtolower(trim($_GET["status"])) : "all";
 $date_range = isset($_GET["date_range"]) ? strtolower(trim($_GET["date_range"])) : "all";
 $date_from = isset($_GET["date_from"]) ? trim($_GET["date_from"]) : "";
 $date_to = isset($_GET["date_to"]) ? trim($_GET["date_to"]) : "";
+$payment_method = isset($_GET["payment_method"]) ? trim($_GET["payment_method"]) : "all";
+
+$page = isset($_GET["page"]) ? (int) $_GET["page"] : 1;
+$pageSize = isset($_GET["pageSize"]) ? (int) $_GET["pageSize"] : 20;
+if ($page < 1)
+  $page = 1;
+if ($pageSize < 1)
+  $pageSize = 20;
+if ($pageSize > 100)
+  $pageSize = 100;
 
 if ($company_id <= 0) {
   echo json_encode([
@@ -41,7 +49,7 @@ if ($company_id <= 0) {
   exit();
 }
 
-$conditions = ["o.company_id = ?", "o.payment_status = 'Unpaid'"];
+$conditions = ["o.company_id = ?"]; // Removed Unpaid restriction
 $params = [$company_id];
 
 if ($search !== "") {
@@ -55,6 +63,7 @@ if ($search !== "") {
 }
 
 $allowedStatuses = ["pending", "verified", "rejected"];
+// Status expression logic remains same
 $statusExpr = "LOWER(
   CASE
     WHEN LOWER(o.payment_status) IN ('paid','verified','complete','completed') THEN 'verified'
@@ -85,47 +94,81 @@ if ($date_to !== "") {
   $params[] = $date_to;
 }
 
+if ($payment_method !== "all" && $payment_method !== "") {
+  $conditions[] = "o.payment_method = ?";
+  $params[] = $payment_method;
+}
+
 try {
   $uploadsDir = realpath(__DIR__ . "/../uploads/slips");
-  
+
   // Add role-based order visibility filtering
   if ($user_role === "Admin Page") {
-    // Admin: แสดงสลิปของออเดอร์ที่สร้างโดย Admin เท่านั้น
     $conditions[] = "o.creator_id = ?";
     $params[] = $user_id;
   } elseif ($user_role === "Telesale") {
-    // Telesale: แสดงสลิปของออเดอร์ที่สร้างโดยตนเองเท่านั้น
     $conditions[] = "o.creator_id = ?";
     $params[] = $user_id;
   } elseif ($user_role === "Supervisor Telesale") {
-    // Supervisor: แสดงสลิปของออเดอร์ที่สร้างโดยตนเองและลูกทีม
     if ($user_team_id !== null) {
-      // Get team member IDs
       $teamStmt = $conn->prepare("SELECT id FROM users WHERE team_id = ? AND role = 'Telesale'");
       $teamStmt->execute([$user_team_id]);
       $teamMemberIds = $teamStmt->fetchAll(PDO::FETCH_COLUMN);
-      $teamMemberIds[] = $user_id; // Include supervisor's own orders
-      
+      $teamMemberIds[] = $user_id;
+
       if (!empty($teamMemberIds)) {
         $placeholders = implode(",", array_fill(0, count($teamMemberIds), "?"));
         $conditions[] = "o.creator_id IN ({$placeholders})";
         $params = array_merge($params, $teamMemberIds);
       } else {
-        // No team members, only supervisor's orders
         $conditions[] = "o.creator_id = ?";
         $params[] = $user_id;
       }
     } else {
-      // No team_id, only supervisor's orders
       $conditions[] = "o.creator_id = ?";
       $params[] = $user_id;
     }
   }
-  // Backoffice, Finance, และ roles อื่นๆ แสดงสลิปทั้งหมดของ company (ไม่ต้อง filter)
-  
-  // Update whereClause after adding role-based filters
+
   $whereClause = implode(" AND ", $conditions);
 
+  // Determine correct primary key column for customers (id vs customer_id)
+  $customerPkColumn = "id";
+  try {
+    $stmt = $conn->query(
+      "SELECT COLUMN_NAME FROM information_schema.columns 
+       WHERE table_schema = DATABASE() 
+         AND table_name = 'customers' 
+         AND COLUMN_NAME IN ('id','customer_id')
+       ORDER BY FIELD(COLUMN_NAME, 'id','customer_id')
+       LIMIT 1",
+    );
+    $col = $stmt ? $stmt->fetchColumn() : false;
+    if ($col) {
+      $customerPkColumn = $col;
+    }
+  } catch (Exception $ignored) {
+    $customerPkColumn = "id";
+  }
+  $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
+
+  // 1. Get Total Count first
+  $countParams = $params; // Copy params for count query
+  $countSql = "SELECT COUNT(*) as total 
+               FROM order_slips os
+               INNER JOIN orders o ON o.id = os.order_id
+               $customerJoin
+               LEFT JOIN users u ON u.id = o.creator_id
+               WHERE $whereClause";
+
+  // Special check for customer join if we need it for filtering (already included in countSql above)
+
+  $countStmt = $conn->prepare($countSql);
+  $countStmt->execute($countParams);
+  $totalRecords = (int) $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+  $totalPages = ceil($totalRecords / $pageSize);
+
+  // 2. Prepare Data Query
   $hasBankAccountTable = false;
   try {
     $stmt = $conn->query(
@@ -194,25 +237,7 @@ try {
   }
   $amountSelect = $hasAmountColumn ? "os.amount" : "NULL";
 
-  // Determine correct primary key column for customers (id vs customer_id)
-  $customerPkColumn = "id";
-  try {
-    $stmt = $conn->query(
-      "SELECT COLUMN_NAME FROM information_schema.columns 
-       WHERE table_schema = DATABASE() 
-         AND table_name = 'customers' 
-         AND COLUMN_NAME IN ('id','customer_id')
-       ORDER BY FIELD(COLUMN_NAME, 'id','customer_id')
-       LIMIT 1",
-    );
-    $col = $stmt ? $stmt->fetchColumn() : false;
-    if ($col) {
-      $customerPkColumn = $col;
-    }
-  } catch (Exception $ignored) {
-    $customerPkColumn = "id";
-  }
-  $customerJoin = "LEFT JOIN customers c ON c.$customerPkColumn = o.customer_id";
+  $offset = ($page - 1) * $pageSize;
 
   $sql =
     "SELECT
@@ -244,7 +269,11 @@ try {
       LEFT JOIN users u ON u.id = o.creator_id
       $bankJoin
       WHERE $whereClause
-      ORDER BY os.created_at DESC";
+      ORDER BY os.created_at DESC
+      LIMIT ? OFFSET ?";
+
+  $params[] = $pageSize;
+  $params[] = $offset;
 
   $stmt = $conn->prepare($sql);
   $stmt->execute($params);
@@ -256,8 +285,8 @@ try {
     );
     $uploadedBy = trim(
       ($row["creator_first_name"] ?? "") .
-        " " .
-        ($row["creator_last_name"] ?? ""),
+      " " .
+      ($row["creator_last_name"] ?? ""),
     );
     $fileName = null;
     if (!empty($row["url"])) {
@@ -295,15 +324,13 @@ try {
       }
     }
 
-    // Use amount if available, otherwise fallback to order_total
     $amountValue = null;
     if (isset($row["amount"]) && $row["amount"] !== null && $row["amount"] !== "") {
       $amountValue = (float) $row["amount"];
     } elseif (isset($row["total_amount"]) && $row["total_amount"] !== null) {
-      // Fallback to order_total if amount is not available
       $amountValue = (float) $row["total_amount"];
     }
-    
+
     $rows[] = [
       "id" => (int) $row["id"],
       "order_id" => (string) $row["order_id"],
@@ -333,6 +360,12 @@ try {
     [
       "success" => true,
       "data" => $rows,
+      "pagination" => [
+        "total" => $totalRecords,
+        "page" => $page,
+        "pageSize" => $pageSize,
+        "totalPages" => $totalPages
+      ]
     ],
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
   );
