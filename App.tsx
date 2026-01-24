@@ -3062,7 +3062,7 @@ const App: React.FC = () => {
 
     // Prepare bulk sync payload
     const syncPayload = updates.map(u => ({
-      sub_order_id: (u.boxNumber && u.boxNumber > 1 && !u.orderId.match(/-\d+$/)) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
+      sub_order_id: (u.boxNumber && u.boxNumber > 1) ? `${u.orderId}-${u.boxNumber}` : u.orderId,
       tracking_number: u.trackingNumber,
       shipping_provider: detectShippingProvider(u.trackingNumber)
     }));
@@ -6637,18 +6637,7 @@ const App: React.FC = () => {
         />
       );
     }
-    const pageRoleLimits: Record<string, UserRole[]> = {
-      Permissions: [UserRole.SuperAdmin],
-      Teams: [UserRole.SuperAdmin],
-      Products: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Users: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Pages: [UserRole.SuperAdmin, UserRole.AdminControl],
-      Tags: [UserRole.SuperAdmin, UserRole.AdminControl],
-    };
-    const allowedRoles = pageRoleLimits[activePage];
-    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-      return <div className="p-6 text-red-600">Not authorized</div>;
-    }
+
     if (activePage === "Users") {
       return (
         <UserManagementPage
@@ -7581,9 +7570,6 @@ const App: React.FC = () => {
       case "Ads Input":
       case "กรอกค่า Ads":
         return <MarketingPage currentUser={currentUser} view="adsInput" />;
-      case "Page Management":
-      case "จัดการเพจ":
-        return <MarketingPage currentUser={currentUser} view="ads" />;
       case "Ads History":
       case "ประวัติการกรอก Ads":
         return <MarketingPage currentUser={currentUser} view="adsHistory" />;

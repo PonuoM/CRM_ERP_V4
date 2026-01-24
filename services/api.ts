@@ -33,7 +33,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   // Direct file access for inventory and product modules (bypassing index.php router)
   // Direct file access for inventory and product modules (bypassing index.php router)
-  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
+  // Direct file access for inventory and product modules (bypassing index.php router)
+  if (path.startsWith('inventory/') || path.startsWith('Product_DB/') || path.startsWith('Marketing_DB/') || path.startsWith('Bank_DB/') || path.startsWith('Statement_DB/') || path.startsWith('import/') || path.startsWith('Order_DB/') || path.startsWith('Orders/') || path.startsWith('Finance/') || path.startsWith('basket_config.php')) {
     const directBase = apiBasePath.replace(/\/$/, "");
     url = `${directBase}/${path}`;
   }
@@ -677,6 +678,7 @@ export async function listOrders(params: {
   orderStatus?: string | string[];
   shop?: string;
   tab?: string;
+  returnMode?: string;
   signal?: AbortSignal;
 } = {}): Promise<{
   ok: boolean;
@@ -723,6 +725,7 @@ export async function listOrders(params: {
 
   if (safeParams.shop) qs.set("shop", safeParams.shop);
   if (safeParams.tab) qs.set("tab", safeParams.tab);
+  if (safeParams.returnMode) qs.set("returnMode", safeParams.returnMode);
 
   return apiFetch(`orders${qs.toString() ? `?${qs}` : ""}`, { signal: safeParams.signal });
 }
@@ -857,7 +860,6 @@ export async function saveReturnOrders(returns: any[]) {
 }
 
 export async function updateOrder(id: string | number, data: any) {
-  enrichOrderWithBoxes(data);
   return apiFetch(`orders/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -878,7 +880,6 @@ export async function updateCustomer(id: string, payload: any) {
 }
 
 export async function patchOrder(id: string, payload: any) {
-  enrichOrderWithBoxes(payload);
 
   // DEBUG: Log generated boxes
   console.log('Generated boxes:', {

@@ -85,3 +85,9 @@ CREATE TABLE `order_returns` (
   - เพิ่มปุ่ม **Copy Order ID** ในทุกรายการ
   - ปรับขนาดปุ่ม Tab ให้กดง่ายขึ้น (Padding)
 - **Fixes**: แก้ไข Syntax Error สำหรับการ Build Project
+
+## 6. อัปเดตล่าสุด (Change Log - 22/01/2026)
+- **Refined Data Fetching**: ปรับปรุงการดึงข้อมูล Tab "ยังไม่ตรวจสอบ" (Pending)
+  - **Server-Side Filtering**: ใช้พารามิเตอร์ `returnMode=pending` ใน API เพื่อกรองเฉพาะคำสั่งซื้อที่ **ไม่มี** ในตาราง `order_returns` จาก Server โดยตรง (ลดการโหลดข้อมูลและแก้ปัญหาข้อมูลซ้ำซ้อน)
+- **Enhanced Import Tool**:
+  - **Already Verified Status**: เพิ่มสถานะ "ตรวจสอบแล้ว" (Badge สีฟ้า) ในเครื่องมือ Import/Paste สำหรับรายการที่เคยถูกบันทึกไปแล้ว (เดิมจะขึ้นว่า Not Found หรือซ้ำ) ทำให้แยกแยะได้ง่ายขึ้นว่ารายการไหนเป็นของใหม่ รายการไหนทำไปแล้ว
