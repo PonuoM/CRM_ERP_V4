@@ -847,7 +847,229 @@ function handle_users(PDO $pdo, ?string $id, ?string $action = null, ?string $su
     }
 }
 
+/**
+ * Helper function: Attach next_appointment data to customers array
+ * This eliminates the need to load 12,000+ appointments separately
+ * Uses batch query to avoid N+1 problem
+ */
+function attach_next_appointments_to_customers(PDO $pdo, array &$customers): void {
+    if (empty($customers)) return;
+    
+    // Collect all customer IDs
+    $customerIds = [];
+    foreach ($customers as $c) {
+        $cid = $c['customer_id'] ?? $c['id'] ?? null;
+        if ($cid) {
+            $customerIds[] = $cid;
+        }
+    }
+    
+    if (empty($customerIds)) return;
+    
+    // Batch query: Get next appointment for each customer (upcoming or most recent overdue)
+    // Priority: upcoming appointments first, then overdue if no upcoming
+    $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+    
+    try {
+        $sql = "
+            SELECT 
+                a.customer_id,
+                a.id as next_appointment_id,
+                a.date as next_appointment_date,
+                a.title as next_appointment_title,
+                a.status as next_appointment_status,
+                a.notes as next_appointment_notes
+            FROM appointments a
+            INNER JOIN (
+                SELECT customer_id, MIN(date) as min_date
+                FROM appointments
+                WHERE customer_id IN ($placeholders)
+                  AND status != 'เสร็จสิ้น'
+                  AND date >= CURDATE()
+                GROUP BY customer_id
+            ) upcoming ON a.customer_id = upcoming.customer_id AND a.date = upcoming.min_date
+            WHERE a.status != 'เสร็จสิ้น'
+            
+            UNION ALL
+            
+            SELECT 
+                a.customer_id,
+                a.id as next_appointment_id,
+                a.date as next_appointment_date,
+                a.title as next_appointment_title,
+                a.status as next_appointment_status,
+                a.notes as next_appointment_notes
+            FROM appointments a
+            INNER JOIN (
+                SELECT customer_id, MAX(date) as max_date
+                FROM appointments
+                WHERE customer_id IN ($placeholders)
+                  AND status != 'เสร็จสิ้น'
+                  AND date < CURDATE()
+                  AND customer_id NOT IN (
+                      SELECT DISTINCT customer_id FROM appointments 
+                      WHERE customer_id IN ($placeholders) 
+                      AND status != 'เสร็จสิ้น' 
+                      AND date >= CURDATE()
+                  )
+                GROUP BY customer_id
+            ) overdue ON a.customer_id = overdue.customer_id AND a.date = overdue.max_date
+            WHERE a.status != 'เสร็จสิ้น'
+        ";
+        
+        // Params: customerIds x 3 (for each subquery: upcoming, upcoming_dedup, overdue)
+        // SQL Structure: Main SELECT -> Upcoming JOIN -> UNION -> Main SELECT -> Overdue JOIN (with subquery)
+        // Wait, let's count placeholders precisely:
+        // 1. Upcoming JOIN: WHERE customer_id IN (...) -> 1 set
+        // 2. Overdue JOIN: WHERE customer_id IN (...) -> 2nd set
+        // 3. Overdue JOIN -> NOT IN subquery: WHERE customer_id IN (...) -> 3rd set
+        // Total = 3 sets. 
+        $params = array_merge($customerIds, $customerIds, $customerIds);
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Build lookup map
+        $appointmentMap = [];
+        foreach ($appointments as $apt) {
+            $cid = $apt['customer_id'];
+            if (!isset($appointmentMap[$cid])) {
+                $appointmentMap[$cid] = $apt;
+            }
+        }
+        
+        // Attach to customers
+        foreach ($customers as &$customer) {
+            $cid = $customer['customer_id'] ?? $customer['id'] ?? null;
+            if ($cid && isset($appointmentMap[$cid])) {
+                $apt = $appointmentMap[$cid];
+                $customer['next_appointment_id'] = $apt['next_appointment_id'];
+                $customer['next_appointment_date'] = $apt['next_appointment_date'];
+                $customer['next_appointment_title'] = $apt['next_appointment_title'];
+                $customer['next_appointment_status'] = $apt['next_appointment_status'];
+                $customer['next_appointment_notes'] = $apt['next_appointment_notes'];
+            }
+        }
+        unset($customer);
+        
+    } catch (Throwable $e) {
+        // If appointments table doesn't exist or error, silently continue
+        error_log("attach_next_appointments_to_customers error: " . $e->getMessage());
+    }
+}
+
+/**
+ * Helper function: Attach call status data to customers array
+ * This attaches: last_call_date, call_count_by_owner, last_call_result
+ * Only counts calls made by the CURRENT OWNER (matching caller name)
+ * Uses batch query to avoid N+1 problem
+ */
+function attach_call_status_to_customers(PDO $pdo, array &$customers): void {
+    if (empty($customers)) return;
+    
+    // Collect customer info: ID and assigned_to (owner user_id)
+    $customerIds = [];
+    $ownerUserIds = [];
+    foreach ($customers as $c) {
+        $cid = $c['customer_id'] ?? $c['id'] ?? null;
+        $ownerId = $c['assigned_to'] ?? null;
+        if ($cid) {
+            $customerIds[] = $cid;
+            if ($ownerId) {
+                $ownerUserIds[$cid] = $ownerId;
+            }
+        }
+    }
+    
+    if (empty($customerIds)) return;
+    
+    try {
+        // Step 1: Get owner names from users table
+        $uniqueOwnerIds = array_unique(array_values($ownerUserIds));
+        if (empty($uniqueOwnerIds)) return;
+        
+        $ownerPlaceholders = implode(',', array_fill(0, count($uniqueOwnerIds), '?'));
+        $ownerStmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) as full_name FROM users WHERE id IN ($ownerPlaceholders)");
+        $ownerStmt->execute($uniqueOwnerIds);
+        $ownerRows = $ownerStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Build owner name lookup: user_id => full_name
+        $ownerNameMap = [];
+        foreach ($ownerRows as $row) {
+            $ownerNameMap[$row['id']] = $row['full_name'];
+        }
+        
+        // Step 2: Query call_history for all customers
+        $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+        $callSql = "
+            SELECT 
+                customer_id,
+                caller,
+                MAX(date) as last_call_date,
+                COUNT(*) as call_count,
+                (SELECT result FROM call_history ch2 
+                 WHERE ch2.customer_id = call_history.customer_id 
+                   AND ch2.caller = call_history.caller 
+                 ORDER BY ch2.date DESC LIMIT 1) as last_call_result
+            FROM call_history
+            WHERE customer_id IN ($placeholders)
+            GROUP BY customer_id, caller
+        ";
+        
+        $callStmt = $pdo->prepare($callSql);
+        $callStmt->execute($customerIds);
+        $callRows = $callStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Build lookup: customer_id => [caller => {last_call_date, call_count, last_call_result}]
+        $callMap = [];
+        foreach ($callRows as $row) {
+            $cid = $row['customer_id'];
+            $caller = $row['caller'];
+            if (!isset($callMap[$cid])) {
+                $callMap[$cid] = [];
+            }
+            $callMap[$cid][$caller] = [
+                'last_call_date' => $row['last_call_date'],
+                'call_count' => (int)$row['call_count'],
+                'last_call_result' => $row['last_call_result']
+            ];
+        }
+        
+        // Step 3: Attach to customers (only for matching owner)
+        foreach ($customers as &$customer) {
+            $cid = $customer['customer_id'] ?? $customer['id'] ?? null;
+            $ownerId = $customer['assigned_to'] ?? null;
+            
+            // Default values
+            $customer['last_call_date_by_owner'] = null;
+            $customer['call_count_by_owner'] = 0;
+            $customer['last_call_result_by_owner'] = null;
+            
+            if (!$cid || !$ownerId) continue;
+            
+            // Get owner's full name
+            $ownerName = $ownerNameMap[$ownerId] ?? null;
+            if (!$ownerName) continue;
+            
+            // Check if this owner has any calls for this customer
+            if (isset($callMap[$cid]) && isset($callMap[$cid][$ownerName])) {
+                $callData = $callMap[$cid][$ownerName];
+                $customer['last_call_date_by_owner'] = $callData['last_call_date'];
+                $customer['call_count_by_owner'] = $callData['call_count'];
+                $customer['last_call_result_by_owner'] = $callData['last_call_result'];
+            }
+        }
+        unset($customer);
+        
+    } catch (Throwable $e) {
+        // If call_history table doesn't exist or error, silently continue
+        error_log("attach_call_status_to_customers error: " . $e->getMessage());
+    }
+}
+
 function handle_customers(PDO $pdo, ?string $id): void {
+
     // Authenticate
     $user = get_authenticated_user($pdo);
     if (!$user) {
@@ -879,10 +1101,61 @@ function handle_customers(PDO $pdo, ?string $id): void {
                     $tags->execute([$id]);
                     $cust['tags'] = $tags->fetchAll();
                     json_response($cust);
+                } elseif (isset($_GET['action']) && $_GET['action'] === 'count_by_baskets') {
+                    // Count customers by basket for a specific agent
+                    // current_basket_key now stores basket_config.id (as string)
+                    $companyId = $_GET['companyId'] ?? null;
+                    $assignedTo = $_GET['assignedTo'] ?? null;
+                    
+                    if (!$companyId || !$assignedTo) {
+                        json_response(['error' => 'companyId and assignedTo required'], 400);
+                    }
+                    
+                    // Get all DISTRIBUTION baskets with their IDs and linked basket IDs
+                    $basketStmt = $pdo->prepare("
+                        SELECT bc.id, bc.basket_key, bc.basket_name, bc.linked_basket_key,
+                               linked.id as linked_id
+                        FROM basket_config bc
+                        LEFT JOIN basket_config linked ON bc.linked_basket_key = linked.basket_key AND linked.company_id = bc.company_id
+                        WHERE bc.company_id = ? AND bc.target_page = 'distribution' AND bc.is_active = 1 
+                        ORDER BY bc.display_order
+                    ");
+                    $basketStmt->execute([$companyId]);
+                    $baskets = $basketStmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $result = [];
+                    foreach ($baskets as $basket) {
+                        // Count by current_basket_key (which now stores basket_config.id)
+                        // Include both this basket's ID and linked basket's ID
+                        $ids = [(string)$basket['id']];
+                        if (!empty($basket['linked_id'])) {
+                            $ids[] = (string)$basket['linked_id'];
+                        }
+                        
+                        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                        $countStmt = $pdo->prepare("
+                            SELECT COUNT(*) FROM customers 
+                            WHERE company_id = ? 
+                              AND assigned_to = ? 
+                              AND current_basket_key IN ($placeholders)
+                        ");
+                        $params = array_merge([$companyId, $assignedTo], $ids);
+                        $countStmt->execute($params);
+                        $count = (int)$countStmt->fetchColumn();
+                        $result[$basket['basket_key']] = $count;
+                    }
+                    
+                    // Also get total count for this agent
+                    $totalStmt = $pdo->prepare("SELECT COUNT(*) FROM customers WHERE company_id = ? AND assigned_to = ?");
+                    $totalStmt->execute([$companyId, $assignedTo]);
+                    $total = (int)$totalStmt->fetchColumn();
+                    
+                    json_response(['baskets' => $result, 'total' => $total]);
                 } elseif (isset($_GET['action']) && $_GET['action'] === 'counts') {
                     $t_start = microtime(true);
                     log_perf("handle_customers:counts:START");
                     // NEW: Count customers for each filter type (for counter badges)
+
                     $companyId = $_GET['companyId'] ?? null;
                     $assignedTo = $_GET['assignedTo'] ?? null;
                     
@@ -1050,6 +1323,11 @@ function handle_customers(PDO $pdo, ?string $id): void {
                             $customer['tags'] = $tagsStmt->fetchAll();
                         }
 
+                        // Attach next appointment data for each customer
+                        attach_next_appointments_to_customers($pdo, $customers);
+                        // Attach call status (by current owner)
+                        attach_call_status_to_customers($pdo, $customers);
+                        
                         json_response($customers);
                     } elseif (in_array($source, ['new_sale','waiting_return','stock', 'all'], true)) {
                         // Source-specific pools using shared helper
@@ -1098,6 +1376,11 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         // DEBUG: Log result count
                         file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " Result Count for $source: " . count($customers) . "\n", FILE_APPEND);
 
+                        // Attach next appointment data for each customer
+                        attach_next_appointments_to_customers($pdo, $customers);
+                        // Attach call status (by current owner)
+                        attach_call_status_to_customers($pdo, $customers);
+                        
                         json_response($customers);
                     } else {
                         // Pagination parameters
@@ -1509,6 +1792,11 @@ function handle_customers(PDO $pdo, ?string $id): void {
                         }
                         log_perf("handle_customers:list:TAGS_BATCH", $t_tags_start);
                         log_perf("handle_customers:list:TOTAL", $t_list_start);
+
+                        // Attach next appointment data for each customer
+                        attach_next_appointments_to_customers($pdo, $customers);
+                        // Attach call status (by current owner)
+                        attach_call_status_to_customers($pdo, $customers);
 
                         if ($page) {
                             json_response(['total' => $total, 'data' => $customers, 'server_timestamp' => round(microtime(true) * 1000)]);
@@ -6158,6 +6446,7 @@ function handle_appointments(PDO $pdo, ?string $id): void {
                 $assignedTo = $_GET['assignedTo'] ?? null;
                 $companyId = $_GET['companyId'] ?? null;
                 $dateFrom = $_GET['dateFrom'] ?? null;
+                $excludeStatus = $_GET['excludeStatus'] ?? null; // Filter เพื่อกรอง status ที่ไม่ต้องการ เช่น "เสร็จสิ้น"
                 $pageSize = isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : 500; // Limit default to 500
                 
                 $sql = 'SELECT a.* FROM appointments a';
@@ -6187,9 +6476,16 @@ function handle_appointments(PDO $pdo, ?string $id): void {
                     $params[] = $dateFrom;
                 }
                 
+                // Filter เพื่อกรอง status ที่ไม่ต้องการ (เช่น "เสร็จสิ้น")
+                if ($excludeStatus) {
+                    $wheres[] = 'a.status != ?';
+                    $params[] = $excludeStatus;
+                }
+                
                 if (!empty($wheres)) {
                     $sql .= ' WHERE ' . implode(' AND ', $wheres);
                 }
+
                 
                 $sql .= ' ORDER BY a.date DESC LIMIT ?';
                 $params[] = $pageSize;

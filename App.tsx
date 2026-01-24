@@ -888,7 +888,9 @@ const App: React.FC = () => {
             companyId: sessionUser?.company_id,
             pageSize: 5000
           }),
-          listAppointments({ assignedTo: sessionUser?.id, pageSize: 500 }),
+          // Appointments are now primarily loaded from customer.next_appointment_* fields
+          // This call is just a fallback for customers not yet loaded - reduced pageSize
+          listAppointments({ companyId: sessionUser?.company_id, pageSize: 100, excludeStatus: 'เสร็จสิ้น' }),
           shouldSkipCustomers ? Promise.resolve([]) : listCustomerTags(),
           listActivities(),
           listTags({ type: "SYSTEM" }),
@@ -1155,7 +1157,9 @@ const App: React.FC = () => {
             waitingBasketStartDate: r.waiting_basket_start_date ?? undefined,
             isBlocked: Boolean(r.is_blocked ?? false),
             isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
-          };
+            // Basket routing field - current_basket_key stores basket_config.id (as string/number)
+            current_basket_key: r.current_basket_key ?? undefined,
+          } as any; // Cast as any to allow extra fields like current_basket_key
         };
 
         const mapOrder = (r: any): Order => {
@@ -1352,7 +1356,42 @@ const App: React.FC = () => {
         setPromotions(Array.isArray(promo) ? promo.map(mapPromotion) : []);
         const callHistoryData = Array.isArray(ch) ? ch : (ch?.data || []);
         setCallHistory(Array.isArray(callHistoryData) ? callHistoryData.map(mapCall) : []);
-        setAppointments(Array.isArray(ap) ? ap.map(mapAppt) : []);
+
+        // Generate appointments from customers' next_appointment_* fields
+        // This eliminates the need to load 12,000+ appointments separately
+        const appointmentsFromCustomers: Appointment[] = [];
+        customers.forEach(customer => {
+          // @ts-ignore - next_appointment fields are added by backend
+          if (customer.next_appointment_id) {
+            appointmentsFromCustomers.push({
+              // @ts-ignore
+              id: customer.next_appointment_id,
+              customerId: String(customer.id),
+              // @ts-ignore
+              date: customer.next_appointment_date,
+              // @ts-ignore
+              title: customer.next_appointment_title || '',
+              // @ts-ignore
+              status: customer.next_appointment_status || 'ใหม่',
+              // @ts-ignore
+              notes: customer.next_appointment_notes || undefined,
+            });
+          }
+        });
+
+        // Also include appointments from API if any (for backward compatibility)
+        const apiAppointments = Array.isArray(ap) ? ap.map(mapAppt) : [];
+
+        // Merge: prefer customer-embedded appointments over API appointments (dedupe by id)
+        const appointmentMap = new Map<number, Appointment>();
+        appointmentsFromCustomers.forEach(a => appointmentMap.set(a.id, a));
+        apiAppointments.forEach(a => {
+          if (!appointmentMap.has(a.id)) {
+            appointmentMap.set(a.id, a);
+          }
+        });
+
+        setAppointments(Array.from(appointmentMap.values()));
 
         // Set system tags and companies from API
         setSystemTags(
@@ -4471,6 +4510,33 @@ const App: React.FC = () => {
     // Calculate status independent of customer state presence
     if (newFollowUpDate) {
       newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
+
+      // CREATE APPOINTMENT AUTOMATICALLY when follow-up date is provided
+      try {
+        const customerPk = customer?.pk || customer?.customer_id || customerId;
+        const response = await createAppointment({
+          customerId: customerPk,
+          date: newFollowUpDate,
+          title: `ติดตามจากการโทร: ${callLogData.result || 'ติดต่อลูกค้า'}`,
+          status: "ใหม่",
+          notes: callLogData.notes || undefined,
+        });
+
+        // Add the new appointment to state
+        const newAppointment: Appointment = {
+          id: response?.id || (Math.max(...appointments.map((a) => a.id), 0) + 1),
+          customerId: String(customerPk),
+          date: newFollowUpDate,
+          title: `ติดตามจากการโทร: ${callLogData.result || 'ติดต่อลูกค้า'}`,
+          status: "ใหม่",
+          notes: callLogData.notes,
+        };
+
+        setAppointments((prev) => [newAppointment, ...prev]);
+        console.log("[handleLogCall] Created appointment from call log:", newAppointment);
+      } catch (e) {
+        console.error("[handleLogCall] Failed to create appointment from call log:", e);
+      }
     }
 
 
@@ -4691,38 +4757,10 @@ const App: React.FC = () => {
         console.error("Failed to fetch/complete existing appointments", e);
       }
 
-      // Now create the new appointment
-      let realAppointmentId: number | undefined;
-      const appointmentTitle = `ติดตามลูกค้า (${callLogData.result})`;
-      const appointmentNotes = callLogData.notes || `ติดตามลูกค้าจากการโทรที่มีผลลัพธ์ ${callLogData.result}`;
-
-      try {
-        const response = await createAppointment({
-          customerId,
-          date: newFollowUpDate,
-          title: appointmentTitle,
-          status: "ใหม่",
-          notes: appointmentNotes,
-        });
-        // API returns { id: number }
-        realAppointmentId = response?.id;
-      } catch (e) {
-        console.error("create appointment API failed", e);
-      }
-
-      // Use the real ID from database, or fallback to local ID if API failed
-      const newAppointment: Appointment = {
-        id: realAppointmentId || (Math.max(...appointments.map((a) => a.id), 0) + 1),
-        customerId: customerId,
-        date: newFollowUpDate,
-        title: appointmentTitle,
-        status: "ใหม่",
-        notes: appointmentNotes,
-      };
-
-      setAppointments((prev) => [newAppointment, ...prev]);
-      // Trigger refetch in CustomerDetailPage
-      setRefreshTrigger(prev => prev + 1);
+      // REMOVED: Auto-create appointment when newFollowUpDate is provided
+      // Users must explicitly create appointments using the Appointment modal
+      // This prevents unwanted automatic appointment creation when logging calls
+      // The newFollowUpDate is still saved to customer.followUpDate field above
 
       const customerIdForActivity = getCustomerIdForActivity(customerId);
       if (customerIdForActivity) {

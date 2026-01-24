@@ -743,12 +743,21 @@ export async function getOrder(id: string) {
 
 
 
-export async function listAppointments(params?: { customerId?: string; pageSize?: number }) {
+export async function listAppointments(params?: {
+  customerId?: string;
+  companyId?: number; // Filter ตาม company
+  pageSize?: number;
+  excludeStatus?: string; // เพิ่ม filter เพื่อกรอง status ที่ไม่ต้องการ เช่น "เสร็จสิ้น"
+}) {
   const qs = new URLSearchParams();
   if (params?.customerId) qs.set("customerId", params.customerId);
+  if (params?.companyId) qs.set("companyId", String(params.companyId));
   if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params?.excludeStatus) qs.set("excludeStatus", params.excludeStatus);
   return apiFetch(`appointments${qs.toString() ? `?${qs}` : ""}`);
 }
+
+
 
 export async function listCallHistory(params?: { customerId?: string; page?: number; pageSize?: number; companyId?: number }) {
   const qs = new URLSearchParams();

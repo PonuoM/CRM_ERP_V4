@@ -85,8 +85,20 @@ export function mapCustomerFromApi(r: any, tagsByCustomer: Record<string, Tag[]>
         isUpsellEligible: Boolean(r.is_upsell_eligible ?? r.isUpsellEligible ?? false),
         firstOrderDate: r.first_order_date ?? r.firstOrderDate ?? undefined,
         lastOrderDate: r.last_order_date ?? r.lastOrderDate ?? undefined,
+        // Basket routing field - current_basket_key stores basket_config.id (as string/number)
+        current_basket_key: r.current_basket_key ?? undefined,
         // AI Specific Fields (pass through if present)
         ai_priority_score: r.ai_priority_score,
-        ai_insight: r.ai_insight
+        ai_insight: r.ai_insight,
+        // Joined appointment data (from attach_next_appointments_to_customers)
+        next_appointment_id: r.next_appointment_id ?? undefined,
+        next_appointment_date: r.next_appointment_date ?? undefined,
+        next_appointment_title: r.next_appointment_title ?? undefined,
+        next_appointment_status: r.next_appointment_status ?? undefined,
+        next_appointment_notes: r.next_appointment_notes ?? undefined,
+        // Joined call status data (from attach_call_status_to_customers)
+        last_call_date_by_owner: r.last_call_date_by_owner ?? undefined,
+        call_count_by_owner: r.call_count_by_owner ?? 0,
+        last_call_result_by_owner: r.last_call_result_by_owner ?? undefined,
     } as any; // Cast as any to allow extra fields like aiScore
 }

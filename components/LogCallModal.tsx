@@ -154,7 +154,10 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
             />
           </div>
           <div>
-            <label className="block text-gray-700 font-medium mb-1">วันที่คาดว่าจะติดต่อครั้งถัดไป</label>
+            <label className="block text-gray-700 font-medium mb-1">
+              วันที่คาดว่าจะติดต่อครั้งถัดไป
+              <span className="text-xs text-green-600 ml-1">(ใส่วันที่เพื่อสร้างนัดหมายอัตโนมัติ)</span>
+            </label>
             <input
               type="datetime-local"
               min={nowForInput}
@@ -165,6 +168,10 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ customer, user, systemTags,
               placeholder=""
               style={{ colorScheme: 'light' }}
             />
+            <p className="text-xs text-gray-500 mt-1">
+              หมายเหตุ: หากใส่วันที่ ระบบจะสร้างนัดหมายให้อัตโนมัติ
+              หากไม่ต้องการสร้างนัดหมาย ไม่ต้องใส่วันที่
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -134,4 +134,74 @@ class UpsellService {
         $stmt->execute([$orderId]);
         return $stmt->rowCount() > 0;
     }
+
+    /**
+     * Handle successful Upsell sale - move customer to personal_1_2m
+     */
+    public function handleUpsellSale($customerId, $orderId) {
+        require_once __DIR__ . '/BasketRoutingService.php';
+        
+        // Update customer basket
+        $stmt = $this->pdo->prepare("
+            UPDATE customers SET 
+                current_basket_key = 'personal_1_2m',
+                basket_entered_date = NOW(),
+                distribution_count = 0
+            WHERE customer_id = ?
+        ");
+        $stmt->execute([$customerId]);
+
+        // Log transition
+        $stmt = $this->pdo->prepare("
+            INSERT INTO basket_transition_log 
+            (customer_id, from_basket_key, to_basket_key, transition_type, notes)
+            VALUES (?, 'upsell', 'personal_1_2m', 'sale', ?)
+        ");
+        $stmt->execute([$customerId, "Upsell successful, order #$orderId"]);
+
+        return true;
+    }
+
+    /**
+     * Handle failed/timeout Upsell - move customer to new_customer
+     */
+    public function handleUpsellNoSale($customerId, $reason = 'no_sale') {
+        // Update customer basket
+        $stmt = $this->pdo->prepare("
+            UPDATE customers SET 
+                current_basket_key = 'new_customer',
+                basket_entered_date = NOW()
+            WHERE customer_id = ?
+        ");
+        $stmt->execute([$customerId]);
+
+        // Log transition
+        $stmt = $this->pdo->prepare("
+            INSERT INTO basket_transition_log 
+            (customer_id, from_basket_key, to_basket_key, transition_type, notes)
+            VALUES (?, 'upsell', 'new_customer', 'fail', ?)
+        ");
+        $stmt->execute([$customerId, "Upsell failed: $reason"]);
+
+        return true;
+    }
+
+    /**
+     * Get customers currently in Upsell basket for a specific user
+     */
+    public function getUpsellCustomersForUser($userId) {
+        $stmt = $this->pdo->prepare("
+            SELECT c.*, o.id as order_id, o.order_date, o.total_amount
+            FROM customers c
+            INNER JOIN orders o ON o.customer_id = c.customer_id
+            WHERE c.assigned_to = ?
+              AND c.current_basket_key = 'upsell'
+              AND o.order_status = 'pending'
+              AND c.company_id = ?
+            ORDER BY o.order_date DESC
+        ");
+        $stmt->execute([$userId, $this->companyId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }
+

@@ -116,8 +116,14 @@ const StatusDisplay: React.FC<{
 }> = ({ hasLastCall, callCount, hasAppointment, daysUntilAppointment, lastCallResult }) => {
     const status = getContactStatus(hasLastCall, hasAppointment, lastCallResult);
 
+    // Determine if appointment is overdue
+    const isOverdue = status === 'appointment' && daysUntilAppointment !== undefined && daysUntilAppointment < 0;
+
     const statusConfig = {
-        appointment: { label: 'นัดเรียบร้อย', color: 'text-blue-600' },
+        appointment: {
+            label: isOverdue ? 'เลยนัดหมาย' : 'นัดเรียบร้อย',
+            color: isOverdue ? 'text-red-600' : 'text-blue-600'
+        },
         contacted: { label: 'โทรแล้ว', color: 'text-green-600' },
         callback: { label: 'รอติดต่อ', color: 'text-orange-600' },
         not_contacted: { label: 'ยังไม่โทร', color: 'text-gray-500' }
@@ -128,7 +134,8 @@ const StatusDisplay: React.FC<{
     // Detail text on second line
     let detail = '';
     if (status === 'appointment' && daysUntilAppointment !== undefined) {
-        if (daysUntilAppointment === 0) detail = 'วันนี้';
+        if (daysUntilAppointment < 0) detail = `เลย ${Math.abs(daysUntilAppointment)} วัน`;
+        else if (daysUntilAppointment === 0) detail = 'วันนี้';
         else if (daysUntilAppointment === 1) detail = 'พรุ่งนี้';
         else detail = `อีก ${daysUntilAppointment} วัน`;
     } else if (status === 'contacted' || status === 'callback') {
@@ -139,7 +146,7 @@ const StatusDisplay: React.FC<{
     return (
         <div className="text-sm">
             <div className={`font-medium ${color}`}>{label}</div>
-            {detail && <div className="text-xs text-gray-400">{detail}</div>}
+            {detail && <div className={`text-xs ${isOverdue ? 'text-red-400' : 'text-gray-400'}`}>{detail}</div>}
         </div>
     );
 };
@@ -149,17 +156,21 @@ interface AppointmentWithCustomer {
     appointment: Appointment;
     customer?: Customer;
     daysUntil: number;
+    basketKey?: string;
+    basketName?: string;
 }
 
 const UpcomingAppointmentsPanel: React.FC<{
     appointments: Appointment[];
     customers: Customer[];
+    basketGroups: Map<string, Customer[]>;
+    tabConfigs: Array<{ key: string; name: string }>;
     onViewCustomer: (customer: Customer) => void;
     isOpen: boolean;
     onToggle: () => void;
     isFilterActive?: boolean;
     onFilterToggle?: () => void;
-}> = ({ appointments, customers, onViewCustomer, isOpen, onToggle, isFilterActive = false, onFilterToggle }) => {
+}> = ({ appointments, customers, basketGroups, tabConfigs, onViewCustomer, isOpen, onToggle, isFilterActive = false, onFilterToggle }) => {
     // Create customer map for quick lookup
     const customerMap = useMemo(() => {
         const map = new Map<string, Customer>();
@@ -168,13 +179,27 @@ const UpcomingAppointmentsPanel: React.FC<{
     }, [customers]);
 
     // Get upcoming appointments (not completed, today or future), sorted by date
+    // ONLY include appointments for customers in our customerMap (assigned to current user)
     const upcomingAppointments = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
+        // Helper function to find which basket a customer belongs to
+        const findCustomerBasket = (customerId: string): { key: string; name: string } | null => {
+            for (const [basketKey, customersInBasket] of basketGroups.entries()) {
+                if (customersInBasket.some(c => String(c.id) === customerId)) {
+                    const tabConfig = tabConfigs.find(t => t.key === basketKey);
+                    return tabConfig ? { key: basketKey, name: tabConfig.name } : { key: basketKey, name: basketKey };
+                }
+            }
+            return null;
+        };
+
         return appointments
             .filter(apt => {
                 if (apt.status === 'เสร็จสิ้น') return false;
+                // IMPORTANT: Only include if the customer is in our customerMap (assigned to current user)
+                if (!customerMap.has(String(apt.customerId))) return false;
                 const aptDate = new Date(apt.date);
                 aptDate.setHours(0, 0, 0, 0);
                 return aptDate >= today;
@@ -183,14 +208,19 @@ const UpcomingAppointmentsPanel: React.FC<{
                 const aptDate = new Date(apt.date);
                 aptDate.setHours(0, 0, 0, 0);
                 const daysUntil = Math.ceil((aptDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const customer = customerMap.get(String(apt.customerId));
+                const basket = customer ? findCustomerBasket(String(customer.id)) : null;
+
                 return {
                     appointment: apt,
-                    customer: customerMap.get(String(apt.customerId)),
-                    daysUntil
+                    customer,
+                    daysUntil,
+                    basketKey: basket?.key,
+                    basketName: basket?.name
                 };
             })
             .sort((a, b) => a.daysUntil - b.daysUntil);
-    }, [appointments, customerMap]);
+    }, [appointments, customerMap, basketGroups, tabConfigs]);
 
     const getDaysLabel = (days: number) => {
         if (days === 0) return <span className="text-red-600 font-semibold">วันนี้</span>;
@@ -198,6 +228,18 @@ const UpcomingAppointmentsPanel: React.FC<{
         if (days <= 3) return <span className="text-yellow-600">อีก {days} วัน</span>;
         return <span className="text-gray-500">อีก {days} วัน</span>;
     };
+
+    // Count appointments by basket
+    const appointmentsByBasket = useMemo(() => {
+        const counts = new Map<string, { count: number; name: string }>();
+        upcomingAppointments.forEach(apt => {
+            if (apt.basketKey) {
+                const existing = counts.get(apt.basketKey) || { count: 0, name: apt.basketName || apt.basketKey };
+                counts.set(apt.basketKey, { count: existing.count + 1, name: existing.name });
+            }
+        });
+        return counts;
+    }, [upcomingAppointments]);
 
     // Handle button click - toggle filter if onFilterToggle is provided
     const handleButtonClick = () => {
@@ -209,7 +251,7 @@ const UpcomingAppointmentsPanel: React.FC<{
     };
 
     return (
-        <div className="relative">
+        <div className="relative group">
             {/* Toggle/Filter Button */}
             <button
                 onClick={handleButtonClick}
@@ -232,6 +274,8 @@ const UpcomingAppointmentsPanel: React.FC<{
                     <span className="text-xs text-green-600 font-medium">(กำลังกรอง)</span>
                 )}
             </button>
+
+
 
             {/* Panel Content - shows when isOpen is true */}
             {isOpen && !isFilterActive && (
@@ -260,6 +304,13 @@ const UpcomingAppointmentsPanel: React.FC<{
                                             {item.appointment.title && (
                                                 <div className="text-sm text-gray-600 mt-1">
                                                     📝 {item.appointment.title}
+                                                </div>
+                                            )}
+                                            {item.basketName && (
+                                                <div className="text-xs mt-1">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                                        📁 {item.basketName}
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>
@@ -320,11 +371,11 @@ const CustomerRow = React.memo(({
             </td>
             <td className="px-4 py-3">
                 <StatusDisplay
-                    hasLastCall={!!lastCall}
+                    hasLastCall={callCount > 0}
                     callCount={callCount}
                     hasAppointment={hasAppointment}
                     daysUntilAppointment={daysUntilAppointment}
-                    lastCallResult={lastCall?.result}
+                    lastCallResult={(customer as any).last_call_result_by_owner}
                 />
             </td>
             <td className="px-4 py-3">
@@ -433,6 +484,14 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     // Handle search on Enter key or button click
     const handleSearch = () => {
+        // Clear all filters when searching to avoid missing results
+        if (searchTerm.trim()) {
+            setSelectedRegions([]);
+            setSelectedTagIds([]);
+            setFilterByAppointment(false);
+            setFilterByOverdueAppointment(false);
+            setHideContactedDays(null);
+        }
         setActiveSearchTerm(searchTerm);
     };
 
@@ -463,6 +522,9 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Appointment Filter (show only customers with upcoming appointments)
     const [filterByAppointment, setFilterByAppointment] = useState(false);
 
+    // Overdue Appointment Filter (show only customers with overdue appointments)
+    const [filterByOverdueAppointment, setFilterByOverdueAppointment] = useState(false);
+
     // Hide Contacted Filter - hide customers called within X days (null = disabled)
     const [hideContactedDays, setHideContactedDays] = useState<number | null>(null);
     const [isHideContactedDropdownOpen, setIsHideContactedDropdownOpen] = useState(false);
@@ -470,76 +532,28 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
     // Advanced Settings Panel toggle
     const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
 
-    // Check if any filters are active
-    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || hideContactedDays !== null;
+    // Check if any filters are active (including search)
+    const hasActiveFilters = selectedRegions.length > 0 || selectedTagIds.length > 0 || filterByAppointment || filterByOverdueAppointment || hideContactedDays !== null || activeSearchTerm;
 
-    // Clear all filters
+    // Clear all filters (including search)
     const clearAllFilters = () => {
         setSelectedRegions([]);
         setSelectedTagIds([]);
         setFilterByAppointment(false);
+        setFilterByOverdueAppointment(false);
         setHideContactedDays(null);
+        setSearchTerm("");
+        setActiveSearchTerm("");
     };
 
     // Reset page when filter/basket changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeBasketKey, selectedRegions, searchTerm, quickFilter, filterByAppointment, hideContactedDays]);
+    }, [activeBasketKey, selectedRegions, searchTerm, quickFilter, filterByAppointment, filterByOverdueAppointment, hideContactedDays]);
 
-    // Optimize Call History Lookup
+    // Optimize Call History Lookup - Only include calls by CURRENT USER after date_assigned
     const lastCallMap = useMemo(() => {
         const map = new Map<string, CallHistory>();
-        if (!calls) return map;
-
-        calls.forEach(call => {
-            if (!call.customerId) return;
-            // Use 'date' field per types.ts definition
-            const callDate = new Date(call.date || Date.now());
-            const existing = map.get(String(call.customerId));
-            const existingDate = existing ? new Date(existing.date || 0) : null;
-
-            if (!existing || (existingDate && callDate > existingDate)) {
-                map.set(String(call.customerId), call);
-            }
-        });
-        return map;
-    }, [calls]);
-
-    // Track customers with upcoming appointments and days until appointment
-    const appointmentInfoMap = useMemo(() => {
-        const map = new Map<string, { hasAppointment: boolean; daysUntil?: number }>();
-        if (!appointments) return map;
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        appointments.forEach(apt => {
-            if (!apt.customerId) return;
-
-            // Skip completed appointments
-            if (apt.status === 'เสร็จสิ้น') return;
-
-            const aptDate = new Date(apt.date);
-            aptDate.setHours(0, 0, 0, 0);
-
-            // Only include appointments that are today or in the future
-            if (aptDate >= today) {
-                const customerId = String(apt.customerId);
-                const daysUntil = Math.ceil((aptDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-                // Keep the closest appointment
-                const existing = map.get(customerId);
-                if (!existing || (existing.daysUntil !== undefined && daysUntil < existing.daysUntil)) {
-                    map.set(customerId, { hasAppointment: true, daysUntil });
-                }
-            }
-        });
-        return map;
-    }, [appointments]);
-
-    // Count calls by current user after date_assigned for each customer
-    const callCountMap = useMemo(() => {
-        const map = new Map<string, number>();
         if (!calls) return map;
 
         // Create a map of customer dateAssigned for quick lookup
@@ -554,20 +568,86 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             if (!call.customerId) return;
             const customerId = String(call.customerId);
 
-            // Only count calls made by the current user
+            // Only include calls made by the current user
             if (Number(call.caller) !== user.id) return;
 
-            // Only count calls after the customer was assigned to this user
+            // Only include calls after the customer was assigned to this user
             const dateAssigned = customerDateAssigned.get(customerId);
             if (dateAssigned) {
                 const callDate = new Date(call.date);
                 if (callDate < dateAssigned) return;
             }
 
-            map.set(customerId, (map.get(customerId) || 0) + 1);
+            // Use 'date' field per types.ts definition
+            const callDate = new Date(call.date || Date.now());
+            const existing = map.get(customerId);
+            const existingDate = existing ? new Date(existing.date || 0) : null;
+
+            if (!existing || (existingDate && callDate > existingDate)) {
+                map.set(customerId, call);
+            }
         });
         return map;
     }, [calls, localCustomers, user.id]);
+
+    // Track customers with upcoming appointments and days until appointment
+    // PRIORITY: Store UPCOMING (daysUntil >= 0) appointments over overdue ones
+    // This ensures that filter "นัดหมายใกล้ถึง" shows customers who have ANY upcoming appointment
+    // Track customers with upcoming appointments and days until appointment
+    // PRIORITY: Store UPCOMING (daysUntil >= 0) appointments over overdue ones
+    // This ensures that filter "นัดหมายใกล้ถึง" shows customers who have ANY upcoming appointment
+    const appointmentInfoMap = useMemo(() => {
+        const map = new Map<string, { hasAppointment: boolean; daysUntil?: number; hasUpcoming?: boolean; hasOverdue?: boolean }>();
+
+        // Use joined data directly from customer object (Attached by API: attach_next_appointments_to_customers)
+        localCustomers.forEach(c => {
+            const nextAptDateStr = c.next_appointment_date;
+            const nextAptStatus = c.next_appointment_status;
+
+            if (nextAptDateStr && nextAptStatus !== 'เสร็จสิ้น') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const aptDate = new Date(nextAptDateStr);
+                aptDate.setHours(0, 0, 0, 0);
+
+                const daysUntil = Math.ceil((aptDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const isUpcoming = daysUntil >= 0;
+
+                // Since the API already prioritized upcoming vs overdue, we can trust this single record.
+                map.set(String(c.id), {
+                    hasAppointment: true,
+                    daysUntil,
+                    hasUpcoming: isUpcoming,
+                    hasOverdue: !isUpcoming
+                });
+            }
+        });
+
+        return map;
+    }, [localCustomers]);
+
+
+    // Count ALL calls by current user for each customer (no date_assigned filter)
+    const callCountMap = useMemo(() => {
+        const map = new Map<string, number>();
+        if (!calls) return map;
+
+        // caller field stores full name: "firstName lastName"
+        const currentUserFullName = `${user.firstName} ${user.lastName}`;
+
+        calls.forEach(call => {
+            if (!call.customerId) return;
+            const customerId = String(call.customerId);
+
+            // Only count calls made by the current user (compare by full name)
+            const callerId = call.caller ? String(call.caller).trim() : '';
+            if (callerId !== currentUserFullName) return;
+
+            map.set(customerId, (map.get(customerId) || 0) + 1);
+        });
+        return map;
+    }, [calls, user.firstName, user.lastName]);
 
     // Load customers: Use props if available, otherwise fetch directly from API
     useEffect(() => {
@@ -610,6 +690,144 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         if (basketConfigs.length === 0) return new Map<string, Customer[]>();
         return groupCustomersByDynamicBaskets(localCustomers, basketConfigs);
     }, [localCustomers, basketConfigs]);
+
+    // ========== UNIFIED HIGHLIGHT LOGIC ==========
+    // Simple: highlight tabs that have data matching ANY active filter
+    // Uses the SAME logic as filteredCustomers for consistency
+    const basketsWithMatches = useMemo(() => {
+        const matches = new Set<string>();
+
+        // Check if ANY filter is active
+        const hasActiveFilter =
+            activeSearchTerm ||
+            filterByAppointment ||
+            filterByOverdueAppointment ||
+            (hideContactedDays !== null) ||
+            deferredSelectedRegions.length > 0 ||
+            deferredSelectedTagIds.length > 0 ||
+            (deferredQuickFilter && deferredQuickFilter !== "all");
+
+        // No filter active = no highlights needed (clean look)
+        if (!hasActiveFilter) return matches;
+
+        // Check each basket for matches using the SAME filter logic as filteredCustomers
+        basketGroups.forEach((customers, basketKey) => {
+            let filtered = [...customers];
+
+            // Apply region filter
+            if (deferredSelectedRegions.length > 0) {
+                filtered = filterCustomersByRegion(filtered, deferredSelectedRegions);
+            }
+
+            // Apply Tag Filter
+            if (deferredSelectedTagIds.length > 0) {
+                filtered = filtered.filter(c =>
+                    c.tags?.some(t => deferredSelectedTagIds.includes(t.id))
+                );
+            }
+
+            // Apply Quick Filter
+            if (deferredQuickFilter && deferredQuickFilter !== "all") {
+                filtered = filtered.filter(c => {
+                    const hasCalled = lastCallMap.has(String(c.id));
+                    if (deferredQuickFilter === "uncontacted") return !hasCalled;
+                    if (deferredQuickFilter === "contacted") return hasCalled;
+                    if (deferredQuickFilter === "highGrade") {
+                        return c.grade === CustomerGrade.APlus || c.grade === CustomerGrade.A || c.grade === CustomerGrade.B;
+                    }
+                    return true;
+                });
+            }
+
+            // Apply search filter
+            if (activeSearchTerm) {
+                const lower = activeSearchTerm.toLowerCase().trim();
+                filtered = filtered.filter(c => {
+                    const firstName = c.firstName?.toLowerCase() || '';
+                    const lastName = c.lastName?.toLowerCase() || '';
+                    const fullName = `${firstName} ${lastName}`;
+                    const fullNameNoSpace = `${firstName}${lastName}`;
+                    const reverseName = `${lastName} ${firstName}`;
+                    const reverseNameNoSpace = `${lastName}${firstName}`;
+
+                    return firstName.includes(lower) ||
+                        lastName.includes(lower) ||
+                        fullName.includes(lower) ||
+                        fullNameNoSpace.includes(lower) ||
+                        reverseName.includes(lower) ||
+                        reverseNameNoSpace.includes(lower) ||
+                        c.phone?.includes(activeSearchTerm) ||
+                        c.province?.toLowerCase().includes(lower);
+                });
+            }
+
+            // Apply Appointment Filter
+            if (filterByAppointment) {
+                filtered = filtered.filter(c => {
+                    const appointmentInfo = appointmentInfoMap.get(String(c.id));
+                    return appointmentInfo?.hasUpcoming === true;
+                });
+            }
+
+            // Apply Overdue Appointment Filter
+            if (filterByOverdueAppointment) {
+                filtered = filtered.filter(c => {
+                    const appointmentInfo = appointmentInfoMap.get(String(c.id));
+                    return appointmentInfo?.hasOverdue === true;
+                });
+            }
+
+            // Apply Hide Contacted Filter
+            if (hideContactedDays !== null) {
+                if (hideContactedDays === -1) {
+                    filtered = filtered.filter(c => !lastCallMap.has(String(c.id)));
+                } else {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const cutoffDate = new Date(today);
+                    cutoffDate.setDate(cutoffDate.getDate() - hideContactedDays);
+
+                    filtered = filtered.filter(c => {
+                        const lastCall = lastCallMap.get(String(c.id));
+                        if (!lastCall) return true;
+                        const lastCallDate = new Date(lastCall.date);
+                        lastCallDate.setHours(0, 0, 0, 0);
+                        return lastCallDate < cutoffDate;
+                    });
+                }
+            }
+
+            // If any customers remain after filtering, this basket has matches
+            if (filtered.length > 0) {
+                matches.add(basketKey);
+            }
+        });
+
+        return matches;
+    }, [basketGroups, activeSearchTerm, filterByAppointment, filterByOverdueAppointment, hideContactedDays, deferredSelectedRegions, deferredSelectedTagIds, deferredQuickFilter, lastCallMap, appointmentInfoMap]);
+
+    // Count total overdue appointments for display (ONLY for current user's customers)
+    const overdueAppointmentCount = useMemo(() => {
+        if (!appointments || localCustomers.length === 0) return 0;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const validCustomerIds = new Set<string>();
+        localCustomers.forEach(c => {
+            validCustomerIds.add(String(c.id));
+            if (c.pk) validCustomerIds.add(String(c.pk));
+            if (c.customer_id) validCustomerIds.add(String(c.customer_id));
+        });
+
+        return appointments.filter(apt => {
+            if (apt.status === 'เสร็จสิ้น') return false;
+            if (!apt.customerId) return false;
+            if (!validCustomerIds.has(String(apt.customerId))) return false;
+            const aptDate = new Date(apt.date);
+            aptDate.setHours(0, 0, 0, 0);
+            return aptDate < today;
+        }).length;
+    }, [appointments, localCustomers]);
 
     // Set default active basket when configs load
     useEffect(() => {
@@ -687,22 +905,46 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             });
         }
 
-        // Apply search filter
+        // Apply search filter - supports full name search (firstName + lastName)
         if (activeSearchTerm) {
-            const lower = activeSearchTerm.toLowerCase();
-            customers = customers.filter(c =>
-                c.firstName?.toLowerCase().includes(lower) ||
-                c.lastName?.toLowerCase().includes(lower) ||
-                c.phone?.includes(activeSearchTerm) ||
-                c.province?.toLowerCase().includes(lower)
-            );
+            const lower = activeSearchTerm.toLowerCase().trim();
+            customers = customers.filter(c => {
+                const firstName = c.firstName?.toLowerCase() || '';
+                const lastName = c.lastName?.toLowerCase() || '';
+                // Full name combinations (with and without space)
+                const fullName = `${firstName} ${lastName}`;
+                const fullNameNoSpace = `${firstName}${lastName}`;
+                const reverseName = `${lastName} ${firstName}`;
+                const reverseNameNoSpace = `${lastName}${firstName}`;
+
+                return firstName.includes(lower) ||
+                    lastName.includes(lower) ||
+                    fullName.includes(lower) ||
+                    fullNameNoSpace.includes(lower) ||
+                    reverseName.includes(lower) ||
+                    reverseNameNoSpace.includes(lower) ||
+                    c.phone?.includes(activeSearchTerm) ||
+                    c.province?.toLowerCase().includes(lower);
+            });
         }
 
-        // Apply Appointment Filter - show only customers with upcoming appointments
+        // Apply Appointment Filter - show only customers with UPCOMING appointments
+        // Use hasUpcoming flag which correctly identifies customers with ANY upcoming appointment
         if (filterByAppointment) {
             customers = customers.filter(c => {
                 const appointmentInfo = appointmentInfoMap.get(String(c.id));
-                return appointmentInfo?.hasAppointment === true;
+                // Include if customer has ANY upcoming appointment (even if also has overdue)
+                return appointmentInfo?.hasUpcoming === true;
+            });
+        }
+
+        // Apply Overdue Appointment Filter - show only customers with overdue appointments
+        // Use hasOverdue flag for accurate filtering
+        if (filterByOverdueAppointment) {
+            customers = customers.filter(c => {
+                const appointmentInfo = appointmentInfoMap.get(String(c.id));
+                // Include if customer has ANY overdue appointment
+                return appointmentInfo?.hasOverdue === true;
             });
         }
 
@@ -768,7 +1010,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
         });
 
         return customers;
-    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, appointmentInfoMap, hideContactedDays]);
+    }, [basketGroups, activeBasketKey, deferredSelectedRegions, activeSearchTerm, sortBy, deferredQuickFilter, lastCallMap, deferredSelectedTagIds, filterByAppointment, filterByOverdueAppointment, appointmentInfoMap, hideContactedDays]);
 
     // Manual sync - just refresh to get fresh data from API via App.tsx
     const handleManualSync = () => {
@@ -788,20 +1030,6 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-            {/* Header */}
-            <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 mb-6">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-800">
-                            แดชบอร์ด V2
-                            <span className="ml-2 px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">เบต้า</span>
-                        </h1>
-                        <p className="text-gray-500 mt-1">
-                            ลูกค้าทั้งหมด: <span className="font-semibold text-gray-700">{totalCustomers.toLocaleString()}</span>
-                        </p>
-                    </div>
-                </div>
-            </div>
 
             {/* Basket Tabs - Dynamic from API */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 mb-6">
@@ -817,22 +1045,35 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                         <p className="text-sm">กรุณาไปที่หน้า "ตั้งค่าถัง" เพื่อเพิ่มถัง</p>
                     </div>
                 ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
                         {tabConfigs.map(tab => {
                             const isActive = activeBasketKey === tab.key;
+                            const hasMatches = basketsWithMatches.has(tab.key);
+
+                            // Simple unified highlight: basket has data matching current filter
+                            const showHighlight = hasMatches && !isActive;
+
                             return (
                                 <button
                                     key={tab.key}
                                     onClick={() => setActiveBasketKey(tab.key)}
-                                    className={`relative px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 border-2 ${isActive
+                                    className={`relative px-3 py-1.5 rounded-xl font-medium text-xs whitespace-nowrap transition-all duration-200 border-2 ${isActive
                                         ? 'bg-blue-100 text-blue-700 border-blue-300 shadow-md scale-105'
-                                        : 'bg-white/50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                        : showHighlight
+                                            ? 'bg-green-100 text-green-700 border-green-400 shadow-md'
+                                            : 'bg-white/50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                         }`}
                                 >
                                     <span>{tab.name}</span>
-                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-white/70 text-gray-800' : 'bg-gray-200 text-gray-600'}`}>
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-white/70 text-gray-800'
+                                        : showHighlight ? 'bg-green-600 text-white'
+                                            : 'bg-gray-200 text-gray-600'
+                                        }`}>
                                         {tab.count.toLocaleString()}
                                     </span>
+                                    {showHighlight && (
+                                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="มีข้อมูลตรงกับ filter"></span>
+                                    )}
                                 </button>
                             );
                         })}
@@ -843,8 +1084,13 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
             {/* Search & Filters Row */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-4 mb-6">
                 <div className="flex flex-wrap items-center gap-4">
-                    {/* Search - Now first and on the left */}
-                    <div className="relative flex-1 min-w-[200px]">
+                    {/* Customer Count */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl">
+                        <span className="text-gray-600 text-sm">ลูกค้าทั้งหมด:</span>
+                        <span className="font-bold text-gray-800">{totalCustomers.toLocaleString()}</span>
+                    </div>
+                    {/* Search - Expanded width */}
+                    <div className="relative w-full max-w-[450px]">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
@@ -852,7 +1098,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             onKeyDown={handleSearchKeyDown}
-                            className="w-full pl-10 pr-20 py-2.5 rounded-xl border border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                            className="w-full pl-10 pr-16 py-2.5 rounded-xl border border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
                         />
                         <button
                             onClick={handleSearch}
@@ -866,12 +1112,49 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                     <UpcomingAppointmentsPanel
                         appointments={appointments || []}
                         customers={localCustomers}
+                        basketGroups={basketGroups}
+                        tabConfigs={tabConfigs}
                         onViewCustomer={onViewCustomer}
                         isOpen={isAppointmentPanelOpen}
                         onToggle={() => setIsAppointmentPanelOpen(!isAppointmentPanelOpen)}
                         isFilterActive={filterByAppointment}
-                        onFilterToggle={() => setFilterByAppointment(!filterByAppointment)}
+                        onFilterToggle={() => {
+                            // Mutual exclusivity: clear overdue when selecting upcoming
+                            if (!filterByAppointment) {
+                                setFilterByOverdueAppointment(false);
+                            }
+                            setFilterByAppointment(!filterByAppointment);
+                        }}
                     />
+
+                    {/* Overdue Appointments Filter Button */}
+                    <button
+                        onClick={() => {
+                            // Mutual exclusivity: clear upcoming when selecting overdue
+                            if (!filterByOverdueAppointment) {
+                                setFilterByAppointment(false);
+                            }
+                            setFilterByOverdueAppointment(!filterByOverdueAppointment);
+                        }}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all border ${filterByOverdueAppointment
+                            ? "bg-red-100 border-red-400 text-red-700"
+                            : "bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200"
+                            }`}
+                    >
+                        <Calendar size={18} />
+                        <span className="font-medium">เลยนัดหมาย ⚠</span>
+                        {overdueAppointmentCount > 0 && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${filterByOverdueAppointment
+                                ? "bg-red-600 text-white"
+                                : "bg-red-500 text-white"
+                                }`}>
+                                {overdueAppointmentCount}
+                            </span>
+                        )}
+                        {filterByOverdueAppointment && (
+                            <span className="text-xs text-red-600 font-medium">(กำลังกรอง)</span>
+                        )}
+                    </button>
 
                     {/* Hide Contacted Filter Button */}
                     <div className="relative">
@@ -1063,7 +1346,7 @@ const TelesaleDashboardV2: React.FC<TelesaleDashboardV2Props> = (props) => {
                                             activeBasket={activeBasketKey}
                                             lastCall={lastCallMap.get(String(customer.id))}
                                             hasAppointment={appointmentInfoMap.get(String(customer.id))?.hasAppointment}
-                                            callCount={callCountMap.get(String(customer.id)) || 0}
+                                            callCount={(customer as any).call_count_by_owner || 0}
                                             daysUntilAppointment={appointmentInfoMap.get(String(customer.id))?.daysUntil}
                                         />
                                     ))}

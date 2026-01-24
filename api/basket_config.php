@@ -58,9 +58,9 @@ try {
     switch ($method) {
         case 'GET':
             if ($id) {
-                // Get single config
-                $stmt = $pdo->prepare("SELECT * FROM basket_config WHERE id = ? AND company_id = ?");
-                $stmt->execute([$id, $companyId]);
+                // Get single config - SHARED: Always use company 1
+                $stmt = $pdo->prepare("SELECT * FROM basket_config WHERE id = ? AND company_id = 1");
+                $stmt->execute([$id]);
                 $config = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($config) {
                     echo json_encode($config);
@@ -69,10 +69,10 @@ try {
                     echo json_encode(['error' => 'Not found']);
                 }
             } else {
-                // Get all configs
+                // Get all configs - SHARED: Always use company 1 baskets for all companies
                 $targetPage = $_GET['target_page'] ?? null;
-                $sql = "SELECT * FROM basket_config WHERE company_id = ?";
-                $params = [$companyId];
+                $sql = "SELECT * FROM basket_config WHERE company_id = 1"; // Force company 1
+                $params = [];
                 
                 if ($targetPage) {
                     $sql .= " AND target_page = ?";
