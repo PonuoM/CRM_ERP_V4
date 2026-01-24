@@ -60,13 +60,18 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 `basket_config.php?target_page=distribution&companyId=${currentUser?.companyId}`
             );
             setBaskets(response || []);
-            if (response?.length > 0 && !activeBasket) {
-                setActiveBasket(response[0].basket_key);
-            }
+
+            // Use functional update to avoid dependency on activeBasket
+            setActiveBasket(current => {
+                if (!current && response?.length > 0) {
+                    return response[0].basket_key;
+                }
+                return current;
+            });
         } catch (error) {
             console.error('Failed to fetch baskets:', error);
         }
-    }, [currentUser?.companyId, activeBasket]);
+    }, [currentUser?.companyId]);
 
     // Fetch all basket counts
     const fetchAllBasketCounts = useCallback(async () => {
@@ -106,20 +111,51 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     totalCustomers: 0,
                 })) as AgentWithBaskets[];
 
-            // Fetch basket counts for each agent
-            await Promise.all(telesales.map(async (agent) => {
+            if (telesales.length > 0) {
                 try {
+                    const agentIds = telesales.map(a => a.id).join(',');
                     const countRes = await apiFetch(
-                        `customers?action=count_by_baskets&assignedTo=${agent.id}&companyId=${currentUser?.companyId}`
+                        `customers?action=count_by_baskets&assignedTo=${agentIds}&companyId=${currentUser?.companyId}`
                     );
-                    if (countRes?.baskets) {
-                        agent.basketCounts = countRes.baskets;
-                        agent.totalCustomers = countRes.total || 0;
+
+                    if (countRes?.agents) {
+                        telesales.forEach(agent => {
+                            const stats = countRes.agents[agent.id];
+                            if (stats) {
+                                agent.basketCounts = stats.baskets || {};
+                                agent.totalCustomers = stats.total || 0;
+                            }
+                        });
                     }
-                } catch {
-                    // Ignore errors, keep empty counts
+                } catch (error) {
+                    console.error('Failed to fetch basket counts:', error);
+                    // Keep empty counts on error
                 }
-            }));
+            }
+
+            setAgents(telesales);
+
+            if (telesales.length > 0) {
+                try {
+                    const agentIds = telesales.map(a => a.id).join(',');
+                    const countRes = await apiFetch(
+                        `customers?action=count_by_baskets&assignedTo=${agentIds}&companyId=${currentUser?.companyId}`
+                    );
+
+                    if (countRes?.agents) {
+                        telesales.forEach(agent => {
+                            const stats = countRes.agents[agent.id];
+                            if (stats) {
+                                agent.basketCounts = stats.baskets || {};
+                                agent.totalCustomers = stats.total || 0;
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch basket counts:', error);
+                    // Keep empty counts on error
+                }
+            }
 
             setAgents(telesales);
         } catch (error) {
@@ -268,6 +304,76 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             setMessage({ type: 'error', text: 'แจกงานไม่สำเร็จ' });
         } finally {
             setDistributing(false);
+        }
+    };
+
+    // Reclaim Logic
+    const [reclaimModalOpen, setReclaimModalOpen] = useState(false);
+    const [reclaimingAgent, setReclaimingAgent] = useState<AgentWithBaskets | null>(null);
+    const [reclaimInputs, setReclaimInputs] = useState<Record<string, number>>({});
+    const [reclaiming, setReclaiming] = useState(false);
+
+    const openReclaimModal = (agent: AgentWithBaskets) => {
+        setReclaimingAgent(agent);
+        // Initialize inputs with 0
+        const initialInputs: Record<string, number> = {};
+        baskets.forEach(b => initialInputs[b.basket_key] = 0);
+        setReclaimInputs(initialInputs);
+        setReclaimModalOpen(true);
+    };
+
+    const handleReclaimInput = (basketKey: string, val: string, max: number) => {
+        let num = parseInt(val);
+        if (isNaN(num)) num = 0;
+        if (num < 0) num = 0;
+        if (num > max) num = max;
+        setReclaimInputs(prev => ({ ...prev, [basketKey]: num }));
+    };
+
+    const handleReclaimAll = (basketKey: string, max: number) => {
+        setReclaimInputs(prev => ({ ...prev, [basketKey]: max }));
+    };
+
+    const handleExecuteReclaim = async () => {
+        if (!reclaimingAgent) return;
+
+        // Filter out 0s
+        const payloadBaskets: Record<string, number> = {};
+        let total = 0;
+        Object.entries(reclaimInputs).forEach(([key, val]) => {
+            if (val > 0) {
+                payloadBaskets[key] = val;
+                total += val;
+            }
+        });
+
+        if (total === 0) {
+            setMessage({ type: 'error', text: 'กรุณาระบุจำนวนที่ต้องดึงคืน' });
+            return;
+        }
+
+        setReclaiming(true);
+        try {
+            const result = await apiFetch(
+                `basket_config.php?action=reclaim_customers&companyId=${currentUser?.companyId}`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        agent_id: reclaimingAgent.id,
+                        baskets: payloadBaskets
+                    })
+                }
+            );
+
+            setMessage({ type: 'success', text: `ดึงคืนลูกค้าสำเร็จ ${result?.reclaimed || total} รายชื่อ` });
+            setReclaimModalOpen(false);
+            fetchAgents(); // Refresh agent stats
+            fetchAllBasketCounts(); // Refresh basket pools
+        } catch (error) {
+            console.error('Reclaim failed:', error);
+            setMessage({ type: 'error', text: 'ดึงคืนลูกค้าไม่สำเร็จ' });
+        } finally {
+            setReclaiming(false);
         }
     };
 
@@ -435,6 +541,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                         />
                                     </th>
                                     <th className="p-3 text-left font-medium text-gray-600">พนักงาน</th>
+                                    <th className="p-3 text-center font-medium text-gray-600">Action</th>
                                     <th className="p-3 text-center font-medium text-gray-600">ลูกค้าทั้งหมด</th>
                                     {baskets.map(basket => (
                                         <th key={basket.basket_key} className="p-3 text-center font-medium text-gray-600">
@@ -459,7 +566,20 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
                                         </td>
-                                        <td className="p-3 font-medium">{agent.firstName} {agent.lastName}</td>
+                                        <td className="p-3 font-medium">
+                                            {agent.firstName} {agent.lastName}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openReclaimModal(agent);
+                                                }}
+                                                className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200"
+                                            >
+                                                ดึงคืน
+                                            </button>
+                                        </td>
                                         <td className="p-3 text-center font-semibold text-gray-700">{agent.totalCustomers}</td>
                                         {baskets.map(basket => (
                                             <td key={basket.basket_key} className="p-3 text-center text-gray-600">
@@ -538,6 +658,74 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     </div>
                 )}
             </div>
+
+            {/* Reclaim Modal */}
+            {reclaimModalOpen && reclaimingAgent && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-auto shadow-xl">
+                        <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
+                        <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
+
+                        <div className="space-y-4 mb-6">
+                            {baskets.map(basket => {
+                                const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
+                                if (currentHolding === 0) return null;
+
+                                return (
+                                    <div key={basket.basket_key} className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                            <div className="flex justify-between mb-1">
+                                                <label className="text-sm font-medium">{basket.basket_name}</label>
+                                                <span className="text-xs text-gray-500">มีอยู่ {currentHolding}</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={reclaimInputs[basket.basket_key] || 0}
+                                                    onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
+                                                    className="w-full border rounded p-2 text-sm"
+                                                    min={0}
+                                                    max={currentHolding}
+                                                />
+                                                <button
+                                                    onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
+                                                    className="px-3 py-2 bg-gray-100 text-xs rounded hover:bg-gray-200 whitespace-nowrap"
+                                                >
+                                                    คืนหมด
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {/* Empty state if agent has 0 customers */}
+                            {Object.values(reclaimingAgent.basketCounts).every(c => c === 0) && (
+                                <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg">
+                                    พนักงานนี้ไม่มีลูกค้าในถังใดๆ
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4 border-t">
+                            <button
+                                onClick={() => setReclaimModalOpen(false)}
+                                className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={handleExecuteReclaim}
+                                disabled={reclaiming}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                            >
+                                {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
+                                ยืนยันดึงคืน
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Preview Modal */}
             {showPreview && (
