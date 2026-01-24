@@ -68,12 +68,14 @@ try {
         $basketKeyToId = [];
         $idToBasketKey = [];
         $idToBasketName = [];
+        $idToTargetPage = []; // NEW: เก็บ target_page ของแต่ละถัง
         $distributionBaskets = []; // สำหรับ re-evaluate
         
         foreach ($allBaskets as $b) {
             $basketKeyToId[$b['basket_key']] = (string)$b['id'];
             $idToBasketKey[(string)$b['id']] = $b['basket_key'];
             $idToBasketName[(string)$b['id']] = $b['basket_name'];
+            $idToTargetPage[(string)$b['id']] = $b['target_page']; // NEW
             
             // เก็บ distribution baskets ที่มี days_range สำหรับ re-evaluate
             if ($b['target_page'] === 'distribution' && 
@@ -226,16 +228,36 @@ try {
                     try {
                         $holdUntil = $holdDays > 0 ? date('Y-m-d H:i:s', strtotime("+$holdDays days")) : null;
                         
-                        $updateStmt = $pdo->prepare("
-                            UPDATE customers SET 
-                                current_basket_key = ?,
-                                basket_entered_date = NOW(),
-                                assigned_to = NULL,
-                                hold_until_date = ?,
-                                distribution_count = distribution_count + 1
-                            WHERE customer_id = ?
-                        ");
-                        $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
+                        // NEW: เช็ค target_page ของถังปลายทาง
+                        $targetPage = $idToTargetPage[$targetBasketId] ?? 'distribution';
+                        $keepAssignedTo = ($targetPage === 'dashboard_v2');
+                        
+                        if ($keepAssignedTo) {
+                            // ถังปลายทางเป็น Dashboard → เก็บ assigned_to ไว้ (ยังอยู่กับ Telesale คนเดิม)
+                            $updateStmt = $pdo->prepare("
+                                UPDATE customers SET 
+                                    current_basket_key = ?,
+                                    basket_entered_date = NOW(),
+                                    hold_until_date = ?,
+                                    distribution_count = distribution_count + 1
+                                WHERE customer_id = ?
+                            ");
+                            $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
+                            echo " [KEEP assigned_to]";
+                        } else {
+                            // ถังปลายทางเป็น Distribution → ปล่อยกลับถังกลาง (NULL)
+                            $updateStmt = $pdo->prepare("
+                                UPDATE customers SET 
+                                    current_basket_key = ?,
+                                    basket_entered_date = NOW(),
+                                    assigned_to = NULL,
+                                    hold_until_date = ?,
+                                    distribution_count = distribution_count + 1
+                                WHERE customer_id = ?
+                            ");
+                            $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
+                            echo " [NULL assigned_to]";
+                        }
                         
                         // 1. Log transition
                         $logStmt = $pdo->prepare("
