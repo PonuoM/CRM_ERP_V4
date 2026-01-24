@@ -1212,6 +1212,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $stmt->execute($params);
                     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+
                     // Also get total counts per agent
                     $totalSql = "
                         SELECT assigned_to, COUNT(*) as total 
