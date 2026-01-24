@@ -276,6 +276,12 @@ export interface Customer {
   isNewCustomer?: boolean; // ลูกค้าใหม่
   isRepeatCustomer?: boolean; // ลูกค้าเก่า
   bucketType?: 'ready' | 'waiting' | 'assigned' | 'blocked' | 'unassigned';
+  // Joined appointment data (from attach_next_appointments_to_customers)
+  next_appointment_id?: number;
+  next_appointment_date?: string;
+  next_appointment_title?: string;
+  next_appointment_status?: string;
+  next_appointment_notes?: string;
 }
 
 export interface SalesImportRow {

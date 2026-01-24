@@ -112,8 +112,14 @@ class BasketRoutingService {
     /**
      * Find matching basket for customer based on their current data
      * Used for "Re-Evaluate on Fail" feature
+     * 
+     * Logic:
+     * - < 180 days since last order: loop back (return null to use current basket's fail target)
+     * - 180-365 days: mid_6_12m
+     * - 366-1095 days: mid_1_3y
+     * - 1096+ days: ancient
      */
-    public function findMatchingBasket($customerId) {
+    public function findMatchingBasket($customerId, $currentBasketKey = null) {
         // Get customer data
         $stmt = $this->pdo->prepare("
             SELECT customer_id, last_order_date, first_order_date, date_registered, order_count,
@@ -127,43 +133,59 @@ class BasketRoutingService {
 
         if (!$customer) return null;
 
-        // Get all basket configs ordered by display_order
-        $stmt = $this->pdo->prepare("
-            SELECT basket_key, min_order_count, max_order_count, 
-                   min_days_since_order, max_days_since_order,
-                   days_since_first_order, days_since_registered
-            FROM basket_config 
-            WHERE company_id = ? AND is_active = 1 
-            ORDER BY display_order ASC
-        ");
-        $stmt->execute([$this->companyId]);
-        $configs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $daysSince = $customer['days_since_last_order'] ?? 9999;
 
-        // Find first matching basket
-        foreach ($configs as $config) {
-            $matches = true;
-
-            // Check order count
-            if ($config['min_order_count'] !== null && $customer['order_count'] < $config['min_order_count']) $matches = false;
-            if ($config['max_order_count'] !== null && $customer['order_count'] > $config['max_order_count']) $matches = false;
-
-            // Check days since last order
-            if ($config['min_days_since_order'] !== null && $customer['days_since_last_order'] < $config['min_days_since_order']) $matches = false;
-            if ($config['max_days_since_order'] !== null && $customer['days_since_last_order'] > $config['max_days_since_order']) $matches = false;
-
-            // Check days since first order
-            if ($config['days_since_first_order'] !== null && $customer['days_since_first_order'] < $config['days_since_first_order']) $matches = false;
-
-            // Check days since registered
-            if ($config['days_since_registered'] !== null && $customer['days_since_registered'] < $config['days_since_registered']) $matches = false;
-
-            if ($matches) {
-                return $config['basket_key'];
+        // Route based on days since last order
+        if ($daysSince < 180) {
+            // Loop back - return distribution version of current basket
+            // e.g., waiting_for_match_dash -> waiting_for_match
+            if ($currentBasketKey) {
+                return str_replace('_dash', '', $currentBasketKey);
             }
+            return null; // Use default on_fail_basket_key
+        } elseif ($daysSince >= 180 && $daysSince <= 365) {
+            return 'mid_6_12m';
+        } elseif ($daysSince >= 366 && $daysSince <= 1095) {
+            return 'mid_1_3y';
+        } else {
+            return 'ancient';
         }
-
-        return null; // No matching basket found
     }
+
+    /**
+     * Check if a user was previously assigned to this customer
+     * Used to prevent repeated distribution to same agent
+     */
+    public function wasPreviouslyAssigned($customerId, $userId) {
+        $stmt = $this->pdo->prepare("SELECT previous_assigned_to FROM customers WHERE customer_id = ?");
+        $stmt->execute([$customerId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$row || !$row['previous_assigned_to']) return false;
+        
+        $prevAssigned = json_decode($row['previous_assigned_to'], true);
+        return is_array($prevAssigned) && in_array($userId, $prevAssigned);
+    }
+
+    /**
+     * Get list of eligible agents for distribution (excluding previously assigned)
+     */
+    public function getEligibleAgentsForCustomer($customerId, $allAgentIds) {
+        $stmt = $this->pdo->prepare("SELECT previous_assigned_to FROM customers WHERE customer_id = ?");
+        $stmt->execute([$customerId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $prevAssigned = [];
+        if ($row && $row['previous_assigned_to']) {
+            $prevAssigned = json_decode($row['previous_assigned_to'], true) ?: [];
+        }
+        
+        // Return agents NOT in previous_assigned_to list
+        return array_filter($allAgentIds, function($agentId) use ($prevAssigned) {
+            return !in_array($agentId, $prevAssigned);
+        });
+    }
+
 
     /**
      * Release customer back to pool (Unassign)

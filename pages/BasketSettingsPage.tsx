@@ -342,7 +342,11 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-500">กรณีขายไม่ได้:</span>
                                                     <span className="font-medium text-red-600 truncate ml-2">
-                                                        {basket.fail_after_days ? `${basket.fail_after_days} วัน → ${baskets.find(b => b.basket_key === basket.on_fail_basket_key)?.basket_name || basket.on_fail_basket_key || 'Pool'}` : '-'}
+                                                        {basket.fail_after_days ? (
+                                                            basket.on_fail_reevaluate
+                                                                ? `${basket.fail_after_days} วัน → (ตามเกณฑ์ order ล่าสุด)`
+                                                                : `${basket.fail_after_days} วัน → ${baskets.find(b => b.basket_key === basket.on_fail_basket_key)?.basket_name || basket.on_fail_basket_key || 'Pool'}`
+                                                        ) : '-'}
                                                     </span>
                                                 </div>
                                                 {basket.has_loop && (
@@ -610,17 +614,28 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                             )}
 
                                             {/* Re-Evaluate Checkbox */}
-                                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-red-200">
-                                                <input
-                                                    type="checkbox"
-                                                    id="on_fail_reevaluate"
-                                                    checked={editingBasket.on_fail_reevaluate || false}
-                                                    onChange={(e) => setEditingBasket({ ...editingBasket, on_fail_reevaluate: e.target.checked })}
-                                                    className="w-4 h-4 text-blue-600 rounded"
-                                                />
-                                                <label htmlFor="on_fail_reevaluate" className="text-sm text-gray-700">
-                                                    กลับถังตามเกณฑ์อัตโนมัติ (Re-Evaluate)
-                                                </label>
+                                            <div className="mt-2 pt-2 border-t border-red-200">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="on_fail_reevaluate"
+                                                        checked={editingBasket.on_fail_reevaluate || false}
+                                                        onChange={(e) => setEditingBasket({ ...editingBasket, on_fail_reevaluate: e.target.checked })}
+                                                        className="w-4 h-4 text-blue-600 rounded"
+                                                    />
+                                                    <label htmlFor="on_fail_reevaluate" className="text-sm font-medium text-gray-700">
+                                                        กลับถังตามเกณฑ์อัตโนมัติ (Re-Evaluate)
+                                                    </label>
+                                                </div>
+                                                {editingBasket.on_fail_reevaluate && (
+                                                    <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
+                                                        <strong>หมายเหตุ:</strong> ระบบจะคำนวณถังเป้าหมายโดยอัตโนมัติจาก "วันนับจาก Order ล่าสุด"<br />
+                                                        • &lt;180 วัน → กลับถังแจกเดิม<br />
+                                                        • 180-365 วัน → ถังกลาง 6-12 เดือน<br />
+                                                        • 366-1095 วัน → ถังกลาง 1-3 ปี<br />
+                                                        • &gt;1095 วัน → ถังโบราณ เก่าเก็บ
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 

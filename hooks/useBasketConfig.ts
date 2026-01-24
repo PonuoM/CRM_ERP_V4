@@ -96,8 +96,8 @@ export const customerMatchesBasket = (customer: Customer, config: DynamicBasketC
 
 /**
  * Group customers by dynamic basket configurations
+ * Supports both ID-based (legacy) and string-based basket keys
  */
-// Helper to categorize customers into baskets
 export const groupCustomersByDynamicBaskets = (
     customers: Customer[],
     configs: DynamicBasketConfig[]
@@ -109,32 +109,60 @@ export const groupCustomersByDynamicBaskets = (
         groups.set(config.basket_key, []);
     });
 
+    // Create a mapping from ID to basket_key for legacy support
+    const idToBasketKeyMap = new Map<number, string>();
+    // Also create a mapping from basket_key to config for quick lookup
+    const basketKeyToConfigMap = new Map<string, DynamicBasketConfig>();
+
+    configs.forEach(config => {
+        // Map ID to basket_key (legacy support)
+        idToBasketKeyMap.set(config.id, config.basket_key);
+        // Map basket_key to config
+        basketKeyToConfigMap.set(config.basket_key, config);
+    });
+
     // Sort configs by display_order to ensure priority (for fallback matching)
     const sortedConfigs = [...configs].sort((a, b) => a.display_order - b.display_order);
 
     customers.forEach(customer => {
-        // [Logic Update] Priority: Check if customer has an explicit 'current_basket_key'
         const currentBasketKey = (customer as any).current_basket_key; // Cast as any because type needs update
         let matched = false;
 
-        if (currentBasketKey) {
-            // Find config that matches this key OR has this key as a linked_basket_key
-            // Since we are grouping for display (e.g. Dashboard), we look for a config IN THIS LIST matching the customer's key
-            const matchingConfig = sortedConfigs.find(c =>
-                c.basket_key === currentBasketKey ||
-                c.linked_basket_key === currentBasketKey
-            );
+        if (currentBasketKey !== null && currentBasketKey !== undefined && currentBasketKey !== '') {
+            let resolvedBasketKey: string | null = null;
 
-            if (matchingConfig) {
-                const existing = groups.get(matchingConfig.basket_key) || [];
-                existing.push(customer);
-                groups.set(matchingConfig.basket_key, existing);
-                matched = true;
+            // Check if currentBasketKey is a number (legacy ID-based system)
+            // Handle both string numbers ("38") and actual numbers (38)
+            const numericValue = typeof currentBasketKey === 'string' && /^\d+$/.test(currentBasketKey) 
+                ? Number(currentBasketKey) 
+                : typeof currentBasketKey === 'number' 
+                    ? currentBasketKey 
+                    : null;
+
+            if (numericValue !== null) {
+                resolvedBasketKey = idToBasketKeyMap.get(numericValue) || null;
+            } else {
+                // It's already a string key (non-numeric)
+                resolvedBasketKey = String(currentBasketKey);
+            }
+
+            if (resolvedBasketKey) {
+                // Find config that matches the resolved basket key
+                const matchingConfig = basketKeyToConfigMap.get(resolvedBasketKey);
+
+                if (matchingConfig) {
+                    const existing = groups.get(matchingConfig.basket_key) || [];
+                    existing.push(customer);
+                    groups.set(matchingConfig.basket_key, existing);
+                    matched = true;
+                }
             }
         }
 
         // Fallback: Use rule-based matching if not matched by key
-        if (!matched) {
+        // IMPORTANT: Only use fallback if customer has NO current_basket_key
+        // If customer has a basket key but it doesn't match any config, don't fallback
+        if (!matched && (currentBasketKey === null || currentBasketKey === undefined || currentBasketKey === '')) {
             for (const config of sortedConfigs) {
                 if (customerMatchesBasket(customer, config)) {
                     const existing = groups.get(config.basket_key) || [];
