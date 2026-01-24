@@ -1175,16 +1175,17 @@ function handle_customers(PDO $pdo, ?string $id): void
                         json_response(['baskets' => [], 'total' => 0, 'agents' => []]);
                     }
 
-                    // Get all DISTRIBUTION baskets with their IDs and linked basket IDs
+                    // Get all baskets with their IDs and linked basket IDs
+                    // User Request: Remove company_id filter and target_page filter
                     $basketStmt = $pdo->prepare("
                         SELECT bc.id, bc.basket_key, bc.basket_name, bc.linked_basket_key,
                                linked.id as linked_id
                         FROM basket_config bc
                         LEFT JOIN basket_config linked ON bc.linked_basket_key = linked.basket_key AND linked.company_id = bc.company_id
-                        WHERE bc.company_id = ? AND bc.target_page = 'distribution' AND bc.is_active = 1 
+                        WHERE bc.is_active = 1 
                         ORDER BY bc.display_order
                     ");
-                    $basketStmt->execute([$companyId]);
+                    $basketStmt->execute([]);
                     $baskets = $basketStmt->fetchAll(PDO::FETCH_ASSOC);
 
                     // Create a mapping from ID -> BasketKey for aggregation
@@ -1216,6 +1217,7 @@ function handle_customers(PDO $pdo, ?string $id): void
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute($params);
                     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 
                     // Also get total counts per agent
                     $totalSql = "
