@@ -200,6 +200,27 @@ export const useBasketConfig = (companyId: number | undefined, targetPage: 'dash
         try {
             const response = await apiFetch(`basket_config.php?companyId=${companyId}&target_page=${targetPage}`);
             const activeConfigs = (response || []).filter((c: DynamicBasketConfig) => c.is_active);
+
+            // Hardcode Upsell Basket for Distribution page
+            if (targetPage === 'distribution') {
+                const upsellBasket: DynamicBasketConfig = {
+                    id: 999999,
+                    basket_key: 'upsell',
+                    basket_name: 'Upsell',
+                    min_order_count: null,
+                    max_order_count: null,
+                    min_days_since_order: null,
+                    max_days_since_order: null,
+                    days_since_first_order: null,
+                    days_since_registered: null,
+                    target_page: 'distribution',
+                    display_order: -100, // Ensure it's first
+                    is_active: true,
+                    company_id: companyId
+                };
+                activeConfigs.push(upsellBasket);
+            }
+
             setConfigs(activeConfigs.sort((a: DynamicBasketConfig, b: DynamicBasketConfig) => a.display_order - b.display_order));
         } catch (err) {
             console.error('[useBasketConfig] Failed to fetch basket configs:', err);

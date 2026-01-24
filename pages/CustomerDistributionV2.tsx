@@ -42,6 +42,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [agents, setAgents] = useState<AgentWithBaskets[]>([]);
     const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+    const [targetBasket, setTargetBasket] = useState<string>('');
 
     // UI state
     const [loading, setLoading] = useState(true);
@@ -67,11 +68,25 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     return response[0].basket_key;
                 }
                 return current;
+                return current;
             });
         } catch (error) {
             console.error('Failed to fetch baskets:', error);
         }
     }, [currentUser?.companyId]);
+
+    // Auto-set target basket for Upsell
+    useEffect(() => {
+        if (activeBasket === 'upsell') {
+            // Try to find basket with ID 51 if possible, otherwise just hint user?
+            // Since we don't hold IDs in a map easily, we just rely on user or default.
+            // But if we want to BE explicit, we could set it if we knew the key.
+            // For now, let's keep it empty to use backend default, or user handles it.
+            setTargetBasket('');
+        } else {
+            setTargetBasket('');
+        }
+    }, [activeBasket]);
 
     // Fetch all basket counts
     const fetchAllBasketCounts = useCallback(async () => {
@@ -289,7 +304,8 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                     method: 'POST',
                     body: JSON.stringify({
                         assignments,
-                        source_basket_key: activeBasket
+                        source_basket_key: activeBasket,
+                        target_basket_key: targetBasket || undefined
                     })
                 }
             );
@@ -497,11 +513,40 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 </div>
             </div>
 
+
+            {/* Section 1.5: Target Basket Selection */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <span className="w-7 h-7 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                    เลือกถังปลายทาง <span className="text-sm font-normal text-gray-500">(ลูกค้าจะถูกย้ายไปถังนี้หลังแจกงาน)</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm text-gray-500 mb-2">ย้ายไปถัง (Optional)</label>
+                        <select
+                            value={targetBasket}
+                            onChange={(e) => setTargetBasket(e.target.value)}
+                            className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        >
+                            <option value="">-- ไม่เปลี่ยนแปลง / ตามการตั้งค่าเดิม --</option>
+                            {baskets.filter(b => b.basket_key !== 'upsell').map(basket => (
+                                <option key={basket.basket_key} value={basket.basket_key}>
+                                    {basket.basket_name}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1">
+                            * หากไม่เลือก จะใช้การตั้งค่า Default ของระบบ (สำหรับ Upsell จะไปที่ถัง ID 51 เสมอ หากไม่ระบุ)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             {/* Section 2: Target Employees - Table Layout */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
-                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                        <span className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">3</span>
                         เลือกพนักงานเป้าหมาย
                     </h3>
                     <div className="flex items-center gap-4">
@@ -663,119 +708,126 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             </div>
 
             {/* Reclaim Modal */}
-            {reclaimModalOpen && reclaimingAgent && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-auto shadow-xl">
-                        <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
-                        <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
+            {
+                reclaimModalOpen && reclaimingAgent && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-auto shadow-xl">
+                            <h3 className="text-xl font-bold mb-2">ดึงลูกค้าคืนจาก {reclaimingAgent.firstName} {reclaimingAgent.lastName}</h3>
+                            <p className="text-sm text-gray-500 mb-6">ระบุจำนวนที่ต้องการดึงคืนจากแต่ละถัง</p>
 
-                        <div className="space-y-4 mb-6">
-                            {baskets.map(basket => {
-                                const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
-                                if (currentHolding === 0) return null;
+                            <div className="space-y-4 mb-6">
+                                {baskets.map(basket => {
+                                    // Prevent reclaiming from Upsell basket
+                                    if (basket.basket_key === 'upsell') return null;
 
-                                return (
-                                    <div key={basket.basket_key} className="flex items-center gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex justify-between mb-1">
-                                                <label className="text-sm font-medium">{basket.basket_name}</label>
-                                                <span className="text-xs text-gray-500">มีอยู่ {currentHolding}</span>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={reclaimInputs[basket.basket_key] || 0}
-                                                    onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
-                                                    className="w-full border rounded p-2 text-sm"
-                                                    min={0}
-                                                    max={currentHolding}
-                                                />
-                                                <button
-                                                    onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
-                                                    className="px-3 py-2 bg-gray-100 text-xs rounded hover:bg-gray-200 whitespace-nowrap"
-                                                >
-                                                    คืนหมด
-                                                </button>
+                                    const currentHolding = reclaimingAgent.basketCounts?.[basket.basket_key] || 0;
+                                    if (currentHolding === 0) return null;
+
+                                    return (
+                                        <div key={basket.basket_key} className="flex items-center gap-4">
+                                            <div className="flex-1">
+                                                <div className="flex justify-between mb-1">
+                                                    <label className="text-sm font-medium">{basket.basket_name}</label>
+                                                    <span className="text-xs text-gray-500">มีอยู่ {currentHolding}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={reclaimInputs[basket.basket_key] || 0}
+                                                        onChange={(e) => handleReclaimInput(basket.basket_key, e.target.value, currentHolding)}
+                                                        className="w-full border rounded p-2 text-sm"
+                                                        min={0}
+                                                        max={currentHolding}
+                                                    />
+                                                    <button
+                                                        onClick={() => handleReclaimAll(basket.basket_key, currentHolding)}
+                                                        className="px-3 py-2 bg-gray-100 text-xs rounded hover:bg-gray-200 whitespace-nowrap"
+                                                    >
+                                                        คืนหมด
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+                                    );
+                                })}
+
+                                {/* Empty state if agent has 0 customers */}
+                                {Object.values(reclaimingAgent.basketCounts).every(c => c === 0) && (
+                                    <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg">
+                                        พนักงานนี้ไม่มีลูกค้าในถังใดๆ
                                     </div>
-                                );
-                            })}
-
-                            {/* Empty state if agent has 0 customers */}
-                            {Object.values(reclaimingAgent.basketCounts).every(c => c === 0) && (
-                                <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg">
-                                    พนักงานนี้ไม่มีลูกค้าในถังใดๆ
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-4 border-t">
-                            <button
-                                onClick={() => setReclaimModalOpen(false)}
-                                className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                            >
-                                ยกเลิก
-                            </button>
-                            <button
-                                onClick={handleExecuteReclaim}
-                                disabled={reclaiming}
-                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                            >
-                                {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
-                                ยืนยันดึงคืน
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Preview Modal */}
-            {showPreview && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto">
-                        <h3 className="text-xl font-bold mb-4">Preview การแจกงาน</h3>
-
-                        <div className="space-y-4 mb-6">
-                            {preview.map(item => (
-                                <div key={item.agentId} className="border rounded-xl p-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="font-medium">{item.agentName}</span>
-                                        <span className="text-blue-600 font-semibold">{item.customers.length} รายชื่อ</span>
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                        {item.customers.slice(0, 5).map(c => `${c.firstName} ${c.lastName}`).join(', ')}
-                                        {item.customers.length > 5 && ` และอีก ${item.customers.length - 5} คน`}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="flex justify-between items-center pt-4 border-t">
-                            <div className="text-gray-600">
-                                รวมทั้งหมด: {preview.reduce((sum, p) => sum + p.customers.length, 0)} รายชื่อ
+                                )}
                             </div>
-                            <div className="flex gap-3">
+
+                            <div className="flex justify-end gap-3 pt-4 border-t">
                                 <button
-                                    onClick={() => setShowPreview(false)}
-                                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+                                    onClick={() => setReclaimModalOpen(false)}
+                                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
                                 >
                                     ยกเลิก
                                 </button>
                                 <button
-                                    onClick={handleExecuteDistribution}
-                                    disabled={distributing}
-                                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                                    onClick={handleExecuteReclaim}
+                                    disabled={reclaiming}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
                                 >
-                                    {distributing ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                                    ยืนยันแจกงาน
+                                    {reclaiming ? <Loader2 className="animate-spin" size={16} /> : null}
+                                    ยืนยันดึงคืน
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+
+            {/* Preview Modal */}
+            {
+                showPreview && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto">
+                            <h3 className="text-xl font-bold mb-4">Preview การแจกงาน</h3>
+
+                            <div className="space-y-4 mb-6">
+                                {preview.map(item => (
+                                    <div key={item.agentId} className="border rounded-xl p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="font-medium">{item.agentName}</span>
+                                            <span className="text-blue-600 font-semibold">{item.customers.length} รายชื่อ</span>
+                                        </div>
+                                        <div className="text-sm text-gray-500">
+                                            {item.customers.slice(0, 5).map(c => `${c.firstName} ${c.lastName}`).join(', ')}
+                                            {item.customers.length > 5 && ` และอีก ${item.customers.length - 5} คน`}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between items-center pt-4 border-t">
+                                <div className="text-gray-600">
+                                    รวมทั้งหมด: {preview.reduce((sum, p) => sum + p.customers.length, 0)} รายชื่อ
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setShowPreview(false)}
+                                        className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button
+                                        onClick={handleExecuteDistribution}
+                                        disabled={distributing}
+                                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {distributing ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                                        ยืนยันแจกงาน
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 
