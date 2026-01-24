@@ -87,6 +87,7 @@ try {
 
                 $sql .= " ORDER BY display_order ASC";
 
+                $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $configs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
