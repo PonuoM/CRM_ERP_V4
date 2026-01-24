@@ -13,7 +13,7 @@ import CustomerTable from "@/components/CustomerTable";
 import RegionFilter from "@/components/RegionFilter";
 import FilterDropdown from "@/components/FilterDropdown";
 import Spinner from "@/components/Spinner";
-import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Calendar, X, Settings, RotateCcw } from "lucide-react";
+import { RefreshCw, Search, Filter, ChevronDown, ChevronLeft, ChevronRight, Phone, ShoppingCart, Plus, FileText, Eye, Calendar, X, Settings, RotateCcw } from "lucide-react";
 import {
     filterCustomersByRegion,
 } from "@/utils/basketUtils";
@@ -417,6 +417,16 @@ const CustomerRow = React.memo(({
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
+                            onViewCustomer(customer);
+                        }}
+                        className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
+                        title="ดูรายละเอียดลูกค้า"
+                    >
+                        <Eye size={16} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
                             openModal("logCall", customer);
                         }}
                         className="p-2 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
@@ -424,18 +434,6 @@ const CustomerRow = React.memo(({
                     >
                         <Phone size={16} />
                     </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onViewCustomer(customer);
-                        }}
-                        className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
-                        title="ดูรายละเอียดลูกค้า"
-                    >
-                        <FileText size={16} />
-                    </button>
-
-
                 </div>
             </td>
         </tr>

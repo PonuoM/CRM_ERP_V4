@@ -129,7 +129,8 @@ function handleRetrieve(PDO $pdo, string $customerId): void {
     if ($customer['has_sold_before']) {
         $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, follow_up_date = NULL WHERE customer_id = ?")
             ->execute([$now->format('Y-m-d H:i:s'), $customerId]);
-        $pdo->prepare("UPDATE appointments SET status = 'เสร็จสิ้น' WHERE customer_id = ? AND status <> 'เสร็จสิ้น'")->execute([$customerId]);
+        // Removed: Auto-complete appointments disabled - V2 Dashboard allows next owner to follow up
+        // $pdo->prepare("UPDATE appointments SET status = 'เสร็จสิ้น' WHERE customer_id = ? AND status <> 'เสร็จสิ้น'")->execute([$customerId]);
         json_response(['success' => true, 'message' => 'Customer moved to waiting basket for 30 days']);
     } else {
         $newExpiry = (clone $now)->add(new DateInterval('P30D'));
@@ -154,7 +155,8 @@ function checkAndUpdateCustomerStatus(PDO $pdo, array $customer): array {
         if ($expiry <= $now && !$customer['is_in_waiting_basket'] && !empty($customer['assigned_to'])) {
             $pdo->prepare("UPDATE customers SET is_in_waiting_basket = 1, waiting_basket_start_date = ?, follow_up_date = NULL, assigned_to = NULL WHERE customer_id = ?")
                 ->execute([$now->format('Y-m-d H:i:s'), $customer['customer_id']]);
-            $pdo->prepare("UPDATE appointments SET status = 'เสร็จสิ้น' WHERE customer_id = ? AND status <> 'เสร็จสิ้น'")->execute([$customer['customer_id']]);
+            // Removed: Auto-complete appointments disabled - V2 Dashboard allows next owner to follow up
+            // $pdo->prepare("UPDATE appointments SET status = 'เสร็จสิ้น' WHERE customer_id = ? AND status <> 'เสร็จสิ้น'")->execute([$customer['customer_id']]);
             $customer['is_in_waiting_basket'] = 1;
             $customer['waiting_basket_start_date'] = $now->format('Y-m-d H:i:s');
             $customer['assigned_to'] = NULL;

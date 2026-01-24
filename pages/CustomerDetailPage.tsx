@@ -186,22 +186,22 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
   useEffect(() => {
     if (appointments.length > 0) {
       setLocalAppointments((prev) => {
-        const prevMap = new Map(prev.map((a) => [a.id, a]));
+        // Create a map of existing appointments by ID
+        const localMap = new Map(prev.map((a) => [a.id, a]));
         let hasChanges = false;
-        const updated = prev.map((p) => {
+
+        // Only update status for appointments that already exist in local state
+        // Do NOT add new appointments from props - let the fetch useEffect handle that
+        prev.forEach((p) => {
           const global = appointments.find((a) => a.id === p.id);
-          // Sync status changes from global state (e.g., auto-completed)
           if (global && global.status !== p.status) {
+            localMap.set(p.id, { ...p, status: global.status });
             hasChanges = true;
-            return { ...p, status: global.status };
           }
-          return p;
         });
 
-        // Also add new appointments that aren't in local yet
-        const newItems = appointments.filter((a) => !prevMap.has(a.id));
-        if (newItems.length > 0 || hasChanges) {
-          return [...newItems, ...updated];
+        if (hasChanges) {
+          return Array.from(localMap.values());
         }
         return prev;
       });
@@ -1690,14 +1690,6 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
                   {logEntries.length}
                 </p>
                 <p className="text-xs text-gray-500">กิจกรรม</p>
-              </div>
-              <div>
-                <p
-                  className={`text-2xl font-bold ${getRemainingTime(customer.ownershipExpires).color}`}
-                >
-                  {getRemainingTime(customer.ownershipExpires).text}
-                </p>
-                <p className="text-xs text-gray-500">เวลาคงเหลือ</p>
               </div>
             </div>
           </div>

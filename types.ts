@@ -583,7 +583,7 @@ export interface Appointment {
   customerId: string;
   date: string;
   title: string;
-  status: "ใหม่" | "เสร็จสิ้น";
+  status: "ใหม่" | "รอดำเนินการ" | "เสร็จสิ้น";
   notes?: string;
 }
 

@@ -4470,6 +4470,9 @@ const App: React.FC = () => {
     }
     setCallHistory((prev) => [newCallLog, ...prev]);
 
+    // Trigger refresh for CustomerDetailPage to fetch updated call history
+    setRefreshTrigger(prev => prev + 1);
+
     // Determine the new lifecycle status based on the business rules
     // New logic: Do NOT auto-convert New -> Old after the first call.
     // Only set FollowUp when a follow-up date is created here.
@@ -4477,9 +4480,18 @@ const App: React.FC = () => {
 
     const customer = customers.find((c) => c.id === customerId);
 
-    // AUTO-COMPLETE APPOINTMENTS LOGIC
-    // When a call is logged, we should check if there are any pending appointments for this customer
-    // that are due today or in the past, and mark them as completed.
+    // AUTO-COMPLETE APPOINTMENTS LOGIC - DISABLED
+    // This was causing newly created appointments to be marked as completed
+    // because it marks ALL pending appointments within 2 days as 'เสร็จสิ้น'
+    // when a call is logged. This is too aggressive.
+    // 
+    // TODO: If auto-complete is needed, it should:
+    // 1. Only complete appointments that are BEFORE today (past due)
+    // 2. NOT complete appointments that are today or in the future
+    // 3. Be triggered by explicit user action, not automatically
+    //
+    // Original code commented out:
+    /*
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -4487,38 +4499,66 @@ const App: React.FC = () => {
     const pendingAppointments = appointments.filter(a =>
       (String(a.customerId) === String(customerId) || String(a.customerId) === String(customer?.pk)) &&
       a.status !== 'เสร็จสิ้น' &&
-      new Date(a.date).getTime() <= (now.getTime() + 2 * 24 * 60 * 60 * 1000) // Look ahead 2 days like the Do tab does? Or just today/past?
-      // Let's match the "Do" logic: The "Do" tab shows appointments due <= 2 days.
-      // So if we call them, we should probably clear those "Do" items.
+      new Date(a.date).getTime() <= (now.getTime() + 2 * 24 * 60 * 60 * 1000)
     );
 
     if (pendingAppointments.length > 0) {
-      // Optimistic update
       setAppointments(prev => prev.map(a =>
         pendingAppointments.some(pa => pa.id === a.id)
           ? { ...a, status: 'เสร็จสิ้น' }
           : a
       ));
 
-      // API update
       pendingAppointments.forEach(appt => {
         updateAppointment(appt.id, { status: 'เสร็จสิ้น' })
           .catch(e => console.error(`Failed to auto-complete appointment ${appt.id}`, e));
       });
     }
+    */
+
 
     // Calculate status independent of customer state presence
     if (newFollowUpDate) {
       newLifecycleStatus = CustomerLifecycleStatus.FollowUp;
 
-      // CREATE APPOINTMENT AUTOMATICALLY when follow-up date is provided
+      // STEP 1: Complete existing pending appointments FIRST (before creating new one)
+      // This prevents the race condition where the new appointment gets auto-completed
+      try {
+        const existingApptsForComplete = await listAppointments({ customerId });
+        const pendingApptsToComplete = (existingApptsForComplete || []).filter(
+          (a: any) => a.status !== "เสร็จสิ้น"
+        );
+
+        for (const oldAppt of pendingApptsToComplete) {
+          try {
+            await updateAppointment(oldAppt.id, { status: "เสร็จสิ้น" });
+          } catch (e) {
+            console.error("Failed to auto-complete old appointment", e);
+          }
+        }
+
+        // Update global state if any were completed
+        if (pendingApptsToComplete.length > 0) {
+          setAppointments((prev) =>
+            prev.map((a) =>
+              String(a.customerId) === String(customerId) && a.status !== "เสร็จสิ้น"
+                ? { ...a, status: "เสร็จสิ้น" }
+                : a
+            )
+          );
+        }
+      } catch (e) {
+        console.error("Failed to fetch/complete existing appointments before creating new", e);
+      }
+
+      // STEP 2: NOW create the new appointment (won't be caught by auto-complete since it's done above)
       try {
         const customerPk = customer?.pk || customer?.customer_id || customerId;
         const response = await createAppointment({
           customerId: customerPk,
           date: newFollowUpDate,
           title: `ติดตามจากการโทร: ${callLogData.result || 'ติดต่อลูกค้า'}`,
-          status: "ใหม่",
+          status: "รอดำเนินการ",
           notes: callLogData.notes || undefined,
         });
 
@@ -4528,12 +4568,15 @@ const App: React.FC = () => {
           customerId: String(customerPk),
           date: newFollowUpDate,
           title: `ติดตามจากการโทร: ${callLogData.result || 'ติดต่อลูกค้า'}`,
-          status: "ใหม่",
+          status: "รอดำเนินการ",
           notes: callLogData.notes,
         };
 
         setAppointments((prev) => [newAppointment, ...prev]);
         console.log("[handleLogCall] Created appointment from call log:", newAppointment);
+
+        // Trigger refresh for CustomerDetailPage to show new appointment immediately
+        setRefreshTrigger(prev => prev + 1);
       } catch (e) {
         console.error("[handleLogCall] Failed to create appointment from call log:", e);
       }
@@ -4726,41 +4769,8 @@ const App: React.FC = () => {
     }
 
     if (newFollowUpDate) {
-      // Auto-complete any existing pending appointments for this customer
-      // This limits pending appointments to 1 per customer at a time
-      // Fetch from API directly since global state might not have customer-specific appointments
-      try {
-        const existingAppointments = await listAppointments({ customerId });
-        const pendingAppointments = (existingAppointments || []).filter(
-          (a: any) => a.status !== "เสร็จสิ้น"
-        );
-
-        for (const oldAppt of pendingAppointments) {
-          try {
-            await updateAppointment(oldAppt.id, { status: "เสร็จสิ้น" });
-          } catch (e) {
-            console.error("Failed to auto-complete old appointment", e);
-          }
-        }
-
-        // Update global state if any were completed
-        if (pendingAppointments.length > 0) {
-          setAppointments((prev) =>
-            prev.map((a) =>
-              String(a.customerId) === String(customerId) && a.status !== "เสร็จสิ้น"
-                ? { ...a, status: "เสร็จสิ้น" }
-                : a
-            )
-          );
-        }
-      } catch (e) {
-        console.error("Failed to fetch/complete existing appointments", e);
-      }
-
-      // REMOVED: Auto-create appointment when newFollowUpDate is provided
-      // Users must explicitly create appointments using the Appointment modal
-      // This prevents unwanted automatic appointment creation when logging calls
-      // The newFollowUpDate is still saved to customer.followUpDate field above
+      // NOTE: Auto-complete of existing appointments is now done BEFORE creating new appointment
+      // (see STEP 1 above) to prevent race condition where new appointment gets auto-completed
 
       const customerIdForActivity = getCustomerIdForActivity(customerId);
       if (customerIdForActivity) {
@@ -4975,7 +4985,7 @@ const App: React.FC = () => {
     const newAppointment: Appointment = {
       ...appointmentData,
       id: Math.max(...appointments.map((a) => a.id), 0) + 1,
-      status: "ใหม่",
+      status: "รอดำเนินการ",
     };
     if (true) {
       try {
@@ -4983,7 +4993,7 @@ const App: React.FC = () => {
           customerId: appointmentData.customerId,
           date: appointmentData.date,
           title: appointmentData.title,
-          status: "ใหม่",
+          status: "รอดำเนินการ",
           notes: appointmentData.notes,
         });
       } catch (e) {

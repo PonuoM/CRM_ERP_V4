@@ -3,6 +3,9 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Services/ShippingSyncService.php';
 require_once __DIR__ . '/Services/BasketRoutingService.php';
 
+// API Version for debugging deployment issues
+define('API_VERSION', '2026-01-24-0947-BASKET-FIX');
+
 // Polyfill for PHP < 8 str_starts_with
 if (!function_exists('str_starts_with')) {
     function str_starts_with(string $haystack, string $needle): bool {
@@ -66,7 +69,17 @@ if ($resource === '' || $resource === 'health') {
     json_response(['ok' => true, 'status' => 'healthy']);
 }
 
-if (!in_array($resource, ['', 'health', 'auth', 'uploads'])) {
+// Version check endpoint
+if ($resource === 'version') {
+    json_response([
+        'ok' => true, 
+        'version' => defined('API_VERSION') ? API_VERSION : 'UNKNOWN',
+        'timestamp' => date('Y-m-d H:i:s'),
+        'basket_fix' => true
+    ]);
+}
+
+if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version'])) {
     if ($resource === 'customers') {
         file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " CUSTOMERS GET: " . json_encode($_GET) . "\n", FILE_APPEND);
     }
@@ -4245,6 +4258,9 @@ function handle_orders(PDO $pdo, ?string $id): void {
             break;
         case 'PUT':
         case 'PATCH':
+            // DEBUG: Log at the very start of PATCH handler
+            file_put_contents(__DIR__ . '/basket_debug.log', date('Y-m-d H:i:s') . " [ENTRY] PATCH/PUT Handler - ID: {$id}, Method: " . method() . "\n", FILE_APPEND);
+            
             if (!$id) {
                 error_log("PATCH/PUT called without ID");
                 json_response(['error' => 'ID_REQUIRED'], 400);
@@ -4399,7 +4415,14 @@ function handle_orders(PDO $pdo, ?string $id): void {
                 try {
                     // If order status is Picking, grant sale quota (+90 days)
                     // Use delivery_date from order as the sale date, then add 90 days for ownership_expires
+                    
+                    // DEBUG: Write to file to trace execution
+                    $debugFile = __DIR__ . '/basket_debug.log';
+                    file_put_contents($debugFile, date('Y-m-d H:i:s') . " PATCH Order Check: orderId={$id}, customerId={$customerId}, newStatus={$newStatus}\n", FILE_APPEND);
+                    
                     if ($customerId && strcasecmp($newStatus, 'Picking') === 0) {
+                        file_put_contents($debugFile, date('Y-m-d H:i:s') . " INSIDE PICKING BLOCK - Order {$id}\n", FILE_APPEND);
+                        
                         // Clear Upsell assignment when order moves to Picking
                         try {
                             require_once __DIR__ . '/Services/UpsellService.php';
@@ -4410,12 +4433,18 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             error_log('Upsell clear failed: ' . $e->getMessage());
                         }
                         
-                        // Get delivery_date from the order
+                        // Find customer first (needed for both delivery_date logic and basket transition)
+                        $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+                        $customer = $findStmt->fetch();
+                        
+                        file_put_contents($debugFile, date('Y-m-d H:i:s') . " Customer found: " . json_encode($customer) . "\n", FILE_APPEND);
+                        // Get delivery_date from the order for ownership calculation
                         $orderStmt = $pdo->prepare('SELECT delivery_date FROM orders WHERE id=?');
                         $orderStmt->execute([$id]);
                         $deliveryDateStr = $orderStmt->fetchColumn();
                         
-                        if ($deliveryDateStr) {
+                        if ($deliveryDateStr && $customer && $customer['customer_id']) {
                             $deliveryDate = new DateTime($deliveryDateStr);
                             // ownership_expires = delivery_date + 90 days
                             $newExpiry = clone $deliveryDate;
@@ -4426,24 +4455,55 @@ function handle_orders(PDO $pdo, ?string $id): void {
                             $maxAllowed = (clone $now); $maxAllowed->add(new DateInterval('P90D'));
                             if ($newExpiry > $maxAllowed) { $newExpiry = $maxAllowed; }
                             
-                            // Find customer by customer_ref_id or customer_id, then update using customer_id (PK)
-                            $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
-                            $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
-                            $customer = $findStmt->fetch();
-                            if ($customer && $customer['customer_id']) {
-                                $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE customer_id=?');
-                                $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customer['customer_id']]);
-
-                                // [Basket Routing] Handle transition on sale
-                                try {
-                                    $routingService = new BasketRoutingService($pdo, $existingOrder['company_id'] ?? 1);
-                                    // Use updatedOrder['creator_id'] or existingOrder['creator_id'] as user causing sale
-                                    $userId = $updatedOrder['creator_id'] ?? $existingOrder['creator_id'] ?? null;
-                                    $routingService->handleSaleTransition($customer['customer_id'], $userId);
-                                } catch (Throwable $routeErr) {
-                                    error_log("Basket Routing Failed: " . $routeErr->getMessage());
+                            $u = $pdo->prepare('UPDATE customers SET ownership_expires=?, has_sold_before=1, last_sale_date=?, follow_up_count=0, lifecycle_status=?, followup_bonus_remaining=1 WHERE customer_id=?');
+                            $u->execute([$newExpiry->format('Y-m-d H:i:s'), $deliveryDate->format('Y-m-d H:i:s'), 'Old3Months', $customer['customer_id']]);
+                        }
+                        
+                        // [Basket Transition on Picking] - MOVED OUTSIDE delivery_date check
+                        // Move to "ส่วนตัว 1-2 เดือน" (ID 39) if:
+                        // - Order creator is Telesale (role_id 7) or Supervisor (role_id 6)
+                        // - AND the creator is the customer's assigned owner
+                        if ($customer && $customer['customer_id']) {
+                            try {
+                                $creatorId = $updatedOrder['creator_id'] ?? $existingOrder['creator_id'] ?? null;
+                                error_log("Basket transition check: customerId={$customerId}, creatorId={$creatorId}");
+                                
+                                if ($creatorId) {
+                                    // Get creator's role_id
+                                    $creatorStmt = $pdo->prepare('SELECT role_id FROM users WHERE id = ? LIMIT 1');
+                                    $creatorStmt->execute([$creatorId]);
+                                    $creatorData = $creatorStmt->fetch(PDO::FETCH_ASSOC);
+                                    $creatorRoleId = $creatorData ? (int)($creatorData['role_id'] ?? 0) : 0;
+                                    error_log("Creator role_id: {$creatorRoleId}");
+                                    
+                                    // Check if creator is Telesale (7) or Supervisor Telesale (6)
+                                    if ($creatorRoleId === 6 || $creatorRoleId === 7) {
+                                        // Get customer's assigned_to
+                                        $custAssignStmt = $pdo->prepare('SELECT assigned_to FROM customers WHERE customer_id = ? LIMIT 1');
+                                        $custAssignStmt->execute([$customer['customer_id']]);
+                                        $custAssignData = $custAssignStmt->fetch(PDO::FETCH_ASSOC);
+                                        $assignedTo = $custAssignData ? (int)($custAssignData['assigned_to'] ?? 0) : 0;
+                                        error_log("Customer assigned_to: {$assignedTo}, creatorId: {$creatorId}");
+                                        
+                                        // If creator is the assigned owner, move to basket 39
+                                        if ($assignedTo && $assignedTo === (int)$creatorId) {
+                                            $basketUpdate = $pdo->prepare('UPDATE customers SET current_basket_key = 39 WHERE customer_id = ?');
+                                            $basketUpdate->execute([$customer['customer_id']]);
+                                            error_log("Basket transition on Picking: Customer {$customer['customer_id']} moved to basket 39 (ส่วนตัว 1-2 เดือน) - Order creator {$creatorId} is the owner");
+                                        } else {
+                                            error_log("Basket transition skipped: Creator {$creatorId} is not the owner (assigned_to: {$assignedTo})");
+                                        }
+                                    } else {
+                                        error_log("Basket transition skipped: Creator role_id {$creatorRoleId} is not Telesale/Supervisor");
+                                    }
+                                } else {
+                                    error_log("Basket transition skipped: No creatorId found");
                                 }
+                            } catch (Throwable $basketErr) {
+                                error_log("Basket transition on Picking failed: " . $basketErr->getMessage());
                             }
+                        } else {
+                            error_log("Basket transition skipped: Customer not found for customerId={$customerId}");
                         }
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */ }
