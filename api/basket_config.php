@@ -55,6 +55,12 @@ try {
         exit;
     }
 
+    // Handle reclaim customers (pull back from agent)
+    if ($action === 'reclaim_customers') {
+        handleReclaimCustomers($pdo, $companyId);
+        exit;
+    }
+
     switch ($method) {
         case 'GET':
             if ($id) {
@@ -73,14 +79,14 @@ try {
                 $targetPage = $_GET['target_page'] ?? null;
                 $sql = "SELECT * FROM basket_config WHERE company_id = 1"; // Force company 1
                 $params = [];
-                
+
                 if ($targetPage) {
                     $sql .= " AND target_page = ?";
                     $params[] = $targetPage;
                 }
-                
+
                 $sql .= " ORDER BY display_order ASC";
-                
+
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $configs = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -90,7 +96,7 @@ try {
 
         case 'POST':
             $input = json_decode(file_get_contents('php://input'), true);
-            
+
             $stmt = $pdo->prepare("
                 INSERT INTO basket_config 
                 (basket_key, basket_name, min_order_count, max_order_count, 
@@ -100,7 +106,7 @@ try {
                  max_distribution_count, hold_days_before_redistribute, linked_basket_key, on_max_dist_basket_key)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            
+
             $stmt->execute([
                 $input['basket_key'],
                 $input['basket_name'],
@@ -124,7 +130,7 @@ try {
                 $input['linked_basket_key'] ?? null,
                 $input['on_max_dist_basket_key'] ?? null
             ]);
-            
+
             $newId = $pdo->lastInsertId();
             echo json_encode(['ok' => true, 'id' => $newId]);
             break;
@@ -135,40 +141,54 @@ try {
                 echo json_encode(['error' => 'ID required']);
                 exit;
             }
-            
+
             $input = json_decode(file_get_contents('php://input'), true);
-            
+
             $fields = [];
             $params = [];
-            
+
             $allowedFields = [
-                'basket_key', 'basket_name', 'min_order_count', 'max_order_count',
-                'min_days_since_order', 'max_days_since_order', 'days_since_first_order',
-                'days_since_registered', 'target_page', 'display_order', 'is_active',
-                'on_sale_basket_key', 'fail_after_days', 'on_fail_basket_key', 'on_fail_reevaluate', 'has_loop',
-                'max_distribution_count', 'hold_days_before_redistribute', 'linked_basket_key',
+                'basket_key',
+                'basket_name',
+                'min_order_count',
+                'max_order_count',
+                'min_days_since_order',
+                'max_days_since_order',
+                'days_since_first_order',
+                'days_since_registered',
+                'target_page',
+                'display_order',
+                'is_active',
+                'on_sale_basket_key',
+                'fail_after_days',
+                'on_fail_basket_key',
+                'on_fail_reevaluate',
+                'has_loop',
+                'max_distribution_count',
+                'hold_days_before_redistribute',
+                'linked_basket_key',
                 'on_max_dist_basket_key'
             ];
-            
+
             foreach ($allowedFields as $field) {
                 if (array_key_exists($field, $input)) {
                     $fields[] = "$field = ?";
                     $params[] = $input[$field];
                 }
             }
-            
+
             if (empty($fields)) {
                 echo json_encode(['ok' => true, 'message' => 'No changes']);
                 exit;
             }
-            
+
             $params[] = $id;
             $params[] = $companyId;
-            
+
             $sql = "UPDATE basket_config SET " . implode(', ', $fields) . " WHERE id = ? AND company_id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            
+
             echo json_encode(['ok' => true]);
             break;
 
@@ -178,10 +198,10 @@ try {
                 echo json_encode(['error' => 'ID required']);
                 exit;
             }
-            
+
             $stmt = $pdo->prepare("DELETE FROM basket_config WHERE id = ? AND company_id = ?");
             $stmt->execute([$id, $companyId]);
-            
+
             echo json_encode(['ok' => true]);
             break;
 
@@ -202,7 +222,8 @@ try {
 /**
  * Handle return-to-pool configuration
  */
-function handleReturnConfig($pdo, $method, $companyId) {
+function handleReturnConfig($pdo, $method, $companyId)
+{
     switch ($method) {
         case 'GET':
             $stmt = $pdo->prepare("
@@ -212,7 +233,7 @@ function handleReturnConfig($pdo, $method, $companyId) {
             ");
             $stmt->execute([$companyId]);
             $configs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Convert to key-value object
             $result = [];
             foreach ($configs as $config) {
@@ -226,7 +247,7 @@ function handleReturnConfig($pdo, $method, $companyId) {
 
         case 'PUT':
             $input = json_decode(file_get_contents('php://input'), true);
-            
+
             $pdo->beginTransaction();
             try {
                 foreach ($input as $key => $value) {
@@ -254,26 +275,27 @@ function handleReturnConfig($pdo, $method, $companyId) {
 /**
  * Handle basket customers fetch - filter customers by basket config rules
  */
-function handleBasketCustomers($pdo, $companyId) {
+function handleBasketCustomers($pdo, $companyId)
+{
     $basketKey = $_GET['basket_key'] ?? null;
     $limit = intval($_GET['limit'] ?? 500);
-    
+
     if (!$basketKey) {
         http_response_code(400);
         echo json_encode(['error' => 'basket_key required']);
         return;
     }
-    
+
     // Get basket config
     $stmt = $pdo->prepare("SELECT * FROM basket_config WHERE basket_key = ? AND company_id = ? AND is_active = 1");
     $stmt->execute([$basketKey, $companyId]);
     $config = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$config) {
         echo json_encode([]);
         return;
     }
-    
+
     // Build SQL with LEFT JOIN to orders to get order stats
     $sql = "
         SELECT 
@@ -305,54 +327,54 @@ function handleBasketCustomers($pdo, $companyId) {
         WHERE c.company_id = ?
         AND (c.assigned_to IS NULL OR c.assigned_to = 0)
     ";
-    
+
     $params = [$companyId];
     $conditions = [];
-    
+
     // Apply basket rules
     if ($config['min_order_count'] !== null) {
         $conditions[] = "COALESCE(os.order_count, 0) >= ?";
         $params[] = $config['min_order_count'];
     }
-    
+
     if ($config['max_order_count'] !== null) {
         $conditions[] = "COALESCE(os.order_count, 0) <= ?";
         $params[] = $config['max_order_count'];
     }
-    
+
     if ($config['min_days_since_order'] !== null) {
         $conditions[] = "(os.last_order_date IS NULL OR DATEDIFF(CURDATE(), os.last_order_date) >= ?)";
         $params[] = $config['min_days_since_order'];
     }
-    
+
     if ($config['max_days_since_order'] !== null) {
         $conditions[] = "(os.last_order_date IS NOT NULL AND DATEDIFF(CURDATE(), os.last_order_date) <= ?)";
         $params[] = $config['max_days_since_order'];
     }
-    
+
     if ($config['days_since_registered'] !== null) {
         $conditions[] = "DATEDIFF(CURDATE(), c.date_registered) <= ?";
         $params[] = $config['days_since_registered'];
     }
-    
+
     if (!empty($conditions)) {
         $sql .= " AND (" . implode(" AND ", $conditions) . ")";
     }
-    
+
     // First, get total count WITHOUT limit
     $countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as subquery";
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($params);
     $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
-    
+
     // Then get data WITH limit
     $sql .= " ORDER BY os.last_order_date DESC LIMIT ?";
     $params[] = $limit;
-    
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     echo json_encode([
         'data' => $customers,
         'count' => intval($totalCount),
@@ -364,22 +386,23 @@ function handleBasketCustomers($pdo, $companyId) {
  * Handle bulk customer assignment - update multiple customers in one request
  * POST body: { assignments: [ {customer_id: X, agent_id: Y}, ... ] }
  */
-function handleBulkAssign($pdo, $companyId) {
+function handleBulkAssign($pdo, $companyId)
+{
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['error' => 'POST required']);
         return;
     }
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
     $assignments = $input['assignments'] ?? [];
-    
+
     if (empty($assignments)) {
         http_response_code(400);
         echo json_encode(['error' => 'No assignments provided']);
         return;
     }
-    
+
     $pdo->beginTransaction();
     try {
         $stmt = $pdo->prepare("
@@ -389,19 +412,19 @@ function handleBulkAssign($pdo, $companyId) {
                 lifecycle_status = 'Assigned'
             WHERE customer_id = ? AND company_id = ?
         ");
-        
+
         $successCount = 0;
         $errors = [];
-        
+
         foreach ($assignments as $assignment) {
             $customerId = $assignment['customer_id'] ?? null;
             $agentId = $assignment['agent_id'] ?? null;
-            
+
             if (!$customerId || !$agentId) {
                 $errors[] = "Missing customer_id or agent_id";
                 continue;
             }
-            
+
             try {
                 $stmt->execute([$agentId, $customerId, $companyId]);
                 if ($stmt->rowCount() > 0) {
@@ -411,19 +434,108 @@ function handleBulkAssign($pdo, $companyId) {
                 $errors[] = "Failed to assign customer $customerId: " . $e->getMessage();
             }
         }
-        
+
         $pdo->commit();
-        
+
         echo json_encode([
             'ok' => true,
             'assigned' => $successCount,
             'total' => count($assignments),
             'errors' => $errors
         ]);
-        
+
     } catch (Exception $e) {
         $pdo->rollBack();
         http_response_code(500);
         echo json_encode(['error' => $e->getMessage()]);
     }
 }
+/**
+* Handle reclaiming customers from an agent back to the pool
+* POST: { agent_id: 123, baskets: { 'new_lead': 10, 'follow_up': 5 } }
+*/
+function handleReclaimCustomers($pdo, $companyId) {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+http_response_code(405);
+echo json_encode(['error' => 'POST required']);
+return;
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+$agentId = $input['agent_id'] ?? null;
+$baskets = $input['baskets'] ?? []; // key => quantity
+
+if (!$agentId || empty($baskets)) {
+http_response_code(400);
+echo json_encode(['error' => 'agent_id and baskets required']);
+return;
+}
+
+$pdo->beginTransaction();
+try {
+$totalReclaimed = 0;
+
+// Prepare statement for updating customers
+// We use current_basket_key to identify which basket the customer belongs to
+// and assigned_to to ensure we only take from the target agent
+$updateStmt = $pdo->prepare("
+UPDATE customers
+SET assigned_to = NULL,
+date_assigned = NULL,
+lifecycle_status = 'Pool'
+WHERE company_id = ?
+AND assigned_to = ?
+AND current_basket_key = ?
+LIMIT ?
+");
+
+// We need to map basket_key string to basket_config.id because current_basket_key stores ID
+$basketMapStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
+
+foreach ($baskets as $basketKey => $quantity) {
+$qty = intval($quantity);
+if ($qty <= 0) continue; // Get basket ID $basketMapStmt->execute([$basketKey, $companyId]);
+    $basketId = $basketMapStmt->fetchColumn();
+
+    if (!$basketId) continue; // Basket not found
+
+    // Execute update with LIMIT
+    // Note: PDO LIMIT parameter needs to be integer in some drivers,
+    // but in emulation mode string is okay. Safest to bind explicitly if needed,
+    // but simpler execute usually works for MySQL.
+    // However, for LIMIT in prepared statements, better to bindValue with PDO::PARAM_INT
+    // Reworking to use bindValue for safety.
+
+    $limitStmt = $pdo->prepare("
+    UPDATE customers
+    SET assigned_to = NULL,
+    date_assigned = NULL,
+    lifecycle_status = 'Pool'
+    WHERE company_id = :company_id
+    AND assigned_to = :agent_id
+    AND current_basket_key = :basket_id
+    LIMIT :limit
+    ");
+
+    $limitStmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+    $limitStmt->bindValue(':agent_id', $agentId, PDO::PARAM_INT);
+    $limitStmt->bindValue(':basket_id', $basketId, PDO::PARAM_INT); // current_basket_key is int ID
+    $limitStmt->bindValue(':limit', $qty, PDO::PARAM_INT);
+
+    $limitStmt->execute();
+    $totalReclaimed += $limitStmt->rowCount();
+    }
+
+    $pdo->commit();
+
+    echo json_encode([
+    'ok' => true,
+    'reclaimed' => $totalReclaimed
+    ]);
+
+    } catch (Exception $e) {
+    $pdo->rollBack();
+    http_response_code(500);
+    echo json_encode(['error' => $e->getMessage()]);
+    }
+    }

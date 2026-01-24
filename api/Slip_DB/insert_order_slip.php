@@ -38,13 +38,11 @@ foreach ($required_fields as $field) {
 try {
   // Database connection using PDO with UTF-8
   $conn = db_connect();
-  $conn->exec("SET NAMES utf8mb4");
-  $conn->exec("SET CHARACTER SET utf8mb4");
-  
+
   // Ensure bank_account table exists (create without foreign key first, then add FK if needed)
   $table_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 
     WHERE table_schema = DATABASE() AND table_name = 'bank_account'")->fetchColumn();
-  
+
   if ($table_exists == 0) {
     // Create table without foreign key first
     $conn->exec("CREATE TABLE `bank_account` (
@@ -59,7 +57,7 @@ try {
       INDEX `idx_company_id` (`company_id`),
       INDEX `idx_is_active` (`is_active`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    
+
     // Try to add foreign key constraint (may fail if companies table doesn't exist, but that's ok)
     try {
       $conn->exec("ALTER TABLE `bank_account` 
@@ -69,11 +67,11 @@ try {
       // Foreign key constraint failed, but table is created - that's acceptable
     }
   }
-  
+
   // Ensure order_slips table exists
   $order_slips_exists = $conn->query("SELECT COUNT(*) FROM information_schema.tables 
     WHERE table_schema = DATABASE() AND table_name = 'order_slips'")->fetchColumn();
-  
+
   if ($order_slips_exists == 0) {
     $conn->exec("CREATE TABLE `order_slips` (
       `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,7 +80,7 @@ try {
       `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX `idx_order_slips_order` (`order_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    
+
     // Try to add foreign key constraint
     try {
       $conn->exec("ALTER TABLE `order_slips` 
@@ -92,7 +90,7 @@ try {
       // Foreign key constraint failed, but table is created - that's acceptable
     }
   }
-  
+
   // Add columns to order_slips if they don't exist
   $columns_to_add = [
     'amount' => 'INT NULL AFTER `id`',
@@ -101,13 +99,13 @@ try {
     'upload_by' => 'INT NULL AFTER `url`',
     'upload_by_name' => 'VARCHAR(255) NULL AFTER `upload_by`',
   ];
-  
+
   foreach ($columns_to_add as $column => $definition) {
     $check_col = $conn->query("SELECT COUNT(*) FROM information_schema.columns 
       WHERE table_schema = DATABASE() 
       AND table_name = 'order_slips' 
       AND column_name = '$column'")->fetchColumn();
-    
+
     if ($check_col == 0) {
       try {
         $conn->exec("ALTER TABLE `order_slips` ADD COLUMN `$column` $definition");
@@ -116,13 +114,13 @@ try {
       }
     }
   }
-  
+
   // Add index for bank_account_id if it doesn't exist
   $check_idx = $conn->query("SELECT COUNT(*) FROM information_schema.statistics 
     WHERE table_schema = DATABASE() 
     AND table_name = 'order_slips' 
     AND index_name = 'idx_order_slips_bank_account_id'")->fetchColumn();
-  
+
   if ($check_idx == 0) {
     try {
       $conn->exec("ALTER TABLE `order_slips` ADD INDEX `idx_order_slips_bank_account_id` (`bank_account_id`)");
@@ -130,13 +128,13 @@ try {
       // Index add failed, but continue
     }
   }
-  
+
   // Try to add foreign key for bank_account_id if it doesn't exist
   $check_fk = $conn->query("SELECT COUNT(*) FROM information_schema.table_constraints 
     WHERE table_schema = DATABASE() 
     AND table_name = 'order_slips' 
     AND constraint_name = 'fk_order_slips_bank_account_id'")->fetchColumn();
-  
+
   if ($check_fk == 0) {
     try {
       $conn->exec("ALTER TABLE `order_slips` 
@@ -208,22 +206,22 @@ try {
 
   // Check COD status and update if first slip
   try {
-      $checkOrdStmt = $conn->prepare("SELECT payment_method FROM orders WHERE id = ?");
-      $checkOrdStmt->execute([$order_id]);
-      $pm = $checkOrdStmt->fetchColumn();
+    $checkOrdStmt = $conn->prepare("SELECT payment_method FROM orders WHERE id = ?");
+    $checkOrdStmt->execute([$order_id]);
+    $pm = $checkOrdStmt->fetchColumn();
 
-      if ($pm === 'COD') {
-          $countSlipStmt = $conn->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
-          $countSlipStmt->execute([$order_id]);
-          $existingSlips = (int)$countSlipStmt->fetchColumn();
+    if ($pm === 'COD') {
+      $countSlipStmt = $conn->prepare("SELECT COUNT(*) FROM order_slips WHERE order_id = ?");
+      $countSlipStmt->execute([$order_id]);
+      $existingSlips = (int) $countSlipStmt->fetchColumn();
 
-          if ($existingSlips === 0) {
-              $updOrdStmt = $conn->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
-              $updOrdStmt->execute([$order_id]);
-          }
+      if ($existingSlips === 0) {
+        $updOrdStmt = $conn->prepare("UPDATE orders SET payment_status = 'PendingVerification' WHERE id = ?");
+        $updOrdStmt->execute([$order_id]);
       }
+    }
   } catch (Exception $e) {
-      // error_log("Error updating COD status: " . $e->getMessage());
+    // error_log("Error updating COD status: " . $e->getMessage());
   }
 
   // Insert new order slip
@@ -241,7 +239,7 @@ try {
     $bank_account_id,
     $transfer_date,
     $url,
-    isset($data["upload_by"]) ? (int)$data["upload_by"] : null,
+    isset($data["upload_by"]) ? (int) $data["upload_by"] : null,
     isset($data["upload_by_name"]) ? $data["upload_by_name"] : null,
   ]);
 

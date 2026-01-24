@@ -15,6 +15,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import resolveApiBasePath from "@/utils/apiBasePath";
+import OrderDetailModal from "@/components/OrderDetailModal";
 
 interface PaymentSlip {
   id: string;
@@ -97,6 +98,13 @@ const SlipAll: React.FC = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [viewingOrderId, setViewingOrderId] = useState<string | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
   const loadSlips = useCallback(async () => {
     setLoading(true);
@@ -114,10 +122,11 @@ const SlipAll: React.FC = () => {
 
       const params = new URLSearchParams({
         company_id: String(companyId),
+        page: String(currentPage),
+        pageSize: String(pageSize),
       });
 
       // Add user info for role-based filtering
-      // Backoffice และ Finance เห็นสลิปทั้งหมดของทุกคน (ไม่ต้องส่ง user_id, role, team_id)
       if (parsed.role && parsed.role !== "Backoffice" && parsed.role !== "Finance") {
         if (parsed.id) {
           params.append("user_id", String(parsed.id));
@@ -127,6 +136,12 @@ const SlipAll: React.FC = () => {
           params.append("team_id", String(parsed.team_id));
         }
       }
+
+      // Append filters to API request for server-side filtering
+      if (searchTerm) params.append("search", searchTerm);
+      if (statusFilter !== "all") params.append("status", statusFilter);
+      if (dateFilter !== "all") params.append("date_range", dateFilter);
+      if (paymentMethodFilter !== "all") params.append("payment_method", paymentMethodFilter);
 
       const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
       const headers: any = {};
@@ -142,6 +157,11 @@ const SlipAll: React.FC = () => {
       const data = await response.json();
       if (!data?.success) {
         throw new Error(data?.message || "ไม่สามารถโหลดข้อมูลสลิป");
+      }
+
+      if (data.pagination) {
+        setTotalPages(data.pagination.totalPages);
+        setTotalItems(data.pagination.total);
       }
 
       const normalized: PaymentSlip[] = Array.isArray(data.data)
@@ -274,7 +294,7 @@ const SlipAll: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage, pageSize, searchTerm, statusFilter, dateFilter, paymentMethodFilter]); // Added dependencies
 
   useEffect(() => {
     loadSlips();
@@ -307,34 +327,8 @@ const SlipAll: React.FC = () => {
     fetchPaymentMethods();
   }, [loadSlips]);
 
-  const filteredGroups = orderGroups.filter((group) => {
-    const matchesSearch =
-      group.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      group.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      group.slips.some(s => s.uploadedBy?.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus =
-      statusFilter === "all" || group.status === statusFilter;
-
-    const slipDate = new Date(group.latestUpload);
-    const now = new Date();
-    let matchesDate = true;
-
-    if (dateFilter === "today") {
-      matchesDate = slipDate.toDateString() === now.toDateString();
-    } else if (dateFilter === "week") {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      matchesDate = slipDate >= weekAgo;
-    } else if (dateFilter === "month") {
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      matchesDate = slipDate >= monthAgo;
-    }
-
-    const matchesPaymentMethod =
-      paymentMethodFilter === "all" || group.paymentMethod === paymentMethodFilter;
-
-    return matchesSearch && matchesStatus && matchesDate && matchesPaymentMethod;
-  });
+  // Client-side filtering is replaced by Server-side filtering in loadSlips
+  const filteredGroups = orderGroups;
 
   const getStatusIcon = (status: PaymentSlip["status"]) => {
     switch (status) {
@@ -505,10 +499,9 @@ const SlipAll: React.FC = () => {
               onChange={(e) => setStatusFilter(e.target.value as any)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">ทุกสถานะ</option>
+              <option value="all">สถานะทั้งหมด</option>
               <option value="pending">รอตรวจสอบ</option>
-              <option value="verified">ยืนยันแล้ว</option>
-              <option value="rejected">ปฏิเสธ</option>
+              <option value="verified">ชำระแล้ว</option>
             </select>
           </div>
 
@@ -543,8 +536,10 @@ const SlipAll: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-gray-600">
-          พบ {filteredGroups.length} รายการ (จากทั้งหมด {orderGroups.length} รายการ)
+        <div className="mt-4 text-sm text-gray-600 flex justify-between items-center">
+          <div>
+            พบ {totalItems} รายการ (หน้า {currentPage} จาก {totalPages})
+          </div>
         </div>
       </div>
 
@@ -619,7 +614,16 @@ const SlipAll: React.FC = () => {
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {group.orderId.startsWith('unlinked') ? 'ไม่มี Order ID' : `#${group.orderId}`}
+                            {group.orderId.startsWith('unlinked') ? (
+                              'ไม่มี Order ID'
+                            ) : (
+                              <button
+                                onClick={() => setViewingOrderId(group.orderId)}
+                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                #{group.orderId}
+                              </button>
+                            )}
                           </div>
                           {group.slips.length > 1 && (
                             <div className="text-xs text-gray-500">
@@ -682,6 +686,58 @@ const SlipAll: React.FC = () => {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="mt-4 flex items-center justify-between bg-white px-4 py-3 border border-gray-200 rounded-lg shadow-sm">
+        <div className="flex-1 flex justify-between sm:hidden">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+          >
+            ก่อนหน้า
+          </button>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+          >
+            ถัดไป
+          </button>
+        </div>
+        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-gray-700">
+              แสดง <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> ถึง <span className="font-medium">{Math.min(currentPage * pageSize, totalItems)}</span> จาก <span className="font-medium">{totalItems}</span> รายการ
+            </p>
+          </div>
+          <div>
+            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                <span className="sr-only">ก่อนหน้า</span>
+                <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+              </button>
+
+              <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                หน้า {currentPage} / {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                <span className="sr-only">ถัดไป</span>
+                <ChevronRight className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </nav>
+          </div>
+        </div>
       </div>
 
       {/* Preview Modal */}
@@ -882,6 +938,14 @@ const SlipAll: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {viewingOrderId && (
+        <OrderDetailModal
+          isOpen={!!viewingOrderId}
+          orderId={viewingOrderId}
+          onClose={() => setViewingOrderId(null)}
+        />
       )}
     </div>
   );

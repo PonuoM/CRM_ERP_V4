@@ -27,8 +27,6 @@ if (empty($order_id)) {
 // Database connection using PDO with UTF-8
 try {
   $conn = db_connect();
-  $conn->exec("SET NAMES utf8mb4");
-  $conn->exec("SET CHARACTER SET utf8mb4");
 
   // Authenticate
   $user = get_authenticated_user($conn);
@@ -36,7 +34,7 @@ try {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit();
   }
-  
+
   // Enforce company scope
   $company_id = $user['company_id'];
 

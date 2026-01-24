@@ -57,20 +57,20 @@ if (!empty($_GET["start_date"])) {
   $filters["start_date"] = trim($_GET["start_date"]);
   // If input contains time, compare as datetime, otherwise compare as date
   if (strpos($filters["start_date"], ":") !== false) {
-      $conditions[] = "o.order_date >= ?";
+    $conditions[] = "o.order_date >= ?";
   } else {
-      $conditions[] = "DATE(o.order_date) >= ?";
+    $conditions[] = "DATE(o.order_date) >= ?";
   }
   $bindParams[] = $filters["start_date"];
 }
 
 if (!empty($_GET["end_date"])) {
   $filters["end_date"] = trim($_GET["end_date"]);
-   // If input contains time, compare as datetime, otherwise compare as date
+  // If input contains time, compare as datetime, otherwise compare as date
   if (strpos($filters["end_date"], ":") !== false) {
-      $conditions[] = "o.order_date <= ?";
+    $conditions[] = "o.order_date <= ?";
   } else {
-      $conditions[] = "DATE(o.order_date) <= ?";
+    $conditions[] = "DATE(o.order_date) <= ?";
   }
   $bindParams[] = $filters["end_date"];
 }
@@ -79,36 +79,36 @@ if (!empty($_GET["end_date"])) {
 
 // ...
 
-  // Main query to fetch transfer orders with customer data and payment status (with pagination)
-  // Filter out orders that are already fully paid based on slip totals
-  // Also exclude orders with payment_status that indicates completion (Verified, PreApproved, Approved, Paid)
-  // Selecting MAX(os.date) or MAX(os.created_at) as transfer_date? 
-  // User asked for "transfer_date". In order_slips, usually there is a 'transfer_date' or 'date' or 'transfer_at' column.
-  // Based on previous chats, order_slips has 'transfer_date' or 'date'? 
-  // Wait, I need to know the schema of order_slips or guess it. 
-  // Checking previous context or code.. In BankAccountAuditPage, log has transfer_at.
-  // In SlipUpload.tsx (not visible), standard slip has 'date' and 'time'.
-  // Let's assume there is a 'transfer_date' column or similar in order_slips.
-  // If not sure, I should check. But 'get_transfer_orders.php' joins order_slips os.
-  // Providing MAX(os.date) seems reasonable if multiple slips.
-  // Actually, let's grab the date/time from the slip.
-  // BUT the query groups by order. If multiple slips, which date? The latest one.
-  
-  // Let's check schema via SQL first to be safe about 'transfer_date' column name.
-  // I will pause this replacement and check schema.
-  
-  // Wait, I can't check schema easily without running a command. 
-  // I'll take a safe guess or check other files. 
-  // 'onecall_batch_crud.php' uses 'onecall_batch'.
-  // 'Slip_DB/get_transfer_orders.php' uses 'order_slips'.
-  // Let's look at `api/Slip_DB/update_order_slip.php` or similar if I can.
-  // Or just try to include `MAX(os.date) as transfer_date` and `MAX(os.time) as transfer_time`?
-  // User said "transfer_date". 
-  
-  // Let's assume the column is `transfer_date` or `date`.
-  // I'll try to find where order_slips is used.
-  
-  // Actually, I can search for "order_slips" usage in the codebase.
+// Main query to fetch transfer orders with customer data and payment status (with pagination)
+// Filter out orders that are already fully paid based on slip totals
+// Also exclude orders with payment_status that indicates completion (Verified, PreApproved, Approved, Paid)
+// Selecting MAX(os.date) or MAX(os.created_at) as transfer_date? 
+// User asked for "transfer_date". In order_slips, usually there is a 'transfer_date' or 'date' or 'transfer_at' column.
+// Based on previous chats, order_slips has 'transfer_date' or 'date'? 
+// Wait, I need to know the schema of order_slips or guess it. 
+// Checking previous context or code.. In BankAccountAuditPage, log has transfer_at.
+// In SlipUpload.tsx (not visible), standard slip has 'date' and 'time'.
+// Let's assume there is a 'transfer_date' column or similar in order_slips.
+// If not sure, I should check. But 'get_transfer_orders.php' joins order_slips os.
+// Providing MAX(os.date) seems reasonable if multiple slips.
+// Actually, let's grab the date/time from the slip.
+// BUT the query groups by order. If multiple slips, which date? The latest one.
+
+// Let's check schema via SQL first to be safe about 'transfer_date' column name.
+// I will pause this replacement and check schema.
+
+// Wait, I can't check schema easily without running a command. 
+// I'll take a safe guess or check other files. 
+// 'onecall_batch_crud.php' uses 'onecall_batch'.
+// 'Slip_DB/get_transfer_orders.php' uses 'order_slips'.
+// Let's look at `api/Slip_DB/update_order_slip.php` or similar if I can.
+// Or just try to include `MAX(os.date) as transfer_date` and `MAX(os.time) as transfer_time`?
+// User said "transfer_date". 
+
+// Let's assume the column is `transfer_date` or `date`.
+// I'll try to find where order_slips is used.
+
+// Actually, I can search for "order_slips" usage in the codebase.
 
 
 if (!empty($_GET["amount"])) {
@@ -119,15 +119,27 @@ if (!empty($_GET["amount"])) {
 }
 
 if (isset($_GET["min_amount"]) && $_GET["min_amount"] !== "") {
-    $filters["min_amount"] = (float) $_GET["min_amount"];
-    $conditions[] = "o.total_amount >= ?";
-    $bindParams[] = $filters["min_amount"];
+  $filters["min_amount"] = (float) $_GET["min_amount"];
+  $conditions[] = "o.total_amount >= ?";
+  $bindParams[] = $filters["min_amount"];
 }
 
 if (isset($_GET["max_amount"]) && $_GET["max_amount"] !== "") {
-    $filters["max_amount"] = (float) $_GET["max_amount"];
-    $conditions[] = "o.total_amount <= ?";
-    $bindParams[] = $filters["max_amount"];
+  $filters["max_amount"] = (float) $_GET["max_amount"];
+  $conditions[] = "o.total_amount <= ?";
+  $bindParams[] = $filters["max_amount"];
+}
+
+if (!empty($_GET["exclude_order_status"])) {
+  $excludedStatuses = explode(",", $_GET["exclude_order_status"]);
+  $excludedStatuses = array_map("trim", $excludedStatuses);
+  $excludedStatuses = array_filter($excludedStatuses); // Remove empty values
+
+  if (!empty($excludedStatuses)) {
+    $placeholders = implode(",", array_fill(0, count($excludedStatuses), "?"));
+    $conditions[] = "o.order_status NOT IN ($placeholders)";
+    $bindParams = array_merge($bindParams, $excludedStatuses);
+  }
 }
 
 // Payment method selector (default Transfer for backward compatibility)
@@ -210,17 +222,16 @@ $user_team_id = isset($_GET["team_id"]) ? (int) $_GET["team_id"] : null;
 try {
   // Database connection using PDO with UTF-8
   $conn = db_connect();
-  $conn->exec("SET NAMES utf8mb4");
-  $conn->exec("SET CHARACTER SET utf8mb4");
+  // Connect to DB
 
   // Build WHERE clause - get all orders with desired payment method (support aliases)
   // We'll filter out fully paid orders using HAVING clause based on slip totals
   $methodPlaceholder =
     count($selectedPaymentValues) === 1
-      ? "o.payment_method = ?"
-      : "o.payment_method IN (" .
-        implode(",", array_fill(0, count($selectedPaymentValues), "?")) .
-        ")";
+    ? "o.payment_method = ?"
+    : "o.payment_method IN (" .
+    implode(",", array_fill(0, count($selectedPaymentValues), "?")) .
+    ")";
   $whereClause = "o.company_id = ? AND {$methodPlaceholder}";
   $allParams = array_merge([$company_id], $selectedPaymentValues);
 

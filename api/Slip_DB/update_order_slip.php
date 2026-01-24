@@ -33,9 +33,8 @@ if (empty($data["id"])) {
 
 try {
   // Database connection using PDO with UTF-8
+  // Database connection using PDO with UTF-8
   $conn = db_connect();
-  $conn->exec("SET NAMES utf8mb4");
-  $conn->exec("SET CHARACTER SET utf8mb4");
 
   $slip_id = $data["id"];
   $company_id = $data["company_id"] ?? 0;
@@ -71,12 +70,12 @@ try {
 
   if (isset($data["amount"])) {
     $update_fields[] = "amount = ?";
-    $params[] = (float)$data["amount"];
+    $params[] = (float) $data["amount"];
   }
 
   if (isset($data["bank_account_id"])) {
     $update_fields[] = "bank_account_id = ?";
-    $params[] = (int)$data["bank_account_id"];
+    $params[] = (int) $data["bank_account_id"];
   }
 
   if (isset($data["transfer_date"])) {
@@ -90,10 +89,10 @@ try {
   }
 
   if (isset($data["updated_by"])) {
-      // Assuming there isn't an updated_by column yet based on insert script, 
-      // but if we wanted to track it we could. 
-      // For now, let's just update the timestamp which is automatic if defined as ON UPDATE CURRENT_TIMESTAMP
-      // Or we can force it if needed.
+    // Assuming there isn't an updated_by column yet based on insert script, 
+    // but if we wanted to track it we could. 
+    // For now, let's just update the timestamp which is automatic if defined as ON UPDATE CURRENT_TIMESTAMP
+    // Or we can force it if needed.
   }
 
   if (empty($update_fields)) {
