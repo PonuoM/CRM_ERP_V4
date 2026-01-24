@@ -90,6 +90,31 @@ try {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $configs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Inject Upsell Basket for Distribution
+                if ($targetPage === 'distribution') {
+                    $configs[] = [
+                        'id' => 999999,
+                        'basket_key' => 'upsell',
+                        'basket_name' => 'Upsell',
+                        'min_order_count' => null,
+                        'max_order_count' => null,
+                        'min_days_since_order' => null,
+                        'max_days_since_order' => null,
+                        'days_since_first_order' => null,
+                        'days_since_registered' => null,
+                        'target_page' => 'distribution',
+                        'display_order' => -100,
+                        'is_active' => 1,
+                        'company_id' => $companyId
+                    ];
+
+                    // Sort by display_order
+                    usort($configs, function ($a, $b) {
+                        return $a['display_order'] <=> $b['display_order'];
+                    });
+                }
+
                 echo json_encode($configs);
             }
             break;
@@ -292,8 +317,73 @@ function handleBasketCustomers($pdo, $companyId)
     $stmt->execute([$basketKey]);
     $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$config) {
-        echo json_encode(['data' => [], 'count' => 0, 'basket_key' => $basketKey, 'error' => 'Basket config not found']);
+    if (!$config && $basketKey !== 'upsell') {
+        echo json_encode([]);
+        return;
+    }
+
+    // Specialized Logic for Upsell Basket
+    if ($basketKey === 'upsell') {
+        // Definition: Customers with order TODAY created by role_id=3
+        $sql = "
+            SELECT 
+                c.customer_id,
+                c.first_name,
+                c.last_name,
+                c.phone,
+                c.province,
+                c.assigned_to,
+                c.date_registered,
+                COALESCE(os.order_count, 0) as order_count,
+                os.last_order_date,
+                COALESCE(os.total_purchases, 0) as total_purchases,
+                DATEDIFF(CURDATE(), os.last_order_date) as days_since_order,
+                DATEDIFF(CURDATE(), c.date_registered) as days_since_registered
+            FROM customers c
+            INNER JOIN orders o ON c.customer_id = o.customer_id
+            INNER JOIN users u ON o.creator_id = u.id
+            LEFT JOIN (
+                SELECT 
+                    customer_id,
+                    COUNT(*) as order_count,
+                    MAX(order_date) as last_order_date,
+                    SUM(CASE WHEN order_status != 'Cancelled' THEN total_amount ELSE 0 END) as total_purchases
+                FROM orders 
+                WHERE order_status != 'Cancelled'
+                GROUP BY customer_id
+            ) os ON c.customer_id = os.customer_id
+            WHERE c.company_id = ?
+            AND (c.assigned_to IS NULL OR c.assigned_to = 0)
+            AND DATE(o.order_date) = CURDATE()
+            AND u.role_id = 3
+            GROUP BY c.customer_id
+        ";
+
+        // Total Count
+        $countSql = "SELECT COUNT(DISTINCT c.customer_id) as total 
+                     FROM customers c
+                     INNER JOIN orders o ON c.customer_id = o.customer_id
+                     INNER JOIN users u ON o.creator_id = u.id
+                     WHERE c.company_id = ?
+                     AND (c.assigned_to IS NULL OR c.assigned_to = 0)
+                     AND DATE(o.order_date) = CURDATE()
+                     AND u.role_id = 3";
+
+        $countStmt = $pdo->prepare($countSql);
+        $countStmt->execute([$companyId]);
+        $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
+
+        // Data with Limit
+        $sql .= " ORDER BY os.last_order_date DESC LIMIT ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$companyId, $limit]);
+        $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'data' => $customers,
+            'count' => intval($totalCount),
+            'basket_key' => $basketKey
+        ]);
         return;
     }
 
@@ -361,6 +451,7 @@ function handleBulkAssign($pdo, $companyId)
     $input = json_decode(file_get_contents('php://input'), true);
     $assignments = $input['assignments'] ?? [];
     $sourceBasketKey = $input['source_basket_key'] ?? null;
+    $targetBasketKey = $input['target_basket_key'] ?? null;
 
     if (empty($assignments)) {
         http_response_code(400);
@@ -368,26 +459,40 @@ function handleBulkAssign($pdo, $companyId)
         return;
     }
 
-    // Check for linked basket
+    // Check for linked basket or target override
     $linkedBasketId = null;
-    if ($sourceBasketKey) {
-        // 1. Get linked_basket_key from source basket
-        $linkStmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
-        $linkStmt->execute([$sourceBasketKey, $companyId]);
-        $linkedBasketKey = $linkStmt->fetchColumn();
+    $targetBasketId = null;
 
-        // 2. If valid linked_basket_key, resolve its ID
-        if ($linkedBasketKey) {
-            $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
-            $idStmt->execute([$linkedBasketKey, $companyId]);
-            $linkedBasketId = $idStmt->fetchColumn();
+    // 1. If target_basket_key is provided explicitly, try to resolve it
+    if ($targetBasketKey) {
+        $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
+        $idStmt->execute([$targetBasketKey, $companyId]);
+        $targetBasketId = $idStmt->fetchColumn();
+    }
+
+    // 2. If no explicit target, fallback to linked/source logic
+    if (!$targetBasketId && $sourceBasketKey) {
+        // Hardcoded Upsell Logic
+        if ($sourceBasketKey === 'upsell') {
+            $targetBasketId = 51; // Force distribution to ID 51
+        } else {
+            // Get linked_basket_key from source
+            $linkStmt = $pdo->prepare("SELECT linked_basket_key FROM basket_config WHERE basket_key = ? AND company_id = ?");
+            $linkStmt->execute([$sourceBasketKey, $companyId]);
+            $linkedBasketKey = $linkStmt->fetchColumn();
+
+            if ($linkedBasketKey) {
+                $idStmt = $pdo->prepare("SELECT id FROM basket_config WHERE basket_key = ? AND company_id = ?");
+                $idStmt->execute([$linkedBasketKey, $companyId]);
+                $targetBasketId = $idStmt->fetchColumn();
+            }
         }
     }
 
     $pdo->beginTransaction();
     try {
-        if ($linkedBasketId) {
-            // Update WITH current_basket_key (ID) if linked basket exists
+        if ($targetBasketId) {
+            // Update WITH current_basket_key (ID) if target is resolved
             $stmt = $pdo->prepare("
                 UPDATE customers 
                 SET assigned_to = ?, 
@@ -420,8 +525,8 @@ function handleBulkAssign($pdo, $companyId)
             }
 
             try {
-                if ($linkedBasketId) {
-                    $stmt->execute([$agentId, $linkedBasketId, $customerId, $companyId]);
+                if ($targetBasketId) {
+                    $stmt->execute([$agentId, $targetBasketId, $customerId, $companyId]);
                 } else {
                     $stmt->execute([$agentId, $customerId, $companyId]);
                 }

@@ -78,7 +78,7 @@ if ($resource === '' || $resource === 'health') {
 // Version check endpoint
 if ($resource === 'version') {
     json_response([
-        'ok' => true, 
+        'ok' => true,
         'version' => defined('API_VERSION') ? API_VERSION : 'UNKNOWN',
         'timestamp' => date('Y-m-d H:i:s'),
         'basket_fix' => true
@@ -1249,6 +1249,45 @@ function handle_customers(PDO $pdo, ?string $id): void
                         if (isset($idToKeyMap[$basketId]) && isset($agentsData[$aId])) {
                             $basketKey = $idToKeyMap[$basketId];
                             $agentsData[$aId]['baskets'][$basketKey] += $count;
+                        }
+                    }
+
+                    // --- UPSELL BASKET LOGIC ---
+                    // Definition: Customers with order TODAY created by role_id=3
+                    // Add 'upsell' key if not present
+                    if (!in_array('upsell', $allBasketKeys)) {
+                        $allBasketKeys[] = 'upsell';
+                        foreach ($agentsData as &$ad) {
+                            $ad['baskets']['upsell'] = 0;
+                        }
+                        unset($ad);
+                    }
+
+                    // Query for Upsell counts
+                    $upsellSql = "
+                        SELECT c.assigned_to, COUNT(DISTINCT c.customer_id) as count
+                        FROM customers c
+                        INNER JOIN orders o ON c.customer_id = o.customer_id
+                        INNER JOIN users u ON o.creator_id = u.id
+                        WHERE c.company_id = ?
+                          AND c.assigned_to IN ($placeholders)
+                          AND DATE(o.order_date) = CURDATE()
+                          AND u.role_id = 3
+                        GROUP BY c.assigned_to
+                    ";
+
+                    $upsellStmt = $pdo->prepare($upsellSql);
+                    $upsellStmt->execute($params); // Re-use params as it starts with companyId then agentIds
+                    $upsellRows = $upsellStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach ($upsellRows as $row) {
+                        $aId = (string) $row['assigned_to'];
+                        $count = (int) $row['count'];
+                        if (isset($agentsData[$aId])) {
+                            $agentsData[$aId]['baskets']['upsell'] = $count;
+                            // Note: Upsell might overlap with other baskets in total count? 
+                            // Usually existing total includes all assigned customers. 
+                            // If upsell criteria is just a filter view, they are already counted in 'total'.
                         }
                     }
 
@@ -3141,7 +3180,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                     $statuses = explode(',', $r['payment_status']);
                                     if (count($statuses) > 1) {
                                         $quoted = array_map(function ($s) use ($pdo) {
-                                            return $pdo->quote(trim($s)); }, $statuses);
+                                            return $pdo->quote(trim($s));
+                                        }, $statuses);
                                         $conds[] = "o.payment_status IN (" . implode(',', $quoted) . ")";
                                     } else {
                                         $conds[] = "o.payment_status = " . $pdo->quote(trim($statuses[0]));
@@ -3154,7 +3194,8 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 $statuses = explode(',', $r['order_status']);
                                 if (count($statuses) > 1) {
                                     $quoted = array_map(function ($s) use ($pdo) {
-                                        return $pdo->quote(trim($s)); }, $statuses);
+                                        return $pdo->quote(trim($s));
+                                    }, $statuses);
                                     $conds[] = "o.order_status IN (" . implode(',', $quoted) . ")";
                                 } else {
                                     $conds[] = "o.order_status = " . $pdo->quote(trim($statuses[0]));
@@ -4435,12 +4476,12 @@ function handle_orders(PDO $pdo, ?string $id): void
                         // Find customer by customer_ref_id (varchar) or customer_id (int PK)
                         // Note: customers table uses customer_id as PK, not 'id'
                         $customerCheck = $pdo->prepare('SELECT customer_id, total_purchases FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
-                        $customerCheck->execute([$customerId, is_numeric($customerId) ? (int)$customerId : 0]);
+                        $customerCheck->execute([$customerId, is_numeric($customerId) ? (int) $customerId : 0]);
                         $customerData = $customerCheck->fetch(PDO::FETCH_ASSOC);
 
                         if ($customerData) {
                             $customerPk = $customerData['customer_id']; // This is the int PK
-                            
+
                             if ($orderTotal > 0) {
                                 // Update total_purchases and grade if order has value
                                 $currentTotal = floatval($customerData['total_purchases'] ?? 0);
@@ -4513,7 +4554,7 @@ function handle_orders(PDO $pdo, ?string $id): void
         case 'PATCH':
             // DEBUG: Log at the very start of PATCH handler
             file_put_contents(__DIR__ . '/basket_debug.log', date('Y-m-d H:i:s') . " [ENTRY] PATCH/PUT Handler - ID: {$id}, Method: " . method() . "\n", FILE_APPEND);
-            
+
             if (!$id) {
                 error_log("PATCH/PUT called without ID");
                 json_response(['error' => 'ID_REQUIRED'], 400);
@@ -4711,14 +4752,14 @@ function handle_orders(PDO $pdo, ?string $id): void
                 try {
                     // If order status is Picking, grant sale quota (+90 days)
                     // Use delivery_date from order as the sale date, then add 90 days for ownership_expires
-                    
+
                     // DEBUG: Write to file to trace execution
                     $debugFile = __DIR__ . '/basket_debug.log';
                     file_put_contents($debugFile, date('Y-m-d H:i:s') . " PATCH Order Check: orderId={$id}, customerId={$customerId}, newStatus={$newStatus}\n", FILE_APPEND);
-                    
+
                     if ($customerId && strcasecmp($newStatus, 'Picking') === 0) {
                         file_put_contents($debugFile, date('Y-m-d H:i:s') . " INSIDE PICKING BLOCK - Order {$id}\n", FILE_APPEND);
-                        
+
                         // Clear Upsell assignment when order moves to Picking
                         try {
                             require_once __DIR__ . '/Services/UpsellService.php';
@@ -4728,18 +4769,18 @@ function handle_orders(PDO $pdo, ?string $id): void
                         } catch (Throwable $e) {
                             error_log('Upsell clear failed: ' . $e->getMessage());
                         }
-                        
+
                         // Find customer first (needed for both delivery_date logic and basket transition)
                         $findStmt = $pdo->prepare('SELECT customer_id FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
-                        $findStmt->execute([$customerId, is_numeric($customerId) ? (int)$customerId : null]);
+                        $findStmt->execute([$customerId, is_numeric($customerId) ? (int) $customerId : null]);
                         $customer = $findStmt->fetch();
-                        
+
                         file_put_contents($debugFile, date('Y-m-d H:i:s') . " Customer found: " . json_encode($customer) . "\n", FILE_APPEND);
                         // Get delivery_date from the order for ownership calculation
                         $orderStmt = $pdo->prepare('SELECT delivery_date FROM orders WHERE id=?');
                         $orderStmt->execute([$id]);
                         $deliveryDateStr = $orderStmt->fetchColumn();
-                        
+
                         if ($deliveryDateStr && $customer && $customer['customer_id']) {
                             $deliveryDate = new DateTime($deliveryDateStr);
                             // ownership_expires = delivery_date + 90 days
