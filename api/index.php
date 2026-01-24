@@ -85,7 +85,7 @@ if ($resource === 'version') {
     ]);
 }
 
-if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version'])) {
+if (!in_array($resource, ['', 'health', 'auth', 'uploads', 'version', 'cron'])) {
     if ($resource === 'customers') {
         file_put_contents(__DIR__ . '/debug_check.log', date('Y-m-d H:i:s') . " CUSTOMERS GET: " . json_encode($_GET) . "\n", FILE_APPEND);
     }
@@ -4425,48 +4425,55 @@ function handle_orders(PDO $pdo, ?string $id): void
                     );
                 }
 
-                // Update customer total_purchases and grade after order creation
+                // Update customer total_purchases, grade, and last_order_date after order creation
                 try {
                     $customerId = $in['customerId'] ?? null;
                     $orderTotal = floatval($in['totalAmount'] ?? 0);
+                    $orderDate = $in['orderDate'] ?? date('Y-m-d H:i:s');
 
-                    if ($customerId && $orderTotal > 0) {
-                        // Find customer by id (varchar) or customer_ref_id (varchar) or customer_id (int PK)
-                        // orders.customer_id is varchar and references customers.id (varchar) or customers.customer_ref_id (varchar)
-                        $customerCheck = $pdo->prepare('SELECT customer_id, total_purchases FROM customers WHERE id = ? OR customer_ref_id = ? OR customer_id = ? LIMIT 1');
-                        $customerCheck->execute([$customerId, $customerId, $customerId]);
+                    if ($customerId) {
+                        // Find customer by customer_ref_id (varchar) or customer_id (int PK)
+                        // Note: customers table uses customer_id as PK, not 'id'
+                        $customerCheck = $pdo->prepare('SELECT customer_id, total_purchases FROM customers WHERE customer_ref_id = ? OR customer_id = ? LIMIT 1');
+                        $customerCheck->execute([$customerId, is_numeric($customerId) ? (int)$customerId : 0]);
                         $customerData = $customerCheck->fetch(PDO::FETCH_ASSOC);
 
                         if ($customerData) {
                             $customerPk = $customerData['customer_id']; // This is the int PK
-                            $currentTotal = floatval($customerData['total_purchases'] ?? 0);
-                            $newTotal = $currentTotal + $orderTotal;
+                            
+                            if ($orderTotal > 0) {
+                                // Update total_purchases and grade if order has value
+                                $currentTotal = floatval($customerData['total_purchases'] ?? 0);
+                                $newTotal = $currentTotal + $orderTotal;
 
-                            // Calculate new grade based on total purchases
-                            // Grade thresholds: A >= 50000, B >= 10000, C >= 5000, D >= 2000, else D
-                            $newGrade = 'D';
-                            if ($newTotal >= 50000) {
-                                $newGrade = 'A';
-                            } else if ($newTotal >= 10000) {
-                                $newGrade = 'B';
-                            } else if ($newTotal >= 5000) {
-                                $newGrade = 'C';
-                            } else if ($newTotal >= 2000) {
+                                // Calculate new grade based on total purchases
                                 $newGrade = 'D';
+                                if ($newTotal >= 50000) {
+                                    $newGrade = 'A';
+                                } else if ($newTotal >= 10000) {
+                                    $newGrade = 'B';
+                                } else if ($newTotal >= 5000) {
+                                    $newGrade = 'C';
+                                } else if ($newTotal >= 2000) {
+                                    $newGrade = 'D';
+                                }
+
+                                $updateCustomer = $pdo->prepare('UPDATE customers SET total_purchases = ?, grade = ?, last_order_date = ? WHERE customer_id = ?');
+                                $updateCustomer->execute([$newTotal, $newGrade, $orderDate, $customerPk]);
+                                error_log("Updated customer {$customerPk}: total_purchases={$newTotal}, grade={$newGrade}, last_order_date={$orderDate}");
+                            } else {
+                                // Only update last_order_date if order total is 0
+                                $updateCustomer = $pdo->prepare('UPDATE customers SET last_order_date = ? WHERE customer_id = ?');
+                                $updateCustomer->execute([$orderDate, $customerPk]);
+                                error_log("Updated customer {$customerPk}: last_order_date={$orderDate} (order total = 0)");
                             }
-
-                            // Update customer total_purchases and grade using customer_id (int PK)
-                            $updateCustomer = $pdo->prepare('UPDATE customers SET total_purchases = ?, grade = ? WHERE customer_id = ?');
-                            $updateCustomer->execute([$newTotal, $newGrade, $customerPk]);
-
-                            error_log("Updated customer {$customerPk}: total_purchases={$newTotal}, grade={$newGrade}");
                         } else {
                             error_log("Customer not found for ID: {$customerId}");
                         }
                     }
                 } catch (Throwable $e) {
                     // Log error but don't fail the order creation
-                    error_log('Failed to update customer total_purchases/grade: ' . $e->getMessage());
+                    error_log('Failed to update customer: ' . $e->getMessage());
                 }
 
                 // Auto-allocate stock if warehouse is specified

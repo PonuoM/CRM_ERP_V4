@@ -39,7 +39,6 @@ try {
         INNER JOIN customers c ON (c.customer_ref_id = o.customer_id OR c.customer_id = o.customer_id)
         LEFT JOIN users u ON u.id = o.creator_id
         WHERE o.order_status = 'Picking'
-          AND c.current_basket_key != 39
           AND o.order_date >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
         LIMIT 100
     ");
@@ -53,14 +52,38 @@ try {
         $assignedTo = (int)($order['assigned_to'] ?? 0);
         $creatorId = (int)($order['creator_id'] ?? 0);
         $customerPk = $order['customer_pk'];
+        $currentBasket = $order['current_basket_key'];
         
         $isTelesale = ($creatorRoleId === 6 || $creatorRoleId === 7);
         $isOwner = ($assignedTo > 0 && $assignedTo === $creatorId);
         
         if ($isTelesale && $isOwner) {
-            $pdo->prepare('UPDATE customers SET current_basket_key = 39 WHERE customer_id = ?')->execute([$customerPk]);
-            $results['moved']++;
-            $results['details'][] = ['customer' => $customerPk, 'action' => 'MOVED'];
+            if ($currentBasket != 39) {
+                // CASE 1: MOVE needed
+                // 1. Update Customer: Move to basket 39 AND update date
+                $pdo->prepare('UPDATE customers SET current_basket_key = 39, basket_entered_date = NOW() WHERE customer_id = ?')->execute([$customerPk]);
+                
+                // 2. Log Transition
+                $logTrans = $pdo->prepare("
+                    INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
+                    VALUES (?, ?, '39', 'sale_picking', ?, 'Moved by process_picking_baskets.php', NOW())
+                ");
+                $logTrans->execute([$customerPk, $currentBasket, $creatorId]);
+
+                // 3. Log Return
+                $logReturn = $pdo->prepare("
+                    INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
+                    VALUES (?, ?, 'Sale (Picking) - Moved to Personal Basket', 0, CURDATE(), NOW())
+                ");
+                $logReturn->execute([$customerPk, $assignedTo]);
+
+                $results['moved']++;
+                $results['details'][] = ['customer' => $customerPk, 'action' => 'MOVED'];
+            } else {
+                // CASE 2: ALREADY in basket 39 -> Just refresh date
+                $pdo->prepare('UPDATE customers SET basket_entered_date = NOW() WHERE customer_id = ?')->execute([$customerPk]);
+                $results['details'][] = ['customer' => $customerPk, 'action' => 'REFRESHED_DATE'];
+            }
         } else {
             $results['skipped']++;
             $results['details'][] = ['customer' => $customerPk, 'action' => 'SKIPPED'];

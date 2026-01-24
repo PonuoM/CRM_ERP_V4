@@ -52,15 +52,16 @@ try {
         // ============================================================
         // Step 1: โหลด basket configs ทั้งหมด
         // ============================================================
+        // NOTE: basket_config is now GLOBAL (not filtered by company_id)
         $allBasketsStmt = $pdo->prepare("
             SELECT id, basket_key, basket_name, target_page,
                    min_days_since_order, max_days_since_order,
                    on_sale_basket_key, on_fail_basket_key, on_fail_reevaluate,
                    fail_after_days, max_distribution_count, hold_days_before_redistribute
             FROM basket_config 
-            WHERE company_id = ? AND is_active = 1
+            WHERE is_active = 1
         ");
-        $allBasketsStmt->execute([$cid]);
+        $allBasketsStmt->execute();
         $allBaskets = $allBasketsStmt->fetchAll(PDO::FETCH_ASSOC);
         
         // สร้าง mappings
@@ -101,16 +102,16 @@ try {
         // ============================================================
         // Step 2: ดึง dashboard baskets ที่มี fail_after_days
         // ============================================================
+        // NOTE: basket_config is now GLOBAL (not filtered by company_id)
         $configStmt = $pdo->prepare("
             SELECT *
             FROM basket_config
-            WHERE company_id = ?
-              AND is_active = 1
+            WHERE is_active = 1
               AND target_page = 'dashboard_v2'
               AND fail_after_days IS NOT NULL
               AND fail_after_days > 0
         ");
-        $configStmt->execute([$cid]);
+        $configStmt->execute();
         $configs = $configStmt->fetchAll(PDO::FETCH_ASSOC);
         
         echo "\n  Found " . count($configs) . " dashboard baskets with fail_after_days\n";
@@ -140,7 +141,10 @@ try {
                 SELECT c.customer_id, c.first_name, c.last_name, c.assigned_to,
                        c.current_basket_key, c.basket_entered_date, c.distribution_count,
                        DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
-                       DATEDIFF(NOW(), c.last_order_date) as days_since_order
+                       DATEDIFF(NOW(), COALESCE(
+                           c.last_order_date,
+                           (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
+                       )) as days_since_order
                 FROM customers c
                 WHERE c.company_id = ?
                   AND c.current_basket_key = ?
@@ -233,18 +237,26 @@ try {
                         ");
                         $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
                         
-                        // Log transition
+                        // 1. Log transition
                         $logStmt = $pdo->prepare("
                             INSERT INTO basket_transition_log 
-                            (customer_id, from_basket_key, to_basket_key, transition_type, notes, created_at)
-                            VALUES (?, ?, ?, 'cronjob_monthly', ?, NOW())
+                            (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
+                            VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
                         ");
                         $logStmt->execute([
                             $customerId, 
-                            "$basketKey (ID:$basketId)", 
-                            "$targetBasketKey (ID:$targetBasketId)",
+                            $basketId, 
+                            $targetBasketId,
                             "Exceeded $failDays days. Days since order: $daysSinceOrder. Method: $matchedBy"
                         ]);
+
+                        // 2. Log return/fail
+                        $logReturn = $pdo->prepare("
+                            INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
+                            VALUES (?, ?, ?, ?, CURDATE(), NOW())
+                        ");
+                        $assignedTo = $customer['assigned_to'] ?? null;
+                        $logReturn->execute([$customerId, $assignedTo, "Monthly Cron Fail ($name)", $daysSinceOrder]);
                         
                         echo " [OK]\n";
                         $totalTransferred++;

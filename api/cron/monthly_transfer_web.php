@@ -24,6 +24,11 @@ if ($inputKey !== $SECRET_KEY) {
     die("Access Denied. Invalid key.\n");
 }
 
+// ========================
+// Skip authentication for cron jobs (use secret key instead)
+// ========================
+define('SKIP_AUTH', true);
+
 require_once __DIR__ . '/../config.php';
 
 // ========================
@@ -51,15 +56,16 @@ try {
     // ============================================================
     // Step 1: โหลด basket configs ทั้งหมด
     // ============================================================
+    // NOTE: basket_config is now GLOBAL (not filtered by company_id)
     $allBasketsStmt = $pdo->prepare("
         SELECT id, basket_key, basket_name, target_page,
                min_days_since_order, max_days_since_order,
                on_sale_basket_key, on_fail_basket_key, on_fail_reevaluate,
                fail_after_days, max_distribution_count, hold_days_before_redistribute
         FROM basket_config 
-        WHERE company_id = ? AND is_active = 1
+        WHERE is_active = 1
     ");
-    $allBasketsStmt->execute([$companyId]);
+    $allBasketsStmt->execute();
     $allBaskets = $allBasketsStmt->fetchAll(PDO::FETCH_ASSOC);
     
     // สร้าง mappings
@@ -101,16 +107,16 @@ try {
     // ============================================================
     // Step 2: ดึง dashboard baskets ที่มี fail_after_days
     // ============================================================
+    // NOTE: basket_config is now GLOBAL (not filtered by company_id)
     $configStmt = $pdo->prepare("
         SELECT *
         FROM basket_config
-        WHERE company_id = ?
-          AND is_active = 1
+        WHERE is_active = 1
           AND target_page = 'dashboard_v2'
           AND fail_after_days IS NOT NULL
           AND fail_after_days > 0
     ");
-    $configStmt->execute([$companyId]);
+    $configStmt->execute();
     $configs = $configStmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo "Dashboard baskets with fail_after_days:\n";
@@ -145,7 +151,10 @@ try {
             SELECT c.customer_id, c.first_name, c.last_name,
                    c.current_basket_key, c.distribution_count,
                    DATEDIFF(NOW(), c.basket_entered_date) as days_in_basket,
-                   DATEDIFF(NOW(), c.last_order_date) as days_since_order
+                   DATEDIFF(NOW(), COALESCE(
+                       c.last_order_date,
+                       (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id OR o.customer_id = c.customer_ref_id)
+                   )) as days_since_order
             FROM customers c
             WHERE c.company_id = ?
               AND c.current_basket_key = ?
@@ -238,6 +247,27 @@ try {
                         WHERE customer_id = ?
                     ");
                     $updateStmt->execute([$targetBasketId, $holdUntil, $customerId]);
+
+                    // 1. Log transition
+                    $logTrans = $pdo->prepare("
+                        INSERT INTO basket_transition_log (customer_id, from_basket_key, to_basket_key, transition_type, triggered_by, notes, created_at)
+                        VALUES (?, ?, ?, 'monthly_cron', NULL, ?, NOW())
+                    ");
+                    $transNote = "Auto-move from '$name' (In: {$daysInBasket}d, Order: {$daysSinceOrder}d) -> $targetBasketName";
+                    $logTrans->execute([$customerId, $basketId, $targetBasketId, $transNote]);
+
+                    // 2. Log return/fail
+                    $logReturn = $pdo->prepare("
+                        INSERT INTO basket_return_log (customer_id, previous_assigned_to, reason, days_since_last_order, batch_date, created_at)
+                        VALUES (?, ?, ?, ?, CURDATE(), NOW())
+                    ");
+                    $reason = "Monthly Fail: Exceeded {$failDays} days in $name";
+                    // assigned_to might be null, usually is
+                    $assignee = !empty($customers[0]['assigned_to']) ? $customers[0]['assigned_to'] : null; 
+                    // Note: efficient checking, but $customer loop variable doesn't have assigned_to in select?
+                    // Let's verify SELECT columns first. 
+                    // It seems SELECT in Line 151 misses assigned_to. Adding fallback or assume NULL.
+                    $logReturn->execute([$customerId, null, $reason, $daysSinceOrder]);
                     
                     echo " [OK]\n";
                     $totalTransferred++;

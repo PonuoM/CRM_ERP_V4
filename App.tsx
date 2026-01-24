@@ -4447,27 +4447,35 @@ const App: React.FC = () => {
     newFollowUpDate?: string,
     newTags?: Tag[],
   ): Promise<void> => {
+    // Generate a fallback ID in case API fails
+    const fallbackId = Math.max(...callHistory.map((c) => c.id), 0) + 1;
+    let realId = fallbackId;
+
+    try {
+      const response = await createCall({
+        customerId,
+        date: callLogData.date,
+        caller: callLogData.caller,
+        status: callLogData.status,
+        result: callLogData.result,
+        cropType: callLogData.cropType,
+        areaSize: callLogData.areaSize,
+        notes: callLogData.notes,
+        duration: callLogData.duration ?? undefined,
+      });
+
+      // Use real ID from API response
+      if (response?.id) {
+        realId = Number(response.id);
+      }
+    } catch (e) {
+      console.error("create call API failed", e);
+    }
+
     const newCallLog: CallHistory = {
       ...callLogData,
-      id: Math.max(...callHistory.map((c) => c.id), 0) + 1,
+      id: realId,
     };
-    if (true) {
-      try {
-        await createCall({
-          customerId,
-          date: callLogData.date,
-          caller: callLogData.caller,
-          status: callLogData.status,
-          result: callLogData.result,
-          cropType: callLogData.cropType,
-          areaSize: callLogData.areaSize,
-          notes: callLogData.notes,
-          duration: callLogData.duration ?? undefined,
-        });
-      } catch (e) {
-        console.error("create call API failed", e);
-      }
-    }
     setCallHistory((prev) => [newCallLog, ...prev]);
 
     // Trigger refresh for CustomerDetailPage to fetch updated call history

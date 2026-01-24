@@ -168,20 +168,9 @@ const CustomerDetailPage: React.FC<CustomerDetailPageProps> = (props) => {
     duration: r.duration ?? undefined,
   });
 
-  // Sync local state with props (Optimistic Updates from Parent)
-  useEffect(() => {
-    if (callHistory.length > 0) {
-      setLocalCallHistory((prev) => {
-        const prevIds = new Set(prev.map((c) => c.id));
-        const newItems = callHistory.filter((c) => !prevIds.has(c.id));
-        if (newItems.length > 0) {
-          // Add new items from props to the beginning of local state
-          return [...newItems, ...prev];
-        }
-        return prev;
-      });
-    }
-  }, [callHistory]);
+  // NOTE: Removed sync effect for callHistory
+  // The fetch effect (listCallHistory) is the single source of truth now.
+  // Previously, sync effect was conflicting with fetch effect causing race conditions.
 
   useEffect(() => {
     if (appointments.length > 0) {

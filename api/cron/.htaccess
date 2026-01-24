@@ -1,0 +1,5 @@
+# Allow direct access to PHP files in this directory (bypass main router)
+# Cron jobs use their own secret key authentication
+
+# Disable rewrite for this directory - execute files directly
+RewriteEngine Off
