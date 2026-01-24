@@ -273,7 +273,8 @@ function handleReturnConfig($pdo, $method, $companyId)
 }
 
 /**
- * Handle basket customers fetch - filter customers by basket config rules
+ * Handle basket customers fetch - filter customers by current_basket_key
+ * Uses global basket config (company_id = 1) but filters customers by their actual company_id
  */
 function handleBasketCustomers($pdo, $companyId)
 {
@@ -286,17 +287,22 @@ function handleBasketCustomers($pdo, $companyId)
         return;
     }
 
-    // Get basket config
-    $stmt = $pdo->prepare("SELECT * FROM basket_config WHERE basket_key = ? AND company_id = ? AND is_active = 1");
-    $stmt->execute([$basketKey, $companyId]);
+    // Get basket config - GLOBAL: Always use company 1 for config
+    $stmt = $pdo->prepare("SELECT * FROM basket_config WHERE basket_key = ? AND company_id = 1 AND is_active = 1");
+    $stmt->execute([$basketKey]);
     $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$config) {
-        echo json_encode([]);
+        echo json_encode(['data' => [], 'count' => 0, 'basket_key' => $basketKey, 'error' => 'Basket config not found']);
         return;
     }
 
-    // Build SQL with LEFT JOIN to orders to get order stats
+    $basketId = $config['id'];
+
+    // Query customers who are:
+    // 1. In the correct company (companyId from request)
+    // 2. Have current_basket_key matching the basket's ID
+    // 3. Are NOT assigned to anyone (available for distribution)
     $sql = "
         SELECT 
             c.customer_id,
@@ -306,60 +312,17 @@ function handleBasketCustomers($pdo, $companyId)
             c.province,
             c.assigned_to,
             c.date_registered,
-            COALESCE(os.order_count, 0) as order_count,
-            os.last_order_date,
-            os.first_order_date,
-            COALESCE(os.total_purchases, 0) as total_purchases,
-            DATEDIFF(CURDATE(), os.last_order_date) as days_since_order,
+            c.last_order_date,
+            c.total_purchases,
+            DATEDIFF(CURDATE(), c.last_order_date) as days_since_order,
             DATEDIFF(CURDATE(), c.date_registered) as days_since_registered
         FROM customers c
-        LEFT JOIN (
-            SELECT 
-                customer_id,
-                COUNT(*) as order_count,
-                MAX(order_date) as last_order_date,
-                MIN(order_date) as first_order_date,
-                SUM(CASE WHEN order_status != 'Cancelled' THEN total_amount ELSE 0 END) as total_purchases
-            FROM orders 
-            WHERE order_status != 'Cancelled'
-            GROUP BY customer_id
-        ) os ON c.customer_id = os.customer_id
         WHERE c.company_id = ?
+        AND c.current_basket_key = ?
         AND (c.assigned_to IS NULL OR c.assigned_to = 0)
     ";
 
-    $params = [$companyId];
-    $conditions = [];
-
-    // Apply basket rules
-    if ($config['min_order_count'] !== null) {
-        $conditions[] = "COALESCE(os.order_count, 0) >= ?";
-        $params[] = $config['min_order_count'];
-    }
-
-    if ($config['max_order_count'] !== null) {
-        $conditions[] = "COALESCE(os.order_count, 0) <= ?";
-        $params[] = $config['max_order_count'];
-    }
-
-    if ($config['min_days_since_order'] !== null) {
-        $conditions[] = "(os.last_order_date IS NULL OR DATEDIFF(CURDATE(), os.last_order_date) >= ?)";
-        $params[] = $config['min_days_since_order'];
-    }
-
-    if ($config['max_days_since_order'] !== null) {
-        $conditions[] = "(os.last_order_date IS NOT NULL AND DATEDIFF(CURDATE(), os.last_order_date) <= ?)";
-        $params[] = $config['max_days_since_order'];
-    }
-
-    if ($config['days_since_registered'] !== null) {
-        $conditions[] = "DATEDIFF(CURDATE(), c.date_registered) <= ?";
-        $params[] = $config['days_since_registered'];
-    }
-
-    if (!empty($conditions)) {
-        $sql .= " AND (" . implode(" AND ", $conditions) . ")";
-    }
+    $params = [$companyId, $basketId];
 
     // First, get total count WITHOUT limit
     $countSql = "SELECT COUNT(*) as total FROM (" . $sql . ") as subquery";
@@ -368,7 +331,7 @@ function handleBasketCustomers($pdo, $companyId)
     $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
     // Then get data WITH limit
-    $sql .= " ORDER BY os.last_order_date DESC LIMIT ?";
+    $sql .= " ORDER BY c.last_order_date DESC LIMIT ?";
     $params[] = $limit;
 
     $stmt = $pdo->prepare($sql);
@@ -378,7 +341,8 @@ function handleBasketCustomers($pdo, $companyId)
     echo json_encode([
         'data' => $customers,
         'count' => intval($totalCount),
-        'basket_key' => $basketKey
+        'basket_key' => $basketKey,
+        'basket_id' => $basketId
     ]);
 }
 
