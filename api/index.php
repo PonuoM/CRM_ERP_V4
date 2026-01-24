@@ -4764,11 +4764,7 @@ function handle_orders(PDO $pdo, ?string $id): void
                                 } catch (Throwable $routeErr) {
                                     error_log("Basket Routing Failed: " . $routeErr->getMessage());
                                 }
-                            } catch (Throwable $basketErr) {
-                                error_log("Basket transition on Picking failed: " . $basketErr->getMessage());
                             }
-                        } else {
-                            error_log("Basket transition skipped: Customer not found for customerId={$customerId}");
                         }
                     }
                 } catch (Throwable $e) { /* ignore quota errors to not block order update */
