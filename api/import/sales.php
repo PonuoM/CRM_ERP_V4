@@ -292,7 +292,8 @@ foreach ($grouped as $orderId => $group) {
     $expireDate = date('Y-m-d H:i:s', strtotime('+90 days'));
     
     // ========================================
-    // ROLE-BASED ASSIGNMENT LOGIC
+    // ASSIGNMENT LOGIC - Only assign if caretakerId is explicitly provided
+    // This allows importing historical data without affecting customer assignments
     // ========================================
     $finalAssignedTo = null;
     
@@ -300,57 +301,28 @@ foreach ($grouped as $orderId => $group) {
         // ลูกค้ามีอยู่แล้ว
         $customerPk = $existingCustomer['customer_id'];
         $currentAssignedTo = $existingCustomer['assigned_to'];
-        $currentBucketType = $existingCustomer['bucket_type'];
         
-        if ($isTelesaleRole) {
-            // Telesale: ตรวจสอบสถานะลูกค้า
-            if ($currentAssignedTo && $currentBucketType === 'assigned') {
-                // มีผู้ดูแลแล้ว → ไม่ย้าย (รักษาสิทธิ์คนเดิม)
-                $finalAssignedTo = $currentAssignedTo;
-                // ไม่ต้องอัพเดท customer
-            } else if (in_array($currentBucketType, ['ready', 'waiting'])) {
-                // อยู่ในตะกร้า → ดึงออก + assign ให้พนักงานขาย
-                $finalAssignedTo = $salespersonId;
+        if ($caretakerId) {
+            // มีผู้ดูแลระบุมา → assign ตาม
+            $finalAssignedTo = $caretakerId;
+            if ($currentAssignedTo != $caretakerId) {
                 $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
-                $pdo->prepare($updateSql)->execute([$salespersonId, $nowStr, $expireDate, $customerPk]);
-                $summary['updatedCustomers']++;
-            } else {
-                // สถานะอื่นๆ หรือ null → assign ให้พนักงานขาย
-                $finalAssignedTo = $salespersonId;
-                $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
-                $pdo->prepare($updateSql)->execute([$salespersonId, $nowStr, $expireDate, $customerPk]);
+                $pdo->prepare($updateSql)->execute([$caretakerId, $nowStr, $expireDate, $customerPk]);
                 $summary['updatedCustomers']++;
             }
         } else {
-            // Role อื่นๆ
-            if ($caretakerId) {
-                // มีผู้ดูแลระบุมา → assign ตาม
-                $finalAssignedTo = $caretakerId;
-                if ($currentAssignedTo != $caretakerId) {
-                    $updateSql = "UPDATE customers SET assigned_to = ?, date_assigned = ?, ownership_expires = ? WHERE customer_id = ?";
-                    $pdo->prepare($updateSql)->execute([$caretakerId, $nowStr, $expireDate, $customerPk]);
-                    $summary['updatedCustomers']++;
-                }
-            } else {
-                // ไม่มีผู้ดูแล → ส่งเข้าตะกร้าพร้อมแจก (ถ้ายังไม่มีผู้ดูแล)
-                if (!$currentAssignedTo) {
-                    $finalAssignedTo = null;
-                    $summary['waitingBasket']++;
-                } else {
-                    $finalAssignedTo = $currentAssignedTo;
-                }
-            }
+            // ไม่มีผู้ดูแล → ไม่เปลี่ยน assignment (รักษาสถานะเดิม)
+            $finalAssignedTo = $currentAssignedTo;
+            // ไม่ต้องอัพเดท customer - แค่เพิ่ม order
         }
     } else {
         // ลูกค้าใหม่ → สร้าง
         try {
-            // Determine assigned_to for new customer
-            if ($isTelesaleRole) {
-                $finalAssignedTo = $salespersonId;
-            } else if ($caretakerId) {
+            // Determine assigned_to for new customer - only if caretakerId provided
+            if ($caretakerId) {
                 $finalAssignedTo = $caretakerId;
             } else {
-                $finalAssignedTo = null; // ตะกร้าพร้อมแจก
+                $finalAssignedTo = null; // ไม่มีผู้ดูแล - รอการ assign ภายหลัง
                 $summary['waitingBasket']++;
             }
             

@@ -57,7 +57,8 @@ try {
             SELECT id, basket_key, basket_name, target_page,
                    min_days_since_order, max_days_since_order,
                    on_sale_basket_key, on_fail_basket_key, on_fail_reevaluate,
-                   fail_after_days, max_distribution_count, hold_days_before_redistribute
+                   fail_after_days, max_distribution_count, hold_days_before_redistribute,
+                   blocked_target_baskets
             FROM basket_config 
             WHERE is_active = 1
         ");
@@ -127,6 +128,7 @@ try {
             $reevaluate = (bool)$config['on_fail_reevaluate'];
             $holdDays = (int)($config['hold_days_before_redistribute'] ?? 0);
             $maxDist = (int)($config['max_distribution_count'] ?? 0);
+            $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
             
             echo "\n  [$basketName] ID:$basketId - fail after $failDays days";
             if ($reevaluate) {
@@ -178,6 +180,10 @@ try {
                     // ใช้ days_since_order หาถังจาก distribution baskets
                     $targetBasketKey = null;
                     foreach ($distributionBaskets as $db) {
+                        // Skip blocked baskets (Lane Isolation)
+                        if (in_array($db['id'], $blockedTargets)) {
+                            continue;
+                        }
                         if ($daysSinceOrder >= $db['min_days'] && $daysSinceOrder <= $db['max_days']) {
                             $targetBasketKey = $db['basket_key'];
                             $matchedBy = "re-evaluate ({$db['min_days']}-{$db['max_days']}d)";

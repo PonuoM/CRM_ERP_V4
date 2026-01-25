@@ -31,6 +31,7 @@ interface BasketConfig {
     on_max_dist_basket_key?: string | null;
     on_fail_reevaluate?: boolean;
     has_loop?: boolean;
+    blocked_target_baskets?: string | null;
 }
 
 interface ReturnConfig {
@@ -370,6 +371,16 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                                         {basket.hold_days_before_redistribute ? `${basket.hold_days_before_redistribute} วัน` : 'แจกทันที'}
                                                     </span>
                                                 </div>
+                                                {basket.blocked_target_baskets && (
+                                                    <div className="flex justify-between col-span-2">
+                                                        <span className="text-gray-500">ถัง Block:</span>
+                                                        <span className="font-medium text-red-600 truncate ml-2">
+                                                            {basket.blocked_target_baskets.split(',').map(id =>
+                                                                baskets.find(b => b.id.toString() === id.trim())?.basket_name || id
+                                                            ).join(', ')}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -666,6 +677,51 @@ const BasketSettingsPage: React.FC<BasketSettingsPageProps> = ({ currentUser }) 
                                             </select>
                                             <p className="text-xs text-gray-500 mt-1">ใช้สำหรับถังที่ปรากฏทั้งใน Dashboard และ หน้าแจก</p>
                                         </div>
+
+                                        {/* Blocked Target Baskets - Only show when re-evaluate is enabled */}
+                                        {editingBasket.on_fail_reevaluate && (
+                                            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                <label className="block text-sm font-medium text-red-800 mb-2">
+                                                    🚫 ถังที่ห้ามย้ายไป (Blocked Targets)
+                                                </label>
+                                                <p className="text-xs text-red-600 mb-3">
+                                                    เลือกถังที่ต้องการ Block เพื่อป้องกันลูกค้าข้ามสาย (Lane Isolation)
+                                                </p>
+                                                <div className="max-h-48 overflow-auto space-y-1">
+                                                    {baskets.filter(b => b.target_page === 'distribution' && b.id !== editingBasket.id).map(b => {
+                                                        const blockedIds = (editingBasket.blocked_target_baskets || '').split(',').filter(Boolean);
+                                                        const isBlocked = blockedIds.includes(b.id.toString());
+                                                        return (
+                                                            <label key={b.id} className={`flex items-center gap-2 p-2 rounded cursor-pointer ${isBlocked ? 'bg-red-100' : 'hover:bg-gray-100'}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isBlocked}
+                                                                    onChange={(e) => {
+                                                                        let ids = blockedIds;
+                                                                        if (e.target.checked) {
+                                                                            ids = [...ids, b.id.toString()];
+                                                                        } else {
+                                                                            ids = ids.filter(id => id !== b.id.toString());
+                                                                        }
+                                                                        setEditingBasket({ ...editingBasket, blocked_target_baskets: ids.join(',') || null });
+                                                                    }}
+                                                                    className="w-4 h-4 text-red-600 rounded"
+                                                                />
+                                                                <span className={`text-sm ${isBlocked ? 'text-red-700 font-medium' : 'text-gray-700'}`}>
+                                                                    {b.basket_name}
+                                                                    <span className="text-xs text-gray-400 ml-1">(ID: {b.id})</span>
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                {editingBasket.blocked_target_baskets && (
+                                                    <div className="mt-2 pt-2 border-t border-red-200 text-xs text-red-600">
+                                                        <strong>IDs ที่ถูก Block:</strong> {editingBasket.blocked_target_baskets}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}  {/* End of Transition Rules conditional */}
 

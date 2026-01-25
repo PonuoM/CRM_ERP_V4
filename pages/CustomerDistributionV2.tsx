@@ -51,7 +51,7 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
     const [loadingCustomers, setLoadingCustomers] = useState(false);
     const [loadingAgents, setLoadingAgents] = useState(false);
     const [distributing, setDistributing] = useState(false);
-    const [countPerAgent, setCountPerAgent] = useState<string>('');
+    const [totalToDistribute, setTotalToDistribute] = useState<string>('');
     const [preview, setPreview] = useState<DistributionPreview[]>([]);
     const [showPreview, setShowPreview] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -295,7 +295,9 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             return;
         }
 
-        const count = parseInt(countPerAgent) || 0;
+        // Calculate per-person count from total
+        const total = parseInt(totalToDistribute) || 0;
+        const count = selectedAgents.length > 0 ? Math.floor(total / selectedAgents.length) : 0;
         const customerPool = [...customers]; // Make a copy of the pool
         const previewData: DistributionPreview[] = [];
         const assignedCustomerIds = new Set<string>(); // Track assigned customers
@@ -346,10 +348,11 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
             });
         }
 
-        // Check if any agent got less than requested
-        const shortfall = previewData.filter(p => p.customers.length < count);
+        // Check if any agent got less than expected
+        const expectedPerAgent = selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0;
+        const shortfall = previewData.filter(p => p.customers.length < expectedPerAgent);
         if (shortfall.length > 0) {
-            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${count})`).join(', ');
+            const names = shortfall.map(p => `${p.agentName} (${p.customers.length}/${expectedPerAgent})`).join(', ');
             setMessage({
                 type: 'error',
                 text: `⚠️ บางพนักงานได้ลูกค้าน้อยกว่าที่กำหนดเนื่องจากมีลูกค้าซ้ำ: ${names}`
@@ -551,14 +554,15 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm text-gray-500 mb-2">จำนวนต่อพนักงาน</label>
+                        <label className="block text-sm text-gray-500 mb-2">จำนวนรวมที่ต้องการแจก</label>
                         <input
                             type="number"
-                            value={countPerAgent}
-                            onChange={(e) => setCountPerAgent(e.target.value)}
+                            value={totalToDistribute}
+                            onChange={(e) => setTotalToDistribute(e.target.value)}
                             className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             min={1}
                             max={availableCount || 1000}
+                            placeholder={`มี ${availableCount} พร้อมแจก`}
                         />
                     </div>
                     <div className="flex items-end">
@@ -587,16 +591,21 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                         </div>
                         <input
                             type="number"
-                            value={countPerAgent}
-                            onChange={(e) => setCountPerAgent(e.target.value)}
+                            value={totalToDistribute}
+                            onChange={(e) => setTotalToDistribute(e.target.value)}
                             max={availableCount}
                             min={1}
-                            className="w-24 border rounded-lg p-2 text-center"
-                            placeholder="ใส่จำนวน"
+                            className="w-32 border rounded-lg p-2 text-center"
+                            placeholder="จำนวนรวม"
                         />
+                        {selectedAgents.length > 0 && parseInt(totalToDistribute) > 0 && (
+                            <span className="text-sm text-gray-500">
+                                ≈ {Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length)} / คน
+                            </span>
+                        )}
                         <button
                             onClick={handleGeneratePreview}
-                            disabled={selectedAgents.length === 0 || availableCount === 0 || !countPerAgent || parseInt(countPerAgent) <= 0 || parseInt(countPerAgent) > availableCount}
+                            disabled={selectedAgents.length === 0 || availableCount === 0 || !totalToDistribute || parseInt(totalToDistribute) <= 0 || parseInt(totalToDistribute) > availableCount}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             <Eye size={16} />
@@ -676,7 +685,10 @@ const CustomerDistributionV2: React.FC<CustomerDistributionV2Props> = ({ current
                 )}
 
                 <div className="mt-4 text-sm text-gray-500">
-                    เลือกแล้ว {selectedAgents.length} คน × {countPerAgent || 0} = <span className="font-semibold text-blue-600">{Math.min(selectedAgents.length * (parseInt(countPerAgent) || 0), availableCount)}</span> รายชื่อ
+                    เลือกแล้ว {selectedAgents.length} คน | จำนวนรวม: {totalToDistribute || 0} |
+                    <span className="font-semibold text-blue-600">
+                        ≈ {selectedAgents.length > 0 ? Math.floor((parseInt(totalToDistribute) || 0) / selectedAgents.length) : 0} / คน
+                    </span>
                 </div>
             </div>
 

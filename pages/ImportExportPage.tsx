@@ -576,7 +576,7 @@ const ImportExportPage: React.FC<ImportExportPageProps> = ({
         // Use API instead of prop
         // if (onImportSales) { ... }
         try {
-          const result = await apiFetch('import/sales.php', {
+          const result = await apiFetch('import/sales_fast.php', {
             method: 'POST',
             body: JSON.stringify({ rows: salesRows })
           }) as ImportResultSummary;

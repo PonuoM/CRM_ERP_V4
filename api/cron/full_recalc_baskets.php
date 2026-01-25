@@ -26,6 +26,9 @@ if (php_sapi_name() !== 'cli' && $providedKey !== $SECRET_KEY) {
 
 $pdo = db_connect();
 
+// DRY RUN MODE
+$dryRun = ($_GET['dryrun'] ?? '1') === '1';
+
 // Configurable Basket IDs (Based on User Requirements)
 // ASSIGNED
 $B_UPSELL = 51;
@@ -45,8 +48,13 @@ $B_MID_6_12_POOL = 43;
 $B_MID_1_3_POOL = 44;
 $B_ANCIENT_POOL = 45;
 
+// Basket counts for statistics
+$basketCounts = [];
+$upsellSkipped = 0;
+
 echo "Starting Full Basket Recalculation...\n";
-echo "Date: " . date('Y-m-d H:i:s') . "\n\n";
+echo "Date: " . date('Y-m-d H:i:s') . "\n";
+echo "Mode: " . ($dryRun ? "DRY RUN (Preview Only)" : "⚠️ LIVE EXECUTION") . "\n\n";
 
 // 1. Get All Customers
 // We need: id (customer_id seems to be PK in checking script, but standard is usually id. checking script output showed customer_id. Let's select both if possible or check PK)
@@ -203,12 +211,12 @@ foreach ($companies as $comp) {
                         $targetBasket = $B_LAST_CHANCE;
                     }
                     // 5. WAITING TO WOO (Assigned) (47)
-                    // Cond: Created by Telesale(7)/Sup(6) AND NOT Self AND 1-90 days
-                    else if (in_array($creatorRoleId, [6, 7]) && $assignedTo != $creatorId && $daysSince <= 90) {
+                    // Cond: Created by another sale (NOT Self) AND 1-90 days
+                    else if ($assignedTo != $creatorId && $daysSince <= 90) {
                         $targetBasket = $B_WAITING_TO_WOO_ASSIGNED;
                     }
                     // 6. FIND NEW CARETAKER (Assigned) (46)
-                    // Cond: Created by Telesale(7)/Sup(6) AND NOT Self AND 91-180 days
+                    // Cond: Created by Telesale(7)/Sup(6) ONLY AND NOT Self AND 91-180 days
                     else if (in_array($creatorRoleId, [6, 7]) && $assignedTo != $creatorId && $daysSince > 90 && $daysSince <= 180) {
                         $targetBasket = $B_FIND_NEW_CARETAKER_ASSIGNED;
                     }
@@ -241,8 +249,13 @@ foreach ($companies as $comp) {
                 } else {
                     // === NO OWNER (POOL) ===
                     
+                    // 0. UPSELL PROTECTION - Admin + Pending = SKIP (don't assign basket)
+                    if ($creatorRoleId == 3 && $status == 'Pending') {
+                        // Don't assign any basket - keep as-is for Upsell distribution
+                        $targetBasket = null;
+                    }
                     // 1. WAITING TO WOO (Pool) (42) -> 1 - 90 days
-                    if ($daysSince <= 90) {
+                    else if ($daysSince <= 90) {
                         $targetBasket = $B_WAITING_TO_WOO_POOL;
                     }
                     // 2. FIND NEW CARETAKER (Pool) (41) -> 91 - 180 days
@@ -266,21 +279,66 @@ foreach ($companies as $comp) {
             
             // Perform Update if changed
             // We compare IDs directly
-            if ($targetBasket && $cust['current_basket_key'] != $targetBasket) {
-                $updateStmt = $pdo->prepare("UPDATE customers SET current_basket_key = ? WHERE customer_id = ?");
-                $updateStmt->execute([$targetBasket, $cid]);
-                $totalUpdated++;
-                echo "  Customer $cid: Basket {$cust['current_basket_key']} -> $targetBasket\n";
+            if ($targetBasket) {
+                // Count for statistics (all assignments)
+                $basketCounts[$targetBasket] = ($basketCounts[$targetBasket] ?? 0) + 1;
+                
+                // Only update if basket is different
+                if ($cust['current_basket_key'] != $targetBasket) {
+                    if (!$dryRun) {
+                        $updateStmt = $pdo->prepare("UPDATE customers SET current_basket_key = ?, basket_entered_date = NOW() WHERE customer_id = ?");
+                        $updateStmt->execute([$targetBasket, $cid]);
+                        echo "  Customer $cid: Basket {$cust['current_basket_key']} -> $targetBasket\n";
+                    }
+                    $totalUpdated++;
+                }
+            } else if ($targetBasket === null && !$assignedTo) {
+                // Upsell skipped
+                $upsellSkipped++;
             }
         }
         
         $totalProcessed += count($customers);
         $offset += $batchSize;
         
-        // Safety Break
-        if ($totalProcessed > 100000) break; 
+        // No safety break - process all customers
     }
 }
 
-echo "\nDone. Processed: $totalProcessed. Updated: $totalUpdated.\n";
+echo "\n=== BASKET STATISTICS ===\n";
+echo "⛔ Upsell Skipped (Unassigned + Pending): $upsellSkipped\n\n";
+
+$basketNames = [
+    51 => '[51] Upsell (Dashboard)',
+    38 => '[38] ลูกค้าใหม่',
+    39 => '[39] ส่วนตัว 1-2 เดือน',
+    40 => '[40] โอกาสสุดท้าย',
+    46 => '[46] หาคนดูแลใหม่ (Dashboard)',
+    47 => '[47] รอคนมาจีบ (Dashboard)',
+    48 => '[48] ถังกลาง 6-12 (Dashboard)',
+    49 => '[49] ถังกลาง 1-3ปี (Dashboard)',
+    50 => '[50] ถังโบราณ (Dashboard)',
+    42 => '[42] รอคนมาจีบ (Distribution)',
+    41 => '[41] หาคนดูแลใหม่ (Distribution)',
+    43 => '[43] ถังกลาง 6-12 (Distribution)',
+    44 => '[44] ถังกลาง 1-3ปี (Distribution)',
+    45 => '[45] ถังโบราณ (Distribution)',
+];
+
+ksort($basketCounts);
+foreach ($basketCounts as $bid => $count) {
+    $name = $basketNames[$bid] ?? "[$bid] Unknown";
+    echo "$name: $count\n";
+}
+
+echo "\n=== SUMMARY ===\n";
+echo "Processed: $totalProcessed\n";
+echo "Will Update: $totalUpdated\n";
+
+if ($dryRun) {
+    echo "\nDRY RUN COMPLETE - No changes made\n";
+    echo "To execute: add &dryrun=0 to URL\n";
+} else {
+    echo "\nEXECUTION COMPLETE\n";
+}
 

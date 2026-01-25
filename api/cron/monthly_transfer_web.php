@@ -7,7 +7,7 @@
  * Parameters:
  * - key: Secret key สำหรับความปลอดภัย (required)
  * - dryrun: 1 = แสดงผลลัพธ์อย่างเดียว, 0 = ย้ายจริง (default: 1)
- * - company: Company ID (default: 1)
+ * - company: Company ID หรือ "all" สำหรับทุก company (default: all)
  * - limit: จำนวนลูกค้าสูงสุดที่จะประมวลผล (optional)
  */
 
@@ -35,19 +35,35 @@ require_once __DIR__ . '/../config.php';
 // Parameters
 // ========================
 $dryRun = ($_GET['dryrun'] ?? '1') === '1';
-$companyId = (int)($_GET['company'] ?? 1);
+$companyParam = $_GET['company'] ?? 'all';
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : null;
 
 echo "===========================================\n";
 echo "Monthly Basket Transfer (Web - Config-Driven)\n";
 echo "Date: " . date('Y-m-d H:i:s') . "\n";
 echo "Mode: " . ($dryRun ? "DRY RUN" : "LIVE") . "\n";
-echo "Company: $companyId\n";
+echo "Company: $companyParam\n";
 echo "Limit: " . ($limit ?? 'No limit') . "\n";
 echo "===========================================\n\n";
 
 try {
     $pdo = db_connect();
+    
+    // Get companies to process
+    if ($companyParam === 'all') {
+        $companyStmt = $pdo->query("SELECT DISTINCT id FROM companies");
+        $companies = $companyStmt->fetchAll(PDO::FETCH_COLUMN);
+    } else {
+        $companies = [(int)$companyParam];
+    }
+    
+    echo "Processing " . count($companies) . " company(ies): " . implode(', ', $companies) . "\n\n";
+    
+    $grandTotalTransferred = 0;
+    $grandTotalErrors = 0;
+
+foreach ($companies as $companyId) {
+    echo "\n========== Company ID: $companyId ==========\n";
     
     $totalTransferred = 0;
     $totalErrors = 0;
@@ -61,7 +77,8 @@ try {
         SELECT id, basket_key, basket_name, target_page,
                min_days_since_order, max_days_since_order,
                on_sale_basket_key, on_fail_basket_key, on_fail_reevaluate,
-               fail_after_days, max_distribution_count, hold_days_before_redistribute
+               fail_after_days, max_distribution_count, hold_days_before_redistribute,
+               blocked_target_baskets
         FROM basket_config 
         WHERE is_active = 1
     ");
@@ -144,6 +161,7 @@ try {
         $reevaluate = (bool)$config['on_fail_reevaluate'];
         $holdDays = (int)($config['hold_days_before_redistribute'] ?? 0);
         $maxDist = (int)($config['max_distribution_count'] ?? 0);
+        $blockedTargets = array_filter(explode(',', $config['blocked_target_baskets'] ?? ''));
         
         echo "=== [$basketName] ID:$basketId ===\n";
         
@@ -191,6 +209,10 @@ try {
                 // ใช้ days_since_order หาถังจาก config
                 $targetBasketKey = null;
                 foreach ($distributionBaskets as $db) {
+                    // Skip blocked baskets (Lane Isolation)
+                    if (in_array($db['id'], $blockedTargets)) {
+                        continue;
+                    }
                     if ($daysSinceOrder >= $db['min_days'] && $daysSinceOrder <= $db['max_days']) {
                         $targetBasketKey = $db['basket_key'];
                         $matchedBy = "re-eval({$db['min_days']}-{$db['max_days']}d)";
@@ -301,11 +323,17 @@ try {
         echo "\n";
     }
     
-    echo "===========================================\n";
-    echo "Summary:\n";
-    echo "  Processed: $processed\n";
-    echo "  Transferred: $totalTransferred\n";
-    echo "  Errors: $totalErrors\n";
+    echo "--- Company $companyId Summary: Transferred=$totalTransferred, Errors=$totalErrors ---\n";
+    $grandTotalTransferred += $totalTransferred;
+    $grandTotalErrors += $totalErrors;
+    
+} // End foreach company
+
+    echo "\n===========================================\n";
+    echo "GRAND TOTAL SUMMARY:\n";
+    echo "  Companies Processed: " . count($companies) . "\n";
+    echo "  Total Transferred: $grandTotalTransferred\n";
+    echo "  Total Errors: $grandTotalErrors\n";
     echo "===========================================\n";
     
 } catch (Exception $e) {
